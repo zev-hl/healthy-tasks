@@ -1,0 +1,7 @@
+# Normalize line endings across machines: store and check out text files with
+# LF everywhere. This keeps Windows/desktop checkouts consistent and matches
+# Prettier's default (endOfLine: "lf"), avoiding spurious diffs and format churn.
+* text=auto eol=lf
+
+# Lockfile is text but managed by npm; keep LF.
+package-lock.json text eol=lf

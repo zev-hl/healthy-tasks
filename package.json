@@ -1,0 +1,36 @@
+{
+  "name": "healthy-tasks",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Healthy Tasks — task management web app (Phase 1: foundation)",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace @healthy-tasks/shared",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:frontend": "npm run dev --workspace frontend",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "prisma:migrate": "npm run prisma:migrate --workspace backend",
+    "prisma:generate": "npm run prisma:generate --workspace backend",
+    "db:seed": "npm run db:seed --workspace backend",
+    "test": "npm run test --workspace backend"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.13.0",
+    "@typescript-eslint/parser": "^8.13.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

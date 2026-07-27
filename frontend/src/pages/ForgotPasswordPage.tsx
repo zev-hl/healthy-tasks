@@ -1,0 +1,62 @@
+import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
+import { api, ApiError } from '../api/client';
+
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      const res = await api.forgotPassword(email);
+      setMessage(res.message);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Something went wrong');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="auth-container">
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Reset password</h2>
+        {message ? (
+          <>
+            <div className="alert success">{message}</div>
+            <p className="muted" style={{ fontSize: '0.85rem' }}>
+              In development the reset link is printed to the backend console.
+            </p>
+          </>
+        ) : (
+          <>
+            {error && <div className="alert error">{error}</div>}
+            <form onSubmit={onSubmit}>
+              <div className="field">
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <button type="submit" disabled={submitting} style={{ width: '100%' }}>
+                {submitting ? 'Sending…' : 'Send reset link'}
+              </button>
+            </form>
+          </>
+        )}
+        <p style={{ marginBottom: 0, marginTop: '1rem', fontSize: '0.85rem' }}>
+          <Link to="/login">Back to sign in</Link>
+        </p>
+      </div>
+    </div>
+  );
+}

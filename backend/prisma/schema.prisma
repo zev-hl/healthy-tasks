@@ -1,0 +1,151 @@
+// Prisma schema for Healthy Tasks — Phase 1 (foundation).
+// Later phases (tasks, comments, notifications) will add models here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  Admin
+  Manager
+  Member
+}
+
+model User {
+  id             String   @id @default(uuid())
+  // `email` is the user's login id. Unique, required, validated as an email
+  // at the application layer (see Zod schemas).
+  email          String   @unique
+  title          String?
+  jobDescription String?
+  role           Role
+  passwordHash   String
+  isActive       Boolean  @default(true)
+
+  // Self-referential supervisor relationship. The rule "supervisor must be a
+  // Manager or Admin" is enforced in the application layer (user.service.ts),
+  // because it depends on another row's `role` and cannot be expressed as a
+  // plain Postgres CHECK constraint. See README for an optional DB trigger.
+  supervisorId String?
+  supervisor   User?   @relation("Supervision", fields: [supervisorId], references: [id], onDelete: SetNull)
+  reports      User[]  @relation("Supervision")
+
+  // Bumped whenever we want to invalidate all existing JWTs for this user
+  // (e.g. on deactivation or password reset). The auth middleware compares the
+  // token's version to this value, giving stateless JWTs a revocation path.
+  tokenVersion Int @default(0)
+
+  passwordResetTokens PasswordResetToken[]
+
+  // Task relations (Phase 2).
+  createdTasks  Task[] @relation("TaskCreator")
+  assignedTasks Task[] @relation("TaskAssignee")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supervisorId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Only a SHA-256 hash of the token is stored; the raw token lives only in the
+  // emailed link. This prevents DB reads from yielding usable reset tokens.
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum TaskPriority {
+  Urgent
+  High
+  Medium
+  Low
+}
+
+// Enum keys are space-free; the UI maps InProgress/OnHold to "In Progress" /
+// "On Hold" (see TASK_STATUS_LABELS in @healthy-tasks/shared).
+enum TaskStatus {
+  Open
+  InProgress
+  OnHold
+  Review
+  Completed
+  Canceled
+}
+
+model Task {
+  // Plain sequential integer id, as specified for Phase 2.
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+
+  // Creator is set to the authenticated user at creation and never changes.
+  creatorId String
+  creator   User   @relation("TaskCreator", fields: [creatorId], references: [id])
+
+  // Assignee is optional and chosen from active users.
+  assigneeId String?
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  priority TaskPriority @default(Medium)
+  status   TaskStatus   @default(Open)
+
+  // Set to now() whenever `status` changes; stays null until the first change
+  // (enforced in task.service.ts).
+  statusChangedAt DateTime?
+
+  // Free-text tags; no search integration yet (Phase 6).
+  tags String[] @default([])
+
+  startAt DateTime?
+  dueAt   DateTime?
+
+  // --- Parent/Child hierarchy (Phase 3) ---
+  // One optional parent; children are derived (tasks whose parent is this one).
+  // Circular ancestry is prevented in the application layer (task.service.ts).
+  parentId Int?
+  parent   Task?  @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Task[] @relation("TaskHierarchy")
+
+  // --- Dependencies (Phase 3), separate from the hierarchy above ---
+  // `blocking`  = edges where this task is the blocker (its "Blocks" list).
+  // `blockedBy` = edges where this task is the blocked (its "Is Blocked By"
+  //               predecessors). Cycles are prevented in the application layer.
+  blocking  TaskDependency[] @relation("Blocker")
+  blockedBy TaskDependency[] @relation("Blocked")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([creatorId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([parentId])
+}
+
+// A directed dependency edge: `blocker` must reach a terminal status before
+// `blocked` may move to Review/Completed. Distinct from Parent/Child.
+model TaskDependency {
+  id        Int  @id @default(autoincrement())
+  blockerId Int
+  blockedId Int
+  blocker   Task @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   Task @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}

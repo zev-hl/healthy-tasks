@@ -1,0 +1,80 @@
+# Local development stack: Postgres + backend API + frontend dev server.
+# Bring it all up with:  docker compose up --build
+#
+# The backend applies migrations on startup. Create the first admin afterwards
+# with:  docker compose exec backend npm run db:seed
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: healthy
+      POSTGRES_PASSWORD: healthy
+      POSTGRES_DB: healthy_tasks
+    ports:
+      # Exposed on the host so you can inspect it with psql / a GUI if you like.
+      - '5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U healthy -d healthy_tasks']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: '4000'
+      # Inside the compose network the DB host is the `db` service name.
+      DATABASE_URL: 'postgresql://healthy:healthy@db:5432/healthy_tasks?schema=public'
+      JWT_SECRET: 'dev-only-change-me-to-a-long-random-string'
+      JWT_EXPIRES_IN: '15m'
+      PASSWORD_RESET_EXPIRES_IN: '60m'
+      FRONTEND_URL: 'http://localhost:5173'
+      CORS_ORIGIN: 'http://localhost:5173'
+      EMAIL_PROVIDER: 'console'
+      EMAIL_FROM: 'Healthy Tasks <no-reply@healthy-tasks.local>'
+      SEED_ADMIN_EMAIL: 'admin@healthy-tasks.local'
+      SEED_ADMIN_PASSWORD: 'ChangeMe123!'
+      # Windows bind mounts don't deliver file-change events into the container,
+      # so make the file watchers poll instead (backend uses tsx/chokidar).
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
+    ports:
+      - '4000:4000'
+    volumes:
+      # Bind-mount source for hot reload; keep container-managed node_modules.
+      - ./backend:/app/backend
+      - /app/backend/node_modules
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      # The browser (on the host) reaches the API via the published host port.
+      VITE_API_URL: 'http://localhost:4000'
+      # Belt-and-suspenders with vite.config.ts's watch.usePolling for Windows.
+      CHOKIDAR_USEPOLLING: 'true'
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+      - /app/node_modules
+
+volumes:
+  db-data:
