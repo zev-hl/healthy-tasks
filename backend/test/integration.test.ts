@@ -758,6 +758,72 @@ describe('task dependencies (blocks / is blocked by)', () => {
   });
 });
 
+describe('relationship concurrency (advisory lock)', () => {
+  // These fire two mutually-cyclic mutations at the same time. Before the
+  // advisory lock, each request's read-then-write cycle check could pass
+  // independently and the two writes would jointly form a cycle (TOCTOU). The
+  // lock serializes them: the first wins, the second sees the new edge and is
+  // rejected. We assert exactly one success AND that no cycle materialized.
+
+  it('serializes concurrent cycle-forming dependency adds', async () => {
+    const tok = await adminToken();
+    const a = await makeTask(tok, 'Task A');
+    const b = await makeTask(tok, 'Task B');
+
+    // A→B and B→A issued together; only one may survive.
+    const [r1, r2] = await Promise.all([
+      request(app)
+        .post(`/api/tasks/${a.id}/dependencies`)
+        .set(auth(tok))
+        .send({ type: 'blocks', otherTaskId: b.id }),
+      request(app)
+        .post(`/api/tasks/${b.id}/dependencies`)
+        .set(auth(tok))
+        .send({ type: 'blocks', otherTaskId: a.id }),
+    ]);
+
+    const statuses = [r1.status, r2.status].sort();
+    assert.deepEqual(
+      statuses,
+      [201, 400],
+      `expected one success + one rejection, got ${JSON.stringify(statuses)}`,
+    );
+
+    // The decisive check: exactly one edge exists, so no cycle was created.
+    const edges = await prisma.taskDependency.count();
+    assert.equal(edges, 1, 'exactly one dependency edge should exist (no cycle)');
+
+    const rejected = [r1, r2].find((r) => r.status === 400)!;
+    assert.match(rejected.body.error, /circular/i);
+  });
+
+  it('serializes concurrent cycle-forming parent assignments', async () => {
+    const tok = await adminToken();
+    const a = await makeTask(tok, 'Task A');
+    const b = await makeTask(tok, 'Task B');
+
+    // A.parent=B and B.parent=A issued together; only one may survive.
+    const [r1, r2] = await Promise.all([
+      request(app).put(`/api/tasks/${a.id}/parent`).set(auth(tok)).send({ parentId: b.id }),
+      request(app).put(`/api/tasks/${b.id}/parent`).set(auth(tok)).send({ parentId: a.id }),
+    ]);
+
+    const statuses = [r1.status, r2.status].sort();
+    assert.deepEqual(
+      statuses,
+      [200, 400],
+      `expected one success + one rejection, got ${JSON.stringify(statuses)}`,
+    );
+
+    // Exactly one task ended up with a parent — the mutual-parent cycle was blocked.
+    const withParent = await prisma.task.count({ where: { parentId: { not: null } } });
+    assert.equal(withParent, 1, 'exactly one parent link should exist (no cycle)');
+
+    const rejected = [r1, r2].find((r) => r.status === 400)!;
+    assert.match(rejected.body.error, /ancestor|circular/i);
+  });
+});
+
 describe('blocked-status rule', () => {
   async function taskBlockedBy(tok: string) {
     const pred = await makeTask(tok, 'Predecessor');
