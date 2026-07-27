@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CommentDto, TaskDetailDto, TaskUserRef, UserDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { RichTextEditor } from './RichTextEditor';
@@ -9,13 +9,15 @@ interface Props {
   task: TaskDetailDto;
   currentUser: UserDto;
   onChanged: (task: TaskDetailDto) => void;
+  /** Reports whether there's an in-progress draft (new comment or an edit). */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
-export function Comments({ task, currentUser, onChanged }: Props) {
+export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props) {
   const [composerKey, setComposerKey] = useState(0);
   const [composerBody, setComposerBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -45,6 +47,16 @@ export function Comments({ task, currentUser, onChanged }: Props) {
   }, []);
 
   const isAuthor = (c: CommentDto) => c.author.id === currentUser.id;
+
+  // Report an in-progress draft (a new comment being written, or an edit whose
+  // text has changed) so the page's unsaved-changes guard can include it.
+  const editingOriginal =
+    editingId !== null ? (task.comments.find((c) => c.id === editingId)?.body ?? '') : '';
+  const commentsDirty =
+    composerBody.trim() !== '' || (editingId !== null && editBody !== editingOriginal);
+  useEffect(() => {
+    onDirtyChange?.(commentsDirty);
+  }, [commentsDirty, onDirtyChange]);
 
   async function submitComment() {
     if (composerBody.trim() === '') return;

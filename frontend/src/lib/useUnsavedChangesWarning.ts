@@ -1,23 +1,40 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
+import { useBlocker, type BlockerFunction } from 'react-router-dom';
 
 /**
- * Warn the user before the page is unloaded — browser refresh, tab close, or
- * navigating away to another site — while `when` is true (there are unsaved
- * changes). The browser shows its native "Leave site? Changes you made may not
- * be saved." confirmation.
+ * Warn the user about unsaved changes when leaving, in two ways while `when` is
+ * true:
+ *  - Full-page unloads (refresh, tab close, navigating to another site): the
+ *    browser's native "Leave site?" confirmation via `beforeunload`.
+ *  - In-app SPA navigation (clicking a link, back/forward): React Router's
+ *    `useBlocker` pauses the navigation and asks for confirmation first.
  *
- * Note: this covers full-page unloads. It does not intercept in-app SPA link
- * navigation (that would require React Router's data-router `useBlocker`).
+ * Requires a data router (RouterProvider) for the in-app half.
  */
 export function useUnsavedChangesWarning(when: boolean): void {
   useEffect(() => {
     if (!when) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      // Required for Chrome/Safari to actually show the confirmation prompt.
-      e.returnValue = '';
+      e.returnValue = ''; // required for Chrome/Safari to show the prompt
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [when]);
+
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation }) =>
+      when && currentLocation.pathname !== nextLocation.pathname,
+    [when],
+  );
+  const blocker = useBlocker(shouldBlock);
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    const leave = window.confirm(
+      'You have unsaved changes. Leave this page and discard them?',
+    );
+    if (leave) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
 }

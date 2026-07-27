@@ -62,6 +62,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [commentsDirty, setCommentsDirty] = useState(false);
 
   // Inline name edit.
   const [editingName, setEditingName] = useState(false);
@@ -264,7 +265,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // save immediately, so they're never "unsaved".)
   const nameUnsaved = editingName && nameDraft.trim() !== task.name;
   const descUnsaved = editingDesc && descDraft !== (task.description ?? '');
-  useUnsavedChangesWarning(fieldsDirty || nameUnsaved || descUnsaved);
+  useUnsavedChangesWarning(fieldsDirty || nameUnsaved || descUnsaved || commentsDirty);
 
   const saveChangesButton = (
     <button type="button" disabled={savingFields || !fieldsDirty} onClick={saveFields}>
@@ -682,7 +683,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {/* Comments */}
       <div className="card">
         <h3 style={{ marginTop: 0 }}>Comments</h3>
-        <Comments task={task} currentUser={currentUser} onChanged={setTask} />
+        <Comments
+          task={task}
+          currentUser={currentUser}
+          onChanged={setTask}
+          onDirtyChange={setCommentsDirty}
+        />
       </div>
 
       {picker && (
