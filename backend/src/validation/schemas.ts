@@ -77,9 +77,18 @@ const optionalDateTime = z
 
 const tags = z.array(z.string().trim().min(1).max(50)).max(50);
 
+// Rich-text HTML (Phase 4). Distinguishes omitted (undefined → leave unchanged
+// on PATCH) from cleared ('' or null → null). The raw cap only bounds the
+// payload; the ~10k text-content limit is enforced after sanitization in the
+// service layer (see utils/rich-text.ts).
+const richText = z
+  .union([z.null(), z.literal(''), z.string().max(100000, 'Content is too large')])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+
 export const createTaskSchema = z.object({
   name: taskName,
-  description: optionalText,
+  description: richText,
   assigneeId: optionalUserId,
   priority: z.enum(TASK_PRIORITIES).optional(),
   status: z.enum(TASK_STATUSES).optional(),
@@ -91,7 +100,7 @@ export const createTaskSchema = z.object({
 // PATCH semantics: every field optional; omitted fields are left unchanged.
 export const updateTaskSchema = z.object({
   name: taskName.optional(),
-  description: optionalText,
+  description: richText,
   assigneeId: optionalUserId,
   priority: z.enum(TASK_PRIORITIES).optional(),
   status: z.enum(TASK_STATUSES).optional(),
@@ -115,6 +124,33 @@ export const dependencySchema = z.object({
 
 export type SetParentInput = z.infer<typeof setParentSchema>;
 export type DependencyInput = z.infer<typeof dependencySchema>;
+
+// --- Attachments & comments (Phase 4) --------------------------------------
+
+// Type/size are validated authoritatively in attachment.service against the
+// shared allowlist and 25 MB cap; these just guard shape.
+export const presignAttachmentSchema = z.object({
+  filename: z.string().trim().min(1, 'Filename is required').max(255),
+  contentType: z.string().trim().min(1, 'Content type is required').max(255),
+  size: z.number().int().positive('File size is required'),
+});
+
+export const confirmAttachmentSchema = presignAttachmentSchema.extend({
+  storageKey: z.string().min(1, 'storageKey is required').max(1024),
+});
+
+const commentBody = z
+  .string()
+  .min(1, 'Comment cannot be empty')
+  .max(100000, 'Comment is too large');
+
+export const createCommentSchema = z.object({ body: commentBody });
+export const updateCommentSchema = z.object({ body: commentBody });
+
+export type PresignAttachmentInput = z.infer<typeof presignAttachmentSchema>;
+export type ConfirmAttachmentInput = z.infer<typeof confirmAttachmentSchema>;
+export type CreateCommentInput = z.infer<typeof createCommentSchema>;
+export type UpdateCommentInput = z.infer<typeof updateCommentSchema>;
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;

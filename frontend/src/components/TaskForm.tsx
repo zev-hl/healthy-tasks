@@ -11,6 +11,14 @@ import {
   type TaskUserRef,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { RichTextEditor } from './RichTextEditor';
+import {
+  isoToParts,
+  partsToIso,
+  defaultTime,
+  DEFAULT_START_HOUR,
+  DEFAULT_DUE_HOUR,
+} from '../lib/datetime';
 
 export interface TaskFormPayload {
   name: string;
@@ -29,37 +37,9 @@ interface Props {
   onSubmit: (payload: TaskFormPayload) => Promise<void>;
 }
 
-const DEFAULT_START_HOUR = 7; // 7:00 AM
-const DEFAULT_DUE_HOUR = 19; // 7:00 PM
-
-const pad = (n: number) => String(n).padStart(2, '0');
-const defaultTime = (hour: number) => `${pad(hour)}:00`;
-
-/** Split an ISO timestamp into local date ("YYYY-MM-DD") and time ("HH:mm") parts. */
-function isoToParts(iso: string | null | undefined): { date: string; time: string } {
-  if (!iso) return { date: '', time: '' };
-  const d = new Date(iso);
-  return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  };
-}
-
 /**
- * Combine local date + time fields into an absolute UTC ISO string. Returns null
- * if no date is set. A missing time falls back to the field's default hour. The
- * conversion happens in the browser so "local" is the user's actual timezone.
- */
-function partsToIso(date: string, time: string, defaultHour: number): string | null {
-  if (date === '') return null;
-  const t = time === '' ? defaultTime(defaultHour) : time;
-  const d = new Date(`${date}T${t}`); // no offset → parsed as local time
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-/**
- * Shared editable form for all task fields. Deliberately plain — this is Phase 2
- * scaffolding, not the polished UI.
+ * Editable form used to CREATE a task (all fields at once). The task detail
+ * page edits fields individually (see TaskDetailView) and does not use this.
  */
 export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
   const initialStart = isoToParts(initial?.startAt);
@@ -162,12 +142,11 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
       </div>
 
       <div className="field">
-        <label htmlFor="task-desc">Description</label>
-        <textarea
-          id="task-desc"
-          rows={4}
+        <label>Description</label>
+        <RichTextEditor
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={setDescription}
+          ariaLabel="Task description"
         />
       </div>
 

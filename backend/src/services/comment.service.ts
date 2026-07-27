@@ -1,0 +1,177 @@
+import type { Prisma } from '@prisma/client';
+import { prisma } from '../db/prisma.js';
+import { HttpError } from '../utils/http-error.js';
+import { getStorage } from '../storage/index.js';
+import { getTaskDetail } from './task.service.js';
+import {
+  sanitizeAndValidate,
+  richTextLength,
+  extractMentionUserIds,
+} from '../utils/rich-text.js';
+import { MENTION_EVENT_DEBOUNCE_MINUTES, type Role, type TaskDetailDto } from '@healthy-tasks/shared';
+
+export interface Actor {
+  id: string;
+  role: Role;
+}
+
+async function assertTaskExists(taskId: number): Promise<void> {
+  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { id: true } });
+  if (!task) throw HttpError.notFound('Task not found');
+}
+
+/** Clean the body, enforce the length limit, and reject empty content. */
+function prepareBody(body: string): string {
+  const clean = sanitizeAndValidate(body, { allowMentions: true, fieldLabel: 'Comment' });
+  if (richTextLength(clean) === 0) {
+    throw HttpError.badRequest('Comment cannot be empty');
+  }
+  return clean;
+}
+
+/** Of the given ids, return those that are real, active users (mentions of anyone else are ignored). */
+async function activeUserIds(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const users = await prisma.user.findMany({
+    where: { id: { in: ids }, isActive: true },
+    select: { id: true },
+  });
+  return users.map((u) => u.id);
+}
+
+/**
+ * Reconcile the comment's current-mention set and write mention events per the
+ * timing rule:
+ *  - a NEW mention (not present before this save) always writes an event;
+ *  - a RETAINED mention writes another only if 15+ minutes have passed since the
+ *    last event for that (user, comment) pair.
+ */
+async function reconcileMentionsAndEvents(
+  tx: Prisma.TransactionClient,
+  commentId: string,
+  taskId: number,
+  previousIds: string[],
+  newIds: string[],
+): Promise<void> {
+  const previous = new Set(previousIds);
+
+  // Update the current-mention set to exactly newIds.
+  if (newIds.length === 0) {
+    await tx.commentMention.deleteMany({ where: { commentId } });
+  } else {
+    await tx.commentMention.deleteMany({ where: { commentId, userId: { notIn: newIds } } });
+    await tx.commentMention.createMany({
+      data: newIds.map((userId) => ({ commentId, userId })),
+      skipDuplicates: true,
+    });
+  }
+
+  const cutoff = new Date(Date.now() - MENTION_EVENT_DEBOUNCE_MINUTES * 60 * 1000);
+  for (const userId of newIds) {
+    if (!previous.has(userId)) {
+      // Brand-new mention → always an event.
+      await tx.mentionEvent.create({ data: { userId, taskId, commentId } });
+      continue;
+    }
+    // Retained mention → only if the debounce window has elapsed.
+    const last = await tx.mentionEvent.findFirst({
+      where: { userId, commentId },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (!last || last.createdAt <= cutoff) {
+      await tx.mentionEvent.create({ data: { userId, taskId, commentId } });
+    }
+  }
+}
+
+export async function createComment(
+  actor: Actor,
+  taskId: number,
+  body: string,
+): Promise<TaskDetailDto> {
+  await assertTaskExists(taskId);
+  const clean = prepareBody(body);
+  const mentionIds = await activeUserIds(extractMentionUserIds(clean));
+
+  await prisma.$transaction(async (tx) => {
+    const comment = await tx.comment.create({
+      data: { taskId, authorId: actor.id, body: clean },
+      select: { id: true },
+    });
+    // Phase 5 (History of Changes) hook: record a comment-added event here.
+    await reconcileMentionsAndEvents(tx, comment.id, taskId, [], mentionIds);
+  });
+
+  return getTaskDetail(taskId);
+}
+
+export async function updateComment(
+  actor: Actor,
+  commentId: string,
+  body: string,
+): Promise<TaskDetailDto> {
+  const comment = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: { id: true, authorId: true, taskId: true },
+  });
+  if (!comment) throw HttpError.notFound('Comment not found');
+  if (comment.authorId !== actor.id) {
+    throw HttpError.forbidden('Only the comment author can edit this comment');
+  }
+
+  const clean = prepareBody(body);
+  const mentionIds = await activeUserIds(extractMentionUserIds(clean));
+
+  await prisma.$transaction(async (tx) => {
+    const prevRows = await tx.commentMention.findMany({
+      where: { commentId },
+      select: { userId: true },
+    });
+    // Editing updates the displayed timestamp (editedAt) and flips "edited" on.
+    await tx.comment.update({
+      where: { id: commentId },
+      data: { body: clean, editedAt: new Date() },
+    });
+    // Phase 5 (History of Changes) hook: record a comment-edited event here.
+    await reconcileMentionsAndEvents(
+      tx,
+      commentId,
+      comment.taskId,
+      prevRows.map((r) => r.userId),
+      mentionIds,
+    );
+  });
+
+  return getTaskDetail(comment.taskId);
+}
+
+export async function deleteComment(actor: Actor, commentId: string): Promise<TaskDetailDto> {
+  const comment = await prisma.comment.findUnique({
+    where: { id: commentId },
+    select: {
+      id: true,
+      authorId: true,
+      taskId: true,
+      attachments: { select: { storageKey: true } },
+    },
+  });
+  if (!comment) throw HttpError.notFound('Comment not found');
+  if (comment.authorId !== actor.id) {
+    throw HttpError.forbidden('Only the comment author can delete this comment');
+  }
+
+  // Phase 5 (History of Changes) hook: record a comment-deleted event here.
+  // Remove the comment's attachment objects, then delete the row (cascades the
+  // attachment/mention/event rows).
+  const storage = getStorage();
+  for (const a of comment.attachments) {
+    try {
+      await storage.deleteObject(a.storageKey);
+    } catch (err) {
+      console.error('Failed to delete comment attachment object', a.storageKey, err);
+    }
+  }
+  await prisma.comment.delete({ where: { id: commentId } });
+  return getTaskDetail(comment.taskId);
+}

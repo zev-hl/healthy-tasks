@@ -182,6 +182,9 @@ export interface TaskDetailDto extends TaskDto {
   children: TaskRef[];
   blocks: TaskRef[];
   isBlockedBy: TaskRef[];
+  // Phase 4: files attached to the task, and its comment thread (newest last).
+  attachments: AttachmentDto[];
+  comments: CommentDto[];
 }
 
 // --- Relationship request shapes (Phase 3) ---------------------------------
@@ -218,4 +221,121 @@ export interface UpdateTaskRequest {
   tags?: string[];
   startAt?: string | null;
   dueAt?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Rich text, attachments & comments (Phase 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Max length of rich-text CONTENT (tags stripped), applied to task Descriptions
+ * and comment bodies. Enforced authoritatively on the server; the editor also
+ * shows a live counter.
+ */
+export const RICH_TEXT_MAX_CHARS = 10000;
+
+/**
+ * A retained @mention (one already present before an edit) only produces a new
+ * mention event once this many minutes have passed since the last event for the
+ * same (user, comment) pair. A brand-new mention always produces one. (Phase 8
+ * builds the Mentioned list from these events.)
+ */
+export const MENTION_EVENT_DEBOUNCE_MINUTES = 15;
+
+/** Per-file attachment size cap: 25 MB. */
+export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Allowed attachment categories: images, audio, and video (matched by MIME
+ * prefix) plus this explicit document allowlist. Used by both the client
+ * pre-check and the authoritative server check.
+ */
+export const ALLOWED_ATTACHMENT_DOCUMENT_TYPES: readonly string[] = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.presentation',
+  'application/rtf',
+  'text/plain',
+  'text/csv',
+];
+
+/** True if `contentType` is an allowed attachment type (image/audio/video/doc). */
+export function isAllowedAttachmentType(contentType: string): boolean {
+  const ct = contentType.trim().toLowerCase();
+  return (
+    ct.startsWith('image/') ||
+    ct.startsWith('audio/') ||
+    ct.startsWith('video/') ||
+    ALLOWED_ATTACHMENT_DOCUMENT_TYPES.includes(ct)
+  );
+}
+
+/** Metadata for a file attached to a task or a comment (bytes live in storage). */
+export interface AttachmentDto {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadedBy: TaskUserRef;
+  createdAt: string; // ISO-8601
+  // Exactly one of these is set.
+  taskId: number | null;
+  commentId: string | null;
+}
+
+/** A comment on a task: rich-text body, author, timestamps, mentions, files. */
+export interface CommentDto {
+  id: string;
+  taskId: number;
+  author: TaskUserRef;
+  body: string; // sanitized HTML
+  createdAt: string; // ISO-8601
+  editedAt: string | null; // non-null ⇒ show "edited"; displayed time = editedAt ?? createdAt
+  mentionedUsers: TaskUserRef[];
+  attachments: AttachmentDto[];
+}
+
+// --- Attachment request/response shapes ------------------------------------
+
+/** Step 1 of an upload: ask the server for a pre-signed PUT URL. */
+export interface PresignAttachmentRequest {
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
+export interface PresignAttachmentResponse {
+  uploadUrl: string;
+  storageKey: string;
+}
+
+/** Step 2: after PUTting the bytes, persist the attachment metadata. */
+export interface ConfirmAttachmentRequest {
+  filename: string;
+  contentType: string;
+  size: number;
+  storageKey: string;
+}
+
+/** A fresh pre-signed GET URL for downloading an attachment. */
+export interface AttachmentDownloadResponse {
+  url: string;
+  filename: string;
+}
+
+// --- Comment request shapes ------------------------------------------------
+
+export interface CreateCommentRequest {
+  body: string;
+}
+
+export interface UpdateCommentRequest {
+  body: string;
 }

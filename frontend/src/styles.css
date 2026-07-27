@@ -298,3 +298,231 @@ th {
 .rel-x:hover {
   background: #fee2e2;
 }
+
+/* ---------------------------------------------------------------------------
+   Phase 4: rich-text editor, mentions, attachments, comments
+   --------------------------------------------------------------------------- */
+
+/* Rich-text editor */
+.rte {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.rte-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.rte-toolbar button {
+  min-width: 2rem;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+.rte-toolbar button:hover {
+  background: var(--bg);
+}
+.rte-toolbar button.is-active {
+  background: #dbeafe;
+  border-color: var(--primary);
+}
+.rte-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  margin: 0 0.15rem;
+}
+.rte-colors {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.rte-color {
+  width: 1.2rem;
+  height: 1.2rem;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.rte-color.is-default {
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1;
+}
+.rte-color.is-active {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+.rte-count {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.rte-count.is-limit {
+  color: var(--danger);
+  font-weight: 600;
+}
+.rte-content {
+  min-height: 6rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+}
+.rte-content p {
+  margin: 0 0 0.5rem;
+}
+.rte-content:focus {
+  outline: none;
+}
+
+/* Rendered rich text + mention chips */
+.rich-text p {
+  margin: 0 0 0.5rem;
+}
+.rich-text p:last-child {
+  margin-bottom: 0;
+}
+.mention {
+  color: var(--primary);
+  background: #eff6ff;
+  border-radius: 4px;
+  padding: 0 0.2rem;
+  font-weight: 500;
+}
+
+/* Mention autocomplete popup */
+.mention-popup {
+  position: absolute;
+  z-index: 1000;
+}
+.mention-list {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  max-height: 12rem;
+  overflow-y: auto;
+  min-width: 14rem;
+}
+.mention-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 0;
+  font-size: 0.9rem;
+}
+.mention-item:hover,
+.mention-item.is-selected {
+  background: #eff6ff;
+}
+.mention-item.is-empty {
+  padding: 0.4rem 0.6rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.mention-item-title {
+  color: var(--muted);
+}
+
+/* Attachments */
+.attachment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.attachment-row:last-child {
+  border-bottom: none;
+}
+.attachment-icon {
+  flex: none;
+}
+.attachment-name {
+  font-weight: 500;
+}
+.attachment-meta {
+  font-size: 0.8rem;
+  margin-left: auto;
+}
+.link-button {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Comments */
+.comment-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+.comment {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.comment-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+.comment-author {
+  font-weight: 600;
+}
+.comment-time {
+  font-size: 0.8rem;
+}
+.comment-attachments {
+  margin-top: 0.4rem;
+}
+.comment-actions {
+  margin-top: 0.4rem;
+}
+.btn-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+/* Click-to-edit affordances (task detail) */
+.editable-heading {
+  cursor: text;
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+  margin-left: -0.3rem;
+}
+.editable-heading:hover {
+  background: var(--bg);
+  outline: 1px dashed var(--border);
+}
+.editable-block {
+  cursor: text;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  margin: -0.4rem -0.5rem;
+  min-height: 2rem;
+}
+.editable-block:hover {
+  background: var(--bg);
+  outline: 1px dashed var(--border);
+}

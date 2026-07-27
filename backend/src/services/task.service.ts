@@ -1,5 +1,7 @@
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
+import { getStorage } from '../storage/index.js';
+import { sanitizeAndValidate } from '../utils/rich-text.js';
 import type { CreateTaskInput, UpdateTaskInput } from '../validation/schemas.js';
 import {
   taskInclude,
@@ -13,10 +15,21 @@ import {
   BLOCKED_RESTRICTED_STATUSES,
   TASK_STATUS_LABELS,
   TERMINAL_TASK_STATUSES,
+  type Role,
   type TaskDetailDto,
   type TaskDto,
   type TaskStatus,
 } from '@healthy-tasks/shared';
+
+/**
+ * Normalize a Description value: `undefined` = leave unchanged (PATCH), `null` =
+ * clear, string = sanitize to allowed rich text and enforce the length limit.
+ */
+function cleanDescription(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return sanitizeAndValidate(value, { fieldLabel: 'Description' });
+}
 
 /** Assignee must be an existing, active user (chosen from the active-user list). */
 async function assertValidAssignee(assigneeId: string): Promise<void> {
@@ -70,7 +83,7 @@ export async function createTask(creatorId: string, input: CreateTaskInput): Pro
   const task = await prisma.task.create({
     data: {
       name: input.name,
-      description: input.description ?? null,
+      description: cleanDescription(input.description) ?? null,
       creatorId,
       assigneeId: input.assigneeId ?? null,
       // priority/status fall back to the schema defaults (Medium / Open) when omitted.
@@ -85,6 +98,18 @@ export async function createTask(creatorId: string, input: CreateTaskInput): Pro
     include: taskInclude,
   });
   return toTaskDto(task as TaskWithRefs);
+}
+
+/**
+ * Distinct tags currently in use across all tasks, sorted alphabetically
+ * (case-insensitive). Because it is derived from live task rows, a tag that is
+ * no longer on any task simply stops appearing.
+ */
+export async function listAllTags(): Promise<string[]> {
+  const rows = await prisma.$queryRawUnsafe<{ tag: string }[]>(
+    'SELECT tag FROM (SELECT DISTINCT unnest(tags) AS tag FROM "Task") t ORDER BY lower(tag), tag',
+  );
+  return rows.map((r) => r.tag).filter((t) => t.length > 0);
 }
 
 export async function listTasks(): Promise<TaskDto[]> {
@@ -133,7 +158,8 @@ export async function updateTask(id: number, input: UpdateTaskInput): Promise<Ta
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
+      // Phase 5 (History of Changes) hook: record a description-changed event here.
+      ...(input.description !== undefined ? { description: cleanDescription(input.description) } : {}),
       ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
       ...(input.priority !== undefined ? { priority: input.priority } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
@@ -146,4 +172,43 @@ export async function updateTask(id: number, input: UpdateTaskInput): Promise<Ta
     include: taskInclude,
   });
   return toTaskDto(task as TaskWithRefs);
+}
+
+/**
+ * Delete a task. Admin-only (enforced here as well as at the route). Deletes the
+ * task row — the DB cascades its comments, attachments, mentions, and
+ * mention-event rows — then best-effort removes every associated storage object
+ * (both task-level and comment-level attachment files).
+ */
+export async function deleteTask(actor: { id: string; role: Role }, id: number): Promise<void> {
+  if (actor.role !== 'Admin') {
+    throw HttpError.forbidden('Only an administrator can delete a task');
+  }
+
+  const task = await prisma.task.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      attachments: { select: { storageKey: true } },
+      comments: { select: { attachments: { select: { storageKey: true } } } },
+    },
+  });
+  if (!task) throw HttpError.notFound('Task not found');
+
+  const storageKeys = [
+    ...task.attachments.map((a) => a.storageKey),
+    ...task.comments.flatMap((c) => c.attachments.map((a) => a.storageKey)),
+  ];
+
+  // Phase 5 (History of Changes) hook: record a task-deleted event here.
+  await prisma.task.delete({ where: { id } });
+
+  const storage = getStorage();
+  for (const key of storageKeys) {
+    try {
+      await storage.deleteObject(key);
+    } catch (err) {
+      console.error('Failed to delete storage object during task delete', key, err);
+    }
+  }
 }

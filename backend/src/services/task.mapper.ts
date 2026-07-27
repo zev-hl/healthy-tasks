@@ -1,6 +1,12 @@
 import type { Task, User } from '@prisma/client';
 import type { TaskDto, TaskDetailDto, TaskRef } from '@healthy-tasks/shared';
 import { toUserRef } from './user.mapper.js';
+import {
+  attachmentInclude,
+  toAttachmentDto,
+  type AttachmentWithUploader,
+} from './attachment.mapper.js';
+import { commentInclude, toCommentDto, type CommentWithRefs } from './comment.mapper.js';
 
 /** A Task row with its creator (and optional assignee) joined in. */
 export type TaskWithRefs = Task & {
@@ -23,6 +29,10 @@ export const taskDetailInclude = {
   children: { select: taskRefSelect, orderBy: { id: 'asc' } },
   blocking: { include: { blocked: { select: taskRefSelect } }, orderBy: { id: 'asc' } },
   blockedBy: { include: { blocker: { select: taskRefSelect } }, orderBy: { id: 'asc' } },
+  // Phase 4: task-level attachments (comment attachments live on the comment)
+  // and the comment thread (oldest first).
+  attachments: { include: attachmentInclude, orderBy: { createdAt: 'asc' } },
+  comments: { include: commentInclude, orderBy: { createdAt: 'asc' } },
 } as const;
 
 export type TaskWithDetail = TaskWithRefs & {
@@ -30,6 +40,8 @@ export type TaskWithDetail = TaskWithRefs & {
   children: TaskRef[];
   blocking: { blocked: TaskRef }[];
   blockedBy: { blocker: TaskRef }[];
+  attachments: AttachmentWithUploader[];
+  comments: CommentWithRefs[];
 };
 
 export function toTaskDto(task: TaskWithRefs): TaskDto {
@@ -65,5 +77,7 @@ export function toTaskDetailDto(task: TaskWithDetail): TaskDetailDto {
     // `blocking` edges → the tasks this one blocks; `blockedBy` edges → predecessors.
     blocks: task.blocking.map((d) => toTaskRef(d.blocked)),
     isBlockedBy: task.blockedBy.map((d) => toTaskRef(d.blocker)),
+    attachments: task.attachments.map(toAttachmentDto),
+    comments: task.comments.map(toCommentDto),
   };
 }

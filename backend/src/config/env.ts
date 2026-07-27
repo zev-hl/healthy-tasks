@@ -43,4 +43,20 @@ export const env = {
     adminEmail: optional('SEED_ADMIN_EMAIL', 'admin@healthy-tasks.local'),
     adminPassword: optional('SEED_ADMIN_PASSWORD', 'ChangeMe123!'),
   },
+
+  // Object storage for attachments (Phase 4). `driver: memory` swaps in an
+  // in-memory fake (used by tests) so no MinIO/S3 is required. For the S3
+  // driver, `endpoint` is used for server-side ops (delete/head) while
+  // `publicEndpoint` is used to SIGN upload/download URLs — the signed host must
+  // be the one the browser can actually reach (localhost, not the compose DNS).
+  storage: {
+    driver: optional('STORAGE_DRIVER', 's3'), // 's3' | 'memory'
+    bucket: optional('S3_BUCKET', 'healthy-tasks'),
+    region: optional('S3_REGION', 'us-east-1'),
+    endpoint: optional('S3_ENDPOINT', 'http://minio:9000'),
+    publicEndpoint: optional('S3_PUBLIC_ENDPOINT', 'http://localhost:9000'),
+    accessKey: optional('S3_ACCESS_KEY', 'minioadmin'),
+    secretKey: optional('S3_SECRET_KEY', 'minioadmin'),
+    forcePathStyle: optional('S3_FORCE_PATH_STYLE', 'true') === 'true',
+  },
 } as const;

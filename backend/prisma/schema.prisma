@@ -46,6 +46,12 @@ model User {
   createdTasks  Task[] @relation("TaskCreator")
   assignedTasks Task[] @relation("TaskAssignee")
 
+  // Attachments & comments (Phase 4).
+  uploadedAttachments Attachment[]     @relation("AttachmentUploader")
+  authoredComments    Comment[]        @relation("CommentAuthor")
+  commentMentions     CommentMention[]
+  mentionEvents       MentionEvent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -88,6 +94,8 @@ model Task {
   // Plain sequential integer id, as specified for Phase 2.
   id          Int     @id @default(autoincrement())
   name        String
+  // Rich text as sanitized HTML (Phase 4): bold/italic/underline only. Always
+  // sanitized server-side on write; see backend/src/utils/rich-text.ts.
   description String?
 
   // Creator is set to the authenticated user at creation and never changes.
@@ -125,6 +133,11 @@ model Task {
   blocking  TaskDependency[] @relation("Blocker")
   blockedBy TaskDependency[] @relation("Blocked")
 
+  // Attachments, comments, and mention events (Phase 4).
+  attachments   Attachment[]
+  comments      Comment[]
+  mentionEvents MentionEvent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -148,4 +161,92 @@ model TaskDependency {
   @@unique([blockerId, blockedId])
   @@index([blockerId])
   @@index([blockedId])
+}
+
+// ---------------------------------------------------------------------------
+// Attachments & comments (Phase 4)
+// ---------------------------------------------------------------------------
+
+// A file attached to either a Task or a Comment (exactly one parent). File bytes
+// live in S3-compatible object storage under `storageKey`; only metadata is
+// stored here. A DB CHECK (added in the migration) enforces that exactly one of
+// taskId/commentId is set. Deleting the parent cascades the row; the service
+// layer deletes the storage object alongside it.
+model Attachment {
+  id          String @id @default(uuid())
+  filename    String
+  contentType String
+  size        Int
+  storageKey  String @unique
+
+  uploadedById String
+  uploadedBy   User   @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+
+  taskId Int?
+  task   Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@index([commentId])
+  @@index([uploadedById])
+}
+
+// A comment on a task. `body` is sanitized rich-text HTML (Phase 4). `editedAt`
+// is null until the first edit; the displayed timestamp is editedAt ?? createdAt
+// and a non-null editedAt drives the "edited" indicator.
+model Comment {
+  id       String @id @default(uuid())
+  taskId   Int
+  task     Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation("CommentAuthor", fields: [authorId], references: [id])
+  body     String
+
+  attachments   Attachment[]
+  mentions      CommentMention[]
+  mentionEvents MentionEvent[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  editedAt  DateTime?
+
+  @@index([taskId])
+  @@index([authorId])
+}
+
+// The set of users currently @mentioned in a comment (recomputed from the
+// sanitized body on each save). Used to diff new vs retained mentions on edit.
+model CommentMention {
+  commentId String
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([commentId, userId])
+  @@index([userId])
+}
+
+// Append-only record that a user was @mentioned in a comment at a point in time.
+// Phase 8 builds the "Mentioned" list from these. A new mention always writes an
+// event; a retained mention only writes another once 15+ minutes have passed
+// since the last event for that (user, comment) pair.
+model MentionEvent {
+  id        String  @id @default(uuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    Int
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  commentId String
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, commentId, createdAt])
 }

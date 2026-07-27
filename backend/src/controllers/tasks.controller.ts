@@ -1,7 +1,14 @@
 import type { Request, Response } from 'express';
 import type { TaskDetailDto, TaskDto, TaskRef } from '@healthy-tasks/shared';
 import { HttpError } from '../utils/http-error.js';
-import { createTask, getTaskDetail, listTasks, updateTask } from '../services/task.service.js';
+import {
+  createTask,
+  deleteTask,
+  getTaskDetail,
+  listAllTags,
+  listTasks,
+  updateTask,
+} from '../services/task.service.js';
 import {
   addDependency,
   clearParent,
@@ -34,6 +41,10 @@ export async function createTaskController(req: Request, res: Response): Promise
 
 export async function listTasksController(_req: Request, res: Response): Promise<void> {
   res.json((await listTasks()) satisfies TaskDto[]);
+}
+
+export async function listTagsController(_req: Request, res: Response): Promise<void> {
+  res.json((await listAllTags()) satisfies string[]);
 }
 
 export async function getTaskController(req: Request, res: Response): Promise<void> {
@@ -79,4 +90,11 @@ export async function removeDependencyController(req: Request, res: Response): P
   const { type, otherTaskId } = req.body as DependencyInput;
   const task = await removeDependency(parseTaskId(req), type, otherTaskId);
   res.json(task satisfies TaskDetailDto);
+}
+
+export async function deleteTaskController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  // Admin-only; also enforced in the service.
+  await deleteTask({ id: req.user.id, role: req.user.role }, parseTaskId(req));
+  res.status(204).send();
 }

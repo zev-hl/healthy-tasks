@@ -4,6 +4,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 import type { PrismaClient, Role } from '@prisma/client';
 import { startTestDb, type TestDb } from './db.js';
+import { memoryStorage } from '../src/storage/memory.storage.js';
 
 let db: TestDb;
 let app: Express;
@@ -12,6 +13,7 @@ let hashPassword: (plaintext: string) => Promise<string>;
 
 const ADMIN_EMAIL = 'admin@test.local';
 const ADMIN_PASSWORD = 'AdminPass123!';
+const MEMBER_PASSWORD = 'MemberPass123!';
 
 before(async () => {
   db = await startTestDb();
@@ -24,6 +26,8 @@ before(async () => {
   process.env.FRONTEND_URL = 'http://localhost:5173';
   process.env.EMAIL_PROVIDER = 'console';
   process.env.NODE_ENV = 'test';
+  // Use the in-memory storage fake so attachment tests need no MinIO/S3.
+  process.env.STORAGE_DRIVER = 'memory';
 
   const [appMod, prismaMod, pwMod] = await Promise.all([
     import('../src/app.js'),
@@ -46,6 +50,8 @@ beforeEach(async () => {
   await prisma.$executeRawUnsafe(
     'TRUNCATE TABLE "Task", "PasswordResetToken", "User" RESTART IDENTITY CASCADE',
   );
+  // CASCADE also clears Comment/Attachment/CommentMention/MentionEvent.
+  memoryStorage.__reset();
   await seedUser({ email: ADMIN_EMAIL, role: 'Admin', password: ADMIN_PASSWORD });
 });
 
@@ -898,5 +904,379 @@ describe('task search', () => {
       excluded.body.some((r: { id: number }) => r.id === t.id),
       false,
     );
+  });
+});
+
+// --- Phase 4: rich text, attachments, comments, mentions -------------------
+
+/** Upload an attachment to a task (presign → confirm; bytes are skipped in tests). */
+async function attachToTask(
+  token: string,
+  taskId: number,
+  opts: { filename?: string; contentType?: string; size?: number } = {},
+) {
+  const meta = {
+    filename: opts.filename ?? 'file.png',
+    contentType: opts.contentType ?? 'image/png',
+    size: opts.size ?? 1024,
+  };
+  const presign = await request(app)
+    .post(`/api/tasks/${taskId}/attachments/presign`)
+    .set(auth(token))
+    .send(meta);
+  assert.equal(presign.status, 201, `presign failed: ${JSON.stringify(presign.body)}`);
+  return request(app)
+    .post(`/api/tasks/${taskId}/attachments`)
+    .set(auth(token))
+    .send({ ...meta, storageKey: presign.body.storageKey });
+}
+
+function mention(userId: string, label = 'user'): string {
+  return `<span data-type="mention" data-id="${userId}">@${label}</span>`;
+}
+
+describe('rich-text description (Phase 4)', () => {
+  it('persists bold/italic/underline and strips scripts', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Desc task');
+    const res = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({
+        description: '<p><strong>Bold</strong> <em>it</em> <u>u</u></p><script>alert(1)</script>',
+      });
+    assert.equal(res.status, 200);
+    assert.match(res.body.description, /<strong>Bold<\/strong>/);
+    assert.match(res.body.description, /<u>u<\/u>/);
+    assert.equal(/script/i.test(res.body.description), false);
+  });
+
+  it('rejects a description over the character limit with a clear message', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Big desc');
+    const huge = `<p>${'a'.repeat(10001)}</p>`;
+    const res = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ description: huge });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /too long|limit/i);
+  });
+});
+
+describe('task attachments (Phase 4)', () => {
+  it('rejects an unsupported file type at presign', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Attach A');
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/attachments/presign`)
+      .set(auth(tok))
+      .send({ filename: 'x.exe', contentType: 'application/x-msdownload', size: 1000 });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /not allowed/i);
+  });
+
+  it('rejects a file over 25MB at presign', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Attach B');
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/attachments/presign`)
+      .set(auth(tok))
+      .send({ filename: 'big.png', contentType: 'image/png', size: 26 * 1024 * 1024 });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /too large|maximum/i);
+  });
+
+  it('uploads, lists on the task, and deletes both the row and the storage object', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Attach C');
+    const confirm = await attachToTask(tok, t.id, { filename: 'pic.png' });
+    assert.equal(confirm.status, 201);
+    assert.equal(confirm.body.attachments.length, 1);
+    const att = confirm.body.attachments[0];
+    assert.equal(att.filename, 'pic.png');
+
+    const del = await request(app).delete(`/api/attachments/${att.id}`).set(auth(tok));
+    assert.equal(del.status, 200);
+    assert.equal(del.body.attachments.length, 0);
+    assert.ok(
+      memoryStorage.__deleted.length >= 1,
+      'the storage object should have been deleted too',
+    );
+  });
+
+  it('enforces the delete permission matrix (uploader / org-superior / admin allow; others 403)', async () => {
+    const admin = await adminToken();
+    const manager = await seedUser({
+      email: 'mgrA@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
+    await seedUser({
+      email: 'memB@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+      supervisorId: manager.id,
+    });
+    await seedUser({ email: 'memC@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const memberTok = await login('memB@test.local', MEMBER_PASSWORD);
+    const outsiderTok = await login('memC@test.local', MEMBER_PASSWORD);
+    const managerTok = await login('mgrA@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Perm');
+
+    const makeAtt = async (): Promise<string> => {
+      const c = await attachToTask(memberTok, t.id, { filename: 'm.png' });
+      const list = c.body.attachments as { id: string }[];
+      return list[list.length - 1].id;
+    };
+
+    // Unrelated member: forbidden.
+    let attId = await makeAtt();
+    let res = await request(app).delete(`/api/attachments/${attId}`).set(auth(outsiderTok));
+    assert.equal(res.status, 403);
+    // Org-superior of the uploader: allowed.
+    res = await request(app).delete(`/api/attachments/${attId}`).set(auth(managerTok));
+    assert.equal(res.status, 200);
+    // Admin: allowed.
+    attId = await makeAtt();
+    res = await request(app).delete(`/api/attachments/${attId}`).set(auth(admin));
+    assert.equal(res.status, 200);
+    // Uploader: allowed.
+    attId = await makeAtt();
+    res = await request(app).delete(`/api/attachments/${attId}`).set(auth(memberTok));
+    assert.equal(res.status, 200);
+  });
+});
+
+describe('task comments (Phase 4)', () => {
+  it('adds, edits (sets edited), and blocks non-author edit/delete', async () => {
+    const admin = await adminToken();
+    await seedUser({ email: 'author@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    await seedUser({ email: 'other@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const authorTok = await login('author@test.local', MEMBER_PASSWORD);
+    const otherTok = await login('other@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Commented');
+
+    const add = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(authorTok))
+      .send({ body: '<p>Hello</p>' });
+    assert.equal(add.status, 201);
+    assert.equal(add.body.comments.length, 1);
+    const c = add.body.comments[0];
+    assert.equal(c.editedAt, null);
+
+    // Non-author cannot edit or delete.
+    let res = await request(app)
+      .patch(`/api/comments/${c.id}`)
+      .set(auth(otherTok))
+      .send({ body: '<p>Hacked</p>' });
+    assert.equal(res.status, 403);
+    res = await request(app).delete(`/api/comments/${c.id}`).set(auth(otherTok));
+    assert.equal(res.status, 403);
+
+    // Author edits → editedAt set, body updated.
+    res = await request(app)
+      .patch(`/api/comments/${c.id}`)
+      .set(auth(authorTok))
+      .send({ body: '<p>Edited</p>' });
+    assert.equal(res.status, 200);
+    const edited = (res.body.comments as { id: string; editedAt: string | null; body: string }[]).find(
+      (x) => x.id === c.id,
+    )!;
+    assert.ok(edited.editedAt, 'editedAt should be set after an edit');
+    assert.match(edited.body, /Edited/);
+
+    // Author deletes.
+    res = await request(app).delete(`/api/comments/${c.id}`).set(auth(authorTok));
+    assert.equal(res.status, 200);
+    assert.equal(res.body.comments.length, 0);
+  });
+
+  it('restricts comment attachments to the comment author', async () => {
+    const admin = await adminToken();
+    await seedUser({ email: 'ca@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    await seedUser({ email: 'cb@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const aTok = await login('ca@test.local', MEMBER_PASSWORD);
+    const bTok = await login('cb@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'CommentAtt');
+    const add = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(aTok))
+      .send({ body: '<p>hi</p>' });
+    const c = add.body.comments[0];
+    const meta = { filename: 'x.png', contentType: 'image/png', size: 100 };
+
+    // Non-author cannot presign a comment attachment.
+    let res = await request(app)
+      .post(`/api/comments/${c.id}/attachments/presign`)
+      .set(auth(bTok))
+      .send(meta);
+    assert.equal(res.status, 403);
+
+    // Author can presign + confirm.
+    res = await request(app)
+      .post(`/api/comments/${c.id}/attachments/presign`)
+      .set(auth(aTok))
+      .send(meta);
+    assert.equal(res.status, 201);
+    const confirm = await request(app)
+      .post(`/api/comments/${c.id}/attachments`)
+      .set(auth(aTok))
+      .send({ ...meta, storageKey: res.body.storageKey });
+    assert.equal(confirm.status, 201);
+    const cc = (confirm.body.comments as { id: string; attachments: unknown[] }[]).find(
+      (x) => x.id === c.id,
+    )!;
+    assert.equal(cc.attachments.length, 1);
+  });
+});
+
+describe('comment @mentions and mention events (Phase 4)', () => {
+  it('writes an event for a new mention and gates retained mentions by 15 minutes', async () => {
+    const admin = await adminToken();
+    const mentioned = await seedUser({
+      email: 'mentioned@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    await seedUser({ email: 'mauthor@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const authorTok = await login('mauthor@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Mentions');
+    const span = mention(mentioned.id, 'mentioned');
+
+    // New mention → one event and one CommentMention row.
+    const add = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(authorTok))
+      .send({ body: `<p>hey ${span}</p>` });
+    assert.equal(add.status, 201);
+    const c = add.body.comments[0];
+    assert.equal(
+      await prisma.mentionEvent.count({ where: { userId: mentioned.id, commentId: c.id } }),
+      1,
+    );
+    assert.equal(await prisma.commentMention.count({ where: { commentId: c.id } }), 1);
+
+    // Edit keeping the same mention within 15 min → NO new event.
+    let res = await request(app)
+      .patch(`/api/comments/${c.id}`)
+      .set(auth(authorTok))
+      .send({ body: `<p>updated ${span}</p>` });
+    assert.equal(res.status, 200);
+    assert.equal(
+      await prisma.mentionEvent.count({ where: { userId: mentioned.id, commentId: c.id } }),
+      1,
+      'retained mention within 15 min should not add an event',
+    );
+
+    // Back-date the last event past the window, then edit again → new event.
+    await prisma.mentionEvent.updateMany({
+      where: { commentId: c.id, userId: mentioned.id },
+      data: { createdAt: new Date(Date.now() - 16 * 60 * 1000) },
+    });
+    res = await request(app)
+      .patch(`/api/comments/${c.id}`)
+      .set(auth(authorTok))
+      .send({ body: `<p>again ${span}</p>` });
+    assert.equal(res.status, 200);
+    assert.equal(
+      await prisma.mentionEvent.count({ where: { userId: mentioned.id, commentId: c.id } }),
+      2,
+      'retained mention after 15 min should add a new event',
+    );
+  });
+
+  it('always creates an event for a newly added mention on edit', async () => {
+    const admin = await adminToken();
+    const u1 = await seedUser({ email: 'm1@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u2 = await seedUser({ email: 'm2@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    await seedUser({ email: 'm3@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const authorTok = await login('m3@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'MentionsAdd');
+
+    const add = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(authorTok))
+      .send({ body: `<p>${mention(u1.id, 'one')}</p>` });
+    const c = add.body.comments[0];
+
+    // Add u2 as a new mention (u1 retained within 15 min).
+    await request(app)
+      .patch(`/api/comments/${c.id}`)
+      .set(auth(authorTok))
+      .send({ body: `<p>${mention(u1.id, 'one')} ${mention(u2.id, 'two')}</p>` });
+
+    assert.equal(
+      await prisma.mentionEvent.count({ where: { userId: u2.id, commentId: c.id } }),
+      1,
+      'newly added mention always creates an event',
+    );
+    assert.equal(
+      await prisma.mentionEvent.count({ where: { userId: u1.id, commentId: c.id } }),
+      1,
+      'retained mention within 15 min stays at its single event',
+    );
+  });
+});
+
+describe('task deletion (Phase 4, admin-only)', () => {
+  it('forbids non-admins; admin deletes, cascading rows and removing storage objects', async () => {
+    const admin = await adminToken();
+    await seedUser({ email: 'nd@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const memberTok = await login('nd@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'ToDelete');
+
+    // A task attachment and a comment with its own attachment.
+    await attachToTask(admin, t.id, { filename: 'ta.png' });
+    const cadd = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>c</p>' });
+    const c = cadd.body.comments[0];
+    const meta = { filename: 'ca.png', contentType: 'image/png', size: 100 };
+    const presign = await request(app)
+      .post(`/api/comments/${c.id}/attachments/presign`)
+      .set(auth(admin))
+      .send(meta);
+    await request(app)
+      .post(`/api/comments/${c.id}/attachments`)
+      .set(auth(admin))
+      .send({ ...meta, storageKey: presign.body.storageKey });
+
+    // Non-admin cannot delete.
+    let res = await request(app).delete(`/api/tasks/${t.id}`).set(auth(memberTok));
+    assert.equal(res.status, 403);
+
+    // Admin deletes; both storage objects removed, rows cascaded.
+    const before = memoryStorage.__deleted.length;
+    res = await request(app).delete(`/api/tasks/${t.id}`).set(auth(admin));
+    assert.equal(res.status, 204);
+
+    res = await request(app).get(`/api/tasks/${t.id}`).set(auth(admin));
+    assert.equal(res.status, 404);
+    assert.ok(
+      memoryStorage.__deleted.length - before >= 2,
+      'both attachment objects should be deleted from storage',
+    );
+    assert.equal(await prisma.comment.count({ where: { taskId: t.id } }), 0);
+  });
+});
+
+describe('task tags list (Phase 4)', () => {
+  it('lists distinct in-use tags alphabetically and drops tags no longer used', async () => {
+    const tok = await adminToken();
+    const t1 = await makeTask(tok, 'Tagged one', { tags: ['zebra', 'apple'] });
+    await makeTask(tok, 'Tagged two', { tags: ['Mango', 'apple'] });
+
+    let tags = await request(app).get('/api/tasks/tags').set(auth(tok));
+    assert.equal(tags.status, 200);
+    // Case-insensitive alphabetical, distinct across tasks.
+    assert.deepEqual(tags.body, ['apple', 'Mango', 'zebra']);
+
+    // 'zebra' is only on t1; removing it there drops it from the list entirely.
+    await request(app).patch(`/api/tasks/${t1.id}`).set(auth(tok)).send({ tags: ['apple'] });
+    tags = await request(app).get('/api/tasks/tags').set(auth(tok));
+    assert.deepEqual(tags.body, ['apple', 'Mango']);
   });
 });

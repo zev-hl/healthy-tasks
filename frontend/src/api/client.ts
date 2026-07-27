@@ -1,13 +1,19 @@
 import type {
   AdminResetLinkResponse,
+  AttachmentDownloadResponse,
+  ConfirmAttachmentRequest,
+  CreateCommentRequest,
   CreateTaskRequest,
   CreateUserRequest,
   DependencyType,
   LoginResponse,
+  PresignAttachmentRequest,
+  PresignAttachmentResponse,
   TaskDetailDto,
   TaskDto,
   TaskRef,
   TaskUserRef,
+  UpdateCommentRequest,
   UpdateTaskRequest,
   UpdateUserRequest,
   UserDto,
@@ -135,6 +141,7 @@ export const api = {
 
   // --- Tasks ---
   listTasks: () => request<TaskDto[]>('/api/tasks'),
+  listTaskTags: () => request<string[]>('/api/tasks/tags'),
   getTask: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}`),
   createTask: (body: CreateTaskRequest) =>
     request<TaskDto>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
@@ -164,4 +171,61 @@ export const api = {
       method: 'DELETE',
       body: JSON.stringify({ type, otherTaskId }),
     }),
+  deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
+
+  // --- Attachments (Phase 4) ---
+  presignTaskAttachment: (taskId: number, body: PresignAttachmentRequest) =>
+    request<PresignAttachmentResponse>(`/api/tasks/${taskId}/attachments/presign`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  confirmTaskAttachment: (taskId: number, body: ConfirmAttachmentRequest) =>
+    request<TaskDetailDto>(`/api/tasks/${taskId}/attachments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  presignCommentAttachment: (commentId: string, body: PresignAttachmentRequest) =>
+    request<PresignAttachmentResponse>(`/api/comments/${commentId}/attachments/presign`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  confirmCommentAttachment: (commentId: string, body: ConfirmAttachmentRequest) =>
+    request<TaskDetailDto>(`/api/comments/${commentId}/attachments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  deleteAttachment: (attachmentId: string) =>
+    request<TaskDetailDto>(`/api/attachments/${attachmentId}`, { method: 'DELETE' }),
+  getAttachmentDownloadUrl: (attachmentId: string) =>
+    request<AttachmentDownloadResponse>(`/api/attachments/${attachmentId}/download`),
+
+  // --- Comments (Phase 4) ---
+  createComment: (taskId: number, body: CreateCommentRequest) =>
+    request<TaskDetailDto>(`/api/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateComment: (commentId: string, body: UpdateCommentRequest) =>
+    request<TaskDetailDto>(`/api/comments/${commentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteComment: (commentId: string) =>
+    request<TaskDetailDto>(`/api/comments/${commentId}`, { method: 'DELETE' }),
 };
+
+/**
+ * Upload file bytes directly to object storage using a pre-signed PUT URL. This
+ * bypasses the API entirely (bytes never touch the backend); the Content-Type
+ * must match what the URL was signed with.
+ */
+export async function uploadToStorage(uploadUrl: string, file: File): Promise<void> {
+  const res = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': file.type },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `Upload failed (${res.status})`);
+  }
+}
