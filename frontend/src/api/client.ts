@@ -25,6 +25,25 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+/**
+ * Expiry time (ms epoch) of the current token from its JWT `exp` claim, or null
+ * if there's no token / it can't be read. Used to detect idle expiry client-side
+ * so the UI can react before the user submits into a dead session.
+ */
+export function getTokenExpiresAt(): number | null {
+  const token = getToken();
+  const part = token?.split('.')[1];
+  if (!part) return null;
+  try {
+    const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: number;
+    };
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   details?: unknown;
@@ -33,6 +52,13 @@ export class ApiError extends Error {
     this.status = status;
     this.details = details;
   }
+}
+
+// Called when an authenticated request is rejected with 401 (idle session
+// expired or revoked). AuthContext registers a handler that bounces to login.
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(fn: (() => void) | null): void {
+  onUnauthorized = fn;
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -45,6 +71,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...(options.headers ?? {}),
     },
   });
+
+  // Sliding session: adopt the server's re-issued token so the idle timer
+  // resets on every request while the user is active.
+  const refreshed = res.headers.get('X-Refreshed-Token');
+  if (refreshed) setToken(refreshed);
+
+  // A 401 while we were authenticated means the session expired or was revoked:
+  // drop the token and let the app bounce to the login screen.
+  if (res.status === 401 && token) {
+    setToken(null);
+    onUnauthorized?.();
+  }
 
   if (res.status === 204) return undefined as T;
 

@@ -37,7 +37,7 @@ services:
       # Inside the compose network the DB host is the `db` service name.
       DATABASE_URL: 'postgresql://healthy:healthy@db:5432/healthy_tasks?schema=public'
       JWT_SECRET: 'dev-only-change-me-to-a-long-random-string'
-      JWT_EXPIRES_IN: '15m'
+      JWT_EXPIRES_IN: '8h'
       PASSWORD_RESET_EXPIRES_IN: '60m'
       FRONTEND_URL: 'http://localhost:5173'
       CORS_ORIGIN: 'http://localhost:5173'

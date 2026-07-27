@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, sessionExpired } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,6 +30,11 @@ export function LoginPage() {
     <div className="auth-container">
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Sign in</h2>
+        {sessionExpired && !error && (
+          <div className="alert info">
+            Your session expired after a period of inactivity. Please sign in again.
+          </div>
+        )}
         {error && <div className="alert error">{error}</div>}
         <form onSubmit={onSubmit}>
           <div className="field">

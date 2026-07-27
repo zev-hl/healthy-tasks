@@ -10,7 +10,14 @@ import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 export function createApp() {
   const app = express();
 
-  app.use(cors({ origin: env.corsOrigin, credentials: true }));
+  app.use(
+    cors({
+      origin: env.corsOrigin,
+      credentials: true,
+      // Let the browser SPA read the rolling-session token off the response.
+      exposedHeaders: ['X-Refreshed-Token'],
+    }),
+  );
   app.use(express.json());
   app.use(cookieParser());
 
