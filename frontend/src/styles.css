@@ -954,3 +954,98 @@ input[type='radio'] {
   padding: 0;
   flex: none;
 }
+
+/* ===== Phase 7: Task Search dashboard ===== */
+
+.dashboard {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+/* Collapse/expand header — full-width, borderless button */
+.dash-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.25rem 0;
+  font-size: 0.95rem;
+  text-align: left;
+}
+.dash-toggle:hover {
+  background: transparent;
+}
+.dash-caret {
+  color: var(--muted);
+  width: 1rem;
+}
+.dash-subtitle {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.dash-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+/* A labeled cluster of counts (Total / Status / Attention) */
+.dash-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+.dash-group-label {
+  align-self: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-right: 0.15rem;
+}
+
+/* One count "tile": big number over a small label. Buttons are clickable
+   quick-filters; the plain Total tile is not. */
+.dash-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.75rem;
+  gap: 0.1rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.1;
+}
+button.dash-stat:hover {
+  border-color: var(--primary);
+}
+.dash-stat.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.dash-stat.active .dash-stat-label {
+  color: #e0e7ff;
+}
+.dash-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.dash-stat-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}

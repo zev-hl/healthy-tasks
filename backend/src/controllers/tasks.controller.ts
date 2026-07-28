@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type {
   PaginatedResult,
+  TaskDashboardDto,
   TaskDetailDto,
   TaskDto,
   TaskHistoryEntryDto,
@@ -17,9 +18,13 @@ import {
   updateTask,
 } from '../services/task.service.js';
 import { getTaskHistory } from '../services/task-history.service.js';
-import { searchTasks as searchTaskRows, searchTasksForExport } from '../services/task-search.service.js';
+import {
+  getTaskDashboard,
+  searchTasks as searchTaskRows,
+  searchTasksForExport,
+} from '../services/task-search.service.js';
 import { buildTasksWorkbook } from '../services/task-export.service.js';
-import type { TaskSearchInput } from '../validation/schemas.js';
+import type { TaskDashboardInput, TaskSearchInput } from '../validation/schemas.js';
 import {
   addDependency,
   clearParent,
@@ -58,6 +63,12 @@ export async function listTasksController(_req: Request, res: Response): Promise
 export async function queryTasksController(req: Request, res: Response): Promise<void> {
   const result = await searchTaskRows(req.body as TaskSearchInput);
   res.json(result satisfies PaginatedResult<TaskRowDto>);
+}
+
+/** Task Search dashboard (Phase 7): counts for the current filtered result set. */
+export async function dashboardController(req: Request, res: Response): Promise<void> {
+  const result = await getTaskDashboard(req.body as TaskDashboardInput);
+  res.json(result satisfies TaskDashboardDto);
 }
 
 /** Export the current filtered/sorted result set to .xlsx (all columns). */

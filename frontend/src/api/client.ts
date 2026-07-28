@@ -12,6 +12,8 @@ import type {
   PresignAttachmentRequest,
   PresignAttachmentResponse,
   ScreenKey,
+  TaskDashboardDto,
+  TaskDashboardRequest,
   TaskDetailDto,
   TaskDto,
   TaskHistoryEntryDto,
@@ -168,6 +170,11 @@ export const api = {
   listTasks: () => request<TaskDto[]>('/api/tasks'),
   queryTasks: (body: TaskSearchRequest) =>
     request<PaginatedResult<TaskRowDto>>('/api/tasks/query', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  getTaskDashboard: (body: TaskDashboardRequest) =>
+    request<TaskDashboardDto>('/api/tasks/dashboard', {
       method: 'POST',
       body: JSON.stringify(body),
     }),

@@ -1736,6 +1736,144 @@ describe('task search / query (Phase 6)', () => {
   });
 });
 
+// --- Phase 7: search dashboard counts --------------------------------------
+
+interface DashboardShape {
+  total: number;
+  parent: number;
+  child: number;
+  standalone: number;
+  byStatus: Record<string, number>;
+  overdue: number;
+  completedToday: number;
+}
+
+/** Local-day clock context matching what the browser sends. */
+function clockContext(): { now: string; todayStart: string; todayEnd: string } {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+  return { now: now.toISOString(), todayStart: todayStart.toISOString(), todayEnd: todayEnd.toISOString() };
+}
+
+async function dashboard(token: string, body: Record<string, unknown> = {}) {
+  const res = await request(app)
+    .post('/api/tasks/dashboard')
+    .set(auth(token))
+    .send({ ...clockContext(), ...body });
+  assert.equal(res.status, 200, `dashboard failed: ${JSON.stringify(res.body)}`);
+  return res.body as DashboardShape;
+}
+
+async function setStatus(token: string, id: number, status: string) {
+  const res = await request(app).patch(`/api/tasks/${id}`).set(auth(token)).send({ status });
+  assert.equal(res.status, 200, `set status failed: ${JSON.stringify(res.body)}`);
+}
+
+async function setParent(token: string, id: number, parentId: number) {
+  const res = await request(app).put(`/api/tasks/${id}/parent`).set(auth(token)).send({ parentId });
+  assert.equal(res.status, 200, `set parent failed: ${JSON.stringify(res.body)}`);
+}
+
+describe('task search dashboard (Phase 7)', () => {
+  it('tallies per-status counts that sum to the total and honor active filters', async () => {
+    const tok = await adminToken();
+    await makeTask(tok, 'Task A', { status: 'Open' });
+    await makeTask(tok, 'Task B', { status: 'Open' });
+    await makeTask(tok, 'Task C', { status: 'InProgress' });
+
+    const all = await dashboard(tok);
+    assert.equal(all.total, 3);
+    assert.equal(all.byStatus.Open, 2);
+    assert.equal(all.byStatus.InProgress, 1);
+    // Every status key is present, even at zero.
+    assert.equal(all.byStatus.Completed, 0);
+    const statusSum = Object.values(all.byStatus).reduce((a, b) => a + b, 0);
+    assert.equal(statusSum, all.total);
+
+    // Counts reflect the active filter: restricting to Open drops the total.
+    const open = await dashboard(tok, { filters: { statuses: ['Open'] } });
+    assert.equal(open.total, 2);
+    assert.equal(open.byStatus.Open, 2);
+    assert.equal(open.byStatus.InProgress, 0);
+  });
+
+  it('partitions parent / child / standalone so they sum to the total', async () => {
+    const tok = await adminToken();
+    const p = await makeTask(tok, 'Parent');
+    const c = await makeTask(tok, 'Child');
+    const g = await makeTask(tok, 'Grandchild');
+    await makeTask(tok, 'Standalone');
+    await setParent(tok, c.id, p.id);
+    await setParent(tok, g.id, c.id);
+
+    const d = await dashboard(tok);
+    assert.equal(d.total, 4);
+    // child = anything with a parent (c, g); parent = a root with children (p);
+    // standalone = no parent and no children.
+    assert.equal(d.child, 2);
+    assert.equal(d.parent, 1);
+    assert.equal(d.standalone, 1);
+    assert.equal(d.child + d.parent + d.standalone, d.total);
+
+    // The `relation` quick-filter on the grid matches the standalone bucket.
+    const standaloneRows = await queryTasks(tok, { filters: { relation: 'standalone' } });
+    assert.equal(standaloneRows.total, 1);
+    assert.equal(standaloneRows.rows[0]?.name, 'Standalone');
+  });
+
+  it('overdue excludes completed/canceled and future due dates, and its filter matches', async () => {
+    const tok = await adminToken();
+    const overdue = await makeTask(tok, 'Overdue', { dueAt: '2020-01-01T00:00:00Z' });
+    const doneButPast = await makeTask(tok, 'Done past', { dueAt: '2020-01-01T00:00:00Z' });
+    await setStatus(tok, doneButPast.id, 'Completed');
+    await makeTask(tok, 'Future', { dueAt: '2999-01-01T00:00:00Z' });
+    await makeTask(tok, 'No due'); // null due date never counts
+
+    const d = await dashboard(tok);
+    assert.equal(d.overdue, 1);
+
+    // Clicking Overdue filters the grid to exactly that task.
+    const rows = await queryTasks(tok, { filters: { overdue: true }, ...clockContext() });
+    assert.equal(rows.total, 1);
+    assert.equal(rows.rows[0]?.id, overdue.id);
+  });
+
+  it('completed-today counts only completions within the local calendar day', async () => {
+    const tok = await adminToken();
+    const fresh = await makeTask(tok, 'Fresh done');
+    await setStatus(tok, fresh.id, 'Completed'); // statusChangedAt ~ now
+
+    const old = await makeTask(tok, 'Old done');
+    await setStatus(tok, old.id, 'Completed');
+    // Backdate the completion to a prior day (can't be done through the API).
+    await prisma.task.update({
+      where: { id: old.id },
+      data: { statusChangedAt: new Date('2020-05-01T12:00:00Z') },
+    });
+
+    const today = await dashboard(tok);
+    assert.equal(today.completedToday, 1, 'only the fresh completion counts today');
+
+    // A window entirely in the past excludes the fresh completion too.
+    const past = await dashboard(tok, {
+      todayStart: '2019-01-01T00:00:00Z',
+      todayEnd: '2019-01-02T00:00:00Z',
+    });
+    assert.equal(past.completedToday, 0);
+  });
+
+  it('clears to a full snapshot when no filters are set', async () => {
+    const tok = await adminToken();
+    await makeTask(tok, 'Only one');
+    const d = await dashboard(tok);
+    assert.equal(d.total, 1);
+    assert.equal(d.overdue, 0);
+    assert.equal(d.completedToday, 0);
+  });
+});
+
 describe('task export (Phase 6)', () => {
   it('returns an .xlsx attachment', async () => {
     const tok = await adminToken();

@@ -5,6 +5,7 @@ import {
   TASK_STATUSES,
   TASK_NAME_MIN_LENGTH,
   TASK_SORT_FIELDS,
+  TASK_RELATION_FILTERS,
   USER_SORT_FIELDS,
   MAX_PAGE_SIZE,
 } from '@healthy-tasks/shared';
@@ -208,29 +209,48 @@ const dateBound = z
 const page = z.coerce.number().int().min(1).optional();
 const pageSize = z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).optional();
 
+// Shared by the search grid, the export, and the dashboard counts.
+const taskFiltersSchema = z.object({
+  assigneeIds: z.array(z.string().uuid()).max(200).optional(),
+  includeUnassigned: z.boolean().optional(),
+  statuses: z.array(z.enum(TASK_STATUSES)).optional(),
+  priorities: z.array(z.enum(TASK_PRIORITIES)).optional(),
+  tags: z.array(z.string().trim().min(1).max(50)).max(50).optional(),
+  statusChangedFrom: dateBound,
+  statusChangedTo: dateBound,
+  startFrom: dateBound,
+  startTo: dateBound,
+  includeNoStart: z.boolean().optional(),
+  dueFrom: dateBound,
+  dueTo: dateBound,
+  includeNoDue: z.boolean().optional(),
+  // Dashboard quick-filters (Phase 7).
+  overdue: z.boolean().optional(),
+  completedToday: z.boolean().optional(),
+  relation: z.enum(TASK_RELATION_FILTERS).optional(),
+});
+
 export const taskSearchSchema = z.object({
   text: z.string().trim().max(200).optional(),
-  filters: z
-    .object({
-      assigneeIds: z.array(z.string().uuid()).max(200).optional(),
-      includeUnassigned: z.boolean().optional(),
-      statuses: z.array(z.enum(TASK_STATUSES)).optional(),
-      priorities: z.array(z.enum(TASK_PRIORITIES)).optional(),
-      tags: z.array(z.string().trim().min(1).max(50)).max(50).optional(),
-      statusChangedFrom: dateBound,
-      statusChangedTo: dateBound,
-      startFrom: dateBound,
-      startTo: dateBound,
-      includeNoStart: z.boolean().optional(),
-      dueFrom: dateBound,
-      dueTo: dateBound,
-      includeNoDue: z.boolean().optional(),
-    })
-    .optional(),
+  filters: taskFiltersSchema.optional(),
   sort: z.array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir })).max(12).optional(),
   page,
   pageSize,
   nest: z.boolean().optional(),
+  // Client clock context for the time-relative quick-filters.
+  now: dateBound,
+  todayStart: dateBound,
+  todayEnd: dateBound,
+});
+
+// Dashboard counts: same text + filters, with a required clock context so the
+// Overdue and Completed-Today tallies use the user's local "now"/calendar day.
+export const taskDashboardSchema = z.object({
+  text: z.string().trim().max(200).optional(),
+  filters: taskFiltersSchema.optional(),
+  now: z.coerce.date(),
+  todayStart: z.coerce.date(),
+  todayEnd: z.coerce.date(),
 });
 
 export const userSearchSchema = z.object({
@@ -256,5 +276,6 @@ export const screenStateSchema = z.object({
 });
 
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
+export type TaskDashboardInput = z.infer<typeof taskDashboardSchema>;
 export type UserSearchInput = z.infer<typeof userSearchSchema>;
 export type ScreenStateInput = z.infer<typeof screenStateSchema>;

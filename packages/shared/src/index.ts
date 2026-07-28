@@ -540,6 +540,17 @@ export interface TaskSort {
   dir: SortDirection;
 }
 
+/**
+ * Parent/Child relationship bucket (Phase 7 dashboard). Every task falls into
+ * exactly one bucket, matching the Task Search grid's display priority:
+ *  - `child`      → has a parent (parentId set), regardless of its own children
+ *  - `parent`     → no parent but has at least one child (a hierarchy root)
+ *  - `standalone` → no parent and no children
+ * These partition the result set, so their counts sum to the total.
+ */
+export const TASK_RELATION_FILTERS = ['parent', 'child', 'standalone'] as const;
+export type TaskRelationFilter = (typeof TASK_RELATION_FILTERS)[number];
+
 export interface TaskSearchFilters {
   /** Selected assignee user ids; empty = no assignee filter. */
   assigneeIds?: string[];
@@ -558,6 +569,16 @@ export interface TaskSearchFilters {
   dueTo?: string | null;
   /** Include tasks with no Due Date (default true). */
   includeNoDue?: boolean;
+  // --- Dashboard quick-filters (Phase 7) -----------------------------------
+  // These are applied by clicking a dashboard count. `overdue` and
+  // `completedToday` are evaluated against the request's `now`/`todayStart`/
+  // `todayEnd` context (below) so the user's local time zone is respected.
+  /** Not Completed/Canceled AND Due Date earlier than `now`. */
+  overdue?: boolean;
+  /** Status Completed AND Status-changed within [todayStart, todayEnd). */
+  completedToday?: boolean;
+  /** Restrict to a Parent/Child relationship bucket. */
+  relation?: TaskRelationFilter;
 }
 
 export interface TaskSearchRequest {
@@ -572,6 +593,45 @@ export interface TaskSearchRequest {
    * layer following the same sort order, and the nested sequence is paginated.
    */
   nest?: boolean;
+  // Client-supplied clock context for the time-relative quick-filters
+  // (`overdue`, `completedToday`). Computed in the browser so "now" and the
+  // current calendar day reflect the user's local time zone. Ignored unless the
+  // corresponding quick-filter is active.
+  now?: string; // ISO instant
+  todayStart?: string; // ISO instant — local midnight today
+  todayEnd?: string; // ISO instant — local midnight tomorrow
+}
+
+// ---------------------------------------------------------------------------
+// Search dashboard (Phase 7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Request for the Task Search dashboard counts. Carries the same text + filters
+ * as a search, plus the browser-computed clock context used for the Overdue and
+ * Completed-Today tallies. `sort`/`page`/`nest` are irrelevant to counts and so
+ * are omitted — the dashboard always reflects the entire filtered result set.
+ */
+export interface TaskDashboardRequest {
+  text?: string;
+  filters?: TaskSearchFilters;
+  now: string; // ISO instant
+  todayStart: string; // ISO instant — local midnight today
+  todayEnd: string; // ISO instant — local midnight tomorrow
+}
+
+/**
+ * Counts for the current filtered/searched result set. `parent + child +
+ * standalone === total`, and the `byStatus` values also sum to `total`.
+ */
+export interface TaskDashboardDto {
+  total: number;
+  parent: number;
+  child: number;
+  standalone: number;
+  byStatus: Record<TaskStatus, number>;
+  overdue: number;
+  completedToday: number;
 }
 
 /** One row of the Task Search grid (the data behind all 12 columns). */
