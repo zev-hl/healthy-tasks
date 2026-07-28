@@ -22,9 +22,9 @@
   --border: #e7e9ee; /* hairline */
   --border-strong: #d6dae1;
   --text: #1b1f24; /* near-black */
-  --text-secondary: #4a505a;
-  --muted: #767d88;
-  --text-faint: #9aa1ab;
+  --text-secondary: #3c424d; /* darkened — form labels, secondary text */
+  --muted: #565c67; /* darkened — th, meta, subtitles, dt labels */
+  --text-faint: #767d89; /* darkened — placeholders, faint hints */
 
   /* --- Accent (indigo/violet) --- */
   --accent: #5e6ad2;
@@ -95,12 +95,16 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* Global text-size knob. Everything below is sized in rem, so raising or
+     lowering this single value scales the whole app up or down. (History is
+     pinned in px so it stays compact regardless.) */
+  font-size: 17px;
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 1rem;
   line-height: 1.5;
   background: var(--bg);
   color: var(--text);
@@ -273,6 +277,45 @@ textarea:focus-visible {
 
 .panel {
   margin-bottom: 1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Task detail — two-pane layout (content left, Details/Tags rail right).
+   Stacks to a single column (original order) below 981px.
+   --------------------------------------------------------------------------- */
+.detail-main {
+  min-width: 0;
+}
+@media (min-width: 981px) {
+  .detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 348px;
+    column-gap: 1.25rem;
+    align-items: start;
+  }
+  /* Left column: the two content fragments stack in rows 1 then 2. */
+  .detail-layout > .detail-main:first-child {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .detail-side ~ .detail-main {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  /* Right rail spans both content rows, sticks under the header, and scrolls
+     independently of the page when it's taller than the viewport. */
+  .detail-side {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-self: start;
+    position: sticky;
+    top: 4.75rem;
+    max-height: calc(100vh - 5.75rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 2px;
+    margin: -2px;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -1032,11 +1075,13 @@ th {
 .history-body {
   min-width: 0;
 }
+/* History is deliberately kept compact — pinned in px so the global text-size
+   knob (html font-size) does not enlarge it. */
 .history-what {
-  font-size: 0.88rem;
+  font-size: 13.5px;
 }
 .history-meta {
-  font-size: 0.76rem;
+  font-size: 11.5px;
   color: var(--muted);
   margin-top: 0.15rem;
 }
@@ -2178,8 +2223,8 @@ tr.just-completed > td {
 }
 
 @media (max-width: 760px) {
-  body {
-    font-size: 13.5px;
+  html {
+    font-size: 16px;
   }
   .app-header {
     gap: 0.5rem;

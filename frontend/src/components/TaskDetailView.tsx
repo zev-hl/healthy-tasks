@@ -401,6 +401,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         </dl>
       </div>
 
+      <div className="detail-layout">
+      <div className="detail-main">
       {/* Description: click to edit in place */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Description</h3>
@@ -460,6 +462,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         />
       </div>
 
+      </div>
+      <aside className="detail-side">
       {/* Details: staged fields saved by "Save changes" */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Details</h3>
@@ -611,6 +615,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         </div>
       </div>
 
+      </aside>
+      <div className="detail-main">
       {/* Relationships (saved immediately) */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Relationships</h3>
@@ -732,6 +738,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       <div className="card" style={{ marginTop: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>History</h3>
         <TaskHistory taskId={task.id} version={historyVersion} />
+      </div>
+      </div>
       </div>
 
       {picker && (

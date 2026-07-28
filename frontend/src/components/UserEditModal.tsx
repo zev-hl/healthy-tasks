@@ -50,6 +50,10 @@ export function UserEditModal({ user, supervisors, onClose, onSaved }: Props) {
     e.preventDefault();
     if (!dirty) return;
     setError(null);
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('First and last name are required.');
+      return;
+    }
     setSaving(true);
     try {
       await api.updateUser(user.id, patch);
