@@ -31,11 +31,16 @@ export function isSupervisorRole(role: Role): boolean {
 export interface UserDto {
   id: string;
   email: string;
+  firstName: string;
+  lastName: string;
   title: string | null;
   jobDescription: string | null;
   role: Role;
   supervisorId: string | null;
   isActive: boolean;
+  // Set when this account was merged into another (Phase 5). Non-null ⇒ the
+  // account is a deactivated, redirected duplicate.
+  mergedIntoId: string | null;
   createdAt: string; // ISO-8601
   updatedAt: string; // ISO-8601
 }
@@ -69,18 +74,64 @@ export interface ResetPasswordRequest {
 
 export interface CreateUserRequest {
   email: string;
+  firstName: string;
+  lastName: string;
   role: Role;
   title?: string | null;
   jobDescription?: string | null;
   supervisorId?: string | null;
 }
 
+/**
+ * Admin edit of an existing user. Every field is optional (PATCH semantics);
+ * `email` can be changed in place (rejected if already used by another user),
+ * and `isActive` toggles the account's active/deactivated status.
+ */
 export interface UpdateUserRequest {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
   title?: string | null;
   jobDescription?: string | null;
   role?: Role;
   supervisorId?: string | null;
+  isActive?: boolean;
 }
+
+/**
+ * Merge two accounts believed to be the same person. `survivingId` keeps its
+ * own email/login; `mergedId` is deactivated and redirected. `fieldChoices`
+ * carries the admin's field-by-field pick for any differing profile fields.
+ * `confirmEmail` must equal the merged (non-surviving) account's email — the
+ * explicit type-to-confirm guard for this destructive action.
+ */
+export interface MergeUsersRequest {
+  survivingId: string;
+  mergedId: string;
+  confirmEmail: string;
+  fieldChoices: MergeFieldChoices;
+}
+
+/** The profile fields an admin resolves during a merge (the survivor's values). */
+export interface MergeFieldChoices {
+  firstName: string;
+  lastName: string;
+  title: string | null;
+  jobDescription: string | null;
+  role: Role;
+  supervisorId: string | null;
+}
+
+/** Profile fields compared field-by-field during a merge. */
+export const MERGE_FIELDS = [
+  'firstName',
+  'lastName',
+  'title',
+  'jobDescription',
+  'role',
+  'supervisorId',
+] as const;
+export type MergeField = (typeof MERGE_FIELDS)[number];
 
 /**
  * Returned when an admin creates a user or triggers a reset. In dev the link is
@@ -338,4 +389,65 @@ export interface CreateCommentRequest {
 
 export interface UpdateCommentRequest {
   body: string;
+}
+
+// ---------------------------------------------------------------------------
+// Change history (Phase 5)
+// ---------------------------------------------------------------------------
+
+export const TASK_HISTORY_CHANGE_TYPES = ['updated', 'added', 'removed'] as const;
+export type TaskHistoryChangeType = (typeof TASK_HISTORY_CHANGE_TYPES)[number];
+
+/**
+ * Known `field` keys for a history entry. `dependency:*` and `merge` are the
+ * non-obvious ones; everything else mirrors a task attribute. The string is
+ * open-ended on the wire — these are the values the app produces and formats.
+ */
+export const TASK_HISTORY_FIELDS = {
+  name: 'name',
+  description: 'description',
+  assignee: 'assignee',
+  priority: 'priority',
+  status: 'status',
+  tags: 'tags',
+  startAt: 'startAt',
+  dueAt: 'dueAt',
+  parentTask: 'parentTask',
+  dependencyBlocks: 'dependency:blocks',
+  dependencyBlockedBy: 'dependency:isBlockedBy',
+  attachment: 'attachment',
+  comment: 'comment',
+  merge: 'merge',
+} as const;
+
+/** Human-readable label for a history `field` key (falls back to the key). */
+export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
+  name: 'Name',
+  description: 'Description',
+  assignee: 'Assignee',
+  priority: 'Priority',
+  status: 'Status',
+  tags: 'Tags',
+  startAt: 'Start date',
+  dueAt: 'Due date',
+  parentTask: 'Parent task',
+  'dependency:blocks': 'Blocks',
+  'dependency:isBlockedBy': 'Is blocked by',
+  attachment: 'Attachment',
+  comment: 'Comment',
+  merge: 'Account merge',
+};
+
+/** A single change-history entry for a task, newest-first in listings. */
+export interface TaskHistoryEntryDto {
+  id: string;
+  taskId: number;
+  field: string;
+  changeType: TaskHistoryChangeType;
+  previousValue: string | null;
+  newValue: string | null;
+  detail: string | null;
+  changedAt: string; // ISO-8601
+  // Who made the change (null if that account was hard-deleted; normally set).
+  user: TaskUserRef | null;
 }

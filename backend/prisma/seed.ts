@@ -26,6 +26,8 @@ async function main(): Promise<void> {
       email,
       passwordHash,
       role: 'Admin',
+      firstName: 'System',
+      lastName: 'Administrator',
       title: 'Administrator',
       isActive: true,
     },

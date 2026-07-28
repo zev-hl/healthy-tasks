@@ -38,8 +38,13 @@ const optionalText = z
   .nullable()
   .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
 
+// Required person-name field (First/Last name). Non-empty, trimmed.
+const personName = z.string().trim().min(1, 'Required').max(100, 'Too long');
+
 export const createUserSchema = z.object({
   email,
+  firstName: personName,
+  lastName: personName,
   role: roleSchema,
   title: optionalText,
   jobDescription: optionalText,
@@ -47,11 +52,34 @@ export const createUserSchema = z.object({
 });
 
 export const updateUserSchema = z.object({
+  // Email is editable in place; uniqueness is enforced in the service.
+  email: email.optional(),
+  firstName: personName.optional(),
+  lastName: personName.optional(),
   role: roleSchema.optional(),
   title: optionalText,
   jobDescription: optionalText,
   supervisorId: z.string().uuid().nullable().optional(),
+  isActive: z.boolean().optional(),
 });
+
+// --- Account merge ----------------------------------------------------------
+
+export const mergeUsersSchema = z.object({
+  survivingId: z.string().uuid('A valid surviving account id is required'),
+  mergedId: z.string().uuid('A valid merged account id is required'),
+  confirmEmail: z.string().trim().toLowerCase().min(1, 'Confirmation email is required'),
+  fieldChoices: z.object({
+    firstName: personName,
+    lastName: personName,
+    title: optionalText,
+    jobDescription: optionalText,
+    role: roleSchema,
+    supervisorId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
+  }),
+});
+
+export type MergeUsersInput = z.infer<typeof mergeUsersSchema>;
 
 // --- Tasks ------------------------------------------------------------------
 

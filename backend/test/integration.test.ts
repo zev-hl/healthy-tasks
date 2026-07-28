@@ -172,7 +172,7 @@ describe('admin user management', () => {
     const create = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'newbie@test.local', role: 'Member', title: 'Analyst' });
+      .send({ email: 'newbie@test.local', firstName: 'New', lastName: 'Bie', role: 'Member', title: 'Analyst' });
 
     assert.equal(create.status, 201);
     assert.equal(create.body.user.email, 'newbie@test.local');
@@ -221,7 +221,7 @@ describe('supervisor role rule', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'report@test.local', role: 'Member', supervisorId: member.id });
+      .send({ email: 'report@test.local', firstName: 'Rep', lastName: 'Ort', role: 'Member', supervisorId: member.id });
 
     assert.equal(res.status, 400);
     assert.match(res.body.error, /Manager or Admin/);
@@ -234,7 +234,7 @@ describe('supervisor role rule', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'report2@test.local', role: 'Member', supervisorId: mgr.id });
+      .send({ email: 'report2@test.local', firstName: 'Rep', lastName: 'Two', role: 'Member', supervisorId: mgr.id });
 
     assert.equal(res.status, 201);
     assert.equal(res.body.user.supervisorId, mgr.id);
@@ -296,7 +296,7 @@ describe('password reset flow (end-to-end)', () => {
     const create = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'reset@test.local', role: 'Member' });
+      .send({ email: 'reset@test.local', firstName: 'Re', lastName: 'Set', role: 'Member' });
     assert.equal(create.status, 201);
 
     const resetToken = tokenFromResetLink(create.body.resetLink);
@@ -319,7 +319,7 @@ describe('password reset flow (end-to-end)', () => {
     const create = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'once@test.local', role: 'Member' });
+      .send({ email: 'once@test.local', firstName: 'On', lastName: 'Ce', role: 'Member' });
     const resetToken = tokenFromResetLink(create.body.resetLink);
 
     const first = await request(app)
@@ -1278,5 +1278,304 @@ describe('task tags list (Phase 4)', () => {
     await request(app).patch(`/api/tasks/${t1.id}`).set(auth(tok)).send({ tags: ['apple'] });
     tags = await request(app).get('/api/tasks/tags').set(auth(tok));
     assert.deepEqual(tags.body, ['apple', 'Mango']);
+  });
+});
+
+// --- Phase 5: change history -----------------------------------------------
+
+/** Fetch a task's history (newest first). */
+async function history(token: string, taskId: number) {
+  const res = await request(app).get(`/api/tasks/${taskId}/history`).set(auth(token));
+  assert.equal(res.status, 200, `history failed: ${JSON.stringify(res.body)}`);
+  return res.body as {
+    field: string;
+    changeType: string;
+    previousValue: string | null;
+    newValue: string | null;
+    detail: string | null;
+    changedAt: string;
+    user: { email: string } | null;
+  }[];
+}
+
+describe('task change history (Phase 5)', () => {
+  it('records scalar field changes with previous+new, actor, and timestamp', async () => {
+    const tok = await adminToken();
+    const assignee = await seedUser({ email: 'asg@test.local', role: 'Member' });
+    const t = await makeTask(tok, 'Hist task');
+
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'InProgress', priority: 'High', assigneeId: assignee.id, dueAt: '2026-09-01T10:00:00Z' });
+
+    const entries = await history(tok, t.id);
+    const byField = Object.fromEntries(entries.map((e) => [e.field, e]));
+    assert.equal(byField.status.changeType, 'updated');
+    assert.equal(byField.status.previousValue, 'Open');
+    assert.equal(byField.status.newValue, 'InProgress');
+    assert.equal(byField.priority.newValue, 'High');
+    assert.equal(byField.assignee.newValue, 'asg@test.local');
+    assert.ok(byField.dueAt.newValue, 'dueAt entry should carry the new ISO value');
+    assert.equal(byField.status.user?.email, ADMIN_EMAIL);
+    assert.ok(byField.status.changedAt);
+  });
+
+  it('logs a description change without storing the text', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Desc hist');
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ description: '<p>a secret description</p>' });
+
+    const desc = (await history(tok, t.id)).find((e) => e.field === 'description');
+    assert.ok(desc, 'a description entry should exist');
+    assert.equal(desc?.changeType, 'updated');
+    assert.equal(desc?.previousValue, null);
+    assert.equal(desc?.newValue, null);
+  });
+
+  it('sorts entries most-recent-first', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Order');
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(tok)).send({ priority: 'High' });
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(tok)).send({ priority: 'Low' });
+    const entries = (await history(tok, t.id)).filter((e) => e.field === 'priority');
+    assert.equal(entries.length, 2);
+    assert.equal(entries[0].newValue, 'Low', 'newest change first');
+    assert.equal(entries[1].newValue, 'High');
+  });
+
+  it('logs parent add/remove as added/removed with the other task ref (no value pair)', async () => {
+    const tok = await adminToken();
+    const parent = await makeTask(tok, 'Parent task');
+    const child = await makeTask(tok, 'Child task');
+    await request(app).put(`/api/tasks/${child.id}/parent`).set(auth(tok)).send({ parentId: parent.id });
+    await request(app).delete(`/api/tasks/${child.id}/parent`).set(auth(tok));
+
+    const parentEntries = (await history(tok, child.id)).filter((e) => e.field === 'parentTask');
+    assert.equal(parentEntries.length, 2);
+    assert.deepEqual(parentEntries.map((e) => e.changeType).sort(), ['added', 'removed']);
+    assert.ok(parentEntries.every((e) => e.detail?.includes(`#${parent.id}`)));
+    assert.ok(parentEntries.every((e) => e.previousValue === null && e.newValue === null));
+  });
+
+  it('logs a dependency on both endpoints with the correct grouping', async () => {
+    const tok = await adminToken();
+    const a = await makeTask(tok, 'Blocker');
+    const b = await makeTask(tok, 'Blocked');
+    await request(app)
+      .post(`/api/tasks/${a.id}/dependencies`)
+      .set(auth(tok))
+      .send({ type: 'blocks', otherTaskId: b.id });
+
+    const aEntry = (await history(tok, a.id)).find((e) => e.field === 'dependency:blocks');
+    const bEntry = (await history(tok, b.id)).find((e) => e.field === 'dependency:isBlockedBy');
+    assert.equal(aEntry?.changeType, 'added');
+    assert.ok(aEntry?.detail?.includes(`#${b.id}`));
+    assert.equal(bEntry?.changeType, 'added');
+    assert.ok(bEntry?.detail?.includes(`#${a.id}`));
+  });
+
+  it('logs attachment add and remove with the filename', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Att hist');
+    const confirm = await attachToTask(tok, t.id, { filename: 'report.pdf', contentType: 'application/pdf' });
+    const attId = (confirm.body.attachments as { id: string }[])[0].id;
+    await request(app).delete(`/api/attachments/${attId}`).set(auth(tok));
+
+    const attEntries = (await history(tok, t.id)).filter((e) => e.field === 'attachment');
+    assert.equal(attEntries.length, 2);
+    assert.ok(attEntries.every((e) => e.detail === 'report.pdf'));
+    assert.deepEqual(attEntries.map((e) => e.changeType).sort(), ['added', 'removed']);
+  });
+
+  it('logs comment add/edit/delete (by the author) without storing the text', async () => {
+    const admin = await adminToken();
+    await seedUser({ email: 'cauth@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const authorTok = await login('cauth@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Cmt hist');
+
+    const add = await request(app).post(`/api/tasks/${t.id}/comments`).set(auth(authorTok)).send({ body: '<p>hi</p>' });
+    const cid = add.body.comments[0].id as string;
+    await request(app).patch(`/api/comments/${cid}`).set(auth(authorTok)).send({ body: '<p>edited</p>' });
+    await request(app).delete(`/api/comments/${cid}`).set(auth(authorTok));
+
+    const cmt = (await history(admin, t.id)).filter((e) => e.field === 'comment');
+    assert.deepEqual(cmt.map((e) => e.changeType).sort(), ['added', 'removed', 'updated']);
+    assert.ok(cmt.every((e) => e.previousValue === null && e.newValue === null && e.detail === null));
+    assert.ok(cmt.every((e) => e.user?.email === 'cauth@test.local'));
+  });
+
+  it('is visible to any authenticated user with access to the task', async () => {
+    const admin = await adminToken();
+    await seedUser({ email: 'viewer@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const viewerTok = await login('viewer@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Shared');
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'InProgress' });
+    const res = await request(app).get(`/api/tasks/${t.id}/history`).set(auth(viewerTok));
+    assert.equal(res.status, 200);
+    assert.ok(res.body.some((e: { field: string }) => e.field === 'status'));
+  });
+});
+
+// --- Phase 5: user edit (email, names, status) -----------------------------
+
+describe('admin user edit in place (Phase 5)', () => {
+  it('changes first/last name, title, role, and status', async () => {
+    const tok = await adminToken();
+    const u = await seedUser({ email: 'edit@test.local', role: 'Member' });
+    const res = await request(app)
+      .patch(`/api/users/${u.id}`)
+      .set(auth(tok))
+      .send({ firstName: 'Jane', lastName: 'Doe', title: 'Lead', role: 'Manager', isActive: false });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.firstName, 'Jane');
+    assert.equal(res.body.lastName, 'Doe');
+    assert.equal(res.body.title, 'Lead');
+    assert.equal(res.body.role, 'Manager');
+    assert.equal(res.body.isActive, false);
+  });
+
+  it('changes an email in place', async () => {
+    const tok = await adminToken();
+    const u = await seedUser({ email: 'before@test.local', role: 'Member' });
+    const res = await request(app)
+      .patch(`/api/users/${u.id}`)
+      .set(auth(tok))
+      .send({ email: 'after@test.local' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.email, 'after@test.local');
+  });
+
+  it('rejects an email already used by another account', async () => {
+    const tok = await adminToken();
+    await seedUser({ email: 'taken@test.local', role: 'Member' });
+    const u = await seedUser({ email: 'mover@test.local', role: 'Member' });
+    const res = await request(app)
+      .patch(`/api/users/${u.id}`)
+      .set(auth(tok))
+      .send({ email: 'taken@test.local' });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /already in use/i);
+  });
+});
+
+// --- Phase 5: account merge ------------------------------------------------
+
+describe('account merge (Phase 5)', () => {
+  const baseChoices = {
+    firstName: 'Sur',
+    lastName: 'Vivor',
+    title: 'Keeper',
+    jobDescription: null,
+    role: 'Manager' as const,
+    supervisorId: null,
+  };
+
+  it('reassigns references, repoints supervisees, deactivates + flags, and logs history', async () => {
+    const adminTok = await adminToken();
+    const survivor = await seedUser({ email: 'survivor@test.local', role: 'Manager' });
+    const dup = await seedUser({
+      email: 'dup@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
+    const report = await seedUser({ email: 'report3@test.local', role: 'Member', supervisorId: dup.id });
+
+    // A task created by the duplicate, and a task assigned to the duplicate.
+    const dupTok = await login('dup@test.local', MEMBER_PASSWORD);
+    const created = await makeTask(dupTok, 'By dup');
+    const assigned = await makeTask(adminTok, 'Assigned to dup');
+    await request(app).patch(`/api/tasks/${assigned.id}`).set(auth(adminTok)).send({ assigneeId: dup.id });
+
+    const merge = await request(app)
+      .post('/api/users/merge')
+      .set(auth(adminTok))
+      .send({
+        survivingId: survivor.id,
+        mergedId: dup.id,
+        confirmEmail: 'dup@test.local',
+        fieldChoices: baseChoices,
+      });
+    assert.equal(merge.status, 200, JSON.stringify(merge.body));
+    assert.equal(merge.body.id, survivor.id);
+    assert.equal(merge.body.title, 'Keeper');
+    assert.equal(merge.body.firstName, 'Sur');
+
+    // Merged account: deactivated and flagged.
+    const dupAfter = await prisma.user.findUniqueOrThrow({ where: { id: dup.id } });
+    assert.equal(dupAfter.isActive, false);
+    assert.equal(dupAfter.mergedIntoId, survivor.id);
+
+    // Supervisee repointed; tasks reassigned.
+    const repAfter = await prisma.user.findUniqueOrThrow({ where: { id: report.id } });
+    assert.equal(repAfter.supervisorId, survivor.id);
+    const createdAfter = await prisma.task.findUniqueOrThrow({ where: { id: created.id } });
+    assert.equal(createdAfter.creatorId, survivor.id);
+    const assignedAfter = await prisma.task.findUniqueOrThrow({ where: { id: assigned.id } });
+    assert.equal(assignedAfter.assigneeId, survivor.id);
+
+    // Merge logged on affected tasks.
+    const hist = await history(adminTok, created.id);
+    const mergeEntry = hist.find((e) => e.field === 'merge');
+    assert.ok(mergeEntry, 'affected task should have a merge history entry');
+    assert.equal(mergeEntry?.previousValue, 'dup@test.local');
+    assert.equal(mergeEntry?.newValue, 'survivor@test.local');
+  });
+
+  it('requires the confirmation email to match the merged account', async () => {
+    const adminTok = await adminToken();
+    const survivor = await seedUser({ email: 'surv2@test.local', role: 'Manager' });
+    const dup = await seedUser({ email: 'dup2@test.local', role: 'Member' });
+    const res = await request(app)
+      .post('/api/users/merge')
+      .set(auth(adminTok))
+      .send({
+        survivingId: survivor.id,
+        mergedId: dup.id,
+        confirmEmail: 'wrong@test.local',
+        fieldChoices: baseChoices,
+      });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /confirmation/i);
+  });
+
+  it('rejects a merge whose surviving role cannot supervise inherited reports', async () => {
+    const adminTok = await adminToken();
+    const survivor = await seedUser({ email: 'surv3@test.local', role: 'Manager' });
+    const dup = await seedUser({ email: 'dup3@test.local', role: 'Manager' });
+    await seedUser({ email: 'rep3@test.local', role: 'Member', supervisorId: dup.id });
+    const res = await request(app)
+      .post('/api/users/merge')
+      .set(auth(adminTok))
+      .send({
+        survivingId: survivor.id,
+        mergedId: dup.id,
+        confirmEmail: 'dup3@test.local',
+        fieldChoices: { ...baseChoices, role: 'Member' },
+      });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /supervise|Manager or Admin/i);
+  });
+
+  it('forbids non-admins from merging', async () => {
+    const adminTok = await adminToken();
+    await seedUser({ email: 'plain5@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const memberTok = await login('plain5@test.local', MEMBER_PASSWORD);
+    const survivor = await seedUser({ email: 'surv5@test.local', role: 'Manager' });
+    const dup = await seedUser({ email: 'dup5@test.local', role: 'Member' });
+    const res = await request(app)
+      .post('/api/users/merge')
+      .set(auth(memberTok))
+      .send({
+        survivingId: survivor.id,
+        mergedId: dup.id,
+        confirmEmail: 'dup5@test.local',
+        fieldChoices: baseChoices,
+      });
+    assert.equal(res.status, 403);
+    void adminTok;
   });
 });

@@ -12,6 +12,8 @@ interface Props {
  *  active Managers and Admins (enforced again server-side). */
 export function UserFormModal({ onClose, onCreated }: Props) {
   const [email, setEmail] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [role, setRole] = useState<Role>('Member');
   const [title, setTitle] = useState('');
   const [jobDescription, setJobDescription] = useState('');
@@ -33,6 +35,8 @@ export function UserFormModal({ onClose, onCreated }: Props) {
     setSubmitting(true);
     const body: CreateUserRequest = {
       email,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
       role,
       title: title || null,
       jobDescription: jobDescription || null,
@@ -61,6 +65,24 @@ export function UserFormModal({ onClose, onCreated }: Props) {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-first-name">First name</label>
+            <input
+              id="new-first-name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="new-last-name">Last name</label>
+            <input
+              id="new-last-name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               required
             />
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   TASK_PRIORITIES,
@@ -19,6 +19,7 @@ import { AttachmentSection } from './AttachmentSection';
 import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
 import { TaskPickerModal } from './TaskPickerModal';
+import { TaskHistory } from './TaskHistory';
 import {
   isoToParts,
   partsToIso,
@@ -56,6 +57,15 @@ interface Props {
 export function TaskDetailView({ initialTask, currentUser }: Props) {
   const navigate = useNavigate();
   const [task, setTask] = useState<TaskDetailDto>(initialTask);
+
+  // Bumped on every applied mutation so the History section refetches. Any task
+  // change (fields, relationships, tags, attachments, comments) flows through
+  // applyTask, which both updates the task and invalidates the history.
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const applyTask = useCallback((t: TaskDetailDto) => {
+    setTask(t);
+    setHistoryVersion((v) => v + 1);
+  }, []);
 
   const [notice, setNotice] = useState<string | null>(null);
   const [relError, setRelError] = useState<string | null>(null);
@@ -111,7 +121,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   async function runRel(action: () => Promise<TaskDetailDto>) {
     setRelError(null);
     try {
-      setTask(await action());
+      applyTask(await action());
     } catch (err) {
       setRelError(err instanceof ApiError ? err.message : 'Update failed');
     }
@@ -132,7 +142,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     if (name.length < 2) return;
     setSavingName(true);
     try {
-      setTask(await api.updateTask(task.id, { name }));
+      applyTask(await api.updateTask(task.id, { name }));
       setEditingName(false);
       setNotice('Task saved.');
     } catch (err) {
@@ -146,7 +156,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setSavingDesc(true);
     try {
       // RichTextEditor emits '' when empty → store null.
-      setTask(await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }));
+      applyTask(await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }));
       setEditingDesc(false);
       setNotice('Task saved.');
     } catch (err) {
@@ -166,7 +176,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
     setSavingFields(true);
     try {
-      setTask(
+      applyTask(
         await api.updateTask(task.id, {
           assigneeId: assigneeId === '' ? null : assigneeId,
           priority,
@@ -196,7 +206,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     if (!t || task.tags.includes(t)) return;
     setTagBusy(true);
     try {
-      setTask(await api.updateTask(task.id, { tags: [...task.tags, t] }));
+      applyTask(await api.updateTask(task.id, { tags: [...task.tags, t] }));
       await refreshTags();
     } catch (err) {
       setRelError(err instanceof ApiError ? err.message : 'Could not add the tag');
@@ -214,7 +224,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   async function removeTag(tag: string) {
     setTagBusy(true);
     try {
-      setTask(await api.updateTask(task.id, { tags: task.tags.filter((x) => x !== tag) }));
+      applyTask(await api.updateTask(task.id, { tags: task.tags.filter((x) => x !== tag) }));
       // A tag no longer used on any task drops out of the picklist.
       await refreshTags();
     } catch (err) {
@@ -419,7 +429,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           target={{ kind: 'task', taskId: task.id }}
           canUpload
           currentUser={currentUser}
-          onChanged={setTask}
+          onChanged={applyTask}
         />
       </div>
 
@@ -686,9 +696,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <Comments
           task={task}
           currentUser={currentUser}
-          onChanged={setTask}
+          onChanged={applyTask}
           onDirtyChange={setCommentsDirty}
         />
+      </div>
+
+      {/* History (Phase 5): who changed what, most recent first */}
+      <div className="card" style={{ marginTop: '1rem' }}>
+        <h3 style={{ marginTop: 0 }}>History</h3>
+        <TaskHistory taskId={task.id} version={historyVersion} />
       </div>
 
       {picker && (
