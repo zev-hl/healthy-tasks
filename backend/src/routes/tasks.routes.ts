@@ -10,6 +10,7 @@ import {
   presignAttachmentSchema,
   confirmAttachmentSchema,
   createCommentSchema,
+  taskSearchSchema,
 } from '../validation/schemas.js';
 import {
   createTaskController,
@@ -19,6 +20,8 @@ import {
   updateTaskController,
   getTaskHistoryController,
   searchTasksController,
+  queryTasksController,
+  exportTasksController,
   setParentController,
   clearParentController,
   addDependencyController,
@@ -40,9 +43,12 @@ tasksRouter.use(requireAuth);
 tasksRouter.get('/', asyncHandler(listTasksController));
 tasksRouter.post('/', validateBody(createTaskSchema), asyncHandler(createTaskController));
 
-// `/search` and `/tags` must be declared before `/:id` so they aren't captured as an id.
+// `/search`, `/tags`, `/query`, `/export` must be declared before `/:id`.
 tasksRouter.get('/search', asyncHandler(searchTasksController));
 tasksRouter.get('/tags', asyncHandler(listTagsController));
+// Task Search screen (Phase 6): POST bodies carry filters/sort/pagination.
+tasksRouter.post('/query', validateBody(taskSearchSchema), asyncHandler(queryTasksController));
+tasksRouter.post('/export', validateBody(taskSearchSchema), asyncHandler(exportTasksController));
 
 tasksRouter.get('/:id', asyncHandler(getTaskController));
 tasksRouter.get('/:id/history', asyncHandler(getTaskHistoryController));

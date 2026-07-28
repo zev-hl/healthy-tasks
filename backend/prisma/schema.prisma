@@ -68,6 +68,9 @@ model User {
   // Change-history entries this user authored (Phase 5).
   taskHistoryEntries TaskHistory[] @relation("HistoryActor")
 
+  // Per-screen saved UI state (filters/sort/columns/pagination) — Phase 6.
+  screenPrefs UserScreenPref[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -165,6 +168,12 @@ model Task {
   @@index([assigneeId])
   @@index([status])
   @@index([parentId])
+  // Phase 6: support the Search screen's sort/filter columns.
+  @@index([priority])
+  @@index([dueAt])
+  @@index([startAt])
+  @@index([statusChangedAt])
+  @@index([createdAt])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -319,4 +328,24 @@ model TaskHistory {
 
   @@index([taskId, changedAt])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Per-user screen preferences (Phase 6)
+// ---------------------------------------------------------------------------
+
+// Saved UI state for a screen (Task Search, Users), per user. `state` is opaque
+// JSON whose shape is owned by the frontend (search text, filters, sort order,
+// column layout, page size/position). One row per (user, screen).
+model UserScreenPref {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 'task-search' | 'users' (see SCREEN_KEYS in @healthy-tasks/shared).
+  screen String
+  state  Json
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, screen])
 }

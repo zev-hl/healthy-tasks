@@ -1579,3 +1579,263 @@ describe('account merge (Phase 5)', () => {
     void adminTok;
   });
 });
+
+// --- Phase 6: search, filters, sorting, pagination, export, preferences ----
+
+interface QueryRow {
+  id: number;
+  name: string;
+  status: string;
+  priority: string;
+  assignee: { email: string } | null;
+  parentId: number | null;
+  childrenCount: number;
+  tags: string[];
+}
+async function queryTasks(token: string, body: Record<string, unknown>) {
+  const res = await request(app).post('/api/tasks/query').set(auth(token)).send(body);
+  assert.equal(res.status, 200, `query failed: ${JSON.stringify(res.body)}`);
+  return res.body as { rows: QueryRow[]; total: number; page: number; pageSize: number };
+}
+
+describe('task search / query (Phase 6)', () => {
+  it('filters by status and paginates with total', async () => {
+    const tok = await adminToken();
+    await makeTask(tok, 'Alpha', { status: 'Open' });
+    await makeTask(tok, 'Beta', { status: 'InProgress' });
+    await makeTask(tok, 'Gamma', { status: 'Open' });
+
+    const open = await queryTasks(tok, { filters: { statuses: ['Open'] } });
+    assert.equal(open.total, 2);
+    assert.ok(open.rows.every((r) => r.status === 'Open'));
+
+    const paged = await queryTasks(tok, { pageSize: 2, page: 1 });
+    assert.equal(paged.rows.length, 2);
+    assert.equal(paged.total, 3);
+    assert.equal(paged.pageSize, 2);
+  });
+
+  it('free-text matches Name, Tags, and exact Id', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Findable Widget', { tags: ['special', 'alpha'] });
+    await makeTask(tok, 'Other thing', { tags: ['beta'] });
+
+    assert.ok((await queryTasks(tok, { text: 'widget' })).rows.some((r) => r.id === t.id));
+    assert.ok((await queryTasks(tok, { text: 'speci' })).rows.some((r) => r.id === t.id));
+    const byId = await queryTasks(tok, { text: String(t.id) });
+    assert.ok(byId.rows.some((r) => r.id === t.id));
+  });
+
+  it('filters by assignee, Unassigned, and tags', async () => {
+    const tok = await adminToken();
+    const u = await seedUser({ email: 'asg6@test.local', role: 'Member' });
+    await makeTask(tok, 'Assigned', { assigneeId: u.id, tags: ['x'] });
+    await makeTask(tok, 'Unassigned one', { tags: ['y'] });
+
+    const byAssignee = await queryTasks(tok, { filters: { assigneeIds: [u.id] } });
+    assert.equal(byAssignee.total, 1);
+    assert.equal(byAssignee.rows[0]?.assignee?.email, 'asg6@test.local');
+
+    const unassigned = await queryTasks(tok, { filters: { includeUnassigned: true } });
+    assert.ok(unassigned.rows.every((r) => r.assignee === null));
+
+    const byTag = await queryTasks(tok, { filters: { tags: ['x'] } });
+    assert.equal(byTag.total, 1);
+  });
+
+  it('due-date range respects the include-no-due toggle', async () => {
+    const tok = await adminToken();
+    await makeTask(tok, 'Has due', { dueAt: '2026-09-15T12:00:00Z' });
+    await makeTask(tok, 'No due');
+
+    const withNoDue = await queryTasks(tok, {
+      filters: { dueFrom: '2026-09-01T00:00:00Z', dueTo: '2026-09-30T23:59:59Z' },
+    });
+    assert.equal(withNoDue.total, 2, 'no-due task included by default');
+
+    const excluded = await queryTasks(tok, {
+      filters: { dueFrom: '2026-09-01T00:00:00Z', dueTo: '2026-09-30T23:59:59Z', includeNoDue: false },
+    });
+    assert.equal(excluded.total, 1);
+    assert.equal(excluded.rows[0]?.name, 'Has due');
+  });
+
+  it('defaults to Due ascending with no-due tasks pinned to the top', async () => {
+    const tok = await adminToken();
+    const noDue = await makeTask(tok, 'ZZ no due');
+    const early = await makeTask(tok, 'early', { dueAt: '2026-08-01T00:00:00Z' });
+    const late = await makeTask(tok, 'late', { dueAt: '2026-12-01T00:00:00Z' });
+
+    const ids = (await queryTasks(tok, {})).rows.map((r) => r.id);
+    assert.equal(ids[0], noDue.id, 'no-due pinned to top');
+    assert.ok(ids.indexOf(early.id) < ids.indexOf(late.id), 'earlier due before later');
+  });
+
+  it('supports multi-column sort (priority asc, then name desc)', async () => {
+    const tok = await adminToken();
+    await makeTask(tok, 'BB', { priority: 'High' });
+    await makeTask(tok, 'AA', { priority: 'High' });
+    await makeTask(tok, 'CC', { priority: 'Low' });
+    const names = (
+      await queryTasks(tok, {
+        sort: [
+          { field: 'priority', dir: 'asc' },
+          { field: 'name', dir: 'desc' },
+        ],
+      })
+    ).rows.map((r) => r.name);
+    // High before Low (enum order); within High, name desc → BB before AA.
+    assert.deepEqual(names, ['BB', 'AA', 'CC']);
+  });
+
+  it('reports parentId and childrenCount per row', async () => {
+    const tok = await adminToken();
+    const parent = await makeTask(tok, 'Parent6');
+    const child = await makeTask(tok, 'Child6');
+    await request(app).put(`/api/tasks/${child.id}/parent`).set(auth(tok)).send({ parentId: parent.id });
+
+    const rows = (await queryTasks(tok, { sort: [{ field: 'id', dir: 'asc' }] })).rows;
+    assert.equal(rows.find((r) => r.id === parent.id)?.childrenCount, 1);
+    assert.equal(rows.find((r) => r.id === child.id)?.parentId, parent.id);
+  });
+
+  it('nests children under parents across the whole set, per-layer sorted, and paginates the tree', async () => {
+    const tok = await adminToken();
+    const p1 = await makeTask(tok, 'Parent One', { dueAt: '2026-11-01T00:00:00Z' });
+    const p2 = await makeTask(tok, 'Parent Two', { dueAt: '2026-12-01T00:00:00Z' });
+    const cB = await makeTask(tok, 'Child B', { dueAt: '2026-10-02T00:00:00Z' });
+    const cA = await makeTask(tok, 'Child A', { dueAt: '2026-10-01T00:00:00Z' });
+    await request(app).put(`/api/tasks/${cB.id}/parent`).set(auth(tok)).send({ parentId: p1.id });
+    await request(app).put(`/api/tasks/${cA.id}/parent`).set(auth(tok)).send({ parentId: p1.id });
+
+    // Nested + Due asc: roots by due (p1 then p2); p1's children by due (cA then cB).
+    const nested = await queryTasks(tok, { nest: true, sort: [{ field: 'dueAt', dir: 'asc' }] });
+    assert.equal(nested.total, 4, 'every matching task appears once');
+    assert.deepEqual(
+      nested.rows.map((r) => ({ id: r.id, depth: (r as { depth?: number }).depth })),
+      [
+        { id: p1.id, depth: 0 },
+        { id: cA.id, depth: 1 },
+        { id: cB.id, depth: 1 },
+        { id: p2.id, depth: 0 },
+      ],
+    );
+
+    // Pagination slices the nested sequence.
+    const firstPage = await queryTasks(tok, {
+      nest: true,
+      sort: [{ field: 'dueAt', dir: 'asc' }],
+      pageSize: 2,
+      page: 1,
+    });
+    assert.equal(firstPage.total, 4);
+    assert.deepEqual(
+      firstPage.rows.map((r) => r.id),
+      [p1.id, cA.id],
+    );
+  });
+});
+
+describe('task export (Phase 6)', () => {
+  it('returns an .xlsx attachment', async () => {
+    const tok = await adminToken();
+    await makeTask(tok, 'Exportable');
+    const res = await request(app).post('/api/tasks/export').set(auth(tok)).send({});
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'], /spreadsheetml/);
+    assert.match(res.headers['content-disposition'], /tasks\.xlsx/);
+  });
+});
+
+describe('users search (Phase 6)', () => {
+  async function makeUser(
+    token: string,
+    email: string,
+    firstName: string,
+    lastName: string,
+    extra: Record<string, unknown> = {},
+  ) {
+    const res = await request(app)
+      .post('/api/users')
+      .set(auth(token))
+      .send({ email, firstName, lastName, role: 'Member', ...extra });
+    assert.equal(res.status, 201, `create user failed: ${JSON.stringify(res.body)}`);
+    return res.body.user as { id: string };
+  }
+
+  it('defaults to Last Name order and filters per column', async () => {
+    const tok = await adminToken();
+    await makeUser(tok, 'zoe@test.local', 'Zoe', 'Adams');
+    await makeUser(tok, 'bob@test.local', 'Bob', 'Baker');
+    await makeUser(tok, 'amy@test.local', 'Amy', 'Carter');
+
+    const all = await request(app).post('/api/users/search').set(auth(tok)).send({});
+    assert.equal(all.status, 200);
+    const lastNames = (all.body.rows as { lastName: string }[]).map((r) => r.lastName);
+    assert.ok(
+      lastNames.indexOf('Adams') < lastNames.indexOf('Baker') &&
+        lastNames.indexOf('Baker') < lastNames.indexOf('Carter'),
+      `expected Adams<Baker<Carter, got ${JSON.stringify(lastNames)}`,
+    );
+
+    // Text-like columns filter by an exact multi-select of distinct values.
+    const filtered = await request(app)
+      .post('/api/users/search')
+      .set(auth(tok))
+      .send({ filters: { lastName: ['Baker'] } });
+    assert.equal(filtered.body.total, 1);
+    assert.equal(filtered.body.rows[0].lastName, 'Baker');
+
+    // Distinct filter options include the created names.
+    const opts = await request(app).get('/api/users/filter-options').set(auth(tok));
+    assert.equal(opts.status, 200);
+    assert.ok(opts.body.lastName.includes('Baker'));
+    assert.ok(opts.body.email.includes('bob@test.local'));
+  });
+
+  it('supports multi-column sort and pagination, and is admin-only', async () => {
+    const tok = await adminToken();
+    await makeUser(tok, 'p1@test.local', 'Pat', 'Zephyr', { title: 'B' });
+    await makeUser(tok, 'p2@test.local', 'Pat', 'Yang', { title: 'A' });
+
+    const sorted = await request(app)
+      .post('/api/users/search')
+      .set(auth(tok))
+      .send({ sort: [{ field: 'firstName', dir: 'asc' }, { field: 'lastName', dir: 'asc' }], pageSize: 2, page: 1 });
+    assert.equal(sorted.status, 200);
+    assert.equal(sorted.body.pageSize, 2);
+    assert.equal(sorted.body.rows.length, 2);
+
+    await seedUser({ email: 'plain6@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const memberTok = await login('plain6@test.local', MEMBER_PASSWORD);
+    const forbidden = await request(app).post('/api/users/search').set(auth(memberTok)).send({});
+    assert.equal(forbidden.status, 403);
+  });
+});
+
+describe('screen preferences (Phase 6)', () => {
+  it('round-trips per-user state, isolates users, and rejects unknown screens', async () => {
+    const adminTok = await adminToken();
+
+    const empty = await request(app).get('/api/preferences/task-search').set(auth(adminTok));
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.state, null);
+
+    const put = await request(app)
+      .put('/api/preferences/task-search')
+      .set(auth(adminTok))
+      .send({ state: { pageSize: 100, text: 'hi' } });
+    assert.equal(put.status, 200);
+
+    const get = await request(app).get('/api/preferences/task-search').set(auth(adminTok));
+    assert.deepEqual(get.body.state, { pageSize: 100, text: 'hi' });
+
+    await seedUser({ email: 'pref6@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const otherTok = await login('pref6@test.local', MEMBER_PASSWORD);
+    const otherGet = await request(app).get('/api/preferences/task-search').set(auth(otherTok));
+    assert.equal(otherGet.body.state, null, "another user's state is independent");
+
+    const bad = await request(app).get('/api/preferences/nonsense').set(auth(adminTok));
+    assert.equal(bad.status, 400);
+  });
+});

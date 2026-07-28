@@ -1,8 +1,20 @@
 import type { Prisma, User } from '@prisma/client';
-import { isSupervisorRole, TASK_HISTORY_FIELDS } from '@healthy-tasks/shared';
+import {
+  isSupervisorRole,
+  TASK_HISTORY_FIELDS,
+  DEFAULT_PAGE_SIZE,
+  type PaginatedResult,
+  type SortDirection,
+  type UserSortField,
+} from '@healthy-tasks/shared';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
-import type { CreateUserInput, MergeUsersInput, UpdateUserInput } from '../validation/schemas.js';
+import type {
+  CreateUserInput,
+  MergeUsersInput,
+  UpdateUserInput,
+  UserSearchInput,
+} from '../validation/schemas.js';
 import { hashPassword } from '../utils/password.js';
 import { recordHistory, type HistoryEntryInput } from './task-history.service.js';
 import crypto from 'node:crypto';
@@ -38,6 +50,103 @@ export async function assertValidSupervisor(
 
 export async function listUsers(): Promise<User[]> {
   return prisma.user.findMany({ orderBy: [{ isActive: 'desc' }, { email: 'asc' }] });
+}
+
+// --- Users screen: filter + multi-sort + pagination (Phase 6) ---------------
+
+function mapUserSort(field: UserSortField, dir: SortDirection): Prisma.UserOrderByWithRelationInput {
+  switch (field) {
+    case 'firstName':
+      return { firstName: dir };
+    case 'lastName':
+      return { lastName: dir };
+    case 'email':
+      return { email: dir };
+    case 'title':
+      return { title: { sort: dir, nulls: 'last' } };
+    case 'supervisor':
+      return { supervisor: { lastName: dir } };
+    case 'role':
+      return { role: dir };
+    case 'status':
+      return { isActive: dir };
+  }
+}
+
+function buildUserOrderBy(
+  sort: { field: UserSortField; dir: SortDirection }[],
+): Prisma.UserOrderByWithRelationInput[] {
+  const orderBy = sort.map((s) => mapUserSort(s.field, s.dir));
+  // Default: alphabetical by Last Name (then First, then email).
+  if (orderBy.length === 0) orderBy.push({ lastName: 'asc' }, { firstName: 'asc' }, { email: 'asc' });
+  orderBy.push({ id: 'asc' }); // stable tiebreaker
+  return orderBy;
+}
+
+export async function searchUsers(input: UserSearchInput): Promise<PaginatedResult<User>> {
+  const f = input.filters ?? {};
+  const and: Prisma.UserWhereInput[] = [];
+  const has = (a?: string[]): a is string[] => Array.isArray(a) && a.length > 0;
+
+  if (has(f.firstName)) and.push({ firstName: { in: f.firstName } });
+  if (has(f.lastName)) and.push({ lastName: { in: f.lastName } });
+  if (has(f.email)) and.push({ email: { in: f.email } });
+  if (has(f.title)) and.push({ title: { in: f.title } });
+  if (has(f.supervisorIds)) and.push({ supervisorId: { in: f.supervisorIds } });
+  if (f.roles && f.roles.length > 0) and.push({ role: { in: f.roles } });
+  if (f.status === 'active') and.push({ isActive: true });
+  else if (f.status === 'inactive') and.push({ isActive: false });
+
+  const where: Prisma.UserWhereInput = and.length > 0 ? { AND: and } : {};
+  const orderBy = buildUserOrderBy(input.sort ?? []);
+  const page = input.page ?? 1;
+  const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE;
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.user.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.user.count({ where }),
+  ]);
+  return { rows, total, page, pageSize };
+}
+
+/** Distinct values for the Users-screen filter checklists. */
+export async function getUserFilterOptions(): Promise<{
+  firstName: string[];
+  lastName: string[];
+  email: string[];
+  title: string[];
+  supervisors: User[];
+}> {
+  const [firstNames, lastNames, emails, titles, supervisors] = await Promise.all([
+    prisma.user.findMany({
+      where: { firstName: { not: '' } },
+      distinct: ['firstName'],
+      select: { firstName: true },
+      orderBy: { firstName: 'asc' },
+    }),
+    prisma.user.findMany({
+      where: { lastName: { not: '' } },
+      distinct: ['lastName'],
+      select: { lastName: true },
+      orderBy: { lastName: 'asc' },
+    }),
+    prisma.user.findMany({ distinct: ['email'], select: { email: true }, orderBy: { email: 'asc' } }),
+    prisma.user.findMany({
+      where: { title: { not: null } },
+      distinct: ['title'],
+      select: { title: true },
+      orderBy: { title: 'asc' },
+    }),
+    // Users who supervise at least one person = the distinct supervisor values.
+    prisma.user.findMany({ where: { reports: { some: {} } }, orderBy: { email: 'asc' } }),
+  ]);
+  return {
+    firstName: firstNames.map((r) => r.firstName),
+    lastName: lastNames.map((r) => r.lastName),
+    email: emails.map((r) => r.email),
+    title: titles.map((r) => r.title).filter((t): t is string => !!t),
+    supervisors,
+  };
 }
 
 /** All active users — used by the task assignee picker (any authenticated user). */
