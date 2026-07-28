@@ -20,9 +20,11 @@ import {
 import { api, ApiError, exportTasksToExcel } from '../api/client';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
+import { dashboardStatPatch, effectiveFilters, nowContext } from '../lib/taskSearch';
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
 import { FilterPopover } from '../components/FilterPopover';
+import { TaskDashboard } from '../components/TaskDashboard';
 
 interface ColumnState {
   key: TaskColumnKey;
@@ -37,6 +39,7 @@ interface PersistedState {
   page: number;
   pageSize: number;
   nestGlobal: boolean;
+  dashboardCollapsed: boolean;
 }
 
 const UNASSIGNED = '__unassigned__';
@@ -52,12 +55,6 @@ function isSortable(key: TaskColumnKey): key is TaskSortField {
 
 function fmt(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : '—';
-}
-
-/** Append end-of-day to a bare YYYY-MM-DD "to" bound so the range is inclusive. */
-function endOfDay(v: string | null | undefined): string | null | undefined {
-  if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T23:59:59.999`;
-  return v;
 }
 
 /** Reconcile persisted columns with the current column set (tolerate additions). */
@@ -103,6 +100,7 @@ export function TaskSearchPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [nestGlobal, setNestGlobal] = useState(false);
+  const [dashboardCollapsed, setDashboardCollapsed] = useState(false);
 
   // Per-row collapse in nested mode (client-side hide of a parent's subtree).
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
@@ -136,6 +134,7 @@ export function TaskSearchPage() {
           if (typeof s.page === 'number' && s.page >= 1) setPage(s.page);
           if (typeof s.pageSize === 'number') setPageSize(s.pageSize);
           if (typeof s.nestGlobal === 'boolean') setNestGlobal(s.nestGlobal);
+          if (typeof s.dashboardCollapsed === 'boolean') setDashboardCollapsed(s.dashboardCollapsed);
         }
       })
       .catch(() => {})
@@ -144,8 +143,8 @@ export function TaskSearchPage() {
 
   // --- Persist state (debounced) after hydration ---------------------------
   const snapshot = useMemo<PersistedState>(
-    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal }),
-    [searchText, filters, sort, columns, page, pageSize, nestGlobal],
+    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal, dashboardCollapsed }),
+    [searchText, filters, sort, columns, page, pageSize, nestGlobal, dashboardCollapsed],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -157,15 +156,13 @@ export function TaskSearchPage() {
     setLoading(true);
     const req: TaskSearchRequest = {
       text: debouncedText.trim() || undefined,
-      filters: {
-        ...filters,
-        startTo: endOfDay(filters.startTo),
-        dueTo: endOfDay(filters.dueTo),
-      },
+      filters: effectiveFilters(filters),
       sort,
       page,
       pageSize,
       nest: nestGlobal,
+      // Clock context for the overdue / completed-today quick-filters.
+      ...nowContext(),
     };
     try {
       const res = await api.queryTasks(req);
@@ -197,6 +194,9 @@ export function TaskSearchPage() {
     setSort((s) => cycleSort(s, key, additive));
     setPage(1);
   };
+  // Clicking a dashboard count applies/toggles its quick-filter (single-select),
+  // layering on top of any popover filters already set.
+  const onSelectStat = (key: string) => patchFilters(dashboardStatPatch(filters, key));
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -277,15 +277,19 @@ export function TaskSearchPage() {
     !!filters.dueFrom ||
     !!filters.dueTo ||
     filters.includeNoStart === false ||
-    filters.includeNoDue === false;
+    filters.includeNoDue === false ||
+    !!filters.overdue ||
+    !!filters.completedToday ||
+    !!filters.relation;
 
   async function handleExport() {
     setExporting(true);
     try {
       await exportTasksToExcel({
         text: debouncedText.trim() || undefined,
-        filters: { ...filters, startTo: endOfDay(filters.startTo), dueTo: endOfDay(filters.dueTo) },
+        filters: effectiveFilters(filters),
         sort,
+        ...nowContext(),
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Export failed');
@@ -501,6 +505,15 @@ export function TaskSearchPage() {
           <button>New task</button>
         </Link>
       </div>
+
+      {/* Dashboard: collapsible counts for the current filtered result set */}
+      <TaskDashboard
+        text={debouncedText}
+        filters={filters}
+        collapsed={dashboardCollapsed}
+        onToggleCollapsed={() => setDashboardCollapsed((v) => !v)}
+        onSelectStat={onSelectStat}
+      />
 
       {/* Search (separate from filters) */}
       <div className="search-row">

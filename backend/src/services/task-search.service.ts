@@ -4,12 +4,16 @@ import { toUserRef } from './user.mapper.js';
 import { listAllTags } from './task.service.js';
 import {
   DEFAULT_PAGE_SIZE,
+  TASK_STATUSES,
+  TERMINAL_TASK_STATUSES,
   type PaginatedResult,
   type SortDirection,
+  type TaskDashboardDto,
   type TaskRowDto,
   type TaskSortField,
+  type TaskStatus,
 } from '@healthy-tasks/shared';
-import type { TaskSearchInput } from '../validation/schemas.js';
+import type { TaskDashboardInput, TaskSearchInput } from '../validation/schemas.js';
 
 // Hard cap on export size to bound memory (well above realistic result sets).
 const EXPORT_MAX_ROWS = 10000;
@@ -78,7 +82,34 @@ function dateRangeWhere(
   return { [field]: range };
 }
 
-async function buildWhere(input: TaskSearchInput): Promise<Prisma.TaskWhereInput> {
+// --- Dashboard quick-filter fragments (Phase 7) ----------------------------
+// Shared by buildWhere (when a quick-filter is the active filter) and by the
+// dashboard tallies, so each count matches exactly what its filter would show.
+
+/** Not Completed/Canceled, with a Due Date strictly before `now`. */
+function overdueWhere(now: Date): Prisma.TaskWhereInput {
+  // `dueAt < now` already excludes null due dates (null is never < now).
+  return { status: { notIn: [...TERMINAL_TASK_STATUSES] }, dueAt: { lt: now } };
+}
+
+/** Completed, with a Status-changed timestamp within [start, end). */
+function completedTodayWhere(start: Date, end: Date): Prisma.TaskWhereInput {
+  return { status: 'Completed', statusChangedAt: { gte: start, lt: end } };
+}
+
+/** One of the mutually-exclusive Parent/Child buckets (see TaskRelationFilter). */
+function relationWhere(rel: 'parent' | 'child' | 'standalone'): Prisma.TaskWhereInput {
+  switch (rel) {
+    case 'child':
+      return { parentId: { not: null } };
+    case 'parent':
+      return { parentId: null, children: { some: {} } };
+    case 'standalone':
+      return { parentId: null, children: { none: {} } };
+  }
+}
+
+async function buildWhere(input: TaskSearchInput | TaskDashboardInput): Promise<Prisma.TaskWhereInput> {
   const and: Prisma.TaskWhereInput[] = [];
   const f = input.filters ?? {};
 
@@ -111,6 +142,15 @@ async function buildWhere(input: TaskSearchInput): Promise<Prisma.TaskWhereInput
 
   const dueRange = dateRangeWhere('dueAt', f.dueFrom, f.dueTo, f.includeNoDue ?? true);
   if (dueRange) and.push(dueRange);
+
+  // Dashboard quick-filters. `overdue`/`completedToday` are time-relative and
+  // use the client-supplied clock context (falling back to server "now" if a
+  // caller omits it); a missing calendar-day window makes completedToday a no-op.
+  if (f.overdue) and.push(overdueWhere(input.now ?? new Date()));
+  if (f.completedToday && input.todayStart && input.todayEnd) {
+    and.push(completedTodayWhere(input.todayStart, input.todayEnd));
+  }
+  if (f.relation) and.push(relationWhere(f.relation));
 
   return and.length > 0 ? { AND: and } : {};
 }
@@ -223,6 +263,43 @@ function buildNestedOrder(dtos: TaskRowDto[]): TaskRowDto[] {
     if (d.parentId == null || !idSet.has(d.parentId)) emit(d, 0);
   }
   return out;
+}
+
+/**
+ * Dashboard counts for the current filtered/searched result set (Phase 7).
+ *
+ * Everything is computed against the same `where` the grid uses, so every tally
+ * reflects the active search text + filters. The Parent/Child buckets partition
+ * the set (child ∪ parent ∪ standalone = all), and the per-status counts also
+ * sum to the total. Overdue and Completed-Today use the caller's clock context.
+ */
+export async function getTaskDashboard(input: TaskDashboardInput): Promise<TaskDashboardDto> {
+  const where = await buildWhere(input);
+  const and = (extra: Prisma.TaskWhereInput): Prisma.TaskWhereInput => ({ AND: [where, extra] });
+
+  // One consistent snapshot so the Parent/Child buckets and status tallies sum
+  // exactly to the total even under concurrent writes.
+  const { byStatusGroups, child, parent, standalone, overdue, completedToday } =
+    await prisma.$transaction(async (tx) => {
+      const [byStatusGroups, child, parent, standalone, overdue, completedToday] = await Promise.all([
+        tx.task.groupBy({ by: ['status'], where, _count: { _all: true }, orderBy: { status: 'asc' } }),
+        tx.task.count({ where: and(relationWhere('child')) }),
+        tx.task.count({ where: and(relationWhere('parent')) }),
+        tx.task.count({ where: and(relationWhere('standalone')) }),
+        tx.task.count({ where: and(overdueWhere(input.now)) }),
+        tx.task.count({ where: and(completedTodayWhere(input.todayStart, input.todayEnd)) }),
+      ]);
+      return { byStatusGroups, child, parent, standalone, overdue, completedToday };
+    });
+
+  const byStatus = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
+  let total = 0;
+  for (const g of byStatusGroups) {
+    byStatus[g.status] = g._count._all;
+    total += g._count._all;
+  }
+
+  return { total, parent, child, standalone, byStatus, overdue, completedToday };
 }
 
 /** Same query as searchTasks but unpaginated (capped) — for Excel export. */

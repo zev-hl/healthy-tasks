@@ -11,6 +11,7 @@ import {
   confirmAttachmentSchema,
   createCommentSchema,
   taskSearchSchema,
+  taskDashboardSchema,
 } from '../validation/schemas.js';
 import {
   createTaskController,
@@ -21,6 +22,7 @@ import {
   getTaskHistoryController,
   searchTasksController,
   queryTasksController,
+  dashboardController,
   exportTasksController,
   setParentController,
   clearParentController,
@@ -49,6 +51,8 @@ tasksRouter.get('/tags', asyncHandler(listTagsController));
 // Task Search screen (Phase 6): POST bodies carry filters/sort/pagination.
 tasksRouter.post('/query', validateBody(taskSearchSchema), asyncHandler(queryTasksController));
 tasksRouter.post('/export', validateBody(taskSearchSchema), asyncHandler(exportTasksController));
+// Task Search dashboard (Phase 7): counts for the current filtered result set.
+tasksRouter.post('/dashboard', validateBody(taskDashboardSchema), asyncHandler(dashboardController));
 
 tasksRouter.get('/:id', asyncHandler(getTaskController));
 tasksRouter.get('/:id/history', asyncHandler(getTaskHistoryController));
