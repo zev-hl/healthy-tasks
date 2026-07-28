@@ -1977,3 +1977,264 @@ describe('screen preferences (Phase 6)', () => {
     assert.equal(bad.status, 400);
   });
 });
+
+// --- Phase 8: notifications, reminders, preferences ------------------------
+
+interface NotifShape {
+  mentioned: {
+    id: string;
+    taskId: number;
+    taskName: string;
+    commentAt: string;
+    commenter: { email: string };
+    commentHtml: string;
+    read: boolean;
+  }[];
+  reminders: {
+    id: string;
+    taskId: number;
+    startAt: string | null;
+    priority: string;
+    leadMinutes: number;
+    read: boolean;
+  }[];
+  assigned: {
+    id: string;
+    taskId: number;
+    startAt: string | null;
+    priority: string;
+    action: string;
+    read: boolean;
+  }[];
+}
+
+async function getNotifs(token: string, filter?: string): Promise<NotifShape> {
+  const url = filter ? `/api/notifications?filter=${filter}` : '/api/notifications';
+  const res = await request(app).get(url).set(auth(token));
+  assert.equal(res.status, 200, `notifications failed: ${JSON.stringify(res.body)}`);
+  return res.body as NotifShape;
+}
+
+async function unread(token: string) {
+  const res = await request(app).get('/api/notifications/unread-count').set(auth(token));
+  assert.equal(res.status, 200, `unread failed: ${JSON.stringify(res.body)}`);
+  return res.body as { total: number; mentioned: number; reminders: number; assigned: number };
+}
+
+async function setPrefs(token: string, patch: Record<string, boolean>) {
+  const res = await request(app).put('/api/notifications/preferences').set(auth(token)).send(patch);
+  assert.equal(res.status, 200, `prefs failed: ${JSON.stringify(res.body)}`);
+  return res.body as Record<string, boolean>;
+}
+
+async function addComment(token: string, taskId: number, body: string) {
+  const res = await request(app).post(`/api/tasks/${taskId}/comments`).set(auth(token)).send({ body });
+  assert.equal(res.status, 201, `comment failed: ${JSON.stringify(res.body)}`);
+  return res.body as { comments: { id: string }[] };
+}
+
+/** Capture console output while running fn (the dev mailer prints emails there). */
+async function captureConsole(fn: () => Promise<void>): Promise<string> {
+  const orig = console.log;
+  const lines: string[] = [];
+  // eslint-disable-next-line no-console
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map((a) => String(a)).join(' '));
+  };
+  try {
+    await fn();
+  } finally {
+    console.log = orig;
+  }
+  return lines.join('\n');
+}
+
+describe('notifications: Mentioned (Phase 8)', () => {
+  it('creates a notification, lists/counts it, marks read, and filters by state', async () => {
+    const admin = await adminToken();
+    const u = await seedUser({ email: 'm8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const uTok = await login('m8@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Mention task');
+    await addComment(admin, t.id, `<p>hi ${mention(u.id, 'm8')}</p>`);
+
+    const list = await getNotifs(uTok);
+    assert.equal(list.mentioned.length, 1);
+    assert.equal(list.mentioned[0]?.taskId, t.id);
+    assert.equal(list.mentioned[0]?.read, false);
+    assert.equal((await unread(uTok)).mentioned, 1);
+    assert.equal((await unread(uTok)).total, 1);
+
+    const nid = list.mentioned[0]!.id;
+    const mr = await request(app).post(`/api/notifications/${nid}/read`).set(auth(uTok));
+    assert.equal(mr.status, 204);
+    assert.equal((await unread(uTok)).mentioned, 0);
+
+    assert.equal((await getNotifs(uTok, 'unread')).mentioned.length, 0);
+    assert.equal((await getNotifs(uTok, 'read')).mentioned.length, 1);
+    assert.equal((await getNotifs(uTok, 'all')).mentioned.length, 1);
+  });
+
+  it('does not notify the comment author for their own mention', async () => {
+    const admin = await adminToken();
+    const adminUser = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
+    const t = await makeTask(admin, 'Self mention');
+    await addComment(admin, t.id, `<p>note ${mention(adminUser!.id, 'me')}</p>`);
+    assert.equal((await getNotifs(admin)).mentioned.length, 0);
+  });
+
+  it('respects the 15-minute gate end-to-end (no duplicate within the window)', async () => {
+    const admin = await adminToken();
+    const u = await seedUser({ email: 'gate8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const uTok = await login('gate8@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Gate');
+    const span = mention(u.id, 'g');
+    const detail = await addComment(admin, t.id, `<p>hi ${span}</p>`);
+    const commentId = detail.comments[0]!.id;
+
+    await request(app)
+      .patch(`/api/comments/${commentId}`)
+      .set(auth(admin))
+      .send({ body: `<p>edit ${span}</p>` });
+    assert.equal((await getNotifs(uTok)).mentioned.length, 1, 'no duplicate within 15 min');
+
+    // Back-date the underlying event past the window, then edit again.
+    await prisma.mentionEvent.updateMany({
+      where: { commentId, userId: u.id },
+      data: { createdAt: new Date(Date.now() - 16 * 60 * 1000) },
+    });
+    await request(app)
+      .patch(`/api/comments/${commentId}`)
+      .set(auth(admin))
+      .send({ body: `<p>again ${span}</p>` });
+    assert.equal((await getNotifs(uTok)).mentioned.length, 2, 'new notification after the window');
+  });
+});
+
+describe('notifications: Assigned (Phase 8)', () => {
+  it('notifies on assign and unassign, but skips self-assignment', async () => {
+    const admin = await adminToken();
+    const u = await seedUser({ email: 'asg8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const uTok = await login('asg8@test.local', MEMBER_PASSWORD);
+
+    const t = await makeTask(admin, 'Assign8', { assigneeId: u.id });
+    let list = await getNotifs(uTok);
+    assert.equal(list.assigned.length, 1);
+    assert.equal(list.assigned[0]?.action, 'added');
+    assert.equal(list.assigned[0]?.taskId, t.id);
+
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: null });
+    list = await getNotifs(uTok);
+    assert.equal(list.assigned.length, 2);
+    assert.equal(list.assigned[0]?.action, 'removed', 'newest first');
+
+    const adminUser = await prisma.user.findUnique({ where: { email: ADMIN_EMAIL } });
+    const t2 = await makeTask(admin, 'SelfAssign');
+    await request(app)
+      .patch(`/api/tasks/${t2.id}`)
+      .set(auth(admin))
+      .send({ assigneeId: adminUser!.id });
+    assert.equal((await getNotifs(admin)).assigned.length, 0, 'self-assignment not notified');
+  });
+});
+
+describe('notifications: Reminders (Phase 8)', () => {
+  it('surfaces only when due and hides reminders on tasks with no Start', async () => {
+    const admin = await adminToken();
+    const startSoon = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // +30 min
+    const t = await makeTask(admin, 'Reminder task', { startAt: startSoon });
+
+    // 15-min lead surfaces at start-15m (= +15 min): not due yet.
+    const r15 = await request(app)
+      .post(`/api/tasks/${t.id}/reminders`)
+      .set(auth(admin))
+      .send({ leadMinutes: 15 });
+    assert.equal(r15.status, 201);
+    // 60-min lead surfaces at start-60m (= -30 min): due now.
+    const r60 = await request(app)
+      .post(`/api/tasks/${t.id}/reminders`)
+      .set(auth(admin))
+      .send({ leadMinutes: 60 });
+    assert.equal(r60.status, 201);
+
+    // A task with no Start never surfaces its reminder.
+    const t2 = await makeTask(admin, 'No start');
+    await request(app).post(`/api/tasks/${t2.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+
+    const list = await getNotifs(admin);
+    assert.equal(list.reminders.length, 1, 'only the due (60-min lead) reminder surfaces');
+    assert.equal(list.reminders[0]?.id, r60.body.id);
+    assert.equal((await unread(admin)).reminders, 1);
+
+    // Task detail shows all of the user's reminders on the task (management view).
+    const onTask = await request(app).get(`/api/tasks/${t.id}/reminders`).set(auth(admin));
+    assert.equal(onTask.body.length, 2);
+
+    // Mark read → drops from the unread count but stays in the list.
+    await request(app).post(`/api/reminders/${r60.body.id}/read`).set(auth(admin));
+    assert.equal((await unread(admin)).reminders, 0);
+    assert.equal((await getNotifs(admin)).reminders[0]?.read, true);
+
+    // Remove → gone from both the Reminders list and the task's reminders.
+    const del = await request(app).delete(`/api/reminders/${r60.body.id}`).set(auth(admin));
+    assert.equal(del.status, 204);
+    assert.equal((await getNotifs(admin)).reminders.length, 0);
+    const onTaskAfter = await request(app).get(`/api/tasks/${t.id}/reminders`).set(auth(admin));
+    assert.equal(onTaskAfter.body.length, 1);
+  });
+});
+
+describe('notifications: preferences (Phase 8)', () => {
+  it('opting out stops new notifications but keeps existing ones', async () => {
+    const admin = await adminToken();
+    const u = await seedUser({ email: 'opt8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const uTok = await login('opt8@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Opt task');
+
+    await addComment(admin, t.id, `<p>a ${mention(u.id, 'u')}</p>`);
+    assert.equal((await getNotifs(uTok)).mentioned.length, 1);
+
+    await setPrefs(uTok, { mentionedInApp: false });
+    await addComment(admin, t.id, `<p>b ${mention(u.id, 'u')}</p>`);
+    assert.equal(
+      (await getNotifs(uTok)).mentioned.length,
+      1,
+      'no new notification while opted out; the existing one remains',
+    );
+  });
+
+  it('opting out of Reminders suppresses the live list and count', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Rem opt', { startAt: new Date(Date.now() - 1000).toISOString() });
+    await request(app).post(`/api/tasks/${t.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    assert.equal((await getNotifs(admin)).reminders.length, 1);
+
+    await setPrefs(admin, { remindersInApp: false });
+    assert.equal((await getNotifs(admin)).reminders.length, 0);
+    assert.equal((await unread(admin)).reminders, 0);
+  });
+
+  it('sends (logs) an email when "also email me" is enabled', async () => {
+    const admin = await adminToken();
+    const u = await seedUser({ email: 'email8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const uTok = await login('email8@test.local', MEMBER_PASSWORD);
+    await setPrefs(uTok, { mentionedEmail: true });
+    const t = await makeTask(admin, 'Email task');
+
+    const out = await captureConsole(async () => {
+      await addComment(admin, t.id, `<p>ping ${mention(u.id, 'e')}</p>`);
+    });
+    assert.match(out, /email8@test\.local/);
+    assert.match(out, /mentioned/i);
+
+    // Reminder email fires on the polling heartbeat (unread-count).
+    await setPrefs(admin, { remindersEmail: true });
+    const t2 = await makeTask(admin, 'Rem email', {
+      startAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    await request(app).post(`/api/tasks/${t2.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    const out2 = await captureConsole(async () => {
+      await unread(admin);
+    });
+    assert.match(out2, /Reminder:/);
+  });
+});

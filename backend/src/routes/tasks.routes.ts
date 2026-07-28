@@ -35,6 +35,11 @@ import {
   createTaskAttachmentController,
 } from '../controllers/attachments.controller.js';
 import { createCommentController } from '../controllers/comments.controller.js';
+import {
+  addTaskReminderController,
+  listTaskRemindersController,
+} from '../controllers/reminders.controller.js';
+import { addReminderSchema } from '../validation/schemas.js';
 
 // All task routes require authentication; any authenticated user may create,
 // read, list, edit, and manage relationships of tasks (no per-user restriction).
@@ -93,4 +98,12 @@ tasksRouter.post(
   '/:id/comments',
   validateBody(createCommentSchema),
   asyncHandler(createCommentController),
+);
+
+// Reminders (Phase 8): the current user's personal reminders on this task.
+tasksRouter.get('/:id/reminders', asyncHandler(listTaskRemindersController));
+tasksRouter.post(
+  '/:id/reminders',
+  validateBody(addReminderSchema),
+  asyncHandler(addTaskReminderController),
 );

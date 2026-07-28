@@ -1049,3 +1049,134 @@ button.dash-stat:hover {
   color: var(--muted);
   white-space: nowrap;
 }
+
+/* ===== Phase 8: Notifications ===== */
+
+/* Bell + unread badge */
+.bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.bell-badge {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.6rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Notification lists */
+.notif-section {
+  margin-bottom: 1rem;
+}
+.notif-section h3 {
+  margin: 0 0 0.5rem;
+}
+.notif-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.notif-table {
+  min-width: 0;
+  width: 100%;
+}
+.notif-table th,
+.notif-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.4rem 0.6rem;
+}
+.notif-table .comment-cell {
+  white-space: normal;
+  max-width: 34rem;
+}
+.notif-table .comment-cell .rich-text {
+  margin: 0;
+}
+tr.unread-row td {
+  background: #eff6ff;
+}
+.unread-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--primary);
+  vertical-align: middle;
+}
+
+/* Segmented All / Unread / Read filter */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.seg-btn {
+  background: var(--panel);
+  border: none;
+  border-right: 1px solid var(--border);
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.seg-btn:last-child {
+  border-right: none;
+}
+.seg-btn.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* Notification preferences table */
+.prefs-table th,
+.prefs-table td {
+  text-align: left;
+  padding: 0.4rem 0.9rem 0.4rem 0;
+}
+.prefs-table th:not(:first-child),
+.prefs-table td:not(:first-child) {
+  text-align: center;
+}
+
+/* Reminders on task detail */
+.reminder-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+}
+.reminder-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.reminder-list li:last-child {
+  border-bottom: none;
+}
+.reminder-add {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.reminder-add select {
+  width: auto;
+}
