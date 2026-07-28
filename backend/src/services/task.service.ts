@@ -7,6 +7,7 @@ import {
   recordHistory,
   type TaskFieldValues,
 } from './task-history.service.js';
+import { createAssignedNotification } from './notification.service.js';
 import type { CreateTaskInput, UpdateTaskInput } from '../validation/schemas.js';
 import {
   taskInclude,
@@ -102,6 +103,18 @@ export async function createTask(creatorId: string, input: CreateTaskInput): Pro
     },
     include: taskInclude,
   });
+
+  // Assigned notification for the initial assignee (skipped if they assigned
+  // themselves; handled inside createAssignedNotification).
+  if (task.assigneeId) {
+    await createAssignedNotification({
+      recipientId: task.assigneeId,
+      actorId: creatorId,
+      taskId: task.id,
+      action: 'added',
+    });
+  }
+
   return toTaskDto(task as TaskWithRefs);
 }
 
@@ -213,6 +226,27 @@ export async function updateTask(
     await recordHistory(tx, buildTaskFieldEntries({ actorId, taskId: id, before, after, descriptionChanged }));
     return updated;
   });
+
+  // Assigned notifications for an assignee change (post-commit side effect).
+  // Self-changes are skipped inside createAssignedNotification.
+  if (input.assigneeId !== undefined && afterAssigneeId !== existing.assigneeId) {
+    if (existing.assigneeId) {
+      await createAssignedNotification({
+        recipientId: existing.assigneeId,
+        actorId,
+        taskId: id,
+        action: 'removed',
+      });
+    }
+    if (afterAssigneeId) {
+      await createAssignedNotification({
+        recipientId: afterAssigneeId,
+        actorId,
+        taskId: id,
+        action: 'added',
+      });
+    }
+  }
 
   return toTaskDto(task as TaskWithRefs);
 }

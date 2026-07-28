@@ -4,6 +4,7 @@ import type { TaskDetailDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { TaskDetailView } from '../components/TaskDetailView';
+import { TaskReminders } from '../components/TaskReminders';
 
 export function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,5 +42,10 @@ export function TaskDetailPage() {
 
   // Keyed by id so navigating between tasks remounts with fresh edit state.
   // TaskDetailView owns the task from here and updates it in place on each save.
-  return <TaskDetailView key={task.id} initialTask={task} currentUser={user} />;
+  return (
+    <>
+      <TaskDetailView key={task.id} initialTask={task} currentUser={user} />
+      <TaskReminders key={`reminders-${task.id}`} taskId={task.id} />
+    </>
+  );
 }

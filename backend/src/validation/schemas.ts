@@ -275,6 +275,29 @@ export const screenStateSchema = z.object({
   state: z.record(z.string(), z.unknown()),
 });
 
+// --- Notifications & reminders (Phase 8) -----------------------------------
+
+// Lead time in minutes before a task's Start; capped at ~1 year.
+export const addReminderSchema = z.object({
+  leadMinutes: z.number().int().min(0).max(527040),
+});
+
+export const updateNotificationPreferencesSchema = z
+  .object({
+    mentionedInApp: z.boolean().optional(),
+    mentionedEmail: z.boolean().optional(),
+    remindersInApp: z.boolean().optional(),
+    remindersEmail: z.boolean().optional(),
+    assignedInApp: z.boolean().optional(),
+    assignedEmail: z.boolean().optional(),
+  })
+  .strict();
+
+export type AddReminderInput = z.infer<typeof addReminderSchema>;
+export type UpdateNotificationPreferencesInput = z.infer<
+  typeof updateNotificationPreferencesSchema
+>;
+
 export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 export type TaskDashboardInput = z.infer<typeof taskDashboardSchema>;
 export type UserSearchInput = z.infer<typeof userSearchSchema>;

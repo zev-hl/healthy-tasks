@@ -699,3 +699,125 @@ export interface UserSearchRequest {
   page?: number;
   pageSize?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Notifications (Phase 8)
+// ---------------------------------------------------------------------------
+
+/** The three notification lists. Also the keys for per-list preferences. */
+export const NOTIFICATION_LISTS = ['mentioned', 'reminders', 'assigned'] as const;
+export type NotificationList = (typeof NOTIFICATION_LISTS)[number];
+
+export const NOTIFICATION_LIST_LABELS: Record<NotificationList, string> = {
+  mentioned: 'Mentioned',
+  reminders: 'Reminders',
+  assigned: 'Assigned',
+};
+
+/** Read/unread filter offered on the Mentioned list. */
+export const MENTIONED_FILTERS = ['all', 'unread', 'read'] as const;
+export type MentionedFilter = (typeof MENTIONED_FILTERS)[number];
+
+/** Whether an Assigned entry was for the user being added or removed as assignee. */
+export type AssignAction = 'added' | 'removed';
+
+/** A row in the Mentioned list (from a comment @mention). */
+export interface MentionedNotificationDto {
+  id: string; // Notification id (for mark-read)
+  taskId: number;
+  taskName: string;
+  commentAt: string; // ISO — the comment's timestamp
+  commenter: TaskUserRef;
+  commentHtml: string; // sanitized rich-text body
+  read: boolean;
+}
+
+/** A row in the Reminders list (a personal reminder that has become due). */
+export interface ReminderNotificationDto {
+  id: string; // Reminder id (for mark-read / remove)
+  taskId: number;
+  taskName: string;
+  startAt: string | null; // ISO — the task's Start Date & Time
+  priority: TaskPriority;
+  leadMinutes: number;
+  read: boolean;
+}
+
+/** A row in the Assigned list (assignee added/removed). */
+export interface AssignedNotificationDto {
+  id: string; // Notification id (for mark-read)
+  taskId: number;
+  taskName: string;
+  startAt: string | null; // ISO — the task's Start Date & Time
+  priority: TaskPriority;
+  action: AssignAction;
+  createdAt: string; // ISO
+  read: boolean;
+}
+
+/** The full Notifications screen payload. */
+export interface NotificationsDto {
+  mentioned: MentionedNotificationDto[];
+  reminders: ReminderNotificationDto[];
+  assigned: AssignedNotificationDto[];
+}
+
+/** Unread tallies used by the bell badge (total) and, if useful, per list. */
+export interface UnreadCountDto {
+  total: number;
+  mentioned: number;
+  reminders: number;
+  assigned: number;
+}
+
+// --- Reminders (task-detail management) ------------------------------------
+
+/**
+ * Preset lead times offered when adding a reminder, in minutes before the
+ * task's Start Date & Time. Stored as a raw minute count so custom values
+ * remain representable.
+ */
+export const REMINDER_LEAD_OPTIONS: { minutes: number; label: string }[] = [
+  { minutes: 0, label: 'At start time' },
+  { minutes: 15, label: '15 minutes before' },
+  { minutes: 30, label: '30 minutes before' },
+  { minutes: 60, label: '1 hour before' },
+  { minutes: 120, label: '2 hours before' },
+  { minutes: 1440, label: '1 day before' },
+  { minutes: 2880, label: '2 days before' },
+  { minutes: 10080, label: '1 week before' },
+];
+
+/** Human label for a lead time (falls back to "N minutes before"). */
+export function reminderLeadLabel(minutes: number): string {
+  return (
+    REMINDER_LEAD_OPTIONS.find((o) => o.minutes === minutes)?.label ??
+    `${minutes} minutes before`
+  );
+}
+
+/** The current user's reminder on a task (shown on the Task Detail page). */
+export interface ReminderDto {
+  id: string;
+  taskId: number;
+  leadMinutes: number;
+  createdAt: string; // ISO
+}
+
+export interface AddReminderRequest {
+  leadMinutes: number;
+}
+
+// --- Notification preferences (user profile) -------------------------------
+
+/** Per-list opt-in plus a per-list "also email me" flag. */
+export interface NotificationPreferencesDto {
+  mentionedInApp: boolean;
+  mentionedEmail: boolean;
+  remindersInApp: boolean;
+  remindersEmail: boolean;
+  assignedInApp: boolean;
+  assignedEmail: boolean;
+}
+
+export type UpdateNotificationPreferencesRequest = Partial<NotificationPreferencesDto>;

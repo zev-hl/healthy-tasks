@@ -71,6 +71,12 @@ model User {
   // Per-screen saved UI state (filters/sort/columns/pagination) — Phase 6.
   screenPrefs UserScreenPref[]
 
+  // Notifications (Phase 8): received notifications, personal reminders, and
+  // this user's per-list notification preferences.
+  notifications          Notification[]
+  reminders              Reminder[]
+  notificationPreference NotificationPreference?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -161,6 +167,10 @@ model Task {
   // Change history (Phase 5).
   history TaskHistory[]
 
+  // Notifications & reminders (Phase 8).
+  notifications Notification[]
+  reminders     Reminder[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -238,6 +248,8 @@ model Comment {
   attachments   Attachment[]
   mentions      CommentMention[]
   mentionEvents MentionEvent[]
+  // Notifications generated from @mentions in this comment (Phase 8).
+  notifications Notification[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -348,4 +360,93 @@ model UserScreenPref {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, screen])
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (Phase 8)
+// ---------------------------------------------------------------------------
+
+// The kinds of notification that generate an inbox entry. Status-change
+// notifications are explicitly out of scope; only these three exist.
+enum NotificationType {
+  mentioned
+  assigned
+}
+
+// For an `assigned` notification: whether the recipient was added or removed as
+// the task's assignee.
+enum AssignAction {
+  added
+  removed
+}
+
+// A recipient-centric notification for the Mentioned and Assigned lists. Rows
+// are generated at event time (a mention firing, or an assignee change) only
+// when the recipient is opted in to that list, and carry their own read state.
+// Reminders are NOT stored here — they are a standing, time-conditional config
+// (see the Reminder model).
+model Notification {
+  id     String           @id @default(uuid())
+  userId String
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   NotificationType
+  taskId Int
+  task   Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // `mentioned` only: the comment that mentioned the user (drives the list's
+  // timestamp / author / text columns).
+  commentId String?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  // `assigned` only: whether the user was added or removed as assignee.
+  assignAction AssignAction?
+
+  // Null until read; set when the user clicks through to the task.
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, type, createdAt])
+  @@index([taskId])
+  @@index([commentId])
+}
+
+// A personal reminder a user attaches to a task. Multiple per (user, task) are
+// allowed. It surfaces in the user's Reminders list only once the current time
+// reaches (task.startAt - leadMinutes); a task with no startAt never surfaces.
+model Reminder {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId Int
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // Lead time (minutes before the task's Start Date/Time) at which to surface.
+  leadMinutes Int
+
+  // Read state once the reminder has surfaced; set on click-through.
+  readAt DateTime?
+  // Stamped when the "also email me" reminder email was sent — sent once, when
+  // the reminder first becomes due (detected during the polling heartbeat).
+  emailSentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([taskId])
+}
+
+// Per-user opt-in for each of the three lists, plus a per-list "also email me"
+// flag. Absent row ⇒ defaults (in-app on, email off) for every list.
+model NotificationPreference {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mentionedInApp Boolean @default(true)
+  mentionedEmail Boolean @default(false)
+  remindersInApp Boolean @default(true)
+  remindersEmail Boolean @default(false)
+  assignedInApp  Boolean @default(true)
+  assignedEmail  Boolean @default(false)
 }

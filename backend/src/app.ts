@@ -8,6 +8,8 @@ import { tasksRouter } from './routes/tasks.routes.js';
 import { commentsRouter } from './routes/comments.routes.js';
 import { attachmentsRouter } from './routes/attachments.routes.js';
 import { preferencesRouter } from './routes/preferences.routes.js';
+import { notificationsRouter } from './routes/notifications.routes.js';
+import { remindersRouter } from './routes/reminders.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp() {
@@ -39,6 +41,8 @@ export function createApp() {
   app.use('/api/comments', commentsRouter);
   app.use('/api/attachments', attachmentsRouter);
   app.use('/api/preferences', preferencesRouter);
+  app.use('/api/notifications', notificationsRouter);
+  app.use('/api/reminders', remindersRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

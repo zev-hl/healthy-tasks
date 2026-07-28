@@ -9,6 +9,7 @@ import {
   extractMentionUserIds,
 } from '../utils/rich-text.js';
 import { recordHistory } from './task-history.service.js';
+import { createMentionNotifications } from './notification.service.js';
 import {
   MENTION_EVENT_DEBOUNCE_MINUTES,
   TASK_HISTORY_FIELDS,
@@ -58,8 +59,11 @@ async function reconcileMentionsAndEvents(
   taskId: number,
   previousIds: string[],
   newIds: string[],
-): Promise<void> {
+): Promise<string[]> {
   const previous = new Set(previousIds);
+  // Users whose mention actually fired an event this save (new, or retained past
+  // the debounce window) — the caller turns these into notifications.
+  const fired: string[] = [];
 
   // Update the current-mention set to exactly newIds.
   if (newIds.length === 0) {
@@ -77,6 +81,7 @@ async function reconcileMentionsAndEvents(
     if (!previous.has(userId)) {
       // Brand-new mention → always an event.
       await tx.mentionEvent.create({ data: { userId, taskId, commentId } });
+      fired.push(userId);
       continue;
     }
     // Retained mention → only if the debounce window has elapsed.
@@ -87,8 +92,10 @@ async function reconcileMentionsAndEvents(
     });
     if (!last || last.createdAt <= cutoff) {
       await tx.mentionEvent.create({ data: { userId, taskId, commentId } });
+      fired.push(userId);
     }
   }
+  return fired;
 }
 
 export async function createComment(
@@ -100,11 +107,14 @@ export async function createComment(
   const clean = prepareBody(body);
   const mentionIds = await activeUserIds(extractMentionUserIds(clean));
 
+  let commentId = '';
+  let fired: string[] = [];
   await prisma.$transaction(async (tx) => {
     const comment = await tx.comment.create({
       data: { taskId, authorId: actor.id, body: clean },
       select: { id: true },
     });
+    commentId = comment.id;
     // History: a comment was added (the text itself is never stored in history).
     await recordHistory(tx, {
       taskId,
@@ -112,9 +122,11 @@ export async function createComment(
       field: TASK_HISTORY_FIELDS.comment,
       changeType: 'added',
     });
-    await reconcileMentionsAndEvents(tx, comment.id, taskId, [], mentionIds);
+    fired = await reconcileMentionsAndEvents(tx, comment.id, taskId, [], mentionIds);
   });
 
+  // Notifications (+ any "also email me" emails) are a post-commit side effect.
+  await createMentionNotifications(taskId, commentId, fired, actor.id);
   return getTaskDetail(taskId);
 }
 
@@ -135,6 +147,7 @@ export async function updateComment(
   const clean = prepareBody(body);
   const mentionIds = await activeUserIds(extractMentionUserIds(clean));
 
+  let fired: string[] = [];
   await prisma.$transaction(async (tx) => {
     const prevRows = await tx.commentMention.findMany({
       where: { commentId },
@@ -152,7 +165,7 @@ export async function updateComment(
       field: TASK_HISTORY_FIELDS.comment,
       changeType: 'updated',
     });
-    await reconcileMentionsAndEvents(
+    fired = await reconcileMentionsAndEvents(
       tx,
       commentId,
       comment.taskId,
@@ -161,6 +174,7 @@ export async function updateComment(
     );
   });
 
+  await createMentionNotifications(comment.taskId, commentId, fired, actor.id);
   return getTaskDetail(comment.taskId);
 }
 

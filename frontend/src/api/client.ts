@@ -11,10 +11,17 @@ import type {
   PaginatedResult,
   PresignAttachmentRequest,
   PresignAttachmentResponse,
+  AddReminderRequest,
+  MentionedFilter,
+  NotificationPreferencesDto,
+  NotificationsDto,
+  ReminderDto,
   ScreenKey,
   TaskDashboardDto,
   TaskDashboardRequest,
   TaskDetailDto,
+  UnreadCountDto,
+  UpdateNotificationPreferencesRequest,
   TaskDto,
   TaskHistoryEntryDto,
   TaskRef,
@@ -250,6 +257,31 @@ export const api = {
     }),
   deleteComment: (commentId: string) =>
     request<TaskDetailDto>(`/api/comments/${commentId}`, { method: 'DELETE' }),
+
+  // --- Notifications (Phase 8) ---
+  getNotifications: (filter: MentionedFilter = 'all') =>
+    request<NotificationsDto>(`/api/notifications?filter=${filter}`),
+  getUnreadCount: () => request<UnreadCountDto>('/api/notifications/unread-count'),
+  markNotificationRead: (id: string) =>
+    request<void>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  getNotificationPreferences: () =>
+    request<NotificationPreferencesDto>('/api/notifications/preferences'),
+  updateNotificationPreferences: (body: UpdateNotificationPreferencesRequest) =>
+    request<NotificationPreferencesDto>('/api/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  // --- Reminders (Phase 8) ---
+  listTaskReminders: (taskId: number) => request<ReminderDto[]>(`/api/tasks/${taskId}/reminders`),
+  addTaskReminder: (taskId: number, body: AddReminderRequest) =>
+    request<ReminderDto>(`/api/tasks/${taskId}/reminders`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  removeReminder: (id: string) => request<void>(`/api/reminders/${id}`, { method: 'DELETE' }),
+  markReminderRead: (id: string) =>
+    request<void>(`/api/reminders/${id}/read`, { method: 'POST' }),
 };
 
 /**
