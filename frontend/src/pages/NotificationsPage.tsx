@@ -9,6 +9,9 @@ import {
 import { api, ApiError } from '../api/client';
 import { RichText } from '../components/RichText';
 import { useNotifications } from '../notifications/NotificationContext';
+import { UserChip } from '../components/ui/Avatar';
+import { PriorityDot } from '../components/ui/indicators';
+import { TableEmptyRow } from '../components/ui/EmptyState';
 
 function fmt(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString() : '—';
@@ -120,18 +123,18 @@ export function NotificationsPage() {
                 {taskIdCell('notification', m.id, m.taskId, m.read)}
                 <td>{m.taskName}</td>
                 <td>{fmt(m.commentAt)}</td>
-                <td>{m.commenter.email}</td>
+                <td>
+                  <UserChip user={m.commenter} />
+                </td>
                 <td className="comment-cell">
                   <RichText html={m.commentHtml} />
                 </td>
               </tr>
             ))}
             {!loading && data.mentioned.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted" style={{ padding: '0.75rem' }}>
-                  No mentions.
-                </td>
-              </tr>
+              <TableEmptyRow colSpan={5} title="No mentions">
+                When someone @mentions you in a comment, it shows up here.
+              </TableEmptyRow>
             )}
           </tbody>
         </table>
@@ -157,7 +160,9 @@ export function NotificationsPage() {
                 {taskIdCell('reminder', r.id, r.taskId, r.read)}
                 <td>{r.taskName}</td>
                 <td>{fmt(r.startAt)}</td>
-                <td>{r.priority}</td>
+                <td>
+                  <PriorityDot priority={r.priority} />
+                </td>
                 <td className="muted">{reminderLeadLabel(r.leadMinutes)}</td>
                 <td>
                   <button className="secondary" onClick={() => void removeReminder(r.id)}>
@@ -167,11 +172,9 @@ export function NotificationsPage() {
               </tr>
             ))}
             {!loading && data.reminders.length === 0 && (
-              <tr>
-                <td colSpan={6} className="muted" style={{ padding: '0.75rem' }}>
-                  No due reminders.
-                </td>
-              </tr>
+              <TableEmptyRow colSpan={6} title="No due reminders">
+                Reminders you set on tasks will appear here as they come due.
+              </TableEmptyRow>
             )}
           </tbody>
         </table>
@@ -196,16 +199,16 @@ export function NotificationsPage() {
                 {taskIdCell('notification', a.id, a.taskId, a.read)}
                 <td>{a.taskName}</td>
                 <td>{fmt(a.startAt)}</td>
-                <td>{a.priority}</td>
+                <td>
+                  <PriorityDot priority={a.priority} />
+                </td>
                 <td className="muted">{a.action === 'added' ? 'Assigned' : 'Unassigned'}</td>
               </tr>
             ))}
             {!loading && data.assigned.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted" style={{ padding: '0.75rem' }}>
-                  No assignment notifications.
-                </td>
-              </tr>
+              <TableEmptyRow colSpan={5} title="No assignment notifications">
+                You&apos;ll be notified here when a task is assigned to or unassigned from you.
+              </TableEmptyRow>
             )}
           </tbody>
         </table>

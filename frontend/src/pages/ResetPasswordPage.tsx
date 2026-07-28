@@ -32,6 +32,12 @@ export function ResetPasswordPage() {
 
   return (
     <div className="auth-container">
+      <div className="auth-brand">
+        <span className="brand-mark" aria-hidden="true">
+          ✓
+        </span>
+        Healthy Tasks
+      </div>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Set a new password</h2>
         {!token && <div className="alert error">Missing reset token in the link.</div>}

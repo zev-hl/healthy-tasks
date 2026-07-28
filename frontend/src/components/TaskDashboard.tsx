@@ -15,6 +15,7 @@ import {
   relationStat,
   statusStat,
 } from '../lib/taskSearch';
+import { AnimatedCount } from './ui/AnimatedCount';
 
 interface TaskDashboardProps {
   /** Debounced search text (raw; trimmed here). */
@@ -80,12 +81,15 @@ export function TaskDashboard({
     const isActive = active.has(key);
     return (
       <button
+        key={key}
         type="button"
         className={`dash-stat${isActive ? ' active' : ''}`}
         aria-pressed={isActive}
         onClick={() => onSelectStat(key)}
       >
-        <span className="dash-stat-value">{value}</span>
+        <span className="dash-stat-value">
+          <AnimatedCount value={value} />
+        </span>
         <span className="dash-stat-label">{label}</span>
       </button>
     );
@@ -99,7 +103,9 @@ export function TaskDashboard({
         aria-expanded={!collapsed}
         onClick={onToggleCollapsed}
       >
-        <span className="dash-caret">{collapsed ? '▸' : '▾'}</span>
+        <span className={`dash-caret${collapsed ? '' : ' open'}`} aria-hidden="true">
+          ▸
+        </span>
         <strong>Dashboard</strong>
         {data && <span className="muted dash-subtitle">Total in view: {data.total}</span>}
         {loading && !data && <span className="muted dash-subtitle">Loading…</span>}

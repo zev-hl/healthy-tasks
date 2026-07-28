@@ -25,6 +25,9 @@ import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
 import { FilterPopover } from '../components/FilterPopover';
 import { TaskDashboard } from '../components/TaskDashboard';
+import { UserChip } from '../components/ui/Avatar';
+import { StatusDot, PriorityDot } from '../components/ui/indicators';
+import { TableEmptyRow } from '../components/ui/EmptyState';
 
 interface ColumnState {
   key: TaskColumnKey;
@@ -79,7 +82,7 @@ function TagsCell({ tags }: { tags: string[] }) {
   return (
     <div className="tags-cell">
       {shown.map((t) => (
-        <span key={t} className="badge role-Member">
+        <span key={t} className="badge tag">
           {t}
         </span>
       ))}
@@ -450,15 +453,19 @@ export function TaskSearchPage() {
       case 'name':
         return row.name;
       case 'status':
-        return TASK_STATUS_LABELS[row.status];
+        return <StatusDot status={row.status} />;
       case 'statusChangedAt':
         return fmt(row.statusChangedAt);
       case 'priority':
-        return row.priority;
+        return <PriorityDot priority={row.priority} />;
       case 'assignee':
-        return row.assignee ? row.assignee.email : <span className="muted">—</span>;
+        return row.assignee ? (
+          <UserChip user={row.assignee} />
+        ) : (
+          <span className="muted">Unassigned</span>
+        );
       case 'creator':
-        return row.creator.email;
+        return <UserChip user={row.creator} />;
       case 'createdAt':
         return fmt(row.createdAt);
       case 'startAt':
@@ -610,15 +617,17 @@ export function TaskSearchPage() {
           </thead>
           <tbody>
             {displayRows.map(({ row, depth, hasChildrenHere }) => (
-              <tr key={row.id}>
+              <tr key={row.id} className={depth > 0 ? 'tree-child-enter' : undefined}>
                 <td style={{ textAlign: 'center' }}>
                   {hasChildrenHere ? (
                     <button
-                      className="tree-toggle"
+                      className={`tree-toggle${collapsed.has(row.id) ? '' : ' expanded'}`}
                       onClick={() => toggleCollapse(row.id)}
                       aria-label={collapsed.has(row.id) ? 'Expand sub-tasks' : 'Collapse sub-tasks'}
                     >
-                      {collapsed.has(row.id) ? '▸' : '▾'}
+                      <span className="caret" aria-hidden="true">
+                        ▸
+                      </span>
                     </button>
                   ) : null}
                 </td>
@@ -629,12 +638,26 @@ export function TaskSearchPage() {
                 ))}
               </tr>
             ))}
-            {!loading && displayRows.length === 0 && (
+            {loading && displayRows.length === 0 && (
               <tr>
-                <td colSpan={visibleColumns.length + 1} className="muted" style={{ padding: '1rem' }}>
-                  No tasks match.
+                <td className="empty-cell" colSpan={visibleColumns.length + 1}>
+                  <div className="empty-state compact">
+                    <span className="loading-inline">
+                      <span className="spinner" /> Loading tasks…
+                    </span>
+                  </div>
                 </td>
               </tr>
+            )}
+            {!loading && displayRows.length === 0 && (
+              <TableEmptyRow
+                colSpan={visibleColumns.length + 1}
+                title={filtersActive || searchText ? 'No tasks match' : 'No tasks yet'}
+              >
+                {filtersActive || searchText
+                  ? 'Try adjusting your filters or search terms.'
+                  : 'Create your first task to get started.'}
+              </TableEmptyRow>
             )}
           </tbody>
         </table>

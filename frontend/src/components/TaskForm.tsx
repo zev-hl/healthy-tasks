@@ -202,7 +202,7 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
           {tags.length === 0 && <span className="muted">No tags</span>}
           {tags.map((t) => (
-            <span key={t} className="badge role-Member">
+            <span key={t} className="badge tag">
               {t}{' '}
               <button
                 type="button"

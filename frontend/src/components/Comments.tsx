@@ -4,6 +4,8 @@ import { api, ApiError } from '../api/client';
 import { RichTextEditor } from './RichTextEditor';
 import { RichText } from './RichText';
 import { AttachmentSection } from './AttachmentSection';
+import { Avatar, userLabel } from './ui/Avatar';
+import { EmptyState } from './ui/EmptyState';
 
 interface Props {
   task: TaskDetailDto;
@@ -137,13 +139,16 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       </div>
 
       {task.comments.length === 0 ? (
-        <p className="muted">No comments yet.</p>
+        <EmptyState compact title="No comments yet">
+          Start the conversation — add the first comment above.
+        </EmptyState>
       ) : (
         <ul className="comment-list">
           {task.comments.map((c) => (
             <li key={c.id} className="comment">
               <div className="comment-head">
-                <span className="comment-author">{c.author.email}</span>
+                <Avatar user={c.author} size="xs" decorative />
+                <span className="comment-author">{userLabel(c.author)}</span>
                 <span className="muted comment-time">
                   {formatDateTime(c.editedAt ?? c.createdAt)}
                   {c.editedAt ? ' (edited)' : ''}

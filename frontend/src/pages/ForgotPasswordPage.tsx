@@ -24,6 +24,12 @@ export function ForgotPasswordPage() {
 
   return (
     <div className="auth-container">
+      <div className="auth-brand">
+        <span className="brand-mark" aria-hidden="true">
+          ✓
+        </span>
+        Healthy Tasks
+      </div>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Reset password</h2>
         {message ? (

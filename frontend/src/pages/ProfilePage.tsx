@@ -6,6 +6,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { Avatar, userLabel } from '../components/ui/Avatar';
 
 export function ProfilePage() {
   const { user } = useAuth();
@@ -44,9 +45,21 @@ export function ProfilePage() {
     <div className="container">
       <h2>Profile</h2>
       <div className="card">
-        <div className="muted">{user?.email}</div>
-        <div className="muted" style={{ fontSize: '0.85rem' }}>
-          {user?.firstName} {user?.lastName} · {user?.role}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+          {user && <Avatar user={user} size="lg" decorative />}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 650, fontSize: '1.05rem' }}>
+              {user ? userLabel(user) : ''}
+            </div>
+            <div className="muted" style={{ fontSize: '0.85rem' }}>
+              {user?.email}
+              {user?.role ? (
+                <span className={`badge role-${user.role}`} style={{ marginLeft: '0.5rem' }}>
+                  {user.role}
+                </span>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
 

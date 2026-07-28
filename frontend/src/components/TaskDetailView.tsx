@@ -20,6 +20,8 @@ import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
 import { TaskPickerModal } from './TaskPickerModal';
 import { TaskHistory } from './TaskHistory';
+import { UserChip } from './ui/Avatar';
+import { StatusDot, PriorityDot } from './ui/indicators';
 import {
   isoToParts,
   partsToIso,
@@ -94,6 +96,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [dueTime, setDueTime] = useState(() => isoToParts(initialTask.dueAt).time);
   const [savingFields, setSavingFields] = useState(false);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
+  // Brief celebratory flash when the task transitions into Completed.
+  const [justCompleted, setJustCompleted] = useState(false);
 
   // Tags (auto-saved).
   const [tagDraft, setTagDraft] = useState('');
@@ -174,6 +178,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setFieldsError('Start must be earlier than Due');
       return;
     }
+    const becameCompleted = status === 'Completed' && task.status !== 'Completed';
     setSavingFields(true);
     try {
       applyTask(
@@ -186,6 +191,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         }),
       );
       setNotice('Task saved.');
+      if (becameCompleted) {
+        setJustCompleted(true);
+        window.setTimeout(() => setJustCompleted(false), 1300);
+      }
     } catch (err) {
       setFieldsError(err instanceof ApiError ? err.message : 'Could not save changes');
     } finally {
@@ -296,7 +305,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {relError && <div className="alert error">{relError}</div>}
 
       {/* Header: inline-editable name + top Save changes + Delete */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
+      <div className={`card${justCompleted ? ' just-completed' : ''}`} style={{ marginBottom: '1rem' }}>
         <div
           style={{
             display: 'flex',
@@ -365,8 +374,26 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             margin: '0.75rem 0 0',
           }}
         >
+          <dt className="muted">Status</dt>
+          <dd style={{ margin: 0 }}>
+            <StatusDot status={task.status} justCompleted={justCompleted} />
+          </dd>
+          <dt className="muted">Priority</dt>
+          <dd style={{ margin: 0 }}>
+            <PriorityDot priority={task.priority} />
+          </dd>
+          <dt className="muted">Assignee</dt>
+          <dd style={{ margin: 0 }}>
+            {task.assignee ? (
+              <UserChip user={task.assignee} />
+            ) : (
+              <span className="muted">Unassigned</span>
+            )}
+          </dd>
           <dt className="muted">Creator</dt>
-          <dd style={{ margin: 0 }}>{task.creator.email}</dd>
+          <dd style={{ margin: 0 }}>
+            <UserChip user={task.creator} />
+          </dd>
           <dt className="muted">Created</dt>
           <dd style={{ margin: 0 }}>{formatDateTime(task.createdAt)}</dd>
           <dt className="muted">Status changed</dt>
@@ -534,7 +561,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
           {task.tags.length === 0 && <span className="muted">No tags</span>}
           {task.tags.map((t) => (
-            <span key={t} className="badge role-Member">
+            <span key={t} className="badge tag">
               {t}{' '}
               <button
                 type="button"

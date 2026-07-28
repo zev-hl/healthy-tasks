@@ -16,6 +16,8 @@ import { MergeUsersModal } from '../components/MergeUsersModal';
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
 import { FilterPopover } from '../components/FilterPopover';
+import { UserChip } from '../components/ui/Avatar';
+import { TableEmptyRow } from '../components/ui/EmptyState';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
 
@@ -286,7 +288,9 @@ export function UsersPage() {
                       </button>
                     )}
                   </td>
-                  <td>{u.email}</td>
+                  <td>
+                    <UserChip user={u} label={u.email} />
+                  </td>
                   <td>{u.firstName || <span className="muted">—</span>}</td>
                   <td>{u.lastName || <span className="muted">—</span>}</td>
                   <td>
@@ -331,11 +335,9 @@ export function UsersPage() {
               );
             })}
             {!loading && rows.length === 0 && (
-              <tr>
-                <td colSpan={COLUMNS.length + 2} className="muted" style={{ padding: '1rem' }}>
-                  No users match.
-                </td>
-              </tr>
+              <TableEmptyRow colSpan={COLUMNS.length + 2} title="No users match">
+                Try adjusting your filters, or add a new user.
+              </TableEmptyRow>
             )}
           </tbody>
         </table>
