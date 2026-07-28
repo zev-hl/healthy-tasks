@@ -4,12 +4,12 @@ import { toUserRef } from './user.mapper.js';
 
 /** A TaskHistory row with its (optional) actor joined in. */
 export type TaskHistoryWithUser = TaskHistory & {
-  user: Pick<User, 'id' | 'email' | 'title'> | null;
+  user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'> | null;
 };
 
 /** The Prisma `include` used wherever a TaskHistoryEntryDto is returned. */
 export const taskHistoryInclude = {
-  user: { select: { id: true, email: true, title: true } },
+  user: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
 } as const;
 
 export function toTaskHistoryDto(entry: TaskHistoryWithUser): TaskHistoryEntryDto {

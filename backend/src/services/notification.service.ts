@@ -99,7 +99,13 @@ export async function listNotifications(
     include: {
       task: { select: { name: true } },
       comment: {
-        select: { createdAt: true, body: true, author: { select: { id: true, email: true, title: true } } },
+        select: {
+          createdAt: true,
+          body: true,
+          author: {
+            select: { id: true, email: true, firstName: true, lastName: true, title: true },
+          },
+        },
       },
     },
     orderBy: { createdAt: 'desc' },

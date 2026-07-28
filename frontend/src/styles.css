@@ -1296,6 +1296,19 @@ th.sortable:hover {
 .results-table td {
   white-space: nowrap;
 }
+/* Whole-row click opens the task; interactive cells stop propagation. */
+.results-table tbody tr.row-clickable {
+  cursor: pointer;
+}
+.task-name-link {
+  color: var(--text);
+  font-weight: 500;
+}
+.task-name-link:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
 .tree-toggle {
   background: transparent;
   border: none;

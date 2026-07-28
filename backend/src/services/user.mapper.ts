@@ -6,8 +6,16 @@ import type { UserDto, TaskUserRef } from '@healthy-tasks/shared';
  * (task creator/assignee) and for the assignee picker. Safe to expose to any
  * authenticated user.
  */
-export function toUserRef(user: Pick<User, 'id' | 'email' | 'title'>): TaskUserRef {
-  return { id: user.id, email: user.email, title: user.title };
+export function toUserRef(
+  user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>,
+): TaskUserRef {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    title: user.title,
+  };
 }
 
 /** Convert a Prisma User row into the public DTO (drops passwordHash etc.). */

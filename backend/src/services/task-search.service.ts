@@ -23,8 +23,8 @@ const NEST_MAX_ROWS = 5000;
 // --- Row shape & mapping ---------------------------------------------------
 
 const rowInclude = {
-  creator: { select: { id: true, email: true, title: true } },
-  assignee: { select: { id: true, email: true, title: true } },
+  creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
+  assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
   _count: { select: { children: true } },
 } as const;
 

@@ -4,11 +4,13 @@ import { toUserRef } from './user.mapper.js';
 
 /** The Prisma `include` used wherever an AttachmentDto is returned. */
 export const attachmentInclude = {
-  uploadedBy: { select: { id: true, email: true, title: true } },
+  uploadedBy: {
+    select: { id: true, email: true, firstName: true, lastName: true, title: true },
+  },
 } as const;
 
 export type AttachmentWithUploader = Attachment & {
-  uploadedBy: Pick<User, 'id' | 'email' | 'title'>;
+  uploadedBy: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>;
 };
 
 export function toAttachmentDto(a: AttachmentWithUploader): AttachmentDto {

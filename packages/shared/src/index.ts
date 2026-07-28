@@ -194,6 +194,8 @@ export const BLOCKED_RESTRICTED_STATUSES: readonly TaskStatus[] = ['Review', 'Co
 export interface TaskUserRef {
   id: string;
   email: string;
+  firstName: string;
+  lastName: string;
   title: string | null;
 }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_TASK_COLUMN_ORDER,
@@ -120,6 +120,7 @@ export function TaskSearchPage() {
   const [exporting, setExporting] = useState(false);
 
   const debouncedText = useDebouncedValue(searchText, 350);
+  const navigate = useNavigate();
 
   // --- Load reference data + persisted state (once) ------------------------
   useEffect(() => {
@@ -446,12 +447,20 @@ export function TaskSearchPage() {
     switch (key) {
       case 'id':
         return (
-          <a href={`/tasks/${row.id}`} target="_blank" rel="noopener noreferrer">
+          <Link to={`/tasks/${row.id}`} onClick={(e) => e.stopPropagation()}>
             #{row.id}
-          </a>
+          </Link>
         );
       case 'name':
-        return row.name;
+        return (
+          <Link
+            to={`/tasks/${row.id}`}
+            className="task-name-link"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.name}
+          </Link>
+        );
       case 'status':
         return <StatusDot status={row.status} />;
       case 'statusChangedAt':
@@ -475,9 +484,9 @@ export function TaskSearchPage() {
       case 'parentChild':
         if (row.parentId != null)
           return (
-            <a href={`/tasks/${row.parentId}`} target="_blank" rel="noopener noreferrer">
+            <Link to={`/tasks/${row.parentId}`} onClick={(e) => e.stopPropagation()}>
               ↑ #{row.parentId}
-            </a>
+            </Link>
           );
         if (row.childrenCount > 0) return `${row.childrenCount} sub-task${row.childrenCount === 1 ? '' : 's'}`;
         return <span className="muted">—</span>;
@@ -617,12 +626,19 @@ export function TaskSearchPage() {
           </thead>
           <tbody>
             {displayRows.map(({ row, depth, hasChildrenHere }) => (
-              <tr key={row.id} className={depth > 0 ? 'tree-child-enter' : undefined}>
+              <tr
+                key={row.id}
+                className={`row-clickable${depth > 0 ? ' tree-child-enter' : ''}`}
+                onClick={() => navigate(`/tasks/${row.id}`)}
+              >
                 <td style={{ textAlign: 'center' }}>
                   {hasChildrenHere ? (
                     <button
                       className={`tree-toggle${collapsed.has(row.id) ? '' : ' expanded'}`}
-                      onClick={() => toggleCollapse(row.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleCollapse(row.id);
+                      }}
                       aria-label={collapsed.has(row.id) ? 'Expand sub-tasks' : 'Collapse sub-tasks'}
                     >
                       <span className="caret" aria-hidden="true">
