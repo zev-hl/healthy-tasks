@@ -451,3 +451,191 @@ export interface TaskHistoryEntryDto {
   // Who made the change (null if that account was hard-deleted; normally set).
   user: TaskUserRef | null;
 }
+
+// ---------------------------------------------------------------------------
+// Search, filtering, sorting, pagination (Phase 6)
+// ---------------------------------------------------------------------------
+
+/** Default page size for paged screens (Task Search and Users). */
+export const DEFAULT_PAGE_SIZE = 50;
+export const MAX_PAGE_SIZE = 200;
+
+export type SortDirection = 'asc' | 'desc';
+
+/** A generic paged response envelope, reused by the Task Search and Users lists. */
+export interface PaginatedResult<T> {
+  rows: T[];
+  total: number;
+  page: number; // 1-based
+  pageSize: number;
+}
+
+/** Per-user persisted screen state lives under one of these keys. */
+export const SCREEN_KEYS = ['task-search', 'users'] as const;
+export type ScreenKey = (typeof SCREEN_KEYS)[number];
+
+// --- Task Search columns ---------------------------------------------------
+
+/**
+ * The result-grid columns. All are reorderable/hideable. `parentChild` is the
+ * combined Parent/Child indicator column; `tags` is a display-only chip column.
+ */
+export const TASK_COLUMN_KEYS = [
+  'id',
+  'name',
+  'status',
+  'statusChangedAt',
+  'priority',
+  'assignee',
+  'creator',
+  'createdAt',
+  'startAt',
+  'dueAt',
+  'parentChild',
+  'tags',
+] as const;
+export type TaskColumnKey = (typeof TASK_COLUMN_KEYS)[number];
+
+export const TASK_COLUMN_LABELS: Record<TaskColumnKey, string> = {
+  id: 'Task Id',
+  name: 'Task Name',
+  status: 'Status',
+  statusChangedAt: 'Status Changed',
+  priority: 'Priority',
+  assignee: 'Assignee',
+  creator: 'Creator',
+  createdAt: 'Created',
+  startAt: 'Start',
+  dueAt: 'Due',
+  parentChild: 'Parent / Child',
+  tags: 'Tags',
+};
+
+/** Default left-to-right column order (mirrors the spec's column order, tags last). */
+export const DEFAULT_TASK_COLUMN_ORDER: TaskColumnKey[] = [...TASK_COLUMN_KEYS];
+/** All columns visible by default. */
+export const DEFAULT_VISIBLE_TASK_COLUMNS: TaskColumnKey[] = [...TASK_COLUMN_KEYS];
+
+/**
+ * Sortable task fields. Excludes `tags` (array — not meaningfully sortable) and
+ * maps `parentChild` to the underlying `parentId`. Every other column is sortable.
+ */
+export const TASK_SORT_FIELDS = [
+  'id',
+  'name',
+  'status',
+  'statusChangedAt',
+  'priority',
+  'assignee',
+  'creator',
+  'createdAt',
+  'startAt',
+  'dueAt',
+  'parentChild',
+] as const;
+export type TaskSortField = (typeof TASK_SORT_FIELDS)[number];
+
+export interface TaskSort {
+  field: TaskSortField;
+  dir: SortDirection;
+}
+
+export interface TaskSearchFilters {
+  /** Selected assignee user ids; empty = no assignee filter. */
+  assigneeIds?: string[];
+  /** Include tasks with no assignee (the "Unassigned" option). */
+  includeUnassigned?: boolean;
+  statuses?: TaskStatus[];
+  priorities?: TaskPriority[];
+  tags?: string[]; // task must have at least one of these
+  statusChangedFrom?: string | null; // ISO
+  statusChangedTo?: string | null;
+  startFrom?: string | null;
+  startTo?: string | null;
+  /** Include tasks with no Start Date (default true). */
+  includeNoStart?: boolean;
+  dueFrom?: string | null;
+  dueTo?: string | null;
+  /** Include tasks with no Due Date (default true). */
+  includeNoDue?: boolean;
+}
+
+export interface TaskSearchRequest {
+  text?: string;
+  filters?: TaskSearchFilters;
+  sort?: TaskSort[];
+  page?: number;
+  pageSize?: number;
+  /**
+   * When true, results are nested: every child in the result set is grouped
+   * under its parent (across the whole set, not just the page), each sibling
+   * layer following the same sort order, and the nested sequence is paginated.
+   */
+  nest?: boolean;
+}
+
+/** One row of the Task Search grid (the data behind all 12 columns). */
+export interface TaskRowDto {
+  id: number;
+  name: string;
+  status: TaskStatus;
+  statusChangedAt: string | null;
+  priority: TaskPriority;
+  assignee: TaskUserRef | null;
+  creator: TaskUserRef;
+  createdAt: string;
+  startAt: string | null;
+  dueAt: string | null;
+  parentId: number | null;
+  childrenCount: number;
+  tags: string[];
+  /** Nesting depth in nested (tree) mode; 0 in flat mode. */
+  depth?: number;
+}
+
+// --- Users screen filtering/sorting ----------------------------------------
+
+export const USER_SORT_FIELDS = [
+  'firstName',
+  'lastName',
+  'email',
+  'title',
+  'supervisor',
+  'role',
+  'status',
+] as const;
+export type UserSortField = (typeof USER_SORT_FIELDS)[number];
+
+export interface UserSort {
+  field: UserSortField;
+  dir: SortDirection;
+}
+
+export type UserStatusFilter = 'active' | 'inactive' | 'all';
+
+export interface UserSearchFilters {
+  // Text-like columns filter by an exact multi-select of distinct values.
+  firstName?: string[];
+  lastName?: string[];
+  email?: string[];
+  title?: string[];
+  supervisorIds?: string[]; // match users whose supervisor is one of these
+  roles?: Role[];
+  status?: UserStatusFilter;
+}
+
+/** Distinct values available for each Users-screen filter checklist. */
+export interface UserFilterOptions {
+  firstName: string[];
+  lastName: string[];
+  email: string[];
+  title: string[];
+  supervisors: TaskUserRef[]; // users who supervise at least one person
+}
+
+export interface UserSearchRequest {
+  filters?: UserSearchFilters;
+  sort?: UserSort[];
+  page?: number;
+  pageSize?: number;
+}

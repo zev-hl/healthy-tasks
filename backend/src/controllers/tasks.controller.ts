@@ -1,5 +1,12 @@
 import type { Request, Response } from 'express';
-import type { TaskDetailDto, TaskDto, TaskHistoryEntryDto, TaskRef } from '@healthy-tasks/shared';
+import type {
+  PaginatedResult,
+  TaskDetailDto,
+  TaskDto,
+  TaskHistoryEntryDto,
+  TaskRef,
+  TaskRowDto,
+} from '@healthy-tasks/shared';
 import { HttpError } from '../utils/http-error.js';
 import {
   createTask,
@@ -10,6 +17,9 @@ import {
   updateTask,
 } from '../services/task.service.js';
 import { getTaskHistory } from '../services/task-history.service.js';
+import { searchTasks as searchTaskRows, searchTasksForExport } from '../services/task-search.service.js';
+import { buildTasksWorkbook } from '../services/task-export.service.js';
+import type { TaskSearchInput } from '../validation/schemas.js';
 import {
   addDependency,
   clearParent,
@@ -42,6 +52,25 @@ export async function createTaskController(req: Request, res: Response): Promise
 
 export async function listTasksController(_req: Request, res: Response): Promise<void> {
   res.json((await listTasks()) satisfies TaskDto[]);
+}
+
+/** Task Search screen: filtered/sorted/paged results. */
+export async function queryTasksController(req: Request, res: Response): Promise<void> {
+  const result = await searchTaskRows(req.body as TaskSearchInput);
+  res.json(result satisfies PaginatedResult<TaskRowDto>);
+}
+
+/** Export the current filtered/sorted result set to .xlsx (all columns). */
+export async function exportTasksController(req: Request, res: Response): Promise<void> {
+  const rows = await searchTasksForExport(req.body as TaskSearchInput);
+  const workbook = await buildTasksWorkbook(rows);
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  );
+  res.setHeader('Content-Disposition', 'attachment; filename="tasks.xlsx"');
+  await workbook.xlsx.write(res);
+  res.end();
 }
 
 export async function listTagsController(_req: Request, res: Response): Promise<void> {

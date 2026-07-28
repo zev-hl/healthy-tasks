@@ -1,5 +1,13 @@
 import { z } from 'zod';
-import { ROLES, TASK_PRIORITIES, TASK_STATUSES, TASK_NAME_MIN_LENGTH } from '@healthy-tasks/shared';
+import {
+  ROLES,
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+  TASK_NAME_MIN_LENGTH,
+  TASK_SORT_FIELDS,
+  USER_SORT_FIELDS,
+  MAX_PAGE_SIZE,
+} from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
 
@@ -187,3 +195,66 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+
+// --- Search / sort / pagination (Phase 6) ----------------------------------
+
+const sortDir = z.enum(['asc', 'desc']);
+// A nullable, coercible date bound for range filters (accepts ISO string, '', or null).
+const dateBound = z
+  .union([z.null(), z.literal(''), z.coerce.date()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+
+const page = z.coerce.number().int().min(1).optional();
+const pageSize = z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).optional();
+
+export const taskSearchSchema = z.object({
+  text: z.string().trim().max(200).optional(),
+  filters: z
+    .object({
+      assigneeIds: z.array(z.string().uuid()).max(200).optional(),
+      includeUnassigned: z.boolean().optional(),
+      statuses: z.array(z.enum(TASK_STATUSES)).optional(),
+      priorities: z.array(z.enum(TASK_PRIORITIES)).optional(),
+      tags: z.array(z.string().trim().min(1).max(50)).max(50).optional(),
+      statusChangedFrom: dateBound,
+      statusChangedTo: dateBound,
+      startFrom: dateBound,
+      startTo: dateBound,
+      includeNoStart: z.boolean().optional(),
+      dueFrom: dateBound,
+      dueTo: dateBound,
+      includeNoDue: z.boolean().optional(),
+    })
+    .optional(),
+  sort: z.array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir })).max(12).optional(),
+  page,
+  pageSize,
+  nest: z.boolean().optional(),
+});
+
+export const userSearchSchema = z.object({
+  filters: z
+    .object({
+      firstName: z.array(z.string()).optional(),
+      lastName: z.array(z.string()).optional(),
+      email: z.array(z.string()).optional(),
+      title: z.array(z.string()).optional(),
+      supervisorIds: z.array(z.string().uuid()).optional(),
+      roles: z.array(roleSchema).optional(),
+      status: z.enum(['active', 'inactive', 'all']).optional(),
+    })
+    .optional(),
+  sort: z.array(z.object({ field: z.enum(USER_SORT_FIELDS), dir: sortDir })).max(7).optional(),
+  page,
+  pageSize,
+});
+
+// PUT /preferences/:screen body — `state` is an opaque object owned by the client.
+export const screenStateSchema = z.object({
+  state: z.record(z.string(), z.unknown()),
+});
+
+export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
+export type UserSearchInput = z.infer<typeof userSearchSchema>;
+export type ScreenStateInput = z.infer<typeof screenStateSchema>;

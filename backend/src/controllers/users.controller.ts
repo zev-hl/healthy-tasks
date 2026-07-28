@@ -1,7 +1,15 @@
 import type { Request, Response } from 'express';
-import type { AdminResetLinkResponse, TaskUserRef, UserDto } from '@healthy-tasks/shared';
+import type {
+  AdminResetLinkResponse,
+  PaginatedResult,
+  TaskUserRef,
+  UserDto,
+  UserFilterOptions,
+} from '@healthy-tasks/shared';
 import {
   listUsers,
+  searchUsers,
+  getUserFilterOptions,
   listActiveUsers,
   listEligibleSupervisors,
   createUser,
@@ -14,11 +22,36 @@ import { createPasswordReset } from '../services/auth.service.js';
 import { toUserDto, toUserRef } from '../services/user.mapper.js';
 import { sendPasswordResetEmail } from '../utils/mailer.js';
 import { HttpError } from '../utils/http-error.js';
-import type { CreateUserInput, MergeUsersInput, UpdateUserInput } from '../validation/schemas.js';
+import type {
+  CreateUserInput,
+  MergeUsersInput,
+  UpdateUserInput,
+  UserSearchInput,
+} from '../validation/schemas.js';
 
 export async function listUsersController(_req: Request, res: Response): Promise<void> {
   const users = await listUsers();
   res.json(users.map(toUserDto) satisfies UserDto[]);
+}
+
+/** Users screen: filtered/sorted/paged results. */
+export async function searchUsersController(req: Request, res: Response): Promise<void> {
+  const { rows, total, page, pageSize } = await searchUsers(req.body as UserSearchInput);
+  const body: PaginatedResult<UserDto> = { rows: rows.map(toUserDto), total, page, pageSize };
+  res.json(body);
+}
+
+/** Distinct values for the Users-screen filter checklists. */
+export async function userFilterOptionsController(_req: Request, res: Response): Promise<void> {
+  const o = await getUserFilterOptions();
+  const body: UserFilterOptions = {
+    firstName: o.firstName,
+    lastName: o.lastName,
+    email: o.email,
+    title: o.title,
+    supervisors: o.supervisors.map(toUserRef),
+  };
+  res.json(body);
 }
 
 /**

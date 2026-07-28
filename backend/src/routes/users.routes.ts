@@ -2,9 +2,16 @@ import { Router } from 'express';
 import { asyncHandler } from '../utils/async-handler.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { createUserSchema, updateUserSchema, mergeUsersSchema } from '../validation/schemas.js';
+import {
+  createUserSchema,
+  updateUserSchema,
+  mergeUsersSchema,
+  userSearchSchema,
+} from '../validation/schemas.js';
 import {
   listUsersController,
+  searchUsersController,
+  userFilterOptionsController,
   listActiveUsersController,
   listSupervisorsController,
   createUserController,
@@ -28,6 +35,9 @@ usersRouter.use(requireAdmin);
 
 usersRouter.get('/', asyncHandler(listUsersController));
 usersRouter.get('/supervisors', asyncHandler(listSupervisorsController));
+// Users screen filtered/sorted/paged search (Phase 6). Before `/:id`.
+usersRouter.post('/search', validateBody(userSearchSchema), asyncHandler(searchUsersController));
+usersRouter.get('/filter-options', asyncHandler(userFilterOptionsController));
 usersRouter.post('/', validateBody(createUserSchema), asyncHandler(createUserController));
 // Merge two accounts. Declared before `/:id` so `merge` isn't captured as an id.
 usersRouter.post('/merge', validateBody(mergeUsersSchema), asyncHandler(mergeUsersController));

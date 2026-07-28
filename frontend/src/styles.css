@@ -575,7 +575,7 @@ th {
      reach the right edge, symmetric with the left), but never shrink below the
      sum of the column widths below — scroll instead. */
   width: 100%;
-  min-width: 1370px;
+  min-width: 1380px;
   max-width: none;
   border: 0; /* frame is on .table-scroll instead */
   border-radius: 0;
@@ -589,43 +589,42 @@ th {
   width: 100%;
   box-sizing: border-box;
 }
-/* Per-column widths (sum = 1300px) so wide values aren't truncated. */
+/* Per-column widths (9 cols: leading pencil + trailing actions; sum = 1380px).
+   Email & Supervisor are wide enough for full addresses; Role & Status narrow. */
 .users-table th:nth-child(1),
 .users-table td:nth-child(1) {
-  width: 240px;
-} /* Email */
+  width: 40px;
+} /* pencil */
 .users-table th:nth-child(2),
-.users-table td:nth-child(2),
+.users-table td:nth-child(2) {
+  width: 260px;
+} /* Email */
 .users-table th:nth-child(3),
-.users-table td:nth-child(3) {
-  width: 140px;
-} /* First / Last name */
+.users-table td:nth-child(3),
 .users-table th:nth-child(4),
 .users-table td:nth-child(4) {
-  width: 110px;
-} /* Role */
+  width: 130px;
+} /* First / Last name */
 .users-table th:nth-child(5),
 .users-table td:nth-child(5) {
-  width: 180px;
-} /* Title */
+  width: 90px;
+} /* Role */
 .users-table th:nth-child(6),
 .users-table td:nth-child(6) {
-  width: 240px;
-} /* Supervisor */
+  width: 170px;
+} /* Title */
 .users-table th:nth-child(7),
 .users-table td:nth-child(7) {
-  width: 120px;
-} /* Status */
+  width: 280px;
+} /* Supervisor */
 .users-table th:nth-child(8),
 .users-table td:nth-child(8) {
-  width: 200px;
-} /* Actions — extra room so the button has white space to its right */
-
-/* Left-align the Actions button with padding, so there's clear white space to
-   its right within the column (symmetric with the padding on the left edge). */
-.users-table td:nth-child(8) .btn-row {
-  justify-content: flex-start;
-}
+  width: 110px;
+} /* Status */
+.users-table th:nth-child(9),
+.users-table td:nth-child(9) {
+  width: 170px;
+} /* Actions */
 .users-table .row-dirty td {
   background: rgba(37, 99, 235, 0.06);
 }
@@ -643,4 +642,315 @@ th {
   text-align: left;
   vertical-align: top;
   padding: 0.35rem 0.5rem;
+}
+
+/* ===== Phase 6: Task Search + Users filters/sort/pagination ===== */
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.nest-toggle,
+.check-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.check-inline {
+  margin-top: 0.35rem;
+}
+
+.panel {
+  margin-bottom: 1rem;
+}
+
+/* Columns manager */
+.columns-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.columns-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.columns-list li:last-child {
+  border-bottom: none;
+}
+.columns-list label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Filters */
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.filter-field label {
+  font-size: 0.8rem;
+}
+.range-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.multi-select {
+  max-height: 130px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.45rem;
+  background: var(--panel);
+}
+.multi-option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  padding: 0.1rem 0;
+}
+
+/* Sortable headers */
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+th.sortable:hover {
+  background: #eef2f7;
+}
+.sort-ind {
+  color: var(--accent, #2563eb);
+  font-size: 0.75rem;
+}
+
+/* Results grid */
+.results-table {
+  width: 100%;
+  min-width: 1200px;
+  border: 0;
+  border-radius: 0;
+}
+.results-table th,
+.results-table td {
+  white-space: nowrap;
+}
+.tree-toggle {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.9rem;
+}
+
+/* Tags chip cell: single line, up to 3 chips + "+N" */
+.tags-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 240px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.badge.tag-more {
+  background: #e2e8f0;
+  color: #475569;
+  cursor: default;
+}
+
+/* Users filter row */
+.users-table .filter-row th {
+  background: #fbfcfe;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+.filter-row input,
+.filter-row select {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 0.8rem;
+}
+
+/* Pagination */
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* ===== Phase 6 refinements: popover filters, horizontal columns, pencil ===== */
+
+/* Columns manager — horizontal chips (mirror on-screen order), ← → reorder */
+.columns-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.columns-list .col-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  background: var(--panel);
+}
+.columns-list .col-chip label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  font-size: 0.85rem;
+}
+.col-move {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+.col-move:disabled {
+  color: var(--border);
+  cursor: default;
+}
+
+/* Collapsible filter trigger (in the table filter row) */
+.filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.filter-trigger:hover {
+  background: #eef2f7;
+}
+.filter-trigger.active {
+  border-color: #2563eb;
+}
+.filter-trigger .filter-caret {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.filter-trigger .filter-dot {
+  color: #2563eb;
+  font-size: 0.55rem;
+}
+
+/* Portal dropdown (fixed-positioned so it escapes the table's scroll clip) */
+.filter-pop-menu {
+  z-index: 1000;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  padding: 0.5rem;
+  min-width: 200px;
+  max-width: 320px;
+}
+.filter-pop-menu .multi-select {
+  border: none;
+  padding: 0;
+  max-height: 200px;
+}
+.pop-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.pop-range {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.pop-range > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+.pop-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.pop-radios label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
+/* "Without date" checkbox: input hugging its own text, grouped under the range */
+.check-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  white-space: normal;
+  margin-top: 0.15rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.check-inline input {
+  margin: 0.1rem 0 0;
+  flex: none;
+}
+
+/* Results filter row + pencil icon */
+.results-table .filter-row th {
+  padding: 0.25rem 0.4rem;
+  background: #fbfcfe;
+}
+.icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0.1rem 0.2rem;
+  line-height: 1;
+}
+
+/* Left-justify all filter dropdown checklists / options */
+.filter-pop-menu {
+  text-align: left;
+}
+.filter-pop-menu .multi-option,
+.pop-radios label,
+.pop-range > label {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Checkboxes/radios must NOT inherit the global full-width input sizing — that
+   stretched each box across the row and pushed filter-checklist labels far right. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  padding: 0;
+  flex: none;
 }

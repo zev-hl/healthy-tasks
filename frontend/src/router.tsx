@@ -9,7 +9,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { HomePage } from './pages/HomePage';
 import { UsersPage } from './pages/UsersPage';
-import { TaskListPage } from './pages/TaskListPage';
+import { TaskSearchPage } from './pages/TaskSearchPage';
 import { TaskCreatePage } from './pages/TaskCreatePage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 
@@ -48,7 +48,7 @@ export const router = createBrowserRouter([
         ),
         children: [
           { path: '/', element: <HomePage /> },
-          { path: '/tasks', element: <TaskListPage /> },
+          { path: '/tasks', element: <TaskSearchPage /> },
           { path: '/tasks/new', element: <TaskCreatePage /> },
           { path: '/tasks/:id', element: <TaskDetailPage /> },
           {

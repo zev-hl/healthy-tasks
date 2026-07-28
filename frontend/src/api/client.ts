@@ -8,17 +8,23 @@ import type {
   DependencyType,
   LoginResponse,
   MergeUsersRequest,
+  PaginatedResult,
   PresignAttachmentRequest,
   PresignAttachmentResponse,
+  ScreenKey,
   TaskDetailDto,
   TaskDto,
   TaskHistoryEntryDto,
   TaskRef,
+  TaskRowDto,
+  TaskSearchRequest,
   TaskUserRef,
   UpdateCommentRequest,
   UpdateTaskRequest,
   UpdateUserRequest,
   UserDto,
+  UserFilterOptions,
+  UserSearchRequest,
 } from '@healthy-tasks/shared';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
@@ -140,11 +146,31 @@ export const api = {
   adminResetPassword: (id: string) =>
     request<AdminResetLinkResponse>(`/api/users/${id}/reset-password`, { method: 'POST' }),
 
+  searchUsers: (body: UserSearchRequest) =>
+    request<PaginatedResult<UserDto>>('/api/users/search', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  userFilterOptions: () => request<UserFilterOptions>('/api/users/filter-options'),
+
   // --- Active users (any authenticated user) ---
   listActiveUsers: () => request<TaskUserRef[]>('/api/users/active'),
 
+  // --- Per-user screen preferences (Phase 6) ---
+  getPreference: (screen: ScreenKey) => request<{ state: unknown }>(`/api/preferences/${screen}`),
+  savePreference: (screen: ScreenKey, state: unknown) =>
+    request<{ state: unknown }>(`/api/preferences/${screen}`, {
+      method: 'PUT',
+      body: JSON.stringify({ state }),
+    }),
+
   // --- Tasks ---
   listTasks: () => request<TaskDto[]>('/api/tasks'),
+  queryTasks: (body: TaskSearchRequest) =>
+    request<PaginatedResult<TaskRowDto>>('/api/tasks/query', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   listTaskTags: () => request<string[]>('/api/tasks/tags'),
   getTask: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}`),
   getTaskHistory: (id: number) => request<TaskHistoryEntryDto[]>(`/api/tasks/${id}/history`),
@@ -218,6 +244,35 @@ export const api = {
   deleteComment: (commentId: string) =>
     request<TaskDetailDto>(`/api/comments/${commentId}`, { method: 'DELETE' }),
 };
+
+/**
+ * Export the current filtered/sorted task result set to an .xlsx download. Uses
+ * a raw fetch (not request()) because the response is a binary blob, then
+ * triggers a browser download.
+ */
+export async function exportTasksToExcel(body: TaskSearchRequest): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/api/tasks/export`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, `Export failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'tasks.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Upload file bytes directly to object storage using a pre-signed PUT URL. This
