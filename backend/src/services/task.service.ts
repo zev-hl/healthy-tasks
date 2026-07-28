@@ -2,6 +2,11 @@ import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { getStorage } from '../storage/index.js';
 import { sanitizeAndValidate } from '../utils/rich-text.js';
+import {
+  buildTaskFieldEntries,
+  recordHistory,
+  type TaskFieldValues,
+} from './task-history.service.js';
 import type { CreateTaskInput, UpdateTaskInput } from '../validation/schemas.js';
 import {
   taskInclude,
@@ -132,7 +137,11 @@ export async function getTaskDetail(id: number): Promise<TaskDetailDto> {
   return toTaskDetailDto(task as unknown as TaskWithDetail);
 }
 
-export async function updateTask(id: number, input: UpdateTaskInput): Promise<TaskDto> {
+export async function updateTask(
+  actorId: string,
+  id: number,
+  input: UpdateTaskInput,
+): Promise<TaskDto> {
   const existing = await prisma.task.findUnique({ where: { id } });
   if (!existing) throw HttpError.notFound('Task not found');
 
@@ -154,24 +163,69 @@ export async function updateTask(id: number, input: UpdateTaskInput): Promise<Ta
   // Bump statusChangedAt only when the status actually changes.
   const statusChanged = input.status !== undefined && input.status !== existing.status;
 
-  const task = await prisma.task.update({
-    where: { id },
-    data: {
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      // Phase 5 (History of Changes) hook: record a description-changed event here.
-      ...(input.description !== undefined ? { description: cleanDescription(input.description) } : {}),
-      ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
-      ...(input.priority !== undefined ? { priority: input.priority } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
-      ...(input.tags !== undefined ? { tags: input.tags } : {}),
-      ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
-      ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
-      ...(statusChanged ? { statusChangedAt: new Date() } : {}),
-      // creatorId, createdAt, and id are never updatable.
-    },
-    include: taskInclude,
+  // Resolve assignee emails (before + after) for readable history snapshots.
+  const cleanedDescription =
+    input.description !== undefined ? cleanDescription(input.description) : undefined;
+  const descriptionChanged =
+    cleanedDescription !== undefined && (cleanedDescription ?? null) !== existing.description;
+
+  const assigneeEmails = await resolveAssigneeEmails([
+    existing.assigneeId,
+    input.assigneeId !== undefined ? input.assigneeId : null,
+  ]);
+  const before: TaskFieldValues = {
+    name: existing.name,
+    assignee: existing.assigneeId ? (assigneeEmails.get(existing.assigneeId) ?? null) : null,
+    priority: existing.priority,
+    status: existing.status,
+    tags: existing.tags,
+    startAt: existing.startAt,
+    dueAt: existing.dueAt,
+  };
+  const afterAssigneeId = input.assigneeId !== undefined ? input.assigneeId : existing.assigneeId;
+  const after: TaskFieldValues = {
+    name: input.name ?? existing.name,
+    assignee: afterAssigneeId ? (assigneeEmails.get(afterAssigneeId) ?? null) : null,
+    priority: input.priority ?? existing.priority,
+    status: input.status ?? existing.status,
+    tags: input.tags ?? existing.tags,
+    startAt: input.startAt !== undefined ? input.startAt : existing.startAt,
+    dueAt: input.dueAt !== undefined ? input.dueAt : existing.dueAt,
+  };
+
+  const task = await prisma.$transaction(async (tx) => {
+    const updated = await tx.task.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(cleanedDescription !== undefined ? { description: cleanedDescription } : {}),
+        ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.tags !== undefined ? { tags: input.tags } : {}),
+        ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
+        ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
+        ...(statusChanged ? { statusChangedAt: new Date() } : {}),
+        // creatorId, createdAt, and id are never updatable.
+      },
+      include: taskInclude,
+    });
+    await recordHistory(tx, buildTaskFieldEntries({ actorId, taskId: id, before, after, descriptionChanged }));
+    return updated;
   });
+
   return toTaskDto(task as TaskWithRefs);
+}
+
+/** Look up emails for a set of (possibly null/duplicate) user ids. */
+async function resolveAssigneeEmails(ids: (string | null)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((v): v is string => v !== null))];
+  if (unique.length === 0) return new Map();
+  const users = await prisma.user.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, email: true },
+  });
+  return new Map(users.map((u) => [u.id, u.email]));
 }
 
 /**
@@ -200,7 +254,8 @@ export async function deleteTask(actor: { id: string; role: Role }, id: number):
     ...task.comments.flatMap((c) => c.attachments.map((a) => a.storageKey)),
   ];
 
-  // Phase 5 (History of Changes) hook: record a task-deleted event here.
+  // No history entry on delete: the task (and its cascading TaskHistory rows) is
+  // being removed entirely, so there is nowhere for a "deleted" entry to live.
   await prisma.task.delete({ where: { id } });
 
   const storage = getStorage();

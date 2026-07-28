@@ -7,10 +7,12 @@ import type {
   CreateUserRequest,
   DependencyType,
   LoginResponse,
+  MergeUsersRequest,
   PresignAttachmentRequest,
   PresignAttachmentResponse,
   TaskDetailDto,
   TaskDto,
+  TaskHistoryEntryDto,
   TaskRef,
   TaskUserRef,
   UpdateCommentRequest,
@@ -133,6 +135,8 @@ export const api = {
     }),
   deactivateUser: (id: string) =>
     request<UserDto>(`/api/users/${id}/deactivate`, { method: 'POST' }),
+  mergeUsers: (body: MergeUsersRequest) =>
+    request<UserDto>('/api/users/merge', { method: 'POST', body: JSON.stringify(body) }),
   adminResetPassword: (id: string) =>
     request<AdminResetLinkResponse>(`/api/users/${id}/reset-password`, { method: 'POST' }),
 
@@ -143,6 +147,7 @@ export const api = {
   listTasks: () => request<TaskDto[]>('/api/tasks'),
   listTaskTags: () => request<string[]>('/api/tasks/tags'),
   getTask: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}`),
+  getTaskHistory: (id: number) => request<TaskHistoryEntryDto[]>(`/api/tasks/${id}/history`),
   createTask: (body: CreateTaskRequest) =>
     request<TaskDto>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
   updateTask: (id: number, body: UpdateTaskRequest) =>

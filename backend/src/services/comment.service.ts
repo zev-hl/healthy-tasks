@@ -8,7 +8,13 @@ import {
   richTextLength,
   extractMentionUserIds,
 } from '../utils/rich-text.js';
-import { MENTION_EVENT_DEBOUNCE_MINUTES, type Role, type TaskDetailDto } from '@healthy-tasks/shared';
+import { recordHistory } from './task-history.service.js';
+import {
+  MENTION_EVENT_DEBOUNCE_MINUTES,
+  TASK_HISTORY_FIELDS,
+  type Role,
+  type TaskDetailDto,
+} from '@healthy-tasks/shared';
 
 export interface Actor {
   id: string;
@@ -99,7 +105,13 @@ export async function createComment(
       data: { taskId, authorId: actor.id, body: clean },
       select: { id: true },
     });
-    // Phase 5 (History of Changes) hook: record a comment-added event here.
+    // History: a comment was added (the text itself is never stored in history).
+    await recordHistory(tx, {
+      taskId,
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.comment,
+      changeType: 'added',
+    });
     await reconcileMentionsAndEvents(tx, comment.id, taskId, [], mentionIds);
   });
 
@@ -133,7 +145,13 @@ export async function updateComment(
       where: { id: commentId },
       data: { body: clean, editedAt: new Date() },
     });
-    // Phase 5 (History of Changes) hook: record a comment-edited event here.
+    // History: a comment was edited (record only that it happened, not the text).
+    await recordHistory(tx, {
+      taskId: comment.taskId,
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.comment,
+      changeType: 'updated',
+    });
     await reconcileMentionsAndEvents(
       tx,
       commentId,
@@ -161,9 +179,9 @@ export async function deleteComment(actor: Actor, commentId: string): Promise<Ta
     throw HttpError.forbidden('Only the comment author can delete this comment');
   }
 
-  // Phase 5 (History of Changes) hook: record a comment-deleted event here.
   // Remove the comment's attachment objects, then delete the row (cascades the
-  // attachment/mention/event rows).
+  // attachment/mention/event rows). TaskHistory keys off the task, not the
+  // comment, so recording the deletion alongside the row delete is safe.
   const storage = getStorage();
   for (const a of comment.attachments) {
     try {
@@ -172,6 +190,15 @@ export async function deleteComment(actor: Actor, commentId: string): Promise<Ta
       console.error('Failed to delete comment attachment object', a.storageKey, err);
     }
   }
-  await prisma.comment.delete({ where: { id: commentId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.comment.delete({ where: { id: commentId } });
+    // History: a comment was removed.
+    await recordHistory(tx, {
+      taskId: comment.taskId,
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.comment,
+      changeType: 'removed',
+    });
+  });
   return getTaskDetail(comment.taskId);
 }

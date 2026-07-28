@@ -526,3 +526,121 @@ th {
   background: var(--bg);
   outline: 1px dashed var(--border);
 }
+
+/* --- Phase 5: change history --- */
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history-entry {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.history-entry:last-child {
+  border-bottom: none;
+}
+.history-what {
+  font-size: 0.9rem;
+}
+.history-meta {
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+
+/* The Users admin screen is data-dense (8 editable columns); give it more room
+   than the default 960px so the table fits without scrolling on normal displays. */
+.container-wide {
+  max-width: 1440px;
+}
+
+/* --- Phase 5: editable Users table --- */
+/* The editable table needs more room than the 960px container. It scrolls
+   horizontally inside its own wrapper; the table has an explicit total width
+   (wider than the container) so the scrollbar spans every column instead of the
+   columns being compressed to fit. */
+/* The visible frame (border + rounded corners) lives on the scroll wrapper, not
+   the table, so it encloses the visible viewport — including the pinned Actions
+   column — rather than the table's full 1300px content whose right border is
+   scrolled off screen. */
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.users-table {
+  table-layout: fixed;
+  /* Fill the frame when the viewport is wide (so row lines and header shading
+     reach the right edge, symmetric with the left), but never shrink below the
+     sum of the column widths below — scroll instead. */
+  width: 100%;
+  min-width: 1370px;
+  max-width: none;
+  border: 0; /* frame is on .table-scroll instead */
+  border-radius: 0;
+}
+.users-table th,
+.users-table td {
+  white-space: nowrap;
+}
+.users-table td input,
+.users-table td select {
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Per-column widths (sum = 1300px) so wide values aren't truncated. */
+.users-table th:nth-child(1),
+.users-table td:nth-child(1) {
+  width: 240px;
+} /* Email */
+.users-table th:nth-child(2),
+.users-table td:nth-child(2),
+.users-table th:nth-child(3),
+.users-table td:nth-child(3) {
+  width: 140px;
+} /* First / Last name */
+.users-table th:nth-child(4),
+.users-table td:nth-child(4) {
+  width: 110px;
+} /* Role */
+.users-table th:nth-child(5),
+.users-table td:nth-child(5) {
+  width: 180px;
+} /* Title */
+.users-table th:nth-child(6),
+.users-table td:nth-child(6) {
+  width: 240px;
+} /* Supervisor */
+.users-table th:nth-child(7),
+.users-table td:nth-child(7) {
+  width: 120px;
+} /* Status */
+.users-table th:nth-child(8),
+.users-table td:nth-child(8) {
+  width: 200px;
+} /* Actions — extra room so the button has white space to its right */
+
+/* Left-align the Actions button with padding, so there's clear white space to
+   its right within the column (symmetric with the padding on the left edge). */
+.users-table td:nth-child(8) .btn-row {
+  justify-content: flex-start;
+}
+.users-table .row-dirty td {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+/* --- Phase 5: merge modal --- */
+.modal-wide {
+  max-width: 720px;
+}
+.merge-fields {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+.merge-fields th,
+.merge-fields td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+}

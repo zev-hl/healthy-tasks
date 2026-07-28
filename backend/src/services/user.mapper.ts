@@ -15,11 +15,14 @@ export function toUserDto(user: User): UserDto {
   return {
     id: user.id,
     email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
     title: user.title,
     jobDescription: user.jobDescription,
     role: user.role,
     supervisorId: user.supervisorId,
     isActive: user.isActive,
+    mergedIntoId: user.mergedIntoId,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };

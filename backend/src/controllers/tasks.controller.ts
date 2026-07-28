@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { TaskDetailDto, TaskDto, TaskRef } from '@healthy-tasks/shared';
+import type { TaskDetailDto, TaskDto, TaskHistoryEntryDto, TaskRef } from '@healthy-tasks/shared';
 import { HttpError } from '../utils/http-error.js';
 import {
   createTask,
@@ -9,6 +9,7 @@ import {
   listTasks,
   updateTask,
 } from '../services/task.service.js';
+import { getTaskHistory } from '../services/task-history.service.js';
 import {
   addDependency,
   clearParent,
@@ -53,10 +54,16 @@ export async function getTaskController(req: Request, res: Response): Promise<vo
 }
 
 export async function updateTaskController(req: Request, res: Response): Promise<void> {
-  await updateTask(parseTaskId(req), req.body as UpdateTaskInput);
+  if (!req.user) throw HttpError.unauthorized();
+  await updateTask(req.user.id, parseTaskId(req), req.body as UpdateTaskInput);
   // Return the full detail so relationship-dependent UI stays in sync.
   const task = await getTaskDetail(parseTaskId(req));
   res.json(task satisfies TaskDetailDto);
+}
+
+export async function getTaskHistoryController(req: Request, res: Response): Promise<void> {
+  const history = await getTaskHistory(parseTaskId(req));
+  res.json(history satisfies TaskHistoryEntryDto[]);
 }
 
 // --- Relationship endpoints ------------------------------------------------
@@ -70,25 +77,29 @@ export async function searchTasksController(req: Request, res: Response): Promis
 }
 
 export async function setParentController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
   const { parentId } = req.body as SetParentInput;
-  const task = await setParent(parseTaskId(req), parentId);
+  const task = await setParent(req.user.id, parseTaskId(req), parentId);
   res.json(task satisfies TaskDetailDto);
 }
 
 export async function clearParentController(req: Request, res: Response): Promise<void> {
-  const task = await clearParent(parseTaskId(req));
+  if (!req.user) throw HttpError.unauthorized();
+  const task = await clearParent(req.user.id, parseTaskId(req));
   res.json(task satisfies TaskDetailDto);
 }
 
 export async function addDependencyController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
   const { type, otherTaskId } = req.body as DependencyInput;
-  const task = await addDependency(parseTaskId(req), type, otherTaskId);
+  const task = await addDependency(req.user.id, parseTaskId(req), type, otherTaskId);
   res.status(201).json(task satisfies TaskDetailDto);
 }
 
 export async function removeDependencyController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
   const { type, otherTaskId } = req.body as DependencyInput;
-  const task = await removeDependency(parseTaskId(req), type, otherTaskId);
+  const task = await removeDependency(req.user.id, parseTaskId(req), type, otherTaskId);
   res.json(task satisfies TaskDetailDto);
 }
 

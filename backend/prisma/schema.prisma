@@ -19,13 +19,26 @@ enum Role {
 model User {
   id             String   @id @default(uuid())
   // `email` is the user's login id. Unique, required, validated as an email
-  // at the application layer (see Zod schemas).
+  // at the application layer (see Zod schemas). Editable in place by an admin
+  // (Phase 5) with a uniqueness check.
   email          String   @unique
+  // First/Last name added in Phase 5. Required (non-empty) going forward, but
+  // stored NOT NULL DEFAULT '' so pre-Phase-5 rows backfill to blank for an
+  // admin to fill in — see the migration.
+  firstName      String   @default("")
+  lastName       String   @default("")
   title          String?
   jobDescription String?
   role           Role
   passwordHash   String
   isActive       Boolean  @default(true)
+
+  // Account merge (Phase 5): when two accounts are merged, the non-surviving one
+  // is deactivated (never deleted) and points here at the account it was merged
+  // into, so historical references still resolve to a labeled, redirected user.
+  mergedIntoId String?
+  mergedInto   User?   @relation("AccountMerge", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom   User[]  @relation("AccountMerge")
 
   // Self-referential supervisor relationship. The rule "supervisor must be a
   // Manager or Admin" is enforced in the application layer (user.service.ts),
@@ -52,10 +65,14 @@ model User {
   commentMentions     CommentMention[]
   mentionEvents       MentionEvent[]
 
+  // Change-history entries this user authored (Phase 5).
+  taskHistoryEntries TaskHistory[] @relation("HistoryActor")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([supervisorId])
+  @@index([mergedIntoId])
 }
 
 model PasswordResetToken {
@@ -137,6 +154,9 @@ model Task {
   attachments   Attachment[]
   comments      Comment[]
   mentionEvents MentionEvent[]
+
+  // Change history (Phase 5).
+  history TaskHistory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -249,4 +269,54 @@ model MentionEvent {
 
   @@index([userId, createdAt])
   @@index([userId, commentId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Change history (Phase 5)
+// ---------------------------------------------------------------------------
+
+// The kind of change an entry records:
+//  - `updated`: a value changed → previousValue/newValue are populated.
+//  - `added` / `removed`: something was attached/detached (a relationship,
+//    attachment, comment) → `detail` names it; previous/new are left null.
+enum TaskHistoryChangeType {
+  updated
+  added
+  removed
+}
+
+// One append-only audit entry per change to a task. Written by a single central
+// helper (task-history.service.ts) called from every task-mutating endpoint, so
+// capture lives in one place rather than being scattered. Description and
+// comment text are deliberately never stored here — only that a change occurred.
+model TaskHistory {
+  id     String @id @default(uuid())
+  taskId Int
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  // Who made the change. Nullable + SetNull so a (soft-deleted) actor never
+  // blocks writes; in practice this is always the acting user, and an account
+  // merge repoints these to the surviving account.
+  userId String?
+  user   User?   @relation("HistoryActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  changedAt DateTime @default(now())
+
+  // Which attribute changed, e.g. `status`, `priority`, `assignee`, `dueAt`,
+  // `parentTask`, `dependency:blocks`, `dependency:isBlockedBy`, `attachment`,
+  // `comment`, `description`, or `merge`. Free-form string; known keys live in
+  // @healthy-tasks/shared (TASK_HISTORY_FIELDS).
+  field      String
+  changeType TaskHistoryChangeType
+
+  // Populated only for `updated` changes (null for added/removed).
+  previousValue String?
+  newValue      String?
+
+  // For `added`/`removed`: the identifier of what changed (a task ref, a
+  // filename, etc.). Null for `updated`.
+  detail String?
+
+  @@index([taskId, changedAt])
+  @@index([userId])
 }

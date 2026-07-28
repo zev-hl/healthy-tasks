@@ -1,12 +1,19 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
-import type { DependencyType, TaskDetailDto, TaskRef } from '@healthy-tasks/shared';
+import { TASK_HISTORY_FIELDS, type DependencyType, type TaskDetailDto, type TaskRef } from '@healthy-tasks/shared';
 import { getTaskDetail } from './task.service.js';
 import { toTaskRef } from './task.mapper.js';
+import { recordHistory, type HistoryEntryInput } from './task-history.service.js';
 
-// NOTE (Phase 5): relationship changes below are where "History of Changes"
-// hooks will be added — each add/remove is a discrete auditable event.
+// Phase 5: each relationship add/remove is a discrete auditable event, recorded
+// via the central recordHistory helper inside the same transaction as the write.
+
+/** A readable "#id name" label for a task, for history `detail`. */
+async function taskLabel(tx: Prisma.TransactionClient, id: number): Promise<string> {
+  const t = await tx.task.findUnique({ where: { id }, select: { id: true, name: true } });
+  return t ? `#${t.id} ${t.name}` : `#${id}`;
+}
 
 // A process-wide advisory-lock key that serializes every task-relationship
 // mutation. The cycle checks below are read-then-write, so without
@@ -58,7 +65,11 @@ async function wouldCreateAncestryCycle(
   return false;
 }
 
-export async function setParent(taskId: number, parentId: number): Promise<TaskDetailDto> {
+export async function setParent(
+  actorId: string,
+  taskId: number,
+  parentId: number,
+): Promise<TaskDetailDto> {
   await assertTaskExists(taskId, 'Task');
   if (parentId === taskId) {
     throw HttpError.badRequest('A task cannot be its own parent');
@@ -69,20 +80,54 @@ export async function setParent(taskId: number, parentId: number): Promise<TaskD
   // slip a cycle past the check between our read and our write.
   await prisma.$transaction(async (tx) => {
     await lockRelationships(tx);
+    const current = await tx.task.findUnique({ where: { id: taskId }, select: { parentId: true } });
+    if (current?.parentId === parentId) return; // no-op: parent already set to this
     if (await wouldCreateAncestryCycle(tx, taskId, parentId)) {
       throw HttpError.badRequest(
         'Cannot set that parent: it would make the task its own ancestor (circular hierarchy)',
       );
     }
     await tx.task.update({ where: { id: taskId }, data: { parentId } });
+
+    // History: a replaced parent reads as remove-old + add-new; a first parent
+    // is just add-new.
+    const entries: HistoryEntryInput[] = [];
+    if (current?.parentId != null) {
+      entries.push({
+        taskId,
+        userId: actorId,
+        field: TASK_HISTORY_FIELDS.parentTask,
+        changeType: 'removed',
+        detail: await taskLabel(tx, current.parentId),
+      });
+    }
+    entries.push({
+      taskId,
+      userId: actorId,
+      field: TASK_HISTORY_FIELDS.parentTask,
+      changeType: 'added',
+      detail: await taskLabel(tx, parentId),
+    });
+    await recordHistory(tx, entries);
   });
 
   return getTaskDetail(taskId);
 }
 
-export async function clearParent(taskId: number): Promise<TaskDetailDto> {
+export async function clearParent(actorId: string, taskId: number): Promise<TaskDetailDto> {
   await assertTaskExists(taskId, 'Task');
-  await prisma.task.update({ where: { id: taskId }, data: { parentId: null } });
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.task.findUnique({ where: { id: taskId }, select: { parentId: true } });
+    if (current?.parentId == null) return; // nothing to clear → no history
+    await tx.task.update({ where: { id: taskId }, data: { parentId: null } });
+    await recordHistory(tx, {
+      taskId,
+      userId: actorId,
+      field: TASK_HISTORY_FIELDS.parentTask,
+      changeType: 'removed',
+      detail: await taskLabel(tx, current.parentId),
+    });
+  });
   return getTaskDetail(taskId);
 }
 
@@ -126,7 +171,43 @@ async function wouldCreateDependencyCycle(
   return false;
 }
 
+/**
+ * Build the paired history entries for a dependency edge (blocker → blocked).
+ * Both endpoints get an entry from their own perspective so either task's page
+ * shows the change: the blocker's "Blocks" list and the blocked's "Is blocked
+ * by" list.
+ */
+async function dependencyEntries(
+  tx: Prisma.TransactionClient,
+  actorId: string,
+  blockerId: number,
+  blockedId: number,
+  changeType: 'added' | 'removed',
+): Promise<HistoryEntryInput[]> {
+  const [blockerLabel, blockedLabel] = await Promise.all([
+    taskLabel(tx, blockerId),
+    taskLabel(tx, blockedId),
+  ]);
+  return [
+    {
+      taskId: blockerId,
+      userId: actorId,
+      field: TASK_HISTORY_FIELDS.dependencyBlocks,
+      changeType,
+      detail: blockedLabel,
+    },
+    {
+      taskId: blockedId,
+      userId: actorId,
+      field: TASK_HISTORY_FIELDS.dependencyBlockedBy,
+      changeType,
+      detail: blockerLabel,
+    },
+  ];
+}
+
 export async function addDependency(
+  actorId: string,
   taskId: number,
   type: DependencyType,
   otherTaskId: number,
@@ -153,6 +234,7 @@ export async function addDependency(
         );
       }
       await tx.taskDependency.create({ data: { blockerId, blockedId } });
+      await recordHistory(tx, await dependencyEntries(tx, actorId, blockerId, blockedId, 'added'));
     }
   });
 
@@ -160,13 +242,19 @@ export async function addDependency(
 }
 
 export async function removeDependency(
+  actorId: string,
   taskId: number,
   type: DependencyType,
   otherTaskId: number,
 ): Promise<TaskDetailDto> {
   await assertTaskExists(taskId, 'Task');
   const { blockerId, blockedId } = resolveEdge(taskId, type, otherTaskId);
-  await prisma.taskDependency.deleteMany({ where: { blockerId, blockedId } });
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.taskDependency.deleteMany({ where: { blockerId, blockedId } });
+    if (count > 0) {
+      await recordHistory(tx, await dependencyEntries(tx, actorId, blockerId, blockedId, 'removed'));
+    }
+  });
   return getTaskDetail(taskId);
 }
 

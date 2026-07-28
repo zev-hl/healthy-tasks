@@ -17,6 +17,7 @@ import {
   listTasksController,
   listTagsController,
   updateTaskController,
+  getTaskHistoryController,
   searchTasksController,
   setParentController,
   clearParentController,
@@ -44,6 +45,7 @@ tasksRouter.get('/search', asyncHandler(searchTasksController));
 tasksRouter.get('/tags', asyncHandler(listTagsController));
 
 tasksRouter.get('/:id', asyncHandler(getTaskController));
+tasksRouter.get('/:id/history', asyncHandler(getTaskHistoryController));
 tasksRouter.patch('/:id', validateBody(updateTaskSchema), asyncHandler(updateTaskController));
 // Deleting a task is Admin-only (also enforced in the service).
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));

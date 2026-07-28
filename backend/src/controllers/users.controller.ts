@@ -7,12 +7,14 @@ import {
   createUser,
   updateUser,
   deactivateUser,
+  mergeUsers,
   getUserById,
 } from '../services/user.service.js';
 import { createPasswordReset } from '../services/auth.service.js';
 import { toUserDto, toUserRef } from '../services/user.mapper.js';
 import { sendPasswordResetEmail } from '../utils/mailer.js';
-import type { CreateUserInput, UpdateUserInput } from '../validation/schemas.js';
+import { HttpError } from '../utils/http-error.js';
+import type { CreateUserInput, MergeUsersInput, UpdateUserInput } from '../validation/schemas.js';
 
 export async function listUsersController(_req: Request, res: Response): Promise<void> {
   const users = await listUsers();
@@ -65,6 +67,12 @@ export async function deactivateUserController(req: Request, res: Response): Pro
   const { id } = req.params as { id: string };
   const user = await deactivateUser(id);
   res.json(toUserDto(user) satisfies UserDto);
+}
+
+export async function mergeUsersController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  const survivor = await mergeUsers(req.user.id, req.body as MergeUsersInput);
+  res.json(toUserDto(survivor) satisfies UserDto);
 }
 
 /** Admin-triggered password reset — no current password required. */

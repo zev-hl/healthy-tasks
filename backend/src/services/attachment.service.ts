@@ -3,9 +3,11 @@ import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { getStorage } from '../storage/index.js';
 import { getTaskDetail } from './task.service.js';
+import { recordHistory } from './task-history.service.js';
 import {
   ATTACHMENT_MAX_BYTES,
   isAllowedAttachmentType,
+  TASK_HISTORY_FIELDS,
   type AttachmentDownloadResponse,
   type PresignAttachmentResponse,
   type Role,
@@ -145,16 +147,19 @@ export async function createTaskAttachment(
   }
   const { size, contentType } = await resolveMetadata(input.storageKey, input);
   assertValidUpload(contentType, size);
-  // Phase 5 (History of Changes) hook: record an attachment-added event here.
-  await prisma.attachment.create({
-    data: {
-      filename: input.filename.slice(0, 255),
-      contentType,
-      size,
-      storageKey: input.storageKey,
-      uploadedById: actor.id,
+  const filename = input.filename.slice(0, 255);
+  await prisma.$transaction(async (tx) => {
+    await tx.attachment.create({
+      data: { filename, contentType, size, storageKey: input.storageKey, uploadedById: actor.id, taskId },
+    });
+    // History: an attachment was added (identified by filename).
+    await recordHistory(tx, {
       taskId,
-    },
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.attachment,
+      changeType: 'added',
+      detail: filename,
+    });
   });
   return getTaskDetail(taskId);
 }
@@ -173,16 +178,19 @@ export async function createCommentAttachment(
   }
   const { size, contentType } = await resolveMetadata(input.storageKey, input);
   assertValidUpload(contentType, size);
-  // Phase 5 (History of Changes) hook: record an attachment-added event here.
-  await prisma.attachment.create({
-    data: {
-      filename: input.filename.slice(0, 255),
-      contentType,
-      size,
-      storageKey: input.storageKey,
-      uploadedById: actor.id,
-      commentId,
-    },
+  const filename = input.filename.slice(0, 255);
+  await prisma.$transaction(async (tx) => {
+    await tx.attachment.create({
+      data: { filename, contentType, size, storageKey: input.storageKey, uploadedById: actor.id, commentId },
+    });
+    // History: a comment-level attachment is logged against its parent task too.
+    await recordHistory(tx, {
+      taskId: comment.taskId,
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.attachment,
+      changeType: 'added',
+      detail: filename,
+    });
   });
   return getTaskDetail(comment.taskId);
 }
@@ -197,6 +205,7 @@ export async function deleteAttachment(
     where: { id: attachmentId },
     select: {
       id: true,
+      filename: true,
       storageKey: true,
       uploadedById: true,
       taskId: true,
@@ -212,10 +221,19 @@ export async function deleteAttachment(
   const taskId = attachment.taskId ?? attachment.comment?.taskId;
   if (taskId == null) throw HttpError.badRequest('Attachment is not attached to a task');
 
-  // Phase 5 (History of Changes) hook: record an attachment-removed event here.
   // Remove the object first so a storage failure aborts before the row is gone.
   await getStorage().deleteObject(attachment.storageKey);
-  await prisma.attachment.delete({ where: { id: attachmentId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.attachment.delete({ where: { id: attachmentId } });
+    // History: an attachment was removed (identified by filename).
+    await recordHistory(tx, {
+      taskId,
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.attachment,
+      changeType: 'removed',
+      detail: attachment.filename,
+    });
+  });
   return getTaskDetail(taskId);
 }
 
