@@ -1,17 +1,14 @@
 import type { TaskSearchFilters } from '@healthy-tasks/shared';
 
 /**
- * Saved sidebar Views — each is just a `TaskSearchFilters` shape that navigates
- * to /tasks (no new backend). Only the shapes expressible with the current
- * filter contract are wired here:
+ * Saved sidebar Views — each is a `TaskSearchFilters` shape that navigates to
+ * /tasks. `blocked` and `creatorIds` are backed by filter fields added in
+ * Phase 10 (shared type + zod + query), so all five map to real queries:
  *   - Overdue          → { overdue: true }
  *   - Assigned to me   → { assigneeIds: [me] }
  *   - Needs my review  → { statuses: ['Review'], assigneeIds: [me] }
- *
- * The handoff also lists "Blocked" (tasks with an incomplete `isBlockedBy`) and
- * "Created by me" (creator = me). Neither maps to a field on
- * `TaskSearchFilters` today, so they'd require a new filter — deliberately left
- * out until that's decided, since the brief says no new backend work.
+ *   - Blocked          → { blocked: true }
+ *   - Created by me    → { creatorIds: [me] }
  */
 export interface SavedView {
   key: string;
@@ -33,5 +30,12 @@ export const SAVED_VIEWS: SavedView[] = [
     label: 'Needs my review',
     color: 'var(--review)',
     filters: (me) => ({ statuses: ['Review'], assigneeIds: [me] }),
+  },
+  { key: 'blocked', label: 'Blocked', color: 'var(--warn)', filters: () => ({ blocked: true }) },
+  {
+    key: 'created',
+    label: 'Created by me',
+    color: 'var(--faint)',
+    filters: (me) => ({ creatorIds: [me] }),
   },
 ];

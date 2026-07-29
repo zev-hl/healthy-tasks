@@ -152,6 +152,13 @@ async function buildWhere(input: TaskSearchInput | TaskDashboardInput): Promise<
   }
   if (f.relation) and.push(relationWhere(f.relation));
 
+  // Saved-view filters (Phase 10).
+  if (f.creatorIds && f.creatorIds.length > 0) and.push({ creatorId: { in: f.creatorIds } });
+  // "Blocked" = has at least one incomplete blocker (a non-terminal isBlockedBy).
+  if (f.blocked) {
+    and.push({ blockedBy: { some: { blocker: { status: { notIn: [...TERMINAL_TASK_STATUSES] } } } } });
+  }
+
   return and.length > 0 ? { AND: and } : {};
 }
 

@@ -581,6 +581,10 @@ export interface TaskSearchFilters {
   completedToday?: boolean;
   /** Restrict to a Parent/Child relationship bucket. */
   relation?: TaskRelationFilter;
+  /** Selected creator user ids; empty = no creator filter ("Created by me"). */
+  creatorIds?: string[];
+  /** Only tasks with an incomplete blocker (a non-terminal `isBlockedBy`). */
+  blocked?: boolean;
 }
 
 export interface TaskSearchRequest {
