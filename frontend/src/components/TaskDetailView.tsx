@@ -11,7 +11,6 @@ import {
   type TaskPriority,
   type TaskRef,
   type TaskStatus,
-  type UpdateTaskRequest,
   type UserDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
@@ -26,7 +25,7 @@ import { TaskReminders } from './TaskReminders';
 import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
 import { StatusPill, PriorityRamp } from './ui/indicators';
 import { DueDate, AgoDate } from './ui/dates';
-import { isoToParts, partsToIso, defaultTime, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
+import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 
 type PickerKind = 'parent' | DependencyType;
@@ -56,12 +55,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
   const [tab, setTab] = useState<Tab>('work');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [commentsDirty, setCommentsDirty] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // A "Task saved." confirmation auto-clears so it reads as a transient flash.
+  const flashSaved = useCallback(() => {
+    setNotice('Task saved.');
+    window.setTimeout(() => setNotice(null), 2500);
+  }, []);
 
   // Inline name edit.
   const [editingName, setEditingName] = useState(false);
@@ -86,39 +92,78 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
   }, []);
 
-  // --- Immediate-save property edits ---------------------------------------
-  async function saveField(patch: Partial<UpdateTaskRequest>, completed = false) {
-    setError(null);
+  // --- Staged property edits (Status / Priority / Assignee / Start / Due) ---
+  // These are edited locally and committed together via "Save changes", so a
+  // change isn't persisted until the user confirms it.
+  const [assigneeId, setAssigneeId] = useState(initialTask.assigneeId ?? '');
+  const [priority, setPriority] = useState<TaskPriority>(initialTask.priority);
+  const [status, setStatus] = useState<TaskStatus>(initialTask.status);
+  const [startDate, setStartDate] = useState(() => isoToParts(initialTask.startAt).date);
+  const [startTime, setStartTime] = useState(() => isoToParts(initialTask.startAt).time);
+  const [dueDate, setDueDate] = useState(() => isoToParts(initialTask.dueAt).date);
+  const [dueTime, setDueTime] = useState(() => isoToParts(initialTask.dueAt).time);
+  const [savingFields, setSavingFields] = useState(false);
+  const [fieldsError, setFieldsError] = useState<string | null>(null);
+
+  const stagedStartIso = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
+  const stagedDueIso = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
+
+  // Dirty until every staged field matches what's persisted (dates compared as
+  // normalized ISO instants so a date-only edit round-trips cleanly).
+  const fieldsDirty =
+    assigneeId !== (task.assigneeId ?? '') ||
+    priority !== task.priority ||
+    status !== task.status ||
+    stagedStartIso !== (task.startAt ?? null) ||
+    stagedDueIso !== (task.dueAt ?? null);
+
+  // Commit all staged fields at once. `statusOverride` lets the top-bar
+  // "Mark complete" / "Reopen" buttons set the status and save in one click.
+  async function saveFields(statusOverride?: TaskStatus) {
+    setFieldsError(null);
+    const nextStatus = statusOverride ?? status;
+    if (statusOverride) setStatus(statusOverride);
+    if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
+      setFieldsError('Start must be earlier than Due');
+      return;
+    }
+    const becameCompleted = nextStatus === 'Completed' && task.status !== 'Completed';
+    setSavingFields(true);
     try {
-      applyTask(await api.updateTask(task.id, patch));
-      if (completed) {
+      applyTask(
+        await api.updateTask(task.id, {
+          assigneeId: assigneeId === '' ? null : assigneeId,
+          priority,
+          status: nextStatus,
+          startAt: stagedStartIso,
+          dueAt: stagedDueIso,
+        }),
+      );
+      flashSaved();
+      if (becameCompleted) {
         setJustCompleted(true);
         window.setTimeout(() => setJustCompleted(false), 1300);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save the change');
+      setFieldsError(err instanceof ApiError ? err.message : 'Could not save changes');
+    } finally {
+      setSavingFields(false);
     }
   }
 
-  const onStatus = (s: TaskStatus) => saveField({ status: s }, s === 'Completed' && task.status !== 'Completed');
-
-  // Dates are derived straight from the task, so the inputs stay in sync.
-  const startParts = isoToParts(task.startAt);
-  const dueParts = isoToParts(task.dueAt);
-  const onStartDate = (v: string) => {
-    const time = v === '' ? '' : startParts.time || defaultTime(DEFAULT_START_HOUR);
-    void saveField({ startAt: partsToIso(v, time, DEFAULT_START_HOUR) });
-  };
-  const onStartTime = (v: string) => {
-    if (startParts.date) void saveField({ startAt: partsToIso(startParts.date, v, DEFAULT_START_HOUR) });
-  };
-  const onDueDate = (v: string) => {
-    const time = v === '' ? '' : dueParts.time || defaultTime(DEFAULT_DUE_HOUR);
-    void saveField({ dueAt: partsToIso(v, time, DEFAULT_DUE_HOUR) });
-  };
-  const onDueTime = (v: string) => {
-    if (dueParts.date) void saveField({ dueAt: partsToIso(dueParts.date, v, DEFAULT_DUE_HOUR) });
-  };
+  // Revert staged fields to the persisted task.
+  function discardFields() {
+    setFieldsError(null);
+    setAssigneeId(task.assigneeId ?? '');
+    setPriority(task.priority);
+    setStatus(task.status);
+    const s = isoToParts(task.startAt);
+    const d = isoToParts(task.dueAt);
+    setStartDate(s.date);
+    setStartTime(s.time);
+    setDueDate(d.date);
+    setDueTime(d.time);
+  }
 
   // --- Relationships / picker ----------------------------------------------
   async function runRel(action: () => Promise<TaskDetailDto>) {
@@ -144,6 +189,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     try {
       applyTask(await api.updateTask(task.id, { name }));
       setEditingName(false);
+      flashSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the name');
     } finally {
@@ -155,6 +201,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     try {
       applyTask(await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }));
       setEditingDesc(false);
+      flashSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the description');
     } finally {
@@ -247,11 +294,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
   const nameUnsaved = editingName && nameDraft.trim() !== task.name;
   const descUnsaved = editingDesc && descDraft !== (task.description ?? '');
-  useUnsavedChangesWarning(nameUnsaved || descUnsaved || commentsDirty);
+  useUnsavedChangesWarning(fieldsDirty || nameUnsaved || descUnsaved || commentsDirty);
 
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
   const isCompleted = task.status === 'Completed';
+
+  // Staged assignee resolved to a user object for the chip display.
+  const assigneeUser =
+    assigneeId === ''
+      ? null
+      : assigneeId === (task.assigneeId ?? '')
+        ? task.assignee
+        : users.find((u) => u.id === assigneeId) ?? null;
 
   return (
     <div className="detail-page">
@@ -272,16 +327,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </button>
         )}
         {isCompleted ? (
-          <button type="button" className="secondary btn-sm" onClick={() => onStatus('Open')}>
+          <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={() => void saveFields('Open')}>
             Reopen
           </button>
         ) : (
-          <button type="button" onClick={() => onStatus('Completed')}>
+          <button type="button" disabled={savingFields} onClick={() => void saveFields('Completed')}>
             Mark complete
           </button>
         )}
       </div>
 
+      {notice && <div className="alert success">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
 
       {/* Header */}
@@ -307,11 +363,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </div>
         )}
 
-        {/* Property chip row — each saves immediately */}
+        {/* Property chip row — staged; committed together via "Save changes" */}
         <div className="detail-props">
-          <span className="prop-chip is-status">
-            <StatusPill status={task.status} caret />
-            <select className="prop-overlay-select" value={task.status} aria-label="Status" onChange={(e) => onStatus(e.target.value as TaskStatus)}>
+          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}`}>
+            <StatusPill status={status} caret />
+            <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
               {TASK_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {TASK_STATUS_LABELS[s]}
@@ -320,10 +376,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </select>
           </span>
 
-          <span className="prop-chip">
-            <PriorityRamp priority={task.priority} label />
+          <span className={`prop-chip${priority !== task.priority ? ' is-dirty' : ''}`}>
+            <PriorityRamp priority={priority} label />
             <span className="prop-caret" aria-hidden="true">▾</span>
-            <select className="prop-overlay-select" value={task.priority} aria-label="Priority" onChange={(e) => saveField({ priority: e.target.value as TaskPriority })}>
+            <select className="prop-overlay-select" value={priority} aria-label="Priority" onChange={(e) => setPriority(e.target.value as TaskPriority)}>
               {TASK_PRIORITIES.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -332,9 +388,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </select>
           </span>
 
-          <span className="prop-chip">
-            {task.assignee ? (
-              <UserChip user={task.assignee} />
+          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}`}>
+            {assigneeUser ? (
+              <UserChip user={assigneeUser} />
             ) : (
               <span className="user-chip muted">
                 <UnassignedAvatar px={20} />
@@ -342,7 +398,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </span>
             )}
             <span className="prop-caret" aria-hidden="true">▾</span>
-            <select className="prop-overlay-select" value={task.assigneeId ?? ''} aria-label="Assignee" onChange={(e) => saveField({ assigneeId: e.target.value || null })}>
+            <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
               <option value="">Unassigned</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -352,8 +408,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </select>
           </span>
 
-          <span className={`prop-chip due-chip${task.dueAt ? '' : ' is-empty'}`}>
-            {task.dueAt ? <DueDate iso={task.dueAt} inline /> : <span className="muted">No due date</span>}
+          <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
+            {stagedDueIso ? <DueDate iso={stagedDueIso} inline /> : <span className="muted">No due date</span>}
           </span>
 
           {task.tags.map((t) => (
@@ -386,6 +442,28 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               ))}
             </datalist>
           </span>
+        </div>
+
+        {/* Save bar for the staged Status / Priority / Assignee / Due chips */}
+        <div className={`detail-savebar${fieldsDirty ? ' is-dirty' : ''}`} role="status">
+          {fieldsDirty ? (
+            <span className="savebar-flag unsaved">
+              <span className="savebar-dot" aria-hidden="true" />
+              Unsaved changes
+            </span>
+          ) : (
+            <span className="savebar-flag saved">All changes saved</span>
+          )}
+          {fieldsError && <span className="savebar-error">{fieldsError}</span>}
+          <div className="spacer" />
+          {fieldsDirty && (
+            <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
+              Discard
+            </button>
+          )}
+          <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty} onClick={() => void saveFields()}>
+            {savingFields ? 'Saving…' : 'Save changes'}
+          </button>
         </div>
       </div>
 
@@ -526,15 +604,37 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <div className="rail-row">
               <span className="rail-label">Start</span>
               <span className="rail-dates">
-                <input type="date" value={startParts.date} onChange={(e) => onStartDate(e.target.value)} aria-label="Start date" />
-                <input type="time" value={startParts.time} onChange={(e) => onStartTime(e.target.value)} aria-label="Start time" disabled={!startParts.date} />
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  aria-label="Start date"
+                />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  aria-label="Start time"
+                  disabled={!startDate}
+                />
               </span>
             </div>
             <div className="rail-row">
               <span className="rail-label">Due</span>
               <span className="rail-dates">
-                <input type="date" value={dueParts.date} onChange={(e) => onDueDate(e.target.value)} aria-label="Due date" />
-                <input type="time" value={dueParts.time} onChange={(e) => onDueTime(e.target.value)} aria-label="Due time" disabled={!dueParts.date} />
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  aria-label="Due date"
+                />
+                <input
+                  type="time"
+                  value={dueTime}
+                  onChange={(e) => setDueTime(e.target.value)}
+                  aria-label="Due time"
+                  disabled={!dueDate}
+                />
               </span>
             </div>
             <div className="rail-row">
@@ -549,6 +649,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <span className="rail-label">Status set</span>
               <AgoDate iso={task.statusChangedAt} />
             </div>
+            {fieldsDirty && (
+              <div className="rail-savebar">
+                <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
+                  Discard
+                </button>
+                <button type="button" className="btn-sm" disabled={savingFields} onClick={() => void saveFields()}>
+                  {savingFields ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="rail-section">
