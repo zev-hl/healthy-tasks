@@ -37,29 +37,24 @@ export function ProfilePage() {
 
   if (!prefs) {
     return (
-      <div className="container">
-        {error ? <div className="alert error">{error}</div> : 'Loading…'}
+      <div className="profile-page">
+        {error ? <div className="alert error">{error}</div> : <div className="muted">Loading…</div>}
       </div>
     );
   }
 
   return (
-    <div className="container">
-      <h2>Profile</h2>
+    <div className="profile-page">
+      <h1>Profile</h1>
+
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
-          {user && <Avatar user={user} size="lg" decorative />}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 650, fontSize: '1.05rem' }}>
-              {user ? userLabel(user) : ''}
-            </div>
-            <div className="muted" style={{ fontSize: '0.85rem' }}>
-              {user?.email}
-              {user?.role ? (
-                <span className={`badge role-${user.role}`} style={{ marginLeft: '0.5rem' }}>
-                  {user.role}
-                </span>
-              ) : null}
+        <div className="profile-id">
+          {user && <Avatar user={user} px={52} decorative />}
+          <div className="profile-id-info">
+            <div className="profile-id-name">{user ? userLabel(user) : ''}</div>
+            <div className="profile-id-meta">
+              <span>{user?.email}</span>
+              {user?.role ? <span className={`badge role-${user.role}`}>{user.role}</span> : null}
             </div>
           </div>
           <div className="spacer" />
@@ -77,51 +72,56 @@ export function ProfilePage() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Notification preferences</h3>
+        <div className="profile-card-head">
+          <h3>Notification preferences</h3>
+        </div>
+        <p className="profile-card-sub">
+          Choose which updates you receive in the app, and which also email you at {user?.email}.
+        </p>
         {error && <div className="alert error">{error}</div>}
-        <table className="prefs-table">
-          <thead>
-            <tr>
-              <th>List</th>
-              <th>Receive</th>
-              <th>Also email me</th>
-            </tr>
-          </thead>
-          <tbody>
-            {NOTIFICATION_LISTS.map((list) => {
-              const inAppKey = `${list}InApp` as keyof NotificationPreferencesDto;
-              const emailKey = `${list}Email` as keyof NotificationPreferencesDto;
-              const inApp = prefs[inAppKey];
-              const email = prefs[emailKey];
-              return (
-                <tr key={list}>
-                  <td>{NOTIFICATION_LIST_LABELS[list]}</td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={inApp}
-                      aria-label={`Receive ${NOTIFICATION_LIST_LABELS[list]} notifications`}
-                      onChange={(e) => void update(inAppKey, e.target.checked)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={email}
-                      disabled={!inApp}
-                      aria-label={`Also email ${NOTIFICATION_LIST_LABELS[list]} notifications`}
-                      onChange={(e) => void update(emailKey, e.target.checked)}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <p className="muted" style={{ fontSize: '0.8rem' }}>
-          Turning off “Receive” stops new notifications of that type (existing ones remain). “Also
-          email me” additionally sends each notification to {user?.email}. In development, emails are
-          printed to the server console.
+
+        <div className="prefs-list">
+          <div className="prefs-head">
+            <span>Notification</span>
+            <span>In app</span>
+            <span>Email</span>
+          </div>
+          {NOTIFICATION_LISTS.map((list) => {
+            const inAppKey = `${list}InApp` as keyof NotificationPreferencesDto;
+            const emailKey = `${list}Email` as keyof NotificationPreferencesDto;
+            const inApp = prefs[inAppKey];
+            const email = prefs[emailKey];
+            const label = NOTIFICATION_LIST_LABELS[list];
+            return (
+              <div key={list} className="prefs-row">
+                <span className="prefs-row-label">{label}</span>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={inApp}
+                    aria-label={`Receive ${label} notifications in the app`}
+                    onChange={(e) => void update(inAppKey, e.target.checked)}
+                  />
+                  <span className="switch-track" aria-hidden="true" />
+                </label>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={email}
+                    disabled={!inApp}
+                    aria-label={`Also email me ${label} notifications`}
+                    onChange={(e) => void update(emailKey, e.target.checked)}
+                  />
+                  <span className="switch-track" aria-hidden="true" />
+                </label>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="muted" style={{ fontSize: '0.8rem', marginBottom: 0, marginTop: '1rem' }}>
+          Turning off “In app” stops new notifications of that type (existing ones remain). In
+          development, emails are printed to the server console.
         </p>
       </div>
     </div>

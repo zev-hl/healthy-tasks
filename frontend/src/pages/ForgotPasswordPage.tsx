@@ -25,13 +25,14 @@ export function ForgotPasswordPage() {
   return (
     <div className="auth-container">
       <div className="auth-brand">
-        <span className="brand-mark" aria-hidden="true">
-          ✓
+        <span className="auth-brand-mark" aria-hidden="true">
+          H
         </span>
         Healthy Tasks
       </div>
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Reset password</h2>
+      <div className="card auth-card">
+        <h1 className="auth-title">Reset password</h1>
+        <p className="auth-sub">We&apos;ll email you a link to set a new one.</p>
         {message ? (
           <>
             <div className="alert success">{message}</div>
@@ -53,13 +54,13 @@ export function ForgotPasswordPage() {
                   required
                 />
               </div>
-              <button type="submit" disabled={submitting} style={{ width: '100%' }}>
+              <button type="submit" className="auth-submit" disabled={submitting}>
                 {submitting ? 'Sending…' : 'Send reset link'}
               </button>
             </form>
           </>
         )}
-        <p style={{ marginBottom: 0, marginTop: '1rem', fontSize: '0.85rem' }}>
+        <p className="auth-alt">
           <Link to="/login">Back to sign in</Link>
         </p>
       </div>

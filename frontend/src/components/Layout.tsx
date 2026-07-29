@@ -81,7 +81,7 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       </nav>
 
       <div className="side-group">
-        <div className="side-group-label">Views</div>
+        <div className="side-group-label">Quick Views</div>
         {SAVED_VIEWS.map((v) => (
           <button
             key={v.key}

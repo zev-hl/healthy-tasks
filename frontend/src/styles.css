@@ -1386,24 +1386,206 @@ textarea:focus-visible {
 }
 
 .auth-container {
-  max-width: 400px;
-  margin: 9vh auto;
+  max-width: 408px;
+  margin: 8vh auto;
   padding: 0 1.5rem;
 }
 .auth-brand {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.55rem;
-  margin-bottom: 1.25rem;
-  font-size: 1.3rem;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--ink);
 }
-.auth-brand .brand-mark {
-  width: 2rem;
-  height: 2rem;
-  font-size: 1.1rem;
+.auth-brand-mark {
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.05rem;
+  box-shadow: var(--shadow-frame);
+}
+.auth-card {
+  padding: 1.75rem;
+}
+.auth-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.7rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.auth-sub {
+  margin: 0.15rem 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.auth-alt {
+  margin: 1.15rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.auth-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Profile screen (Phase 10 redesign)
+   --------------------------------------------------------------------------- */
+.profile-page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 22px 26px;
+}
+.profile-page > h1 {
+  font-size: 22px;
+  margin: 0 0 14px;
+}
+.profile-page .card + .card {
+  margin-top: 14px;
+}
+.profile-id {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+}
+.profile-id-info {
+  min-width: 0;
+}
+.profile-id-name {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.profile-id-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.profile-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.25rem;
+}
+.profile-card-head h3 {
+  margin: 0;
+}
+.profile-card-sub {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0 0 1rem;
+}
+
+/* Preference rows with two toggle switches each. */
+.prefs-list {
+  display: flex;
+  flex-direction: column;
+}
+.prefs-head,
+.prefs-row {
+  display: grid;
+  grid-template-columns: 1fr 6.5rem 6.5rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+.prefs-head {
+  padding: 0 0 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.prefs-head span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.prefs-head span:not(:first-child),
+.prefs-row .switch {
+  justify-self: center;
+}
+.prefs-row {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--row-line);
+}
+.prefs-row:last-child {
+  border-bottom: none;
+}
+.prefs-row-label {
+  font-size: 0.92rem;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+/* Pill toggle switch wrapping a native checkbox. */
+.switch {
+  display: inline-flex;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  cursor: pointer;
+}
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+}
+.switch-track {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--canvas-deep);
+  border: 1px solid var(--border);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-frame);
+  transition: transform var(--dur) var(--ease);
+}
+.switch input:checked + .switch-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch input:checked + .switch-track::after {
+  transform: translateX(16px);
+}
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.switch input:disabled + .switch-track {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.switch input:disabled {
+  cursor: not-allowed;
 }
 
 /* ---------------------------------------------------------------------------
@@ -2420,6 +2602,9 @@ th {
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
+.users-page {
+  padding: 22px 26px;
+}
 .users-table {
   table-layout: fixed;
   width: 100%;
@@ -2808,13 +2993,16 @@ th.sortable:hover .sort-hint {
   background: var(--surface);
 }
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
   box-shadow: none;
   color: var(--muted);
   cursor: pointer;
   font-size: 0.95rem;
-  padding: 0.15rem 0.25rem;
+  padding: 0.3rem;
   line-height: 1;
   border-radius: var(--radius-sm);
   transition:

@@ -24,6 +24,15 @@ import { cycleSort, sortState } from '../lib/multiSort';
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const DEFAULT_SORT: UserSort[] = [{ field: 'lastName', dir: 'asc' }];
 
+function PencilIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
 interface PersistedUsersState {
   filters: UserSearchFilters;
   sort: UserSort[];
@@ -176,9 +185,10 @@ export function UsersPage() {
   );
 
   return (
-    <div className="container container-wide">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Users</h2>
+    <div className="users-page">
+      <div className="tasks-toolbar">
+        <h1>Users</h1>
+        <span className="mono tasks-total">{loading ? '…' : total}</span>
         <div className="spacer" />
         {filtersActive && (
           <button
@@ -284,7 +294,7 @@ export function UsersPage() {
                         aria-label={`Edit ${u.email}`}
                         onClick={() => setEditing(u)}
                       >
-                        ✏️
+                        <PencilIcon />
                       </button>
                     )}
                   </td>
@@ -345,7 +355,7 @@ export function UsersPage() {
                           → {lookupEmail(u.mergedIntoId!) ?? 'merged'}
                         </span>
                       ) : (
-                        <button className="secondary" onClick={() => handleReset(u)}>
+                        <button className="secondary btn-sm" onClick={() => handleReset(u)}>
                           Reset password
                         </button>
                       )}
@@ -364,12 +374,12 @@ export function UsersPage() {
       </div>
 
       <div className="pager">
-        <span className="muted">
+        <span className="mono muted">
           {loading ? 'Loading…' : `${total} user${total === 1 ? '' : 's'}`}
         </span>
         <div className="spacer" />
-        <label>
-          Rows:{' '}
+        <label className="mono">
+          Rows{' '}
           <select
             value={pageSize}
             onChange={(e) => {
@@ -384,14 +394,14 @@ export function UsersPage() {
             ))}
           </select>
         </label>
-        <button className="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+        <button className="secondary btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
           ← Prev
         </button>
-        <span>
+        <span className="mono">
           Page {page} of {totalPages}
         </span>
         <button
-          className="secondary"
+          className="secondary btn-sm"
           disabled={page >= totalPages}
           onClick={() => setPage((p) => p + 1)}
         >

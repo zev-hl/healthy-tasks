@@ -29,13 +29,14 @@ export function LoginPage() {
   return (
     <div className="auth-container">
       <div className="auth-brand">
-        <span className="brand-mark" aria-hidden="true">
-          ✓
+        <span className="auth-brand-mark" aria-hidden="true">
+          H
         </span>
         Healthy Tasks
       </div>
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Sign in</h2>
+      <div className="card auth-card">
+        <h1 className="auth-title">Sign in</h1>
+        <p className="auth-sub">Welcome back — sign in to your workspace.</p>
         {sessionExpired && !error && (
           <div className="alert info">
             Your session expired after a period of inactivity. Please sign in again.
@@ -77,11 +78,11 @@ export function LoginPage() {
               </button>
             </div>
           </div>
-          <button type="submit" disabled={submitting} style={{ width: '100%' }}>
+          <button type="submit" className="auth-submit" disabled={submitting}>
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-        <p style={{ marginBottom: 0, marginTop: '1rem', fontSize: '0.85rem' }}>
+        <p className="auth-alt">
           <Link to="/forgot-password">Forgot your password?</Link>
         </p>
       </div>
