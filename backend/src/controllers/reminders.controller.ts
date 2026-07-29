@@ -6,8 +6,9 @@ import {
   listRemindersForTask,
   markReminderRead,
   removeReminder,
+  snoozeReminder,
 } from '../services/reminder.service.js';
-import type { AddReminderInput } from '../validation/schemas.js';
+import type { AddReminderInput, SnoozeReminderInput } from '../validation/schemas.js';
 
 function currentUserId(req: Request): string {
   if (!req.user) throw HttpError.unauthorized();
@@ -44,5 +45,13 @@ export async function removeReminderController(req: Request, res: Response): Pro
 export async function markReminderReadController(req: Request, res: Response): Promise<void> {
   const userId = currentUserId(req);
   await markReminderRead(userId, (req.params as { id: string }).id);
+  res.status(204).send();
+}
+
+/** POST /api/reminders/:id/snooze — hide a due reminder for `minutes` from now. */
+export async function snoozeReminderController(req: Request, res: Response): Promise<void> {
+  const userId = currentUserId(req);
+  const { minutes } = req.body as SnoozeReminderInput;
+  await snoozeReminder(userId, (req.params as { id: string }).id, minutes, new Date());
   res.status(204).send();
 }

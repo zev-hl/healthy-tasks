@@ -256,12 +256,17 @@ export function HomePage() {
 
   const goFilter = (filters: TaskSearchFilters, viewLabel: string) =>
     navigate('/tasks', { state: { filters, viewLabel } });
+  // Dashboard tiles refine the Tasks list: merge this metric onto the existing
+  // filters (like the list's stat strip) rather than replacing them.
+  const mergeFilter = (filters: TaskSearchFilters) =>
+    navigate('/tasks', { state: { mergeFilters: filters } });
 
   const tiles = dash
     ? [
         { key: 'overdue', label: 'Overdue', sub: 'Past due, still open', value: dash.overdue, cls: 'tile-danger', f: { overdue: true } as TaskSearchFilters },
-        { key: 'today', label: 'Due today', sub: 'On your plate today', value: dueTodayCount, cls: 'tile-warn', f: { dueFrom: dateStr(new Date()), dueTo: dateStr(new Date()), includeNoDue: false } as TaskSearchFilters },
+        { key: 'today', label: 'Due today', sub: 'On your plate today', value: dash.dueToday, cls: 'tile-warn', f: { dueFrom: dateStr(new Date()), dueTo: dateStr(new Date()), includeNoDue: false } as TaskSearchFilters },
         { key: 'wip', label: 'In progress', sub: 'Currently active', value: dash.byStatus.InProgress ?? 0, cls: 'tile-accent', f: { statuses: ['InProgress'] } as TaskSearchFilters },
+        { key: 'review', label: 'In review', sub: 'Awaiting review', value: dash.byStatus.Review ?? 0, cls: 'tile-review', f: { statuses: ['Review'] } as TaskSearchFilters },
         { key: 'done', label: 'Completed today', sub: 'Nice work', value: dash.completedToday, cls: 'tile-plain', f: { completedToday: true } as TaskSearchFilters },
       ]
     : [];
@@ -298,7 +303,7 @@ export function HomePage() {
 
       <div className="mday-tiles">
         {tiles.map((t) => (
-          <button key={t.key} type="button" className={`mday-tile ${t.cls}`} onClick={() => goFilter(t.f, t.label)}>
+          <button key={t.key} type="button" className={`mday-tile ${t.cls}`} onClick={() => mergeFilter(t.f)}>
             <span className="mday-tile-value">{t.value}</span>
             <span className="mday-tile-label">{t.label}</span>
             <span className="mday-tile-sub">{t.sub}</span>
@@ -357,7 +362,21 @@ export function HomePage() {
             <h3>Today</h3>
             <span className="mono mday-count">{today.length}</span>
             <div className="spacer" />
-            <button type="button" className="link-button" onClick={() => goFilter({ dueTo: dateStr(new Date()), includeNoDue: false, statuses: ACTIVE_STATUSES }, 'Today')}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() =>
+                goFilter(
+                  {
+                    dueFrom: dateStr(new Date()),
+                    dueTo: dateStr(new Date()),
+                    includeNoDue: false,
+                    assigneeIds: [me],
+                  },
+                  'Due today',
+                )
+              }
+            >
               View all
             </button>
           </div>

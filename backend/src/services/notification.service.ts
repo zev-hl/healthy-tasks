@@ -7,6 +7,7 @@ import { getNotificationPreferences, getPreferencesMap } from './notification-pr
 import { listDueReminders, type DueReminder } from './reminder.service.js';
 import {
   reminderLeadLabel,
+  TERMINAL_TASK_STATUSES,
   type AssignAction,
   type AssignedNotificationDto,
   type MentionedFilter,
@@ -73,7 +74,7 @@ export async function createAssignedNotification(params: {
   if (!prefs.assignedInApp) return; // opted out of Assigned entirely
 
   await prisma.notification.create({
-    data: { userId: recipientId, type: 'assigned', taskId, assignAction: action },
+    data: { userId: recipientId, type: 'assigned', taskId, assignAction: action, actorId },
   });
   if (prefs.assignedEmail) await emailAssignment(recipientId, taskId, action);
 }
@@ -124,16 +125,44 @@ export async function listNotifications(
 
   const assignedRows = await prisma.notification.findMany({
     where: { userId, type: 'assigned' },
-    include: { task: { select: { name: true, startAt: true, priority: true } } },
+    include: { task: { select: { name: true, startAt: true, dueAt: true, priority: true } } },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Resolve actors (assigners) and count each task's open blockers in one pass.
+  const actorIds = [...new Set(assignedRows.map((r) => r.actorId).filter((x): x is string => !!x))];
+  const taskIds = [...new Set(assignedRows.map((r) => r.taskId))];
+  const [actorRows, blockerGroups] = await Promise.all([
+    actorIds.length
+      ? prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, email: true, firstName: true, lastName: true, title: true },
+        })
+      : Promise.resolve([]),
+    taskIds.length
+      ? prisma.taskDependency.groupBy({
+          by: ['blockedId'],
+          where: {
+            blockedId: { in: taskIds },
+            blocker: { status: { notIn: [...TERMINAL_TASK_STATUSES] } },
+          },
+          _count: { _all: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const actorById = new Map(actorRows.map((u) => [u.id, toUserRef(u)]));
+  const blockedByCount = new Map(blockerGroups.map((g) => [g.blockedId, g._count._all]));
+
   const assigned: AssignedNotificationDto[] = assignedRows.map((r) => ({
     id: r.id,
     taskId: r.taskId,
     taskName: r.task.name,
     startAt: iso(r.task.startAt),
+    dueAt: iso(r.task.dueAt),
     priority: r.task.priority,
     action: (r.assignAction ?? 'added') as AssignAction,
+    actor: r.actorId ? (actorById.get(r.actorId) ?? null) : null,
+    blockedByCount: blockedByCount.get(r.taskId) ?? 0,
     createdAt: r.createdAt.toISOString(),
     read: r.readAt !== null,
   }));

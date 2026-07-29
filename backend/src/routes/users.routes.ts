@@ -11,6 +11,7 @@ import {
 import {
   listUsersController,
   searchUsersController,
+  userCountsController,
   userFilterOptionsController,
   listActiveUsersController,
   listSupervisorsController,
@@ -38,6 +39,7 @@ usersRouter.get('/supervisors', asyncHandler(listSupervisorsController));
 // Users screen filtered/sorted/paged search (Phase 6). Before `/:id`.
 usersRouter.post('/search', validateBody(userSearchSchema), asyncHandler(searchUsersController));
 usersRouter.get('/filter-options', asyncHandler(userFilterOptionsController));
+usersRouter.get('/counts', asyncHandler(userCountsController));
 usersRouter.post('/', validateBody(createUserSchema), asyncHandler(createUserController));
 // Merge two accounts. Declared before `/:id` so `merge` isn't captured as an id.
 usersRouter.post('/merge', validateBody(mergeUsersSchema), asyncHandler(mergeUsersController));

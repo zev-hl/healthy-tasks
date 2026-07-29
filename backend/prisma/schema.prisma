@@ -401,6 +401,10 @@ model Notification {
   // `assigned` only: whether the user was added or removed as assignee.
   assignAction AssignAction?
 
+  // The user who caused this notification (the assigner). Stored as a plain id
+  // and resolved to a display ref when the list is built; null for older rows.
+  actorId String?
+
   // Null until read; set when the user clicks through to the task.
   readAt DateTime?
 
@@ -430,6 +434,9 @@ model Reminder {
   // Stamped when the "also email me" reminder email was sent — sent once, when
   // the reminder first becomes due (detected during the polling heartbeat).
   emailSentAt DateTime?
+  // When set and in the future, the reminder is hidden from the due list until
+  // this time (user snoozed it).
+  snoozedUntil DateTime?
 
   createdAt DateTime @default(now())
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   Role,
+  UserCountsDto,
   UserDto,
   UserFilterOptions,
   UserSearchFilters,
@@ -10,19 +11,30 @@ import type {
 } from '@healthy-tasks/shared';
 import { DEFAULT_PAGE_SIZE, ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import { UserFormModal } from '../components/UserFormModal';
 import { UserEditModal } from '../components/UserEditModal';
 import { MergeUsersModal } from '../components/MergeUsersModal';
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
 import { FilterPopover } from '../components/FilterPopover';
-import { UserChip } from '../components/ui/Avatar';
+import { Avatar, UserChip, userLabel } from '../components/ui/Avatar';
 import { TableEmptyRow } from '../components/ui/EmptyState';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const DEFAULT_SORT: UserSort[] = [{ field: 'lastName', dir: 'asc' }];
+
+const SORT_LABELS: Record<UserSortField, string> = {
+  email: 'email',
+  firstName: 'first name',
+  lastName: 'name',
+  role: 'role',
+  title: 'title',
+  supervisor: 'supervisor',
+  status: 'status',
+};
 
 function PencilIcon() {
   return (
@@ -40,21 +52,13 @@ interface PersistedUsersState {
   pageSize: number;
 }
 
-const COLUMNS: { label: string; field: UserSortField }[] = [
-  { label: 'Email (login id)', field: 'email' },
-  { label: 'First name', field: 'firstName' },
-  { label: 'Last name', field: 'lastName' },
-  { label: 'Role', field: 'role' },
-  { label: 'Title', field: 'title' },
-  { label: 'Supervisor', field: 'supervisor' },
-  { label: 'Status', field: 'status' },
-];
-
 export function UsersPage() {
+  const { user: me } = useAuth();
   const [rows, setRows] = useState<UserDto[]>([]);
   const [supervisors, setSupervisors] = useState<UserDto[]>([]);
   const [mergeAll, setMergeAll] = useState<UserDto[]>([]);
   const [options, setOptions] = useState<UserFilterOptions | null>(null);
+  const [counts, setCounts] = useState<UserCountsDto | null>(null);
 
   const [filters, setFilters] = useState<UserSearchFilters>({});
   const [sort, setSort] = useState<UserSort[]>(DEFAULT_SORT);
@@ -68,6 +72,7 @@ export function UsersPage() {
   const [resetLink, setResetLink] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [editing, setEditing] = useState<UserDto | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -76,10 +81,14 @@ export function UsersPage() {
   const loadOptions = useCallback(() => {
     void api.userFilterOptions().then(setOptions).catch(() => setOptions(null));
   }, []);
+  const loadCounts = useCallback(() => {
+    void api.userCounts().then(setCounts).catch(() => {});
+  }, []);
 
   useEffect(() => {
     void api.listSupervisors().then(setSupervisors).catch(() => setSupervisors([]));
     loadOptions();
+    loadCounts();
     void api
       .getPreference('users')
       .then(({ state }) => {
@@ -93,7 +102,7 @@ export function UsersPage() {
       })
       .catch(() => {})
       .finally(() => setHydrated(true));
-  }, [loadOptions]);
+  }, [loadOptions, loadCounts]);
 
   const snapshot = useMemo<PersistedUsersState>(
     () => ({ filters, sort, page, pageSize }),
@@ -157,19 +166,29 @@ export function UsersPage() {
     for (const u of mergeAll) m.set(u.id, u);
     return m;
   }, [rows, supervisors, mergeAll]);
-  const lookupEmail = (id: string) => usersById.get(id)?.email;
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const filtersActive =
-    (filters.firstName?.length ?? 0) > 0 ||
-    (filters.lastName?.length ?? 0) > 0 ||
-    (filters.email?.length ?? 0) > 0 ||
-    (filters.title?.length ?? 0) > 0 ||
-    (filters.supervisorIds?.length ?? 0) > 0 ||
-    (filters.roles?.length ?? 0) > 0 ||
-    (filters.status && filters.status !== 'all');
 
-  // A distinct-value checklist filter for a text-like column.
+  // Active-filter chips (removable), mirroring the Tasks screen.
+  const chips: { id: string; label: string; clear: Partial<UserSearchFilters> }[] = [];
+  if (filters.roles?.length) chips.push({ id: 'roles', label: `Role · ${filters.roles.length}`, clear: { roles: [] } });
+  if (filters.status && filters.status !== 'all')
+    chips.push({ id: 'status', label: `Status · ${filters.status === 'active' ? 'Active' : 'Deactivated'}`, clear: { status: 'all' } });
+  if (filters.supervisorIds?.length) chips.push({ id: 'supervisor', label: `Supervisor · ${filters.supervisorIds.length}`, clear: { supervisorIds: [] } });
+  if (filters.title?.length) chips.push({ id: 'title', label: `Title · ${filters.title.length}`, clear: { title: [] } });
+  if (filters.firstName?.length) chips.push({ id: 'firstName', label: `First name · ${filters.firstName.length}`, clear: { firstName: [] } });
+  if (filters.lastName?.length) chips.push({ id: 'lastName', label: `Last name · ${filters.lastName.length}`, clear: { lastName: [] } });
+  if (filters.email?.length) chips.push({ id: 'email', label: `Email · ${filters.email.length}`, clear: { email: [] } });
+  const filtersActive = chips.length > 0;
+
+  const sortSummary = sort.length
+    ? `${SORT_LABELS[sort[0]!.field]} ${sort[0]!.dir === 'asc' ? '↑' : '↓'}${sort.length > 1 ? ` +${sort.length - 1}` : ''}`
+    : null;
+
+  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(total, page * pageSize);
+
+  // Distinct-value checklist filter for a text-like column.
   const checklistFilter = (
     label: string,
     key: 'email' | 'firstName' | 'lastName' | 'title',
@@ -184,25 +203,48 @@ export function UsersPage() {
     </FilterPopover>
   );
 
+  function personCell(u: UserDto, merged: boolean) {
+    const hasName = !!(u.firstName || u.lastName);
+    return (
+      <div className={`user-person${!u.isActive ? ' is-inactive' : ''}`}>
+        <Avatar user={u} px={32} decorative />
+        <div className="user-person-txt">
+          <span className="user-person-name">
+            {hasName ? (
+              userLabel(u)
+            ) : merged ? (
+              <span className="muted">—</span>
+            ) : (
+              <button type="button" className="incomplete-link" onClick={() => setEditing(u)}>
+                + Add name
+              </button>
+            )}
+            {me?.id === u.id && <span className="chip-you">You</span>}
+            {!u.isActive && !merged && <span className="chip-inactive">Inactive</span>}
+          </span>
+          <span className="user-person-email mono">{u.email}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="users-page">
       <div className="tasks-toolbar">
         <h1>Users</h1>
-        <span className="mono tasks-total">{loading ? '…' : total}</span>
+        <span className="mono tasks-total">
+          {counts ? `${counts.active} active · ${counts.inactive} inactive` : loading ? '…' : total}
+        </span>
+        <input
+          className="tasks-search"
+          value={filters.query ?? ''}
+          onChange={(e) => patchFilters({ query: e.target.value })}
+          placeholder="Search name or email…"
+          aria-label="Search users"
+        />
         <div className="spacer" />
-        {filtersActive && (
-          <button
-            className="secondary"
-            onClick={() => {
-              setFilters({});
-              setPage(1);
-            }}
-          >
-            Clear filters
-          </button>
-        )}
         <button className="secondary" onClick={openMerge}>
-          Merge accounts
+          Merge users
         </button>
         <button onClick={() => setShowCreate(true)}>Add user</button>
       </div>
@@ -215,131 +257,122 @@ export function UsersPage() {
         </div>
       )}
 
+      {/* Chip row: active filters + "+ Filter" + sort caption */}
+      <div className="tasks-chiprow">
+        {chips.map((c) => (
+          <button key={c.id} type="button" className="filter-chip" onClick={() => patchFilters(c.clear)}>
+            {c.label}
+            <span className="chip-x" aria-hidden="true">
+              ×
+            </span>
+          </button>
+        ))}
+        <button type="button" className={`add-filter${showFilters ? ' open' : ''}`} onClick={() => setShowFilters((v) => !v)}>
+          + Filter
+        </button>
+        {filtersActive && (
+          <button type="button" className="link-button" onClick={() => { setFilters({}); setPage(1); }}>
+            Clear all
+          </button>
+        )}
+        <div className="spacer" />
+        {sortSummary && <span className="mono tasks-sort">Sorted by {sortSummary}</span>}
+      </div>
+
+      {showFilters && (
+        <div className="card panel tasks-filter-panel">
+          <div className="tasks-filter-field">
+            <span className="u-label">Role</span>
+            <FilterPopover label="Role" active={(filters.roles?.length ?? 0) > 0}>
+              <MultiSelect
+                options={ROLES.map((r) => ({ value: r, label: r }))}
+                selected={filters.roles ?? []}
+                onChange={(v) => patchFilters({ roles: v as Role[] })}
+              />
+            </FilterPopover>
+          </div>
+          <div className="tasks-filter-field">
+            <span className="u-label">Status</span>
+            <FilterPopover label="Status" active={!!filters.status && filters.status !== 'all'}>
+              <div className="pop-radios">
+                {(['all', 'active', 'inactive'] as UserStatusFilter[]).map((s) => (
+                  <label key={s}>
+                    <input
+                      type="radio"
+                      name="user-status-filter"
+                      checked={(filters.status ?? 'all') === s}
+                      onChange={() => patchFilters({ status: s })}
+                    />
+                    {s === 'all' ? 'All' : s === 'active' ? 'Active' : 'Deactivated'}
+                  </label>
+                ))}
+              </div>
+            </FilterPopover>
+          </div>
+          <div className="tasks-filter-field">
+            <span className="u-label">Supervisor</span>
+            <FilterPopover label="Supervisor" active={(filters.supervisorIds?.length ?? 0) > 0}>
+              <MultiSelect
+                options={(options?.supervisors ?? []).map((s) => ({ value: s.id, label: s.email }))}
+                selected={filters.supervisorIds ?? []}
+                onChange={(v) => patchFilters({ supervisorIds: v })}
+              />
+            </FilterPopover>
+          </div>
+          <div className="tasks-filter-field">
+            <span className="u-label">Title</span>
+            {checklistFilter('Title', 'title', options?.title ?? [])}
+          </div>
+          <div className="tasks-filter-field">
+            <span className="u-label">First name</span>
+            {checklistFilter('First name', 'firstName', options?.firstName ?? [])}
+          </div>
+          <div className="tasks-filter-field">
+            <span className="u-label">Last name</span>
+            {checklistFilter('Last name', 'lastName', options?.lastName ?? [])}
+          </div>
+          <div className="tasks-filter-field">
+            <span className="u-label">Email</span>
+            {checklistFilter('Email', 'email', options?.email ?? [])}
+          </div>
+        </div>
+      )}
+
       <div className="table-scroll">
         <table className="users-table">
           <thead>
             <tr>
-              <th />
-              {COLUMNS.map((c) => (
-                <SortHeader
-                  key={c.field}
-                  label={c.label}
-                  multi={sort.length > 1}
-                  state={sortState(sort, c.field)}
-                  onSort={(additive) => onSort(c.field, additive)}
-                />
-              ))}
-              <th>Actions</th>
-            </tr>
-            <tr className="filter-row">
-              <th />
-              <th>{checklistFilter('Email', 'email', options?.email ?? [])}</th>
-              <th>{checklistFilter('First name', 'firstName', options?.firstName ?? [])}</th>
-              <th>{checklistFilter('Last name', 'lastName', options?.lastName ?? [])}</th>
-              <th>
-                <FilterPopover label="Role" active={(filters.roles?.length ?? 0) > 0}>
-                  <MultiSelect
-                    options={ROLES.map((r) => ({ value: r, label: r }))}
-                    selected={filters.roles ?? []}
-                    onChange={(v) => patchFilters({ roles: v as Role[] })}
-                  />
-                </FilterPopover>
-              </th>
-              <th>{checklistFilter('Title', 'title', options?.title ?? [])}</th>
-              <th>
-                <FilterPopover
-                  label="Supervisor"
-                  active={(filters.supervisorIds?.length ?? 0) > 0}
-                >
-                  <MultiSelect
-                    options={(options?.supervisors ?? []).map((s) => ({ value: s.id, label: s.email }))}
-                    selected={filters.supervisorIds ?? []}
-                    onChange={(v) => patchFilters({ supervisorIds: v })}
-                  />
-                </FilterPopover>
-              </th>
-              <th>
-                <FilterPopover
-                  label="Status"
-                  active={!!filters.status && filters.status !== 'all'}
-                >
-                  <div className="pop-radios">
-                    {(['all', 'active', 'inactive'] as UserStatusFilter[]).map((s) => (
-                      <label key={s}>
-                        <input
-                          type="radio"
-                          name="user-status-filter"
-                          checked={(filters.status ?? 'all') === s}
-                          onChange={() => patchFilters({ status: s })}
-                        />
-                        {s === 'all' ? 'All' : s === 'active' ? 'Active' : 'Deactivated'}
-                      </label>
-                    ))}
-                  </div>
-                </FilterPopover>
-              </th>
-              <th />
+              <SortHeader label="Person" multi={sort.length > 1} state={sortState(sort, 'lastName')} onSort={(a) => onSort('lastName', a)} />
+              <SortHeader label="Role" multi={sort.length > 1} state={sortState(sort, 'role')} onSort={(a) => onSort('role', a)} />
+              <SortHeader label="Title" multi={sort.length > 1} state={sortState(sort, 'title')} onSort={(a) => onSort('title', a)} />
+              <SortHeader label="Supervisor" multi={sort.length > 1} state={sortState(sort, 'supervisor')} onSort={(a) => onSort('supervisor', a)} />
+              <SortHeader label="Status" multi={sort.length > 1} state={sortState(sort, 'status')} onSort={(a) => onSort('status', a)} />
+              <th className="col-user-actions" />
             </tr>
           </thead>
           <tbody>
             {rows.map((u) => {
               const merged = u.mergedIntoId !== null;
+              const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
               return (
-                <tr key={u.id} className={u.isActive ? '' : 'row-inactive'}>
-                  <td style={{ textAlign: 'center' }}>
-                    {!merged && (
-                      <button
-                        className="icon-btn"
-                        title={`Edit ${u.email}`}
-                        aria-label={`Edit ${u.email}`}
-                        onClick={() => setEditing(u)}
-                      >
-                        <PencilIcon />
-                      </button>
-                    )}
-                  </td>
-                  <td>
-                    <UserChip user={u} label={u.email} />
-                  </td>
-                  <td>
-                    {u.firstName ? (
-                      u.firstName
-                    ) : merged ? (
-                      <span className="muted">—</span>
-                    ) : (
-                      <button type="button" className="incomplete-link" onClick={() => setEditing(u)}>
-                        + Add
-                      </button>
-                    )}
-                  </td>
-                  <td>
-                    {u.lastName ? (
-                      u.lastName
-                    ) : merged ? (
-                      <span className="muted">—</span>
-                    ) : (
-                      <button type="button" className="incomplete-link" onClick={() => setEditing(u)}>
-                        + Add
-                      </button>
-                    )}
-                  </td>
+                <tr key={u.id}>
+                  <td>{personCell(u, merged)}</td>
                   <td>
                     <span className={`badge role-${u.role}`}>{u.role}</span>
                   </td>
                   <td>{u.title ?? <span className="muted">—</span>}</td>
                   <td>
-                    {u.supervisorId ? (
-                      (lookupEmail(u.supervisorId) ?? <span className="muted">—</span>)
+                    {supervisor ? (
+                      <UserChip user={supervisor} />
+                    ) : u.supervisorId ? (
+                      <span className="muted">{usersById.get(u.supervisorId)?.email ?? '—'}</span>
                     ) : (
                       <span className="muted">—</span>
                     )}
                   </td>
                   <td>
                     {merged ? (
-                      <span
-                        className="badge inactive"
-                        title={`Merged into ${lookupEmail(u.mergedIntoId!) ?? 'another account'}`}
-                      >
+                      <span className="badge inactive" title={`Merged into ${usersById.get(u.mergedIntoId!)?.email ?? 'another account'}`}>
                         Merged
                       </span>
                     ) : (
@@ -348,24 +381,27 @@ export function UsersPage() {
                       </span>
                     )}
                   </td>
-                  <td>
-                    <div className="btn-row">
-                      {merged ? (
-                        <span className="muted" style={{ fontSize: '0.8rem' }}>
-                          → {lookupEmail(u.mergedIntoId!) ?? 'merged'}
-                        </span>
-                      ) : (
+                  <td className="col-user-actions">
+                    {merged ? (
+                      <span className="muted" style={{ fontSize: '0.78rem' }}>
+                        → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
+                      </span>
+                    ) : (
+                      <div className="user-actions">
+                        <button className="icon-btn" title={`Edit ${u.email}`} aria-label={`Edit ${u.email}`} onClick={() => setEditing(u)}>
+                          <PencilIcon />
+                        </button>
                         <button className="secondary btn-sm" onClick={() => handleReset(u)}>
                           Reset password
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
             })}
             {!loading && rows.length === 0 && (
-              <TableEmptyRow colSpan={COLUMNS.length + 2} title="No users match">
+              <TableEmptyRow colSpan={6} title="No users match">
                 Try adjusting your filters, or add a new user.
               </TableEmptyRow>
             )}
@@ -375,7 +411,7 @@ export function UsersPage() {
 
       <div className="pager">
         <span className="mono muted">
-          {loading ? 'Loading…' : `${total} user${total === 1 ? '' : 's'}`}
+          {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
         </span>
         <div className="spacer" />
         <label className="mono">
@@ -400,11 +436,7 @@ export function UsersPage() {
         <span className="mono">
           Page {page} of {totalPages}
         </span>
-        <button
-          className="secondary btn-sm"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
+        <button className="secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
           Next →
         </button>
       </div>
@@ -419,6 +451,7 @@ export function UsersPage() {
             setNotice(message);
             void load();
             loadOptions();
+            loadCounts();
           }}
         />
       )}
@@ -431,6 +464,7 @@ export function UsersPage() {
             setNotice('User created. A password-reset link was emailed / logged to the console.');
             void load();
             loadOptions();
+            loadCounts();
           }}
         />
       )}
@@ -444,6 +478,7 @@ export function UsersPage() {
             setNotice(message);
             void load();
             loadOptions();
+            loadCounts();
           }}
         />
       )}

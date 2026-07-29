@@ -259,6 +259,7 @@ export const taskDashboardSchema = z.object({
 export const userSearchSchema = z.object({
   filters: z
     .object({
+      query: z.string().max(200).optional(),
       firstName: z.array(z.string()).optional(),
       lastName: z.array(z.string()).optional(),
       email: z.array(z.string()).optional(),
@@ -285,6 +286,11 @@ export const addReminderSchema = z.object({
   leadMinutes: z.number().int().min(0).max(527040),
 });
 
+// Snooze duration in minutes from now; capped at ~1 week.
+export const snoozeReminderSchema = z.object({
+  minutes: z.number().int().min(1).max(10080),
+});
+
 export const updateNotificationPreferencesSchema = z
   .object({
     mentionedInApp: z.boolean().optional(),
@@ -297,6 +303,7 @@ export const updateNotificationPreferencesSchema = z
   .strict();
 
 export type AddReminderInput = z.infer<typeof addReminderSchema>;
+export type SnoozeReminderInput = z.infer<typeof snoozeReminderSchema>;
 export type UpdateNotificationPreferencesInput = z.infer<
   typeof updateNotificationPreferencesSchema
 >;

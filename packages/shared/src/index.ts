@@ -649,6 +649,7 @@ export interface TaskDashboardDto {
   byStatus: Record<TaskStatus, number>;
   overdue: number;
   completedToday: number;
+  dueToday: number;
 }
 
 /** One row of the Task Search grid (the data behind all 12 columns). */
@@ -691,6 +692,8 @@ export interface UserSort {
 export type UserStatusFilter = 'active' | 'inactive' | 'all';
 
 export interface UserSearchFilters {
+  // Free-text substring match across name + email (toolbar search box).
+  query?: string;
   // Text-like columns filter by an exact multi-select of distinct values.
   firstName?: string[];
   lastName?: string[];
@@ -699,6 +702,12 @@ export interface UserSearchFilters {
   supervisorIds?: string[]; // match users whose supervisor is one of these
   roles?: Role[];
   status?: UserStatusFilter;
+}
+
+/** Roster-wide active/inactive tallies for the Users header (ignores filters). */
+export interface UserCountsDto {
+  active: number;
+  inactive: number;
 }
 
 /** Distinct values available for each Users-screen filter checklist. */
@@ -766,8 +775,11 @@ export interface AssignedNotificationDto {
   taskId: number;
   taskName: string;
   startAt: string | null; // ISO — the task's Start Date & Time
+  dueAt: string | null; // ISO — the task's Due Date & Time
   priority: TaskPriority;
   action: AssignAction;
+  actor: TaskUserRef | null; // who assigned/unassigned (null for legacy rows)
+  blockedByCount: number; // open blockers on the task
   createdAt: string; // ISO
   read: boolean;
 }
@@ -824,6 +836,18 @@ export interface ReminderDto {
 export interface AddReminderRequest {
   leadMinutes: number;
 }
+
+/** Snooze a due reminder for `minutes` from now; it re-surfaces after that. */
+export interface SnoozeReminderRequest {
+  minutes: number;
+}
+
+/** Preset snooze durations offered on a due reminder (minutes from now). */
+export const REMINDER_SNOOZE_OPTIONS: { minutes: number; label: string }[] = [
+  { minutes: 60, label: '1 hour' },
+  { minutes: 180, label: '3 hours' },
+  { minutes: 1440, label: 'Tomorrow' },
+];
 
 // --- Notification preferences (user profile) -------------------------------
 

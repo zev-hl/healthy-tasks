@@ -530,7 +530,7 @@ textarea:focus-visible {
 
 .mday-tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -539,7 +539,7 @@ textarea:focus-visible {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 16px 18px;
+  padding: 14px 15px;
   border-radius: 12px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -582,6 +582,12 @@ textarea:focus-visible {
 }
 .tile-accent .mday-tile-value {
   color: var(--accent-deep);
+}
+.tile-review {
+  background: var(--review-soft);
+}
+.tile-review .mday-tile-value {
+  color: var(--review-deep);
 }
 .tile-plain {
   background: var(--surface);
@@ -878,6 +884,9 @@ textarea:focus-visible {
 .ts-danger .tasks-stat-value {
   color: var(--danger-deep);
 }
+.ts-warn .tasks-stat-value {
+  color: var(--warn-deep);
+}
 .ts-accent .tasks-stat-value {
   color: var(--accent-deep);
 }
@@ -894,6 +903,10 @@ textarea:focus-visible {
 .tasks-stat.ts-danger.active {
   border-color: var(--danger);
   background: var(--danger-soft);
+}
+.tasks-stat.ts-warn.active {
+  border-color: var(--warn);
+  background: var(--warn-soft);
 }
 .tasks-stat.ts-accent.active {
   border-color: var(--accent);
@@ -1387,66 +1400,160 @@ textarea:focus-visible {
   padding: 0 1.5rem;
 }
 
-.auth-container {
-  max-width: 408px;
-  margin: 8vh auto;
-  padding: 0 1.5rem;
-}
-.auth-brand {
+/* ---------------------------------------------------------------------------
+   Sign-in / Forgot / Reset — two-panel auth (frame 1h)
+   Solid teal left panel (brand + serif hero + lede + stats) beside the form.
+   Sign-in-only teal shades (#bfe0da/#8fc5bc/#3d9488) are per the handoff spec.
+   --------------------------------------------------------------------------- */
+.auth-page {
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  margin-bottom: 1.5rem;
-  font-size: 1.35rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--ink);
+  padding: 5vh 1.25rem;
+  background: var(--canvas);
 }
-.auth-brand-mark {
-  width: 2.1rem;
-  height: 2.1rem;
-  flex: none;
-  border-radius: 9px;
+.auth-split {
+  display: flex;
+  width: min(1040px, 100%);
+  min-height: 600px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-frame);
+}
+.auth-aside {
+  position: relative;
+  flex: 0 0 44%;
   background: var(--accent);
   color: #fff;
+  padding: 48px 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* hero + lede centered in the panel */
+}
+.auth-aside-brand {
+  position: absolute; /* pinned top-left, out of the centering flow */
+  top: 48px;
+  left: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.auth-aside-mark {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--accent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 1.05rem;
-  box-shadow: var(--shadow-frame);
+  font-size: 14px;
 }
-.auth-card {
-  padding: 1.75rem;
+.auth-aside-name {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.auth-aside-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.auth-hero {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+.auth-lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #bfe0da;
+  max-width: 420px;
+  text-wrap: pretty;
+}
+.auth-main {
+  flex: 1;
+  background: var(--surface-sunk);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 32px;
+}
+.auth-form-col {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.auth-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 .auth-title {
   margin: 0;
-  font-family: var(--font-serif);
-  font-size: 1.7rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
 }
 .auth-sub {
-  margin: 0.15rem 0 1.25rem;
+  margin: 0;
+  font-size: 13.5px;
   color: var(--muted);
-  font-size: 0.9rem;
 }
-.auth-alt {
-  margin: 1.15rem 0 0;
-  font-size: 0.85rem;
-  color: var(--muted);
+.auth-form-col form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth-form-col .field {
+  margin: 0;
 }
 .auth-submit {
   width: 100%;
   margin-top: 0.25rem;
+}
+.auth-alt {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+}
+.auth-foot {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--faint);
+  text-align: center;
+}
+
+@media (max-width: 780px) {
+  .auth-aside {
+    display: none;
+  }
+  .auth-split {
+    min-height: 0;
+    width: min(420px, 100%);
+  }
 }
 
 /* ---------------------------------------------------------------------------
    Profile screen (Phase 10 redesign)
    --------------------------------------------------------------------------- */
 .profile-page {
-  max-width: 680px;
+  max-width: 940px;
   margin: 0 auto;
   padding: 22px 26px;
 }
@@ -1454,32 +1561,70 @@ textarea:focus-visible {
   font-size: 22px;
   margin: 0 0 14px;
 }
-.profile-page .card + .card {
-  margin-top: 14px;
+/* Two columns: identity card + preferences card side by side (frame 1g). */
+.profile-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: start;
 }
+@media (max-width: 780px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Identity card — avatar, name, role pill, divider, detail rows, actions. */
 .profile-id {
   display: flex;
-  align-items: center;
-  gap: 0.95rem;
-}
-.profile-id-info {
-  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
 .profile-id-name {
-  font-family: var(--font-serif);
-  font-size: 1.4rem;
-  font-weight: 500;
+  font-size: 1.2rem;
+  font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.15;
+  color: var(--ink);
+  margin-top: 0.15rem;
 }
-.profile-id-meta {
+.profile-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 1.1rem 0;
+}
+.profile-details {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.2rem;
-  color: var(--muted);
-  font-size: 0.86rem;
+  flex-direction: column;
+  gap: 0.85rem;
 }
+.profile-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.profile-detail-label {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.profile-detail-value {
+  font-size: 0.9rem;
+  color: var(--ink-2);
+}
+.profile-detail-value.mono {
+  font-size: 0.82rem;
+}
+.profile-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.2rem;
+}
+
 .profile-card-head {
   display: flex;
   align-items: baseline;
@@ -1495,7 +1640,7 @@ textarea:focus-visible {
   margin: 0 0 1rem;
 }
 
-/* Preference rows with two toggle switches each. */
+/* Preference rows: label + description on the left, two toggles on the right. */
 .prefs-list {
   display: flex;
   flex-direction: column;
@@ -1503,7 +1648,7 @@ textarea:focus-visible {
 .prefs-head,
 .prefs-row {
   display: grid;
-  grid-template-columns: 1fr 6.5rem 6.5rem;
+  grid-template-columns: 1fr 5rem 5rem;
   align-items: center;
   gap: 0.5rem;
 }
@@ -1523,16 +1668,24 @@ textarea:focus-visible {
   justify-self: center;
 }
 .prefs-row {
-  padding: 0.7rem 0;
+  padding: 0.85rem 0;
   border-bottom: 1px solid var(--row-line);
 }
 .prefs-row:last-child {
   border-bottom: none;
 }
+.prefs-row-main {
+  min-width: 0;
+}
 .prefs-row-label {
   font-size: 0.92rem;
-  font-weight: 550;
-  color: var(--ink-2);
+  font-weight: 600;
+  color: var(--ink);
+}
+.prefs-row-desc {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
 }
 
 /* Pill toggle switch wrapping a native checkbox. */
@@ -2607,11 +2760,10 @@ th {
 .users-page {
   padding: 22px 26px;
 }
+/* Flat roster (frame 1f): merged Person cell, dim-in-place, hover actions,
+   no pinned Actions column, fits without horizontal scroll. */
 .users-table {
-  table-layout: fixed;
   width: 100%;
-  min-width: 1380px;
-  max-width: none;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -2619,48 +2771,73 @@ th {
 .users-table th,
 .users-table td {
   white-space: nowrap;
+  vertical-align: middle;
 }
-.users-table td input,
-.users-table td select {
-  width: 100%;
-  box-sizing: border-box;
+/* Person cell: avatar + name over mono email. */
+.user-person {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.users-table th:nth-child(1),
-.users-table td:nth-child(1) {
-  width: 40px;
+.user-person.is-inactive {
+  opacity: 0.6; /* dim the identity in place, keep the row's badges legible */
 }
-.users-table th:nth-child(2),
-.users-table td:nth-child(2) {
-  width: 260px;
+.user-person-txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
 }
-.users-table th:nth-child(3),
-.users-table td:nth-child(3),
-.users-table th:nth-child(4),
-.users-table td:nth-child(4) {
-  width: 130px;
+.user-person-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
 }
-.users-table th:nth-child(5),
-.users-table td:nth-child(5) {
-  width: 90px;
+.user-person-email {
+  font-size: 11.5px;
+  color: var(--muted);
 }
-.users-table th:nth-child(6),
-.users-table td:nth-child(6) {
-  width: 170px;
+.chip-you,
+.chip-inactive {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
 }
-.users-table th:nth-child(7),
-.users-table td:nth-child(7) {
-  width: 280px;
+.chip-you {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
 }
-.users-table th:nth-child(8),
-.users-table td:nth-child(8) {
-  width: 110px;
+.chip-inactive {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
 }
-.users-table th:nth-child(9),
-.users-table td:nth-child(9) {
-  width: 170px;
+/* Row actions revealed on hover (no permanent Actions column). */
+.col-user-actions {
+  width: 1%;
+  text-align: right;
 }
-.users-table .row-dirty td {
-  background: var(--accent-tint);
+.user-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.users-table tbody tr:hover .user-actions,
+.users-table tbody tr:focus-within .user-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .user-actions {
+    opacity: 1;
+  }
 }
 
 /* Merge modal */
@@ -2766,6 +2943,28 @@ th {
   border-radius: var(--radius-sm);
   padding: 0.3rem 0.45rem;
   background: var(--surface);
+}
+/* Sticky Select-all / Deselect-all toggle at the top of the list. */
+.multi-all {
+  position: sticky;
+  top: -0.3rem;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.1rem;
+  margin: -0.3rem 0 0.25rem;
+  cursor: pointer;
+}
+.multi-all:hover {
+  color: var(--accent-deep);
 }
 .multi-option {
   display: flex;
@@ -3224,6 +3423,36 @@ button.dash-stat:hover {
   gap: 0.75rem;
   margin-bottom: 0.85rem;
 }
+/* Type filter: separate rounded pills, dark active state (frame 1e). */
+.notif-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.notif-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 550;
+  color: var(--ink-3);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.notif-pill:hover {
+  background: var(--surface-sunk);
+  color: var(--ink);
+}
+.notif-pill.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
 .notif-pill-count {
   display: inline-flex;
   align-items: center;
@@ -3238,10 +3467,9 @@ button.dash-stat:hover {
   font-family: var(--font-mono);
   font-size: 0.66rem;
   font-weight: 600;
-  vertical-align: 1px;
 }
-.seg-btn.active .notif-pill-count {
-  background: rgba(255, 255, 255, 0.24);
+.notif-pill.active .notif-pill-count {
+  background: rgba(255, 255, 255, 0.22);
   color: #fff;
 }
 .notif-unread-toggle {
@@ -3292,7 +3520,7 @@ button.dash-stat:hover {
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
-  padding: 0.7rem 1rem 0.7rem 1.15rem;
+  padding: 0.7rem 1rem;
   border-bottom: 1px solid var(--row-line);
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease);
@@ -3309,15 +3537,22 @@ button.dash-stat:hover {
 .notif-item.is-unread:hover {
   background: var(--accent-soft);
 }
-/* Accent spine on unread rows. */
-.notif-item.is-unread::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
+
+/* Leading unread dot, colored by type (green for mention/assign, amber for
+   reminder); an empty placeholder keeps read rows aligned. */
+.notif-item-dot {
+  flex: none;
+  align-self: center;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: transparent;
+}
+.notif-item.is-unread .notif-item-dot {
   background: var(--accent);
+}
+.notif-item.is-unread.kind-reminder .notif-item-dot {
+  background: var(--warn);
 }
 
 .notif-item-icon {
@@ -3327,7 +3562,7 @@ button.dash-stat:hover {
 .notif-badge {
   width: 30px;
   height: 30px;
-  border-radius: 50%;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3404,12 +3639,25 @@ button.dash-stat:hover {
   color: var(--faint-2);
 }
 
-.notif-item-actions {
+/* Right column: timestamp on top, hover actions beneath. */
+.notif-item-right {
   flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  min-height: 2.2rem;
+}
+.notif-item-time {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.notif-item-actions {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  align-self: center;
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease);
 }
@@ -3432,6 +3680,50 @@ button.dash-stat:hover {
   background: var(--canvas-deep);
   color: var(--ink);
 }
+.notif-meta-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--muted);
+}
+.notif-meta-blocked {
+  color: var(--danger-deep);
+  font-weight: 550;
+}
+/* Snooze menu (popover of preset durations). */
+.notif-snooze {
+  position: relative;
+  display: inline-flex;
+}
+.notif-snooze-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 7rem;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+}
+.notif-snooze-opt {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-chip);
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.notif-snooze-opt:hover {
+  background: var(--surface-sunk);
+  color: var(--ink);
+}
 /* Keep actions reachable without hover (touch / keyboard). */
 @media (hover: none) {
   .notif-item-actions {
@@ -3439,19 +3731,6 @@ button.dash-stat:hover {
   }
 }
 
-.notif-unread-dot {
-  position: absolute;
-  top: 0.85rem;
-  right: 1rem;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--accent);
-}
-.notif-item:hover .notif-unread-dot,
-.notif-item:focus-within .notif-unread-dot {
-  display: none;
-}
 
 .notif-foot {
   margin-top: 0.85rem;

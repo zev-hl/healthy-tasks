@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
+import { AuthShell } from '../components/AuthShell';
 
 export function ResetPasswordPage() {
   const [params] = useSearchParams();
@@ -31,57 +32,53 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-brand">
-        <span className="auth-brand-mark" aria-hidden="true">
-          H
-        </span>
-        Healthy Tasks
-      </div>
-      <div className="card auth-card">
+    <AuthShell>
+      <div className="auth-head">
         <h1 className="auth-title">Set a new password</h1>
         <p className="auth-sub">Choose a strong password you don&apos;t use elsewhere.</p>
-        {!token && <div className="alert error">Missing reset token in the link.</div>}
-        {done ? (
-          <>
-            <div className="alert success">Your password has been updated.</div>
-            <Link to="/login">Continue to sign in</Link>
-          </>
-        ) : (
-          <>
-            {error && <div className="alert error">{error}</div>}
-            <form onSubmit={onSubmit}>
-              <div className="field">
-                <label htmlFor="password">New password</label>
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  minLength={8}
-                  required
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="confirm">Confirm password</label>
-                <input
-                  id="confirm"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  minLength={8}
-                  required
-                />
-              </div>
-              <button type="submit" className="auth-submit" disabled={submitting || !token}>
-                {submitting ? 'Saving…' : 'Set password'}
-              </button>
-            </form>
-          </>
-        )}
       </div>
-    </div>
+      {!token && <div className="alert error">Missing reset token in the link.</div>}
+      {done ? (
+        <>
+          <div className="alert success">Your password has been updated.</div>
+          <p className="auth-alt">
+            <Link to="/login">Continue to sign in</Link>
+          </p>
+        </>
+      ) : (
+        <>
+          {error && <div className="alert error">{error}</div>}
+          <form onSubmit={onSubmit}>
+            <div className="field">
+              <label htmlFor="password">New password</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="confirm">Confirm password</label>
+              <input
+                id="confirm"
+                type="password"
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                minLength={8}
+                required
+              />
+            </div>
+            <button type="submit" className="auth-submit" disabled={submitting || !token}>
+              {submitting ? 'Saving…' : 'Set password'}
+            </button>
+          </form>
+        </>
+      )}
+    </AuthShell>
   );
 }

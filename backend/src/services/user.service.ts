@@ -88,6 +88,16 @@ export async function searchUsers(input: UserSearchInput): Promise<PaginatedResu
   const and: Prisma.UserWhereInput[] = [];
   const has = (a?: string[]): a is string[] => Array.isArray(a) && a.length > 0;
 
+  const q = f.query?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { email: { contains: q, mode: 'insensitive' } },
+        { firstName: { contains: q, mode: 'insensitive' } },
+        { lastName: { contains: q, mode: 'insensitive' } },
+      ],
+    });
+  }
   if (has(f.firstName)) and.push({ firstName: { in: f.firstName } });
   if (has(f.lastName)) and.push({ lastName: { in: f.lastName } });
   if (has(f.email)) and.push({ email: { in: f.email } });
@@ -107,6 +117,15 @@ export async function searchUsers(input: UserSearchInput): Promise<PaginatedResu
     prisma.user.count({ where }),
   ]);
   return { rows, total, page, pageSize };
+}
+
+/** Roster-wide active/inactive tallies for the Users header (ignores filters). */
+export async function getUserCounts(): Promise<{ active: number; inactive: number }> {
+  const [active, inactive] = await prisma.$transaction([
+    prisma.user.count({ where: { isActive: true } }),
+    prisma.user.count({ where: { isActive: false } }),
+  ]);
+  return { active, inactive };
 }
 
 /** Distinct values for the Users-screen filter checklists. */

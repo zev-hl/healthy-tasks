@@ -13,6 +13,7 @@ import type {
   PresignAttachmentRequest,
   PresignAttachmentResponse,
   AddReminderRequest,
+  SnoozeReminderRequest,
   MentionedFilter,
   NotificationPreferencesDto,
   NotificationsDto,
@@ -32,6 +33,7 @@ import type {
   UpdateTaskRequest,
   UpdateUserRequest,
   UserDto,
+  UserCountsDto,
   UserFilterOptions,
   UserSearchRequest,
 } from '@healthy-tasks/shared';
@@ -161,6 +163,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   userFilterOptions: () => request<UserFilterOptions>('/api/users/filter-options'),
+  userCounts: () => request<UserCountsDto>('/api/users/counts'),
 
   // --- Active users (any authenticated user) — richer directory (Phase 10) ---
   listActiveUsers: () => request<ActiveUserDto[]>('/api/users/active'),
@@ -282,6 +285,11 @@ export const api = {
   removeReminder: (id: string) => request<void>(`/api/reminders/${id}`, { method: 'DELETE' }),
   markReminderRead: (id: string) =>
     request<void>(`/api/reminders/${id}/read`, { method: 'POST' }),
+  snoozeReminder: (id: string, minutes: number) =>
+    request<void>(`/api/reminders/${id}/snooze`, {
+      method: 'POST',
+      body: JSON.stringify({ minutes } satisfies SnoozeReminderRequest),
+    }),
 };
 
 /**

@@ -20,6 +20,7 @@ const reminderTaskSelect = {
   leadMinutes: true,
   readAt: true,
   emailSentAt: true,
+  snoozedUntil: true,
   taskId: true,
   task: { select: { name: true, startAt: true, priority: true } },
 } as const;
@@ -78,14 +79,34 @@ export async function markReminderRead(userId: string, reminderId: string): Prom
   }
 }
 
-/** All of the user's reminders that have surfaced (are due) as of `now`. */
+/** Snooze one of the current user's reminders for `minutes` from `now`. */
+export async function snoozeReminder(
+  userId: string,
+  reminderId: string,
+  minutes: number,
+  now: Date,
+): Promise<void> {
+  const r = await prisma.reminder.findUnique({
+    where: { id: reminderId },
+    select: { userId: true },
+  });
+  if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
+  const until = new Date(now.getTime() + minutes * 60_000);
+  await prisma.reminder.update({ where: { id: reminderId }, data: { snoozedUntil: until } });
+}
+
+/** All of the user's reminders that have surfaced (are due, not snoozed) as of `now`. */
 export async function listDueReminders(userId: string, now: Date): Promise<DueReminder[]> {
   const rows = await prisma.reminder.findMany({
     where: { userId },
     select: reminderTaskSelect,
   });
   return rows
-    .filter((r) => isReminderDue(r.task.startAt, r.leadMinutes, now))
+    .filter(
+      (r) =>
+        isReminderDue(r.task.startAt, r.leadMinutes, now) &&
+        !(r.snoozedUntil && r.snoozedUntil.getTime() > now.getTime()),
+    )
     .map((r) => ({
       id: r.id,
       taskId: r.taskId,
