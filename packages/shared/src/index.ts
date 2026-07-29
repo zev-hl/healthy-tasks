@@ -649,6 +649,7 @@ export interface TaskDashboardDto {
   byStatus: Record<TaskStatus, number>;
   overdue: number;
   completedToday: number;
+  dueToday: number;
 }
 
 /** One row of the Task Search grid (the data behind all 12 columns). */

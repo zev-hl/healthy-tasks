@@ -67,11 +67,19 @@ function dateRangeWhere(
   from: Date | null | undefined,
   to: Date | null | undefined,
   includeNull: boolean,
+  // Date-only filters (Start/Due) send a bare YYYY-MM-DD → UTC midnight; the
+  // "To" bound must cover the whole day, so treat it as exclusive of the NEXT
+  // midnight (i.e. through 23:59:59.999). statusChanged uses a datetime and
+  // keeps its exact upper bound.
+  toEndOfDay = false,
 ): Prisma.TaskWhereInput | null {
   const range: Prisma.DateTimeFilter = {};
   if (from) range.gte = from;
-  if (to) range.lte = to;
-  const hasRange = range.gte !== undefined || range.lte !== undefined;
+  if (to) {
+    if (toEndOfDay) range.lt = new Date(to.getTime() + 24 * 60 * 60 * 1000);
+    else range.lte = to;
+  }
+  const hasRange = range.gte !== undefined || range.lt !== undefined || range.lte !== undefined;
 
   if (!hasRange) {
     return includeNull ? null : { [field]: { not: null } };
@@ -95,6 +103,11 @@ function overdueWhere(now: Date): Prisma.TaskWhereInput {
 /** Completed, with a Status-changed timestamp within [start, end). */
 function completedTodayWhere(start: Date, end: Date): Prisma.TaskWhereInput {
   return { status: 'Completed', statusChangedAt: { gte: start, lt: end } };
+}
+
+/** Not Completed/Canceled, with a Due Date within today's window [start, end). */
+function dueTodayWhere(start: Date, end: Date): Prisma.TaskWhereInput {
+  return { status: { notIn: [...TERMINAL_TASK_STATUSES] }, dueAt: { gte: start, lt: end } };
 }
 
 /** One of the mutually-exclusive Parent/Child buckets (see TaskRelationFilter). */
@@ -137,10 +150,10 @@ async function buildWhere(input: TaskSearchInput | TaskDashboardInput): Promise<
   const statusRange = dateRangeWhere('statusChangedAt', f.statusChangedFrom, f.statusChangedTo, true);
   if (statusRange) and.push(statusRange);
 
-  const startRange = dateRangeWhere('startAt', f.startFrom, f.startTo, f.includeNoStart ?? true);
+  const startRange = dateRangeWhere('startAt', f.startFrom, f.startTo, f.includeNoStart ?? true, true);
   if (startRange) and.push(startRange);
 
-  const dueRange = dateRangeWhere('dueAt', f.dueFrom, f.dueTo, f.includeNoDue ?? true);
+  const dueRange = dateRangeWhere('dueAt', f.dueFrom, f.dueTo, f.includeNoDue ?? true, true);
   if (dueRange) and.push(dueRange);
 
   // Dashboard quick-filters. `overdue`/`completedToday` are time-relative and
@@ -286,17 +299,19 @@ export async function getTaskDashboard(input: TaskDashboardInput): Promise<TaskD
 
   // One consistent snapshot so the Parent/Child buckets and status tallies sum
   // exactly to the total even under concurrent writes.
-  const { byStatusGroups, child, parent, standalone, overdue, completedToday } =
+  const { byStatusGroups, child, parent, standalone, overdue, completedToday, dueToday } =
     await prisma.$transaction(async (tx) => {
-      const [byStatusGroups, child, parent, standalone, overdue, completedToday] = await Promise.all([
-        tx.task.groupBy({ by: ['status'], where, _count: { _all: true }, orderBy: { status: 'asc' } }),
-        tx.task.count({ where: and(relationWhere('child')) }),
-        tx.task.count({ where: and(relationWhere('parent')) }),
-        tx.task.count({ where: and(relationWhere('standalone')) }),
-        tx.task.count({ where: and(overdueWhere(input.now)) }),
-        tx.task.count({ where: and(completedTodayWhere(input.todayStart, input.todayEnd)) }),
-      ]);
-      return { byStatusGroups, child, parent, standalone, overdue, completedToday };
+      const [byStatusGroups, child, parent, standalone, overdue, completedToday, dueToday] =
+        await Promise.all([
+          tx.task.groupBy({ by: ['status'], where, _count: { _all: true }, orderBy: { status: 'asc' } }),
+          tx.task.count({ where: and(relationWhere('child')) }),
+          tx.task.count({ where: and(relationWhere('parent')) }),
+          tx.task.count({ where: and(relationWhere('standalone')) }),
+          tx.task.count({ where: and(overdueWhere(input.now)) }),
+          tx.task.count({ where: and(completedTodayWhere(input.todayStart, input.todayEnd)) }),
+          tx.task.count({ where: and(dueTodayWhere(input.todayStart, input.todayEnd)) }),
+        ]);
+      return { byStatusGroups, child, parent, standalone, overdue, completedToday, dueToday };
     });
 
   const byStatus = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
@@ -306,7 +321,7 @@ export async function getTaskDashboard(input: TaskDashboardInput): Promise<TaskD
     total += g._count._all;
   }
 
-  return { total, parent, child, standalone, byStatus, overdue, completedToday };
+  return { total, parent, child, standalone, byStatus, overdue, completedToday, dueToday };
 }
 
 /** Same query as searchTasks but unpaginated (capped) — for Excel export. */
