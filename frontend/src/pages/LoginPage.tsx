@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
+import { AuthShell } from '../components/AuthShell';
 
 export function LoginPage() {
   const { login, sessionExpired } = useAuth();
@@ -27,66 +28,61 @@ export function LoginPage() {
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-brand">
-        <span className="auth-brand-mark" aria-hidden="true">
-          H
-        </span>
-        Healthy Tasks
+    <AuthShell>
+      <div className="auth-head">
+        <h1 className="auth-title">Welcome back</h1>
+        <p className="auth-sub">Sign in with your Health Life email.</p>
       </div>
-      <div className="card auth-card">
-        <h1 className="auth-title">Sign in</h1>
-        <p className="auth-sub">Welcome back — sign in to your workspace.</p>
-        {sessionExpired && !error && (
-          <div className="alert info">
-            Your session expired after a period of inactivity. Please sign in again.
-          </div>
-        )}
-        {error && <div className="alert error">{error}</div>}
-        <form onSubmit={onSubmit}>
-          <div className="field">
-            <label htmlFor="email">Email</label>
+      {sessionExpired && !error && (
+        <div className="alert info">
+          You were signed out after a period of inactivity. Your unsaved task edits were kept.
+        </div>
+      )}
+      {error && <div className="alert error">{error}</div>}
+      <form onSubmit={onSubmit}>
+        <div className="field">
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="password">Password</label>
+          <div className="password-wrap">
             <input
-              id="email"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
             />
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword((s) => !s)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              title={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+            </button>
           </div>
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <div className="password-wrap">
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-              <button
-                type="button"
-                className="password-toggle"
-                onClick={() => setShowPassword((s) => !s)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                aria-pressed={showPassword}
-                title={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-              </button>
-            </div>
-          </div>
-          <button type="submit" className="auth-submit" disabled={submitting}>
-            {submitting ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-        <p className="auth-alt">
-          <Link to="/forgot-password">Forgot your password?</Link>
-        </p>
-      </div>
-    </div>
+        </div>
+        <button type="submit" className="auth-submit" disabled={submitting}>
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+      <p className="auth-alt">
+        <Link to="/forgot-password">Forgot your password?</Link>
+      </p>
+      <p className="auth-foot">Trouble signing in? Ask an admin to send a reset link.</p>
+    </AuthShell>
   );
 }
 
