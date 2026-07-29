@@ -7,7 +7,13 @@ import {
   type AttachmentWithUploader,
 } from './attachment.mapper.js';
 
-const userRefSelect = { id: true, email: true, title: true } as const;
+const userRefSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  title: true,
+} as const;
 
 /** The Prisma `include` used wherever a CommentDto is returned. */
 export const commentInclude = {
@@ -16,10 +22,12 @@ export const commentInclude = {
   mentions: { include: { user: { select: userRefSelect } } },
 } as const;
 
+type UserRef = Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>;
+
 export type CommentWithRefs = Comment & {
-  author: Pick<User, 'id' | 'email' | 'title'>;
+  author: UserRef;
   attachments: AttachmentWithUploader[];
-  mentions: { user: Pick<User, 'id' | 'email' | 'title'> }[];
+  mentions: { user: UserRef }[];
 };
 
 export function toCommentDto(c: CommentWithRefs): CommentDto {

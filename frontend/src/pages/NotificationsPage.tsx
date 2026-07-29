@@ -1,24 +1,118 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  MENTIONED_FILTERS,
   reminderLeadLabel,
-  type MentionedFilter,
+  type AssignAction,
   type NotificationsDto,
+  type TaskPriority,
+  type TaskUserRef,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { RichText } from '../components/RichText';
 import { useNotifications } from '../notifications/NotificationContext';
-
-function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
-}
+import { Avatar, userLabel } from '../components/ui/Avatar';
+import { PriorityRamp } from '../components/ui/indicators';
+import { TimeStamp } from '../components/ui/TimeStamp';
 
 const EMPTY: NotificationsDto = { mentioned: [], reminders: [], assigned: [] };
 
+type FeedKind = 'mentioned' | 'assigned' | 'reminder';
+
+/** One entry in the unified feed, normalized across the three source lists. */
+interface FeedItem {
+  key: string;
+  kind: FeedKind;
+  id: string; // notification / reminder id (mark-read / remove)
+  taskId: number;
+  taskName: string;
+  at: string | null; // ISO — sort + day-group key
+  read: boolean;
+  commenter?: TaskUserRef;
+  commentHtml?: string;
+  priority?: TaskPriority;
+  leadMinutes?: number;
+  action?: AssignAction;
+}
+
+/** Flatten the three lists into one timestamp-sorted feed (newest first). */
+function buildFeed(d: NotificationsDto): FeedItem[] {
+  const items: FeedItem[] = [];
+  for (const m of d.mentioned)
+    items.push({
+      key: `m${m.id}`,
+      kind: 'mentioned',
+      id: m.id,
+      taskId: m.taskId,
+      taskName: m.taskName,
+      at: m.commentAt,
+      read: m.read,
+      commenter: m.commenter,
+      commentHtml: m.commentHtml,
+    });
+  for (const a of d.assigned)
+    items.push({
+      key: `a${a.id}`,
+      kind: 'assigned',
+      id: a.id,
+      taskId: a.taskId,
+      taskName: a.taskName,
+      at: a.createdAt,
+      read: a.read,
+      priority: a.priority,
+      action: a.action,
+    });
+  for (const r of d.reminders)
+    items.push({
+      key: `r${r.id}`,
+      kind: 'reminder',
+      id: r.id,
+      taskId: r.taskId,
+      taskName: r.taskName,
+      at: r.startAt,
+      read: r.read,
+      priority: r.priority,
+      leadMinutes: r.leadMinutes,
+    });
+  // Newest first; undated (null) entries sort to the bottom.
+  return items.sort((x, y) => (y.at ?? '').localeCompare(x.at ?? ''));
+}
+
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+function dayKey(iso: string | null): string {
+  if (!iso) return 'undated';
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+/** "Today" / "Yesterday" / weekday within a week / else an absolute date. */
+function dayLabel(iso: string | null): string {
+  if (!iso) return 'No date';
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff > 1 && diff < 7) return d.toLocaleDateString(undefined, { weekday: 'long' });
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
+
+const TYPE_PILLS: { key: 'all' | FeedKind; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'mentioned', label: 'Mentioned' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'reminder', label: 'Reminders' },
+];
+
 export function NotificationsPage() {
-  const [filter, setFilter] = useState<MentionedFilter>('all');
   const [data, setData] = useState<NotificationsDto>(EMPTY);
+  const [typeFilter, setTypeFilter] = useState<'all' | FeedKind>('all');
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -27,29 +121,90 @@ export function NotificationsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await api.getNotifications(filter));
+      setData(await api.getNotifications('all'));
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load notifications');
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Click-through: mark the entry read, refresh the bell, then open the task.
-  const openTask = (
-    kind: 'notification' | 'reminder',
-    id: string,
-    taskId: number,
-  ) => {
-    const call =
-      kind === 'notification' ? api.markNotificationRead(id) : api.markReminderRead(id);
-    void call.then(refreshUnread).catch(() => {});
-    navigate(`/tasks/${taskId}`);
+  const feed = useMemo(() => buildFeed(data), [data]);
+
+  // Per-type unread tallies for the pill badges.
+  const unreadByType = useMemo(() => {
+    const c = { all: 0, mentioned: 0, assigned: 0, reminder: 0 };
+    for (const it of feed)
+      if (!it.read) {
+        c.all += 1;
+        c[it.kind] += 1;
+      }
+    return c;
+  }, [feed]);
+
+  const visible = useMemo(
+    () =>
+      feed.filter(
+        (it) =>
+          (typeFilter === 'all' || it.kind === typeFilter) && (!unreadOnly || !it.read),
+      ),
+    [feed, typeFilter, unreadOnly],
+  );
+
+  // Group the (already sorted) visible items into day sections.
+  const groups = useMemo(() => {
+    const out: { key: string; label: string; items: FeedItem[] }[] = [];
+    for (const it of visible) {
+      const k = dayKey(it.at);
+      let g = out.find((x) => x.key === k);
+      if (!g) {
+        g = { key: k, label: dayLabel(it.at), items: [] };
+        out.push(g);
+      }
+      g.items.push(it);
+    }
+    return out;
+  }, [visible]);
+
+  // --- Optimistic local mutations ------------------------------------------
+  const applyRead = (kind: FeedKind, id: string) =>
+    setData((d) => ({
+      mentioned:
+        kind === 'mentioned' ? d.mentioned.map((m) => (m.id === id ? { ...m, read: true } : m)) : d.mentioned,
+      assigned:
+        kind === 'assigned' ? d.assigned.map((a) => (a.id === id ? { ...a, read: true } : a)) : d.assigned,
+      reminders:
+        kind === 'reminder' ? d.reminders.map((r) => (r.id === id ? { ...r, read: true } : r)) : d.reminders,
+    }));
+
+  const readCall = (kind: FeedKind, id: string) =>
+    kind === 'reminder' ? api.markReminderRead(id) : api.markNotificationRead(id);
+
+  const markRead = (item: FeedItem) => {
+    if (item.read) return;
+    applyRead(item.kind, item.id);
+    void readCall(item.kind, item.id).then(refreshUnread).catch(() => {});
+  };
+
+  const markAllRead = async () => {
+    const unread = feed.filter((it) => !it.read);
+    if (unread.length === 0) return;
+    setData((d) => ({
+      mentioned: d.mentioned.map((m) => (m.read ? m : { ...m, read: true })),
+      assigned: d.assigned.map((a) => (a.read ? a : { ...a, read: true })),
+      reminders: d.reminders.map((r) => (r.read ? r : { ...r, read: true })),
+    }));
+    try {
+      await Promise.all(unread.map((it) => readCall(it.kind, it.id)));
+    } catch {
+      /* optimistic; a background poll will reconcile */
+    }
+    refreshUnread();
   };
 
   const removeReminder = async (id: string) => {
@@ -62,156 +217,178 @@ export function NotificationsPage() {
     }
   };
 
-  const taskIdCell = (
-    kind: 'notification' | 'reminder',
-    id: string,
-    taskId: number,
-    read: boolean,
-  ) => (
-    <td>
-      {!read && <span className="unread-dot" aria-label="Unread" />}
-      <a
-        href={`/tasks/${taskId}`}
-        onClick={(e) => {
-          e.preventDefault();
-          openTask(kind, id, taskId);
-        }}
-      >
-        #{taskId}
-      </a>
-    </td>
-  );
+  // Click-through: mark read, refresh the bell, open the task.
+  const openTask = (item: FeedItem) => {
+    markRead(item);
+    navigate(`/tasks/${item.taskId}`);
+  };
+
+  const totalUnread = unreadByType.all;
 
   return (
-    <div className="container container-wide">
-      <h2>Notifications</h2>
+    <div className="notif-page">
+      <header className="notif-topbar">
+        <h1>Notifications</h1>
+        <span className="mono notif-topcount">{totalUnread > 0 ? `${totalUnread} unread` : 'All caught up'}</span>
+        <div className="spacer" />
+        {totalUnread > 0 && (
+          <button type="button" className="link-button" onClick={() => void markAllRead()}>
+            Mark all read
+          </button>
+        )}
+        <Link to="/profile" className="link-button">
+          Settings
+        </Link>
+      </header>
+
       {error && <div className="alert error">{error}</div>}
 
-      {/* --- Mentioned --- */}
-      <section className="card notif-section">
-        <div className="notif-head">
-          <h3>Mentioned</h3>
-          <div className="spacer" />
-          <div className="seg">
-            {MENTIONED_FILTERS.map((f) => (
+      <div className="notif-controls">
+        <div className="seg">
+          {TYPE_PILLS.map((p) => {
+            const n = unreadByType[p.key];
+            return (
               <button
-                key={f}
-                className={`seg-btn${filter === f ? ' active' : ''}`}
-                onClick={() => setFilter(f)}
+                key={p.key}
+                type="button"
+                className={`seg-btn${typeFilter === p.key ? ' active' : ''}`}
+                onClick={() => setTypeFilter(p.key)}
               >
-                {f === 'all' ? 'All' : f === 'unread' ? 'Unread' : 'Read'}
+                {p.label}
+                {n > 0 && <span className="notif-pill-count">{n}</span>}
               </button>
-            ))}
-          </div>
+            );
+          })}
         </div>
-        <table className="results-table notif-table">
-          <thead>
-            <tr>
-              <th>Task Id</th>
-              <th>Task Name</th>
-              <th>When</th>
-              <th>From</th>
-              <th>Comment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.mentioned.map((m) => (
-              <tr key={m.id} className={m.read ? '' : 'unread-row'}>
-                {taskIdCell('notification', m.id, m.taskId, m.read)}
-                <td>{m.taskName}</td>
-                <td>{fmt(m.commentAt)}</td>
-                <td>{m.commenter.email}</td>
-                <td className="comment-cell">
-                  <RichText html={m.commentHtml} />
-                </td>
-              </tr>
-            ))}
-            {!loading && data.mentioned.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted" style={{ padding: '0.75rem' }}>
-                  No mentions.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="spacer" />
+        <label className="notif-unread-toggle">
+          <input type="checkbox" checked={unreadOnly} onChange={(e) => setUnreadOnly(e.target.checked)} />
+          Unread only
+        </label>
+      </div>
+
+      <section className="card notif-feed">
+        {loading && feed.length === 0 ? (
+          <div className="loading-inline notif-feed-loading">
+            <span className="mono">Loading…</span>
+          </div>
+        ) : groups.length === 0 ? (
+          <div className="empty-state compact">
+            <div className="empty-state-title">
+              {unreadOnly ? "You're all caught up" : 'Nothing here yet'}
+            </div>
+            <div className="empty-state-text">
+              {unreadOnly
+                ? 'No unread notifications in this view.'
+                : 'Mentions, assignments, and due reminders will collect here.'}
+            </div>
+          </div>
+        ) : (
+          groups.map((g) => (
+            <div key={g.key} className="notif-day-group">
+              <div className="notif-day-head">{g.label}</div>
+              <ul className="notif-list">
+                {g.items.map((it) => (
+                  <li
+                    key={it.key}
+                    className={`notif-item kind-${it.kind}${it.read ? '' : ' is-unread'}`}
+                    onClick={() => openTask(it)}
+                  >
+                    <span className="notif-item-icon" aria-hidden="true">
+                      {it.kind === 'mentioned' && it.commenter ? (
+                        <Avatar user={it.commenter} px={30} decorative />
+                      ) : (
+                        <span className={`notif-badge ${it.kind}`}>
+                          {it.kind === 'reminder' ? 'REM' : 'ASN'}
+                        </span>
+                      )}
+                    </span>
+
+                    <div className="notif-item-body">
+                      <div className="notif-item-line">
+                        <span className="notif-item-title">
+                          {it.kind === 'mentioned' && it.commenter ? (
+                            <>
+                              <strong>{userLabel(it.commenter)}</strong> mentioned you
+                            </>
+                          ) : it.kind === 'assigned' ? (
+                            <strong>{it.action === 'added' ? 'Assigned to you' : 'Unassigned from you'}</strong>
+                          ) : (
+                            <strong>Reminder due</strong>
+                          )}
+                        </span>
+                        <Link
+                          to={`/tasks/${it.taskId}`}
+                          className="notif-item-task"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markRead(it);
+                          }}
+                        >
+                          <span className="mono notif-item-id">#{it.taskId}</span> {it.taskName}
+                        </Link>
+                      </div>
+
+                      {it.kind === 'mentioned' && it.commentHtml && (
+                        <div className="notif-item-comment">
+                          <RichText html={it.commentHtml} />
+                        </div>
+                      )}
+
+                      <div className="notif-item-meta">
+                        <TimeStamp iso={it.at} />
+                        {it.priority && (
+                          <>
+                            <span className="notif-meta-sep">·</span>
+                            <PriorityRamp priority={it.priority} label />
+                          </>
+                        )}
+                        {it.kind === 'reminder' && it.leadMinutes != null && (
+                          <>
+                            <span className="notif-meta-sep">·</span>
+                            <span className="muted">{reminderLeadLabel(it.leadMinutes)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="notif-item-actions">
+                      {!it.read && (
+                        <button
+                          type="button"
+                          className="notif-action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markRead(it);
+                          }}
+                        >
+                          Mark read
+                        </button>
+                      )}
+                      {it.kind === 'reminder' && (
+                        <button
+                          type="button"
+                          className="notif-action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void removeReminder(it.id);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    {!it.read && <span className="notif-unread-dot" aria-label="Unread" />}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
       </section>
 
-      {/* --- Reminders --- */}
-      <section className="card notif-section">
-        <h3>Reminders</h3>
-        <table className="results-table notif-table">
-          <thead>
-            <tr>
-              <th>Task Id</th>
-              <th>Task Name</th>
-              <th>Start</th>
-              <th>Priority</th>
-              <th>Lead</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {data.reminders.map((r) => (
-              <tr key={r.id} className={r.read ? '' : 'unread-row'}>
-                {taskIdCell('reminder', r.id, r.taskId, r.read)}
-                <td>{r.taskName}</td>
-                <td>{fmt(r.startAt)}</td>
-                <td>{r.priority}</td>
-                <td className="muted">{reminderLeadLabel(r.leadMinutes)}</td>
-                <td>
-                  <button className="secondary" onClick={() => void removeReminder(r.id)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!loading && data.reminders.length === 0 && (
-              <tr>
-                <td colSpan={6} className="muted" style={{ padding: '0.75rem' }}>
-                  No due reminders.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-
-      {/* --- Assigned --- */}
-      <section className="card notif-section">
-        <h3>Assigned</h3>
-        <table className="results-table notif-table">
-          <thead>
-            <tr>
-              <th>Task Id</th>
-              <th>Task Name</th>
-              <th>Start</th>
-              <th>Priority</th>
-              <th>Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.assigned.map((a) => (
-              <tr key={a.id} className={a.read ? '' : 'unread-row'}>
-                {taskIdCell('notification', a.id, a.taskId, a.read)}
-                <td>{a.taskName}</td>
-                <td>{fmt(a.startAt)}</td>
-                <td>{a.priority}</td>
-                <td className="muted">{a.action === 'added' ? 'Assigned' : 'Unassigned'}</td>
-              </tr>
-            ))}
-            {!loading && data.assigned.length === 0 && (
-              <tr>
-                <td colSpan={5} className="muted" style={{ padding: '0.75rem' }}>
-                  No assignment notifications.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-
-      <p className="muted" style={{ fontSize: '0.8rem' }}>
+      <p className="muted notif-foot">
         <Link to="/profile">Notification settings</Link> · Updates every 30 seconds.
       </p>
     </div>

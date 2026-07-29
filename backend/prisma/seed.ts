@@ -21,7 +21,15 @@ async function main(): Promise<void> {
 
   const admin = await prisma.user.upsert({
     where: { email },
-    update: { passwordHash, role: 'Admin', isActive: true },
+    // Re-seeding resets the admin to a known state — including a canonical
+    // name, so the account is never left without the now-required First/Last.
+    update: {
+      passwordHash,
+      role: 'Admin',
+      isActive: true,
+      firstName: 'System',
+      lastName: 'Administrator',
+    },
     create: {
       email,
       passwordHash,

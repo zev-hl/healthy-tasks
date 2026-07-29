@@ -23,8 +23,8 @@ const NEST_MAX_ROWS = 5000;
 // --- Row shape & mapping ---------------------------------------------------
 
 const rowInclude = {
-  creator: { select: { id: true, email: true, title: true } },
-  assignee: { select: { id: true, email: true, title: true } },
+  creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
+  assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
   _count: { select: { children: true } },
 } as const;
 
@@ -151,6 +151,13 @@ async function buildWhere(input: TaskSearchInput | TaskDashboardInput): Promise<
     and.push(completedTodayWhere(input.todayStart, input.todayEnd));
   }
   if (f.relation) and.push(relationWhere(f.relation));
+
+  // Saved-view filters (Phase 10).
+  if (f.creatorIds && f.creatorIds.length > 0) and.push({ creatorId: { in: f.creatorIds } });
+  // "Blocked" = has at least one incomplete blocker (a non-terminal isBlockedBy).
+  if (f.blocked) {
+    and.push({ blockedBy: { some: { blocker: { status: { notIn: [...TERMINAL_TASK_STATUSES] } } } } });
+  }
 
   return and.length > 0 ? { AND: and } : {};
 }

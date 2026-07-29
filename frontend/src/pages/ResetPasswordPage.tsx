@@ -32,8 +32,15 @@ export function ResetPasswordPage() {
 
   return (
     <div className="auth-container">
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Set a new password</h2>
+      <div className="auth-brand">
+        <span className="auth-brand-mark" aria-hidden="true">
+          H
+        </span>
+        Healthy Tasks
+      </div>
+      <div className="card auth-card">
+        <h1 className="auth-title">Set a new password</h1>
+        <p className="auth-sub">Choose a strong password you don&apos;t use elsewhere.</p>
         {!token && <div className="alert error">Missing reset token in the link.</div>}
         {done ? (
           <>
@@ -68,7 +75,7 @@ export function ResetPasswordPage() {
                   required
                 />
               </div>
-              <button type="submit" disabled={submitting || !token} style={{ width: '100%' }}>
+              <button type="submit" className="auth-submit" disabled={submitting || !token}>
                 {submitting ? 'Saving…' : 'Set password'}
               </button>
             </form>

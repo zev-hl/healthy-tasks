@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import type {
+  ActiveUserDto,
   AdminResetLinkResponse,
   PaginatedResult,
   TaskUserRef,
@@ -19,7 +20,7 @@ import {
   getUserById,
 } from '../services/user.service.js';
 import { createPasswordReset } from '../services/auth.service.js';
-import { toUserDto, toUserRef } from '../services/user.mapper.js';
+import { toActiveUserDto, toUserDto, toUserRef } from '../services/user.mapper.js';
 import { sendPasswordResetEmail } from '../utils/mailer.js';
 import { HttpError } from '../utils/http-error.js';
 import type {
@@ -61,7 +62,7 @@ export async function userFilterOptionsController(_req: Request, res: Response):
  */
 export async function listActiveUsersController(_req: Request, res: Response): Promise<void> {
   const users = await listActiveUsers();
-  res.json(users.map(toUserRef) satisfies TaskUserRef[]);
+  res.json(users.map(toActiveUserDto) satisfies ActiveUserDto[]);
 }
 
 /** Eligible supervisors (active Managers + Admins) for the create/edit UI. */

@@ -32,6 +32,10 @@ export function UserFormModal({ onClose, onCreated }: Props) {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!firstName.trim() || !lastName.trim()) {
+      setError('First and last name are required.');
+      return;
+    }
     setSubmitting(true);
     const body: CreateUserRequest = {
       email,

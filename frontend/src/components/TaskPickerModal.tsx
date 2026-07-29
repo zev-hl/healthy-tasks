@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { TASK_STATUS_LABELS, type TaskRef } from '@healthy-tasks/shared';
+import { type TaskRef } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { StatusDot } from './ui/indicators';
 
 interface Props {
   title: string;
@@ -78,7 +79,9 @@ export function TaskPickerModal({ title, excludeId, onPick, onClose }: Props) {
                   onClick={() => onPick(t)}
                 >
                   <strong>#{t.id}</strong> {t.name}{' '}
-                  <span className="muted">({TASK_STATUS_LABELS[t.status]})</span>
+                  <span className="muted" style={{ marginLeft: '0.4rem' }}>
+                    <StatusDot status={t.status} />
+                  </span>
                 </button>
               </li>
             ))}

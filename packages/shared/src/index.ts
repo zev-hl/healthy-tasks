@@ -194,7 +194,20 @@ export const BLOCKED_RESTRICTED_STATUSES: readonly TaskStatus[] = ['Review', 'Co
 export interface TaskUserRef {
   id: string;
   email: string;
+  firstName: string;
+  lastName: string;
   title: string | null;
+}
+
+/**
+ * Richer directory entry returned by GET /api/users/active. Superset of
+ * `TaskUserRef` with the reporting/role fields that power team views (My Day
+ * team strip, "reporting to me"). The embedded `TaskUserRef` stays minimal;
+ * only this list carries org structure. Visible to any authenticated user.
+ */
+export interface ActiveUserDto extends TaskUserRef {
+  supervisorId: string | null;
+  role: Role;
 }
 
 export interface TaskDto {
@@ -579,6 +592,10 @@ export interface TaskSearchFilters {
   completedToday?: boolean;
   /** Restrict to a Parent/Child relationship bucket. */
   relation?: TaskRelationFilter;
+  /** Selected creator user ids; empty = no creator filter ("Created by me"). */
+  creatorIds?: string[];
+  /** Only tasks with an incomplete blocker (a non-terminal `isBlockedBy`). */
+  blocked?: boolean;
 }
 
 export interface TaskSearchRequest {

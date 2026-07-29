@@ -7,6 +7,7 @@ import {
   type UserDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError, uploadToStorage } from '../api/client';
+import { UserChip } from './ui/Avatar';
 
 type Target = { kind: 'task'; taskId: number } | { kind: 'comment'; commentId: string };
 
@@ -105,9 +106,11 @@ export function AttachmentSection({
       {error && <div className="alert error">{error}</div>}
 
       {attachments.length === 0 ? (
-        <p className="muted" style={{ margin: '0.25rem 0' }}>
-          No attachments.
-        </p>
+        target.kind === 'task' ? (
+          <p className="muted" style={{ margin: '0.25rem 0' }}>
+            No attachments yet.
+          </p>
+        ) : null
       ) : (
         <ul className="attachment-list">
           {attachments.map((att) => (
@@ -124,7 +127,7 @@ export function AttachmentSection({
                 {att.filename}
               </button>
               <span className="muted attachment-meta">
-                {humanSize(att.size)} · {att.uploadedBy.email}
+                {humanSize(att.size)} · <UserChip user={att.uploadedBy} />
               </span>
               {canDelete(att) && (
                 <button

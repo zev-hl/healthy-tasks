@@ -48,38 +48,33 @@ export function TaskReminders({ taskId }: { taskId: number }) {
     }
   };
 
+  // Rendered bare inside the Task Detail right-rail "Reminders" section.
   return (
-    <div className="container">
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Your reminders</h3>
-        <p className="muted" style={{ fontSize: '0.85rem' }}>
-          Personal to you. Each reminder surfaces in your Notifications once the task&apos;s Start
-          time is within the chosen lead time.
-        </p>
-        {error && <div className="alert error">{error}</div>}
-        <ul className="reminder-list">
-          {reminders.map((r) => (
-            <li key={r.id}>
-              <span>{reminderLeadLabel(r.leadMinutes)}</span>
-              <button className="secondary" onClick={() => void remove(r.id)}>
-                Remove
-              </button>
-            </li>
+    <div className="rail-reminders">
+      <p className="muted rail-reminders-hint">Personal to you — surfaces in Notifications near the Start time.</p>
+      {error && <div className="alert error">{error}</div>}
+      <ul className="reminder-list">
+        {reminders.map((r) => (
+          <li key={r.id}>
+            <span>{reminderLeadLabel(r.leadMinutes)}</span>
+            <button className="tertiary btn-sm" onClick={() => void remove(r.id)}>
+              Remove
+            </button>
+          </li>
+        ))}
+        {reminders.length === 0 && <li className="muted">No reminders set.</li>}
+      </ul>
+      <div className="reminder-add">
+        <select value={lead} onChange={(e) => setLead(Number(e.target.value))} aria-label="Lead time">
+          {REMINDER_LEAD_OPTIONS.map((o) => (
+            <option key={o.minutes} value={o.minutes}>
+              {o.label}
+            </option>
           ))}
-          {reminders.length === 0 && <li className="muted">No reminders set.</li>}
-        </ul>
-        <div className="reminder-add">
-          <select value={lead} onChange={(e) => setLead(Number(e.target.value))} aria-label="Lead time">
-            {REMINDER_LEAD_OPTIONS.map((o) => (
-              <option key={o.minutes} value={o.minutes}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => void add()} disabled={busy}>
-            Add reminder
-          </button>
-        </div>
+        </select>
+        <button className="btn-sm" onClick={() => void add()} disabled={busy}>
+          Add reminder
+        </button>
       </div>
     </div>
   );

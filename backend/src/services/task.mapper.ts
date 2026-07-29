@@ -10,14 +10,14 @@ import { commentInclude, toCommentDto, type CommentWithRefs } from './comment.ma
 
 /** A Task row with its creator (and optional assignee) joined in. */
 export type TaskWithRefs = Task & {
-  creator: Pick<User, 'id' | 'email' | 'title'>;
-  assignee: Pick<User, 'id' | 'email' | 'title'> | null;
+  creator: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>;
+  assignee: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'> | null;
 };
 
 /** The Prisma `include` used everywhere a TaskDto is returned. */
 export const taskInclude = {
-  creator: { select: { id: true, email: true, title: true } },
-  assignee: { select: { id: true, email: true, title: true } },
+  creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
+  assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
 } as const;
 
 const taskRefSelect = { id: true, name: true, status: true } as const;

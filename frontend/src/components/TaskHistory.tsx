@@ -6,6 +6,9 @@ import {
   type TaskStatus,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { Avatar, userLabel } from './ui/Avatar';
+import { EmptyState } from './ui/EmptyState';
+import { TimeStamp } from './ui/TimeStamp';
 
 interface Props {
   taskId: number;
@@ -93,20 +96,37 @@ export function TaskHistory({ taskId, version }: Props) {
     };
   }, [taskId, version]);
 
-  if (loading && entries.length === 0) return <p className="muted">Loading history…</p>;
+  if (loading && entries.length === 0)
+    return (
+      <span className="loading-inline">
+        <span className="spinner" /> Loading history…
+      </span>
+    );
   if (error) return <div className="alert error">{error}</div>;
-  if (entries.length === 0) return <p className="muted">No changes recorded yet.</p>;
+  if (entries.length === 0)
+    return (
+      <EmptyState compact title="No history yet">
+        Changes to this task will show up here.
+      </EmptyState>
+    );
 
   return (
     <ul className="history-list">
-      {entries.map((entry) => (
-        <li key={entry.id} className="history-entry">
-          <div className="history-what">{describe(entry)}</div>
-          <div className="muted history-meta">
-            {entry.user ? entry.user.email : 'Unknown user'} · {new Date(entry.changedAt).toLocaleString()}
-          </div>
-        </li>
-      ))}
+      {entries.map((entry) => {
+        const actor = entry.user ?? {};
+        return (
+          <li key={entry.id} className="history-entry">
+            <Avatar user={actor} size="xs" decorative />
+            <div className="history-body">
+              <div className="history-what">{describe(entry)}</div>
+              <div className="muted history-meta">
+                {entry.user ? userLabel(entry.user) : 'Unknown user'} ·{' '}
+                <TimeStamp iso={entry.changedAt} />
+              </div>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }

@@ -228,6 +228,9 @@ const taskFiltersSchema = z.object({
   overdue: z.boolean().optional(),
   completedToday: z.boolean().optional(),
   relation: z.enum(TASK_RELATION_FILTERS).optional(),
+  // Saved-view filters (Phase 10).
+  creatorIds: z.array(z.string().uuid()).max(200).optional(),
+  blocked: z.boolean().optional(),
 });
 
 export const taskSearchSchema = z.object({

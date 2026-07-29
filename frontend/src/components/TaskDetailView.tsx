@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  TASK_NAME_MIN_LENGTH,
   TASK_PRIORITIES,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
+  type ActiveUserDto,
   type DependencyType,
   type TaskDetailDto,
   type TaskPriority,
   type TaskRef,
   type TaskStatus,
-  type TaskUserRef,
   type UserDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
@@ -20,19 +21,12 @@ import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
 import { TaskPickerModal } from './TaskPickerModal';
 import { TaskHistory } from './TaskHistory';
-import {
-  isoToParts,
-  partsToIso,
-  defaultTime,
-  DEFAULT_START_HOUR,
-  DEFAULT_DUE_HOUR,
-} from '../lib/datetime';
+import { TaskReminders } from './TaskReminders';
+import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
+import { StatusPill, PriorityRamp } from './ui/indicators';
+import { DueDate, AgoDate } from './ui/dates';
+import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString();
-}
 
 type PickerKind = 'parent' | DependencyType;
 
@@ -42,37 +36,38 @@ const PICKER_TITLES: Record<PickerKind, string> = {
   blockedBy: 'Add a task this one is blocked by',
 };
 
+type Tab = 'work' | 'comments' | 'history';
+
 interface Props {
   initialTask: TaskDetailDto;
   currentUser: UserDto;
 }
 
-/**
- * The task detail page's editing surface. Different fields save differently:
- *  - Name & Description: click to edit in place, each with its own Save/Cancel.
- *  - Assignee / Priority / Status / Start / Due: staged, saved together by the
- *    "Save changes" button (offered at the top and bottom — both equivalent).
- *  - Tags, Relationships, Attachments: saved immediately, no explicit save.
- */
 export function TaskDetailView({ initialTask, currentUser }: Props) {
   const navigate = useNavigate();
   const [task, setTask] = useState<TaskDetailDto>(initialTask);
 
-  // Bumped on every applied mutation so the History section refetches. Any task
-  // change (fields, relationships, tags, attachments, comments) flows through
-  // applyTask, which both updates the task and invalidates the history.
   const [historyVersion, setHistoryVersion] = useState(0);
   const applyTask = useCallback((t: TaskDetailDto) => {
     setTask(t);
     setHistoryVersion((v) => v + 1);
   }, []);
 
+  const [tab, setTab] = useState<Tab>('work');
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [relError, setRelError] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [commentsDirty, setCommentsDirty] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // A "Task saved." confirmation auto-clears so it reads as a transient flash.
+  const flashSaved = useCallback(() => {
+    setNotice('Task saved.');
+    window.setTimeout(() => setNotice(null), 2500);
+  }, []);
 
   // Inline name edit.
   const [editingName, setEditingName] = useState(false);
@@ -84,7 +79,22 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [descDraft, setDescDraft] = useState(initialTask.description ?? '');
   const [savingDesc, setSavingDesc] = useState(false);
 
-  // Staged fields (saved together via "Save changes").
+  // Tags + sub-task quick-add.
+  const [tagDraft, setTagDraft] = useState('');
+  const [tagBusy, setTagBusy] = useState(false);
+  const [subtaskDraft, setSubtaskDraft] = useState('');
+  const [addingSub, setAddingSub] = useState(false);
+
+  const [users, setUsers] = useState<ActiveUserDto[]>([]);
+  const [allTags, setAllTags] = useState<string[]>([]);
+  useEffect(() => {
+    api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
+    api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
+  }, []);
+
+  // --- Staged property edits (Status / Priority / Assignee / Start / Due) ---
+  // These are edited locally and committed together via "Save changes", so a
+  // change isn't persisted until the user confirms it.
   const [assigneeId, setAssigneeId] = useState(initialTask.assigneeId ?? '');
   const [priority, setPriority] = useState<TaskPriority>(initialTask.priority);
   const [status, setStatus] = useState<TaskStatus>(initialTask.status);
@@ -95,97 +105,45 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [savingFields, setSavingFields] = useState(false);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
 
-  // Tags (auto-saved).
-  const [tagDraft, setTagDraft] = useState('');
-  const [tagBusy, setTagBusy] = useState(false);
+  const stagedStartIso = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
+  const stagedDueIso = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
 
-  const [users, setUsers] = useState<TaskUserRef[]>([]);
-  useEffect(() => {
-    api
-      .listActiveUsers()
-      .then(setUsers)
-      .catch(() => setUsers([]));
-  }, []);
+  // Dirty until every staged field matches what's persisted (dates compared as
+  // normalized ISO instants so a date-only edit round-trips cleanly).
+  const fieldsDirty =
+    assigneeId !== (task.assigneeId ?? '') ||
+    priority !== task.priority ||
+    status !== task.status ||
+    stagedStartIso !== (task.startAt ?? null) ||
+    stagedDueIso !== (task.dueAt ?? null);
 
-  // All tags currently in use across tasks (for the picklist).
-  const [allTags, setAllTags] = useState<string[]>([]);
-  useEffect(() => {
-    api
-      .listTaskTags()
-      .then(setAllTags)
-      .catch(() => setAllTags([]));
-  }, []);
-
-  // --- Save handlers -------------------------------------------------------
-
-  async function runRel(action: () => Promise<TaskDetailDto>) {
-    setRelError(null);
-    try {
-      applyTask(await action());
-    } catch (err) {
-      setRelError(err instanceof ApiError ? err.message : 'Update failed');
-    }
-  }
-
-  async function handlePick(picked: TaskRef) {
-    const kind = picker;
-    setPicker(null);
-    if (kind === 'parent') {
-      await runRel(() => api.setParent(task.id, picked.id));
-    } else if (kind) {
-      await runRel(() => api.addDependency(task.id, kind, picked.id));
-    }
-  }
-
-  async function saveName() {
-    const name = nameDraft.trim();
-    if (name.length < 2) return;
-    setSavingName(true);
-    try {
-      applyTask(await api.updateTask(task.id, { name }));
-      setEditingName(false);
-      setNotice('Task saved.');
-    } catch (err) {
-      setRelError(err instanceof ApiError ? err.message : 'Could not save the name');
-    } finally {
-      setSavingName(false);
-    }
-  }
-
-  async function saveDesc() {
-    setSavingDesc(true);
-    try {
-      // RichTextEditor emits '' when empty → store null.
-      applyTask(await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }));
-      setEditingDesc(false);
-      setNotice('Task saved.');
-    } catch (err) {
-      setRelError(err instanceof ApiError ? err.message : 'Could not save the description');
-    } finally {
-      setSavingDesc(false);
-    }
-  }
-
-  async function saveFields() {
+  // Commit all staged fields at once. `statusOverride` lets the top-bar
+  // "Mark complete" / "Reopen" buttons set the status and save in one click.
+  async function saveFields(statusOverride?: TaskStatus) {
     setFieldsError(null);
-    const startAt = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
-    const dueAt = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
-    if (startAt && dueAt && new Date(startAt) >= new Date(dueAt)) {
+    const nextStatus = statusOverride ?? status;
+    if (statusOverride) setStatus(statusOverride);
+    if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
       setFieldsError('Start must be earlier than Due');
       return;
     }
+    const becameCompleted = nextStatus === 'Completed' && task.status !== 'Completed';
     setSavingFields(true);
     try {
       applyTask(
         await api.updateTask(task.id, {
           assigneeId: assigneeId === '' ? null : assigneeId,
           priority,
-          status,
-          startAt,
-          dueAt,
+          status: nextStatus,
+          startAt: stagedStartIso,
+          dueAt: stagedDueIso,
         }),
       );
-      setNotice('Task saved.');
+      flashSaved();
+      if (becameCompleted) {
+        setJustCompleted(true);
+        window.setTimeout(() => setJustCompleted(false), 1300);
+      }
     } catch (err) {
       setFieldsError(err instanceof ApiError ? err.message : 'Could not save changes');
     } finally {
@@ -193,14 +151,72 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
+  // Revert staged fields to the persisted task.
+  function discardFields() {
+    setFieldsError(null);
+    setAssigneeId(task.assigneeId ?? '');
+    setPriority(task.priority);
+    setStatus(task.status);
+    const s = isoToParts(task.startAt);
+    const d = isoToParts(task.dueAt);
+    setStartDate(s.date);
+    setStartTime(s.time);
+    setDueDate(d.date);
+    setDueTime(d.time);
+  }
+
+  // --- Relationships / picker ----------------------------------------------
+  async function runRel(action: () => Promise<TaskDetailDto>) {
+    setError(null);
+    try {
+      applyTask(await action());
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Update failed');
+    }
+  }
+  async function handlePick(picked: TaskRef) {
+    const kind = picker;
+    setPicker(null);
+    if (kind === 'parent') await runRel(() => api.setParent(task.id, picked.id));
+    else if (kind) await runRel(() => api.addDependency(task.id, kind, picked.id));
+  }
+
+  // --- Name / description ---------------------------------------------------
+  async function saveName() {
+    const name = nameDraft.trim();
+    if (name.length < TASK_NAME_MIN_LENGTH) return;
+    setSavingName(true);
+    try {
+      applyTask(await api.updateTask(task.id, { name }));
+      setEditingName(false);
+      flashSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the name');
+    } finally {
+      setSavingName(false);
+    }
+  }
+  async function saveDesc() {
+    setSavingDesc(true);
+    try {
+      applyTask(await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }));
+      setEditingDesc(false);
+      flashSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save the description');
+    } finally {
+      setSavingDesc(false);
+    }
+  }
+
+  // --- Tags -----------------------------------------------------------------
   async function refreshTags() {
     try {
       setAllTags(await api.listTaskTags());
     } catch {
-      /* keep the current list if the refresh fails */
+      /* keep current list */
     }
   }
-
   async function addTagValue(tag: string) {
     const t = tag.trim();
     if (!t || task.tags.includes(t)) return;
@@ -209,40 +225,52 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       applyTask(await api.updateTask(task.id, { tags: [...task.tags, t] }));
       await refreshTags();
     } catch (err) {
-      setRelError(err instanceof ApiError ? err.message : 'Could not add the tag');
+      setError(err instanceof ApiError ? err.message : 'Could not add the tag');
     } finally {
       setTagBusy(false);
     }
   }
-
   async function addTagFromDraft() {
     const t = tagDraft.trim();
     setTagDraft('');
     if (t) await addTagValue(t);
   }
-
   async function removeTag(tag: string) {
     setTagBusy(true);
     try {
       applyTask(await api.updateTask(task.id, { tags: task.tags.filter((x) => x !== tag) }));
-      // A tag no longer used on any task drops out of the picklist.
       await refreshTags();
     } catch (err) {
-      setRelError(err instanceof ApiError ? err.message : 'Could not remove the tag');
+      setError(err instanceof ApiError ? err.message : 'Could not remove the tag');
     } finally {
       setTagBusy(false);
     }
   }
 
-  function handleStartDate(value: string) {
-    setStartDate(value);
-    if (value === '') setStartTime('');
-    else if (startTime === '') setStartTime(defaultTime(DEFAULT_START_HOUR));
+  // --- Sub-tasks ------------------------------------------------------------
+  async function completeChild(childId: number) {
+    setError(null);
+    try {
+      await api.updateTask(childId, { status: 'Completed' });
+      applyTask(await api.getTask(task.id));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not complete the sub-task');
+    }
   }
-  function handleDueDate(value: string) {
-    setDueDate(value);
-    if (value === '') setDueTime('');
-    else if (dueTime === '') setDueTime(defaultTime(DEFAULT_DUE_HOUR));
+  async function addSubtask() {
+    const name = subtaskDraft.trim();
+    if (name.length < TASK_NAME_MIN_LENGTH) return;
+    setAddingSub(true);
+    try {
+      const created = await api.createTask({ name });
+      await api.setParent(created.id, task.id);
+      applyTask(await api.getTask(task.id));
+      setSubtaskDraft('');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not add the sub-task');
+    } finally {
+      setAddingSub(false);
+    }
   }
 
   async function handleDeleteTask() {
@@ -251,469 +279,463 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       await api.deleteTask(task.id);
       navigate('/tasks');
     } catch (err) {
-      setRelError(err instanceof ApiError ? err.message : 'Could not delete task');
+      setError(err instanceof ApiError ? err.message : 'Could not delete task');
       setDeleting(false);
       setConfirmDelete(false);
     }
   }
 
-  // The Details "Save changes" button stays disabled until one of its staged
-  // fields differs from what's persisted.
-  const savedStart = isoToParts(task.startAt);
-  const savedDue = isoToParts(task.dueAt);
-  const fieldsDirty =
-    assigneeId !== (task.assigneeId ?? '') ||
-    priority !== task.priority ||
-    status !== task.status ||
-    startDate !== savedStart.date ||
-    startTime !== savedStart.time ||
-    dueDate !== savedDue.date ||
-    dueTime !== savedDue.time;
+  function copyLink() {
+    void navigator.clipboard?.writeText(window.location.href).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  }
 
-  // Unsaved-changes guard: staged Details edits, or an open inline name/
-  // description edit with a modified value. (Tags/relationships/attachments
-  // save immediately, so they're never "unsaved".)
   const nameUnsaved = editingName && nameDraft.trim() !== task.name;
   const descUnsaved = editingDesc && descDraft !== (task.description ?? '');
   useUnsavedChangesWarning(fieldsDirty || nameUnsaved || descUnsaved || commentsDirty);
 
-  const saveChangesButton = (
-    <button type="button" disabled={savingFields || !fieldsDirty} onClick={saveFields}>
-      {savingFields ? 'Saving…' : 'Save changes'}
-    </button>
-  );
-
-  // Existing tags not already on this task, for the picklist (sorted by the API).
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
+  const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
+  const isCompleted = task.status === 'Completed';
+
+  // Staged assignee resolved to a user object for the chip display.
+  const assigneeUser =
+    assigneeId === ''
+      ? null
+      : assigneeId === (task.assigneeId ?? '')
+        ? task.assignee
+        : users.find((u) => u.id === assigneeId) ?? null;
 
   return (
-    <div className="container">
-      <p style={{ marginTop: 0 }}>
-        <Link to="/tasks">← Back to tasks</Link>
-      </p>
-
-      {notice && <div className="alert success">{notice}</div>}
-      {relError && <div className="alert error">{relError}</div>}
-
-      {/* Header: inline-editable name + top Save changes + Delete */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            gap: '1rem',
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            {editingName ? (
-              <div className="field" style={{ margin: 0 }}>
-                <input
-                  value={nameDraft}
-                  onChange={(e) => setNameDraft(e.target.value)}
-                  minLength={2}
-                  aria-label="Task name"
-                  autoFocus
-                />
-                <div className="btn-row">
-                  <button
-                    type="button"
-                    disabled={savingName || nameDraft.trim().length < 2}
-                    onClick={saveName}
-                  >
-                    {savingName ? 'Saving…' : 'Save'}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      setEditingName(false);
-                      setNameDraft(task.name);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <h2
-                className="editable-heading"
-                style={{ margin: 0 }}
-                title="Click to edit the name"
-                onClick={() => {
-                  setNameDraft(task.name);
-                  setEditingName(true);
-                }}
-              >
-                Task #{task.id}: {task.name}
-              </h2>
-            )}
-          </div>
-          <div className="btn-row" style={{ marginTop: 0, flex: 'none' }}>
-            {currentUser.role === 'Admin' && (
-              <button type="button" className="danger" onClick={() => setConfirmDelete(true)}>
-                Delete task
-              </button>
-            )}
-          </div>
-        </div>
-        <dl
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'auto 1fr',
-            gap: '0.35rem 1rem',
-            margin: '0.75rem 0 0',
-          }}
-        >
-          <dt className="muted">Creator</dt>
-          <dd style={{ margin: 0 }}>{task.creator.email}</dd>
-          <dt className="muted">Created</dt>
-          <dd style={{ margin: 0 }}>{formatDateTime(task.createdAt)}</dd>
-          <dt className="muted">Status changed</dt>
-          <dd style={{ margin: 0 }}>{formatDateTime(task.statusChangedAt)}</dd>
-        </dl>
+    <div className="detail-page">
+      {/* Top bar */}
+      <div className="detail-topbar">
+        <nav className="detail-breadcrumb">
+          <Link to="/tasks">All tasks</Link>
+          <span className="crumb-sep">/</span>
+          <span className="mono">#{task.id}</span>
+        </nav>
+        <div className="spacer" />
+        <button type="button" className="secondary btn-sm" onClick={copyLink}>
+          {copied ? 'Copied ✓' : 'Copy link'}
+        </button>
+        {currentUser.role === 'Admin' && (
+          <button type="button" className="secondary btn-sm" onClick={() => setConfirmDelete(true)}>
+            Delete
+          </button>
+        )}
+        {isCompleted ? (
+          <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={() => void saveFields('Open')}>
+            Reopen
+          </button>
+        ) : (
+          <button type="button" disabled={savingFields} onClick={() => void saveFields('Completed')}>
+            Mark complete
+          </button>
+        )}
       </div>
 
-      {/* Description: click to edit in place */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Description</h3>
-        {editingDesc ? (
-          <div>
-            <RichTextEditor
-              value={descDraft}
-              onChange={setDescDraft}
-              ariaLabel="Task description"
-              autoFocus
-            />
+      {notice && <div className="alert success">{notice}</div>}
+      {error && <div className="alert error">{error}</div>}
+
+      {/* Header */}
+      <div className={`detail-headerblock${justCompleted ? ' just-completed' : ''}`}>
+        {editingName ? (
+          <div className="field" style={{ margin: 0, maxWidth: 640 }}>
+            <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} aria-label="Task name" autoFocus />
             <div className="btn-row">
-              <button type="button" disabled={savingDesc} onClick={saveDesc}>
-                {savingDesc ? 'Saving…' : 'Save'}
+              <button type="button" disabled={savingName || nameDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={saveName}>
+                {savingName ? 'Saving…' : 'Save'}
               </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  setEditingDesc(false);
-                  setDescDraft(task.description ?? '');
-                }}
-              >
+              <button type="button" className="secondary" onClick={() => { setEditingName(false); setNameDraft(task.name); }}>
                 Cancel
               </button>
             </div>
           </div>
         ) : (
-          <div
-            className="editable-block"
-            title="Click to edit the description"
-            onClick={() => {
-              setDescDraft(task.description ?? '');
-              setEditingDesc(true);
-            }}
-          >
-            {task.description ? (
-              <RichText html={task.description} />
-            ) : (
-              <p className="muted" style={{ margin: 0 }}>
-                No description. Click to add one.
-              </p>
-            )}
+          <div className="detail-title-row">
+            <h1 className="detail-title">{task.name}</h1>
+            <button type="button" className="edit-chip" onClick={() => { setNameDraft(task.name); setEditingName(true); }}>
+              Edit
+            </button>
           </div>
         )}
-      </div>
 
-      {/* Attachments (saved immediately) */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Attachments</h3>
-        <AttachmentSection
-          attachments={task.attachments}
-          target={{ kind: 'task', taskId: task.id }}
-          canUpload
-          currentUser={currentUser}
-          onChanged={applyTask}
-        />
-      </div>
+        {/* Property chip row — staged; committed together via "Save changes" */}
+        <div className="detail-props">
+          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}`}>
+            <StatusPill status={status} caret />
+            <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
+              {TASK_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {TASK_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </span>
 
-      {/* Details: staged fields saved by "Save changes" */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Details</h3>
-        {fieldsError && <div className="alert error">{fieldsError}</div>}
+          <span className={`prop-chip${priority !== task.priority ? ' is-dirty' : ''}`}>
+            <PriorityRamp priority={priority} label />
+            <span className="prop-caret" aria-hidden="true">▾</span>
+            <select className="prop-overlay-select" value={priority} aria-label="Priority" onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+              {TASK_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </span>
 
-        <div className="field">
-          <label htmlFor="task-assignee">Assignee</label>
-          <select
-            id="task-assignee"
-            value={assigneeId}
-            onChange={(e) => setAssigneeId(e.target.value)}
-          >
-            <option value="">— Unassigned —</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.email}
-                {u.title ? ` (${u.title})` : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}`}>
+            {assigneeUser ? (
+              <UserChip user={assigneeUser} />
+            ) : (
+              <span className="user-chip muted">
+                <UnassignedAvatar px={20} />
+                <span className="user-name">Unassigned</span>
+              </span>
+            )}
+            <span className="prop-caret" aria-hidden="true">▾</span>
+            <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {userLabel(u)}
+                </option>
+              ))}
+            </select>
+          </span>
 
-        <div className="field">
-          <label htmlFor="task-priority">Priority</label>
-          <select
-            id="task-priority"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as TaskPriority)}
-          >
-            {TASK_PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
+          <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
+            {stagedDueIso ? <DueDate iso={stagedDueIso} inline /> : <span className="muted">No due date</span>}
+          </span>
 
-        <div className="field">
-          <label htmlFor="task-status">Status</label>
-          <select
-            id="task-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as TaskStatus)}
-          >
-            {TASK_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {TASK_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="field">
-          <label htmlFor="task-start-date">Start</label>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <input
-              id="task-start-date"
-              type="date"
-              value={startDate}
-              onChange={(e) => handleStartDate(e.target.value)}
-              aria-label="Start date"
-            />
-            <input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              aria-label="Start time"
-              disabled={startDate === ''}
-            />
-          </div>
-        </div>
-
-        <div className="field">
-          <label htmlFor="task-due-date">Due</label>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <input
-              id="task-due-date"
-              type="date"
-              value={dueDate}
-              onChange={(e) => handleDueDate(e.target.value)}
-              aria-label="Due date"
-            />
-            <input
-              type="time"
-              value={dueTime}
-              onChange={(e) => setDueTime(e.target.value)}
-              aria-label="Due time"
-              disabled={dueDate === ''}
-            />
-          </div>
-        </div>
-
-        <div className="btn-row">{saveChangesButton}</div>
-      </div>
-
-      {/* Tags (saved immediately) — below the Details section */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Tags</h3>
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-          {task.tags.length === 0 && <span className="muted">No tags</span>}
           {task.tags.map((t) => (
-            <span key={t} className="badge role-Member">
-              {t}{' '}
-              <button
-                type="button"
-                onClick={() => removeTag(t)}
-                disabled={tagBusy}
-                aria-label={`Remove tag ${t}`}
-                style={{ background: 'transparent', color: 'inherit', padding: 0, marginLeft: 4 }}
-              >
+            <span key={t} className="badge tag">
+              {t}
+              <button type="button" className="tag-x" onClick={() => removeTag(t)} disabled={tagBusy} aria-label={`Remove tag ${t}`}>
                 ×
               </button>
             </span>
           ))}
-        </div>
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-          {availableTags.length > 0 && (
-            <select
-              value=""
-              disabled={tagBusy}
-              aria-label="Add an existing tag"
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value) void addTagValue(value);
+          <span className="prop-chip add-tag-chip">
+            + Tag
+            <input
+              className="tag-inline-input"
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void addTagFromDraft();
+                }
               }}
-            >
-              <option value="">Add an existing tag…</option>
+              placeholder="tag…"
+              aria-label="Add a tag"
+              list="detail-tag-list"
+            />
+            <datalist id="detail-tag-list">
               {availableTags.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+                <option key={t} value={t} />
               ))}
-            </select>
+            </datalist>
+          </span>
+        </div>
+
+        {/* Save bar for the staged Status / Priority / Assignee / Due chips */}
+        <div className={`detail-savebar${fieldsDirty ? ' is-dirty' : ''}`} role="status">
+          {fieldsDirty ? (
+            <span className="savebar-flag unsaved">
+              <span className="savebar-dot" aria-hidden="true" />
+              Unsaved changes
+            </span>
+          ) : (
+            <span className="savebar-flag saved">All changes saved</span>
           )}
-          <input
-            value={tagDraft}
-            onChange={(e) => setTagDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                void addTagFromDraft();
-              }
-            }}
-            placeholder="Add a new tag and press Enter"
-          />
-          <button type="button" className="secondary" disabled={tagBusy} onClick={addTagFromDraft}>
-            Add
+          {fieldsError && <span className="savebar-error">{fieldsError}</span>}
+          <div className="spacer" />
+          {fieldsDirty && (
+            <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
+              Discard
+            </button>
+          )}
+          <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty} onClick={() => void saveFields()}>
+            {savingFields ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       </div>
 
-      {/* Relationships (saved immediately) */}
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Relationships</h3>
+      {/* Two-pane body */}
+      <div className="detail-cols">
+        <div className="detail-content">
+          {/* Tabs */}
+          <div className="detail-tabs" role="tablist">
+            <button type="button" className={`detail-tab${tab === 'work' ? ' active' : ''}`} onClick={() => setTab('work')}>
+              Work
+            </button>
+            <button type="button" className={`detail-tab${tab === 'comments' ? ' active' : ''}`} onClick={() => setTab('comments')}>
+              Comments {task.comments.length > 0 ? `(${task.comments.length})` : ''}
+            </button>
+            <button type="button" className={`detail-tab${tab === 'history' ? ' active' : ''}`} onClick={() => setTab('history')}>
+              History
+            </button>
+          </div>
 
-        <div className="rel-section">
-          <div className="rel-heading">
-            <span>Parent Task</span>
-            {!task.parent && (
-              <button
-                type="button"
-                className="secondary rel-add"
-                onClick={() => setPicker('parent')}
-              >
-                + Add
-              </button>
+          {tab === 'work' && (
+            <div className="detail-work">
+              {/* Description */}
+              <section className="card">
+                <div className="section-head">
+                  <h3>Description</h3>
+                  {!editingDesc && (
+                    <button type="button" className="edit-chip" onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}>
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {editingDesc ? (
+                  <div>
+                    <RichTextEditor value={descDraft} onChange={setDescDraft} ariaLabel="Task description" autoFocus />
+                    <div className="btn-row">
+                      <button type="button" disabled={savingDesc} onClick={saveDesc}>
+                        {savingDesc ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" className="secondary" onClick={() => { setEditingDesc(false); setDescDraft(task.description ?? ''); }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : task.description ? (
+                  <RichText html={task.description} />
+                ) : (
+                  <p className="muted" style={{ margin: 0 }}>
+                    No description yet.
+                  </p>
+                )}
+              </section>
+
+              {/* Sub-tasks */}
+              <section className="card">
+                <div className="section-head">
+                  <h3>Sub-tasks</h3>
+                  {task.children.length > 0 && (
+                    <span className="mono subtask-count">
+                      {doneChildren} of {task.children.length} done
+                    </span>
+                  )}
+                </div>
+                {task.children.length > 0 && (
+                  <div className="subtask-progress" aria-hidden="true">
+                    <span style={{ width: `${(doneChildren / task.children.length) * 100}%` }} />
+                  </div>
+                )}
+                <ul className="subtask-list">
+                  {task.children.map((c) => {
+                    const done = c.status === 'Completed';
+                    return (
+                      <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
+                        <button
+                          type="button"
+                          className="mday-check"
+                          aria-label={done ? 'Completed' : 'Mark sub-task complete'}
+                          disabled={done}
+                          onClick={() => completeChild(c.id)}
+                        >
+                          {done && (
+                            <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+                              <path d="M2 6.5 L5 9 L10 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </button>
+                        <Link to={`/tasks/${c.id}`} className="subtask-name">
+                          {c.name}
+                        </Link>
+                        <StatusPill status={c.status} />
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="subtask-add">
+                  <input
+                    value={subtaskDraft}
+                    onChange={(e) => setSubtaskDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void addSubtask();
+                      }
+                    }}
+                    placeholder="Add a sub-task…"
+                    aria-label="Add a sub-task"
+                  />
+                  <button type="button" className="secondary btn-sm" disabled={addingSub || subtaskDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={addSubtask}>
+                    {addingSub ? 'Adding…' : '+ Add'}
+                  </button>
+                </div>
+              </section>
+
+              {/* Attachments */}
+              <section className="card">
+                <h3 style={{ marginTop: 0 }}>Attachments</h3>
+                <AttachmentSection attachments={task.attachments} target={{ kind: 'task', taskId: task.id }} canUpload currentUser={currentUser} onChanged={applyTask} />
+              </section>
+            </div>
+          )}
+
+          {tab === 'comments' && (
+            <section className="card">
+              <Comments task={task} currentUser={currentUser} onChanged={applyTask} onDirtyChange={setCommentsDirty} />
+            </section>
+          )}
+
+          {tab === 'history' && (
+            <section className="card">
+              <TaskHistory taskId={task.id} version={historyVersion} />
+            </section>
+          )}
+        </div>
+
+        {/* Right rail */}
+        <aside className="detail-rail">
+          <div className="rail-section">
+            <div className="rail-section-title">Details</div>
+            <div className="rail-row">
+              <span className="rail-label">Start</span>
+              <span className="rail-dates">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  aria-label="Start date"
+                />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  aria-label="Start time"
+                  disabled={!startDate}
+                />
+              </span>
+            </div>
+            <div className="rail-row">
+              <span className="rail-label">Due</span>
+              <span className="rail-dates">
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  aria-label="Due date"
+                />
+                <input
+                  type="time"
+                  value={dueTime}
+                  onChange={(e) => setDueTime(e.target.value)}
+                  aria-label="Due time"
+                  disabled={!dueDate}
+                />
+              </span>
+            </div>
+            <div className="rail-row">
+              <span className="rail-label">Creator</span>
+              <UserChip user={task.creator} />
+            </div>
+            <div className="rail-row">
+              <span className="rail-label">Created</span>
+              <AgoDate iso={task.createdAt} />
+            </div>
+            <div className="rail-row">
+              <span className="rail-label">Status set</span>
+              <AgoDate iso={task.statusChangedAt} />
+            </div>
+            {fieldsDirty && (
+              <div className="rail-savebar">
+                <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
+                  Discard
+                </button>
+                <button type="button" className="btn-sm" disabled={savingFields} onClick={() => void saveFields()}>
+                  {savingFields ? 'Saving…' : 'Save changes'}
+                </button>
+              </div>
             )}
           </div>
-          {task.parent ? (
-            <div className="rel-row">
-              <TaskRefLink task={task.parent} />
-              <button
-                type="button"
-                className="rel-x"
-                aria-label="Remove parent"
-                onClick={() => runRel(() => api.clearParent(task.id))}
-              >
-                ×
-              </button>
+
+          <div className="rail-section">
+            <div className="rail-section-title">Relationships</div>
+            <div className="rel-section">
+              <div className="rel-heading">
+                <span>Parent</span>
+                {!task.parent && (
+                  <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('parent')}>
+                    + Link
+                  </button>
+                )}
+              </div>
+              {task.parent ? (
+                <div className="rel-row">
+                  <TaskRefLink task={task.parent} />
+                  <button type="button" className="rel-x" aria-label="Remove parent" onClick={() => runRel(() => api.clearParent(task.id))}>
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <p className="muted rel-empty">None</p>
+              )}
             </div>
-          ) : (
-            <p className="muted rel-empty">No parent task.</p>
-          )}
-        </div>
 
-        <div className="rel-section">
-          <div className="rel-heading">
-            <span>Child Tasks</span>
-          </div>
-          {task.children.length === 0 ? (
-            <p className="muted rel-empty">No sub-tasks.</p>
-          ) : (
-            task.children.map((c) => (
-              <div key={c.id} className="rel-row">
-                <TaskRefLink task={c} />
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="rel-section">
-          <div className="rel-heading">
-            <span>Blocks</span>
-            <button type="button" className="secondary rel-add" onClick={() => setPicker('blocks')}>
-              + Add
-            </button>
-          </div>
-          {task.blocks.length === 0 ? (
-            <p className="muted rel-empty">Doesn&apos;t block any tasks.</p>
-          ) : (
-            task.blocks.map((t) => (
-              <div key={t.id} className="rel-row">
-                <TaskRefLink task={t} />
-                <button
-                  type="button"
-                  className="rel-x"
-                  aria-label={`Remove blocks #${t.id}`}
-                  onClick={() => runRel(() => api.removeDependency(task.id, 'blocks', t.id))}
-                >
-                  ×
+            <div className="rel-section">
+              <div className="rel-heading">
+                <span>Blocked by</span>
+                <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blockedBy')}>
+                  + Link
                 </button>
               </div>
-            ))
-          )}
-        </div>
+              {task.isBlockedBy.length === 0 ? (
+                <p className="muted rel-empty">Nothing</p>
+              ) : (
+                task.isBlockedBy.map((t) => (
+                  <div key={t.id} className="rel-row rel-blocked">
+                    <TaskRefLink task={t} />
+                    <button type="button" className="rel-x" aria-label={`Remove is-blocked-by #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blockedBy', t.id))}>
+                      ×
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
 
-        <div className="rel-section">
-          <div className="rel-heading">
-            <span>Is Blocked By</span>
-            <button
-              type="button"
-              className="secondary rel-add"
-              onClick={() => setPicker('blockedBy')}
-            >
-              + Add
-            </button>
-          </div>
-          {task.isBlockedBy.length === 0 ? (
-            <p className="muted rel-empty">Not blocked by any tasks.</p>
-          ) : (
-            task.isBlockedBy.map((t) => (
-              <div key={t.id} className="rel-row">
-                <TaskRefLink task={t} />
-                <button
-                  type="button"
-                  className="rel-x"
-                  aria-label={`Remove is-blocked-by #${t.id}`}
-                  onClick={() => runRel(() => api.removeDependency(task.id, 'blockedBy', t.id))}
-                >
-                  ×
+            <div className="rel-section">
+              <div className="rel-heading">
+                <span>Blocks</span>
+                <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blocks')}>
+                  + Link
                 </button>
               </div>
-            ))
-          )}
-        </div>
-      </div>
+              {task.blocks.length === 0 ? (
+                <p className="muted rel-empty">Nothing</p>
+              ) : (
+                task.blocks.map((t) => (
+                  <div key={t.id} className="rel-row">
+                    <TaskRefLink task={t} />
+                    <button type="button" className="rel-x" aria-label={`Remove blocks #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blocks', t.id))}>
+                      ×
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
-      {/* Comments */}
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Comments</h3>
-        <Comments
-          task={task}
-          currentUser={currentUser}
-          onChanged={applyTask}
-          onDirtyChange={setCommentsDirty}
-        />
-      </div>
-
-      {/* History (Phase 5): who changed what, most recent first */}
-      <div className="card" style={{ marginTop: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>History</h3>
-        <TaskHistory taskId={task.id} version={historyVersion} />
+          <div className="rail-section">
+            <div className="rail-section-title">Reminders</div>
+            <TaskReminders taskId={task.id} />
+          </div>
+        </aside>
       </div>
 
       {picker && (
-        <TaskPickerModal
-          title={PICKER_TITLES[picker]}
-          excludeId={task.id}
-          onPick={handlePick}
-          onClose={() => setPicker(null)}
-        />
+        <TaskPickerModal title={PICKER_TITLES[picker]} excludeId={task.id} onPick={handlePick} onClose={() => setPicker(null)} />
       )}
 
       {confirmDelete && (
@@ -721,16 +743,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Delete task?</h3>
             <p>
-              This permanently deletes task #{task.id} “{task.name}”, along with its comments and
-              attachments. This cannot be undone.
+              This permanently deletes task #{task.id} “{task.name}”, along with its comments and attachments. This cannot be undone.
             </p>
             <div className="btn-row">
-              <button
-                type="button"
-                className="danger"
-                disabled={deleting}
-                onClick={handleDeleteTask}
-              >
+              <button type="button" className="danger" disabled={deleting} onClick={handleDeleteTask}>
                 {deleting ? 'Deleting…' : 'Delete task'}
               </button>
               <button type="button" className="secondary" onClick={() => setConfirmDelete(false)}>

@@ -21,10 +21,15 @@ export function SortHeader({ label, state, onSort, sortable = true, multi = fals
       title="Click to sort; Shift-click to add a secondary sort"
     >
       {label}
-      {state && (
+      {state ? (
         <span className="sort-ind">
           {state.dir === 'asc' ? ' ▲' : ' ▼'}
           {multi ? <sup>{state.index + 1}</sup> : null}
+        </span>
+      ) : (
+        <span className="sort-hint" aria-hidden="true">
+          {' '}
+          ↕
         </span>
       )}
     </th>
