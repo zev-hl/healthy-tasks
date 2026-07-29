@@ -23,6 +23,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
 import {
   COMPLETED_TODAY_STAT,
+  DUE_TODAY_STAT,
   OVERDUE_STAT,
   dashboardActiveStats,
   dashboardStatPatch,
@@ -150,13 +151,21 @@ export function TaskSearchPage() {
       .finally(() => setHydrated(true));
   }, []);
 
-  // A saved View / My Day tile / team card navigates here with a filter shape in
-  // router state; apply it once hydration is done (so it wins over persisted).
+  // Navigated here from a saved View / team card (`filters` → replace) or from a
+  // My Day dashboard tile (`mergeFilters` → merge onto the current filters, so
+  // the tile refines rather than wipes). Applied once hydration is done.
   useEffect(() => {
     if (!hydrated) return;
-    const st = location.state as { filters?: TaskSearchFilters } | null;
+    const st = location.state as {
+      filters?: TaskSearchFilters;
+      mergeFilters?: TaskSearchFilters;
+    } | null;
     if (st?.filters) {
       setFilters({ ...defaultFilters, ...st.filters });
+      setPage(1);
+      window.history.replaceState({}, '');
+    } else if (st?.mergeFilters) {
+      setFilters((f) => ({ ...f, ...st.mergeFilters }));
       setPage(1);
       window.history.replaceState({}, '');
     }
@@ -480,6 +489,7 @@ export function TaskSearchPage() {
   const statTiles = dash
     ? [
         { key: OVERDUE_STAT, label: 'Overdue', value: dash.overdue, cls: 'ts-danger' },
+        { key: DUE_TODAY_STAT, label: 'Due today', value: dash.dueToday, cls: 'ts-warn' },
         { key: statusStat('InProgress'), label: 'In progress', value: dash.byStatus.InProgress ?? 0, cls: 'ts-accent' },
         { key: statusStat('Review'), label: 'In review', value: dash.byStatus.Review ?? 0, cls: 'ts-review' },
         { key: COMPLETED_TODAY_STAT, label: 'Completed today', value: dash.completedToday, cls: 'ts-ok' },

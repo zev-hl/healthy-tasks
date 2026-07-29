@@ -530,7 +530,7 @@ textarea:focus-visible {
 
 .mday-tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -539,7 +539,7 @@ textarea:focus-visible {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  padding: 16px 18px;
+  padding: 14px 15px;
   border-radius: 12px;
   border: 1px solid transparent;
   cursor: pointer;
@@ -582,6 +582,12 @@ textarea:focus-visible {
 }
 .tile-accent .mday-tile-value {
   color: var(--accent-deep);
+}
+.tile-review {
+  background: var(--review-soft);
+}
+.tile-review .mday-tile-value {
+  color: var(--review-deep);
 }
 .tile-plain {
   background: var(--surface);
@@ -878,6 +884,9 @@ textarea:focus-visible {
 .ts-danger .tasks-stat-value {
   color: var(--danger-deep);
 }
+.ts-warn .tasks-stat-value {
+  color: var(--warn-deep);
+}
 .ts-accent .tasks-stat-value {
   color: var(--accent-deep);
 }
@@ -894,6 +903,10 @@ textarea:focus-visible {
 .tasks-stat.ts-danger.active {
   border-color: var(--danger);
   background: var(--danger-soft);
+}
+.tasks-stat.ts-warn.active {
+  border-color: var(--warn);
+  background: var(--warn-soft);
 }
 .tasks-stat.ts-accent.active {
   border-color: var(--accent);
@@ -2930,6 +2943,28 @@ th {
   border-radius: var(--radius-sm);
   padding: 0.3rem 0.45rem;
   background: var(--surface);
+}
+/* Sticky Select-all / Deselect-all toggle at the top of the list. */
+.multi-all {
+  position: sticky;
+  top: -0.3rem;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.1rem;
+  margin: -0.3rem 0 0.25rem;
+  cursor: pointer;
+}
+.multi-all:hover {
+  color: var(--accent-deep);
 }
 .multi-option {
   display: flex;

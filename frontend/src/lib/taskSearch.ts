@@ -46,9 +46,23 @@ export function nowContext(): { now: string; todayStart: string; todayEnd: strin
 // top of (and never disturbs) the popover filters or the other groups.
 
 export const OVERDUE_STAT = 'overdue';
+export const DUE_TODAY_STAT = 'dueToday';
 export const COMPLETED_TODAY_STAT = 'completedToday';
 export const statusStat = (s: TaskStatus): string => `status:${s}`;
 export const relationStat = (r: TaskRelationFilter): string => `relation:${r}`;
+
+/** Today as a local YYYY-MM-DD, matching the date inputs' value format. */
+function localToday(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** True when the filters are exactly the "due today" range (both bounds = today). */
+function isDueTodayActive(f: TaskSearchFilters): boolean {
+  const today = localToday();
+  return f.dueFrom === today && f.dueTo === today && f.includeNoDue === false;
+}
 
 /** Every dashboard count currently applied as a filter (at most one per group). */
 export function dashboardActiveStats(f: TaskSearchFilters): Set<string> {
@@ -57,6 +71,7 @@ export function dashboardActiveStats(f: TaskSearchFilters): Set<string> {
   if (f.statuses && f.statuses.length === 1 && f.statuses[0]) active.add(statusStat(f.statuses[0]));
   if (f.overdue) active.add(OVERDUE_STAT);
   if (f.completedToday) active.add(COMPLETED_TODAY_STAT);
+  if (isDueTodayActive(f)) active.add(DUE_TODAY_STAT);
   return active;
 }
 
@@ -89,6 +104,13 @@ export function dashboardStatPatch(
     return filters.completedToday
       ? { completedToday: undefined }
       : { completedToday: true, overdue: undefined };
+  }
+  // Due-today → its own due-date range; toggling clears it back to the default.
+  if (key === DUE_TODAY_STAT) {
+    const today = localToday();
+    return isDueTodayActive(filters)
+      ? { dueFrom: null, dueTo: null, includeNoDue: true }
+      : { dueFrom: today, dueTo: today, includeNoDue: false };
   }
   return {};
 }
