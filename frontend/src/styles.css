@@ -473,6 +473,289 @@ textarea:focus-visible {
   color: var(--muted-2);
 }
 
+/* ---------------------------------------------------------------------------
+   My Day (/) — redesign
+   --------------------------------------------------------------------------- */
+.mday {
+  padding: 28px 34px;
+  max-width: 1240px;
+}
+.mday .card {
+  padding: 18px 20px;
+}
+
+.mday-greet {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+.mday-hello {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 33px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.mday-sub {
+  font-size: 12.5px;
+  color: var(--muted-2);
+  margin-top: 4px;
+}
+.mday-greet-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mday-quickadd {
+  position: relative;
+}
+.mday-quickadd input {
+  width: 280px;
+  padding-left: 34px;
+}
+.mday-quickadd-glyph {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--faint);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.mday-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.mday-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  background: var(--canvas-deep);
+  color: var(--ink);
+  transition: filter var(--dur) var(--ease);
+}
+.mday-tile:hover {
+  filter: brightness(0.975);
+}
+.mday-tile-value {
+  font-weight: 700;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.mday-tile-label {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.mday-tile-sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.tile-danger {
+  background: var(--danger-soft);
+}
+.tile-danger .mday-tile-value {
+  color: var(--danger-deep);
+}
+.tile-warn {
+  background: var(--warn-soft);
+}
+.tile-warn .mday-tile-value {
+  color: var(--warn-deep);
+}
+.tile-accent {
+  background: var(--accent-soft);
+}
+.tile-accent .mday-tile-value {
+  color: var(--accent-deep);
+}
+.tile-plain {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.mday-grid {
+  display: grid;
+  grid-template-columns: 1fr 356px;
+  gap: 20px;
+  align-items: start;
+}
+.mday-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mday-count {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+
+.mday-list,
+.mday-waiting,
+.mday-next {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mday-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), opacity var(--dur-slow) var(--ease);
+}
+.mday-row + .mday-row {
+  border-top: 1px solid var(--row-line);
+}
+.mday-row:hover {
+  background: var(--surface-sunk);
+}
+.mday-row.is-overdue {
+  background: var(--warn-tint);
+}
+.mday-row-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mday-row.is-completing {
+  opacity: 0.4;
+}
+.mday-row.is-completing .mday-row-title {
+  text-decoration: line-through;
+  color: var(--faint);
+}
+
+.mday-check {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--faint-2);
+  background: var(--surface);
+  color: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.mday-check:hover {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.mday-row.is-completing .mday-check {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #fff;
+}
+
+.mday-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.mday-waiting-item,
+.mday-next-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+.mday-waiting-item + .mday-waiting-item,
+.mday-next-item + .mday-next-item {
+  border-top: 1px solid var(--row-line);
+}
+.mday-waiting-item:hover,
+.mday-next-item:hover {
+  background: var(--surface-sunk);
+}
+.mday-waiting-text,
+.mday-next-title {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mday-notif-badge {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+}
+.mday-notif-badge.reminder {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+}
+.mday-notif-badge.assigned {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.mday-see-all {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.mday-next-day {
+  width: 44px;
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted-2);
+  text-transform: uppercase;
+}
+.mday-next-id {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+.mday-status-sq {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+
+@media (max-width: 1100px) {
+  .mday-grid {
+    grid-template-columns: 1fr;
+  }
+  .mday-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .container {
   max-width: 980px;
   margin: 1.75rem auto;
