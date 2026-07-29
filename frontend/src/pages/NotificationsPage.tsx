@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  REMINDER_SNOOZE_OPTIONS,
   reminderLeadLabel,
   type AssignAction,
   type NotificationsDto,
@@ -13,6 +14,7 @@ import { useNotifications } from '../notifications/NotificationContext';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { PriorityRamp } from '../components/ui/indicators';
 import { TimeStamp } from '../components/ui/TimeStamp';
+import { DueDate } from '../components/ui/dates';
 
 const EMPTY: NotificationsDto = { mentioned: [], reminders: [], assigned: [] };
 
@@ -32,6 +34,9 @@ interface FeedItem {
   priority?: TaskPriority;
   leadMinutes?: number;
   action?: AssignAction;
+  actor?: TaskUserRef | null; // assigned: who assigned/unassigned
+  dueAt?: string | null; // assigned: the task's due date
+  blockedByCount?: number; // assigned: open blockers on the task
 }
 
 /** Flatten the three lists into one timestamp-sorted feed (newest first). */
@@ -60,6 +65,9 @@ function buildFeed(d: NotificationsDto): FeedItem[] {
       read: a.read,
       priority: a.priority,
       action: a.action,
+      actor: a.actor,
+      dueAt: a.dueAt,
+      blockedByCount: a.blockedByCount,
     });
   for (const r of d.reminders)
     items.push({
@@ -115,6 +123,7 @@ export function NotificationsPage() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [snoozeFor, setSnoozeFor] = useState<string | null>(null); // reminder id with its snooze menu open
   const navigate = useNavigate();
   const { refresh: refreshUnread } = useNotifications();
 
@@ -209,6 +218,17 @@ export function NotificationsPage() {
     refreshUnread();
   };
 
+  const snooze = async (id: string, minutes: number) => {
+    setSnoozeFor(null);
+    try {
+      await api.snoozeReminder(id, minutes);
+      setData((d) => ({ ...d, reminders: d.reminders.filter((r) => r.id !== id) }));
+      refreshUnread();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to snooze reminder');
+    }
+  };
+
   const removeReminder = async (id: string) => {
     try {
       await api.removeReminder(id);
@@ -299,6 +319,8 @@ export function NotificationsPage() {
                     <span className="notif-item-icon" aria-hidden="true">
                       {it.kind === 'mentioned' && it.commenter ? (
                         <Avatar user={it.commenter} px={30} decorative />
+                      ) : it.kind === 'assigned' && it.actor ? (
+                        <Avatar user={it.actor} px={30} decorative />
                       ) : (
                         <span className={`notif-badge ${it.kind}`}>
                           {it.kind === 'reminder' ? 'REM' : 'ASN'}
@@ -314,7 +336,14 @@ export function NotificationsPage() {
                               <strong>{userLabel(it.commenter)}</strong> mentioned you
                             </>
                           ) : it.kind === 'assigned' ? (
-                            <strong>{it.action === 'added' ? 'Assigned to you' : 'Unassigned from you'}</strong>
+                            it.actor ? (
+                              <>
+                                <strong>{userLabel(it.actor)}</strong>{' '}
+                                {it.action === 'added' ? 'assigned you' : 'unassigned you'}
+                              </>
+                            ) : (
+                              <strong>{it.action === 'added' ? 'Assigned to you' : 'Unassigned from you'}</strong>
+                            )
                           ) : (
                             <strong>Reminder due</strong>
                           )}
@@ -337,9 +366,27 @@ export function NotificationsPage() {
                         </div>
                       )}
 
-                      {(it.priority || (it.kind === 'reminder' && it.leadMinutes != null)) && (
+                      {(it.priority ||
+                        (it.kind === 'reminder' && it.leadMinutes != null) ||
+                        (it.kind === 'assigned' && (it.dueAt || (it.blockedByCount ?? 0) > 0))) && (
                         <div className="notif-item-meta">
                           {it.priority && <PriorityRamp priority={it.priority} label />}
+                          {it.kind === 'assigned' && it.dueAt && (
+                            <>
+                              <span className="notif-meta-sep">·</span>
+                              <span className="notif-meta-due">
+                                Due <DueDate iso={it.dueAt} inline />
+                              </span>
+                            </>
+                          )}
+                          {it.kind === 'assigned' && (it.blockedByCount ?? 0) > 0 && (
+                            <>
+                              <span className="notif-meta-sep">·</span>
+                              <span className="notif-meta-blocked">
+                                blocked by {it.blockedByCount}
+                              </span>
+                            </>
+                          )}
                           {it.kind === 'reminder' && it.leadMinutes != null && (
                             <>
                               {it.priority && <span className="notif-meta-sep">·</span>}
@@ -366,6 +413,38 @@ export function NotificationsPage() {
                           >
                             Mark read
                           </button>
+                        )}
+                        {it.kind === 'reminder' && (
+                          <span className="notif-snooze">
+                            <button
+                              type="button"
+                              className="notif-action"
+                              aria-expanded={snoozeFor === it.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSnoozeFor(snoozeFor === it.id ? null : it.id);
+                              }}
+                            >
+                              Snooze
+                            </button>
+                            {snoozeFor === it.id && (
+                              <span className="notif-snooze-menu" onClick={(e) => e.stopPropagation()}>
+                                {REMINDER_SNOOZE_OPTIONS.map((o) => (
+                                  <button
+                                    key={o.minutes}
+                                    type="button"
+                                    className="notif-snooze-opt"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void snooze(it.id, o.minutes);
+                                    }}
+                                  >
+                                    {o.label}
+                                  </button>
+                                ))}
+                              </span>
+                            )}
+                          </span>
                         )}
                         {it.kind === 'reminder' && (
                           <button

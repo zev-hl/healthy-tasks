@@ -3680,6 +3680,50 @@ button.dash-stat:hover {
   background: var(--canvas-deep);
   color: var(--ink);
 }
+.notif-meta-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--muted);
+}
+.notif-meta-blocked {
+  color: var(--danger-deep);
+  font-weight: 550;
+}
+/* Snooze menu (popover of preset durations). */
+.notif-snooze {
+  position: relative;
+  display: inline-flex;
+}
+.notif-snooze-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 7rem;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+}
+.notif-snooze-opt {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-chip);
+  font-size: 0.8rem;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.notif-snooze-opt:hover {
+  background: var(--surface-sunk);
+  color: var(--ink);
+}
 /* Keep actions reachable without hover (touch / keyboard). */
 @media (hover: none) {
   .notif-item-actions {

@@ -13,6 +13,7 @@ import type {
   PresignAttachmentRequest,
   PresignAttachmentResponse,
   AddReminderRequest,
+  SnoozeReminderRequest,
   MentionedFilter,
   NotificationPreferencesDto,
   NotificationsDto,
@@ -284,6 +285,11 @@ export const api = {
   removeReminder: (id: string) => request<void>(`/api/reminders/${id}`, { method: 'DELETE' }),
   markReminderRead: (id: string) =>
     request<void>(`/api/reminders/${id}/read`, { method: 'POST' }),
+  snoozeReminder: (id: string, minutes: number) =>
+    request<void>(`/api/reminders/${id}/snooze`, {
+      method: 'POST',
+      body: JSON.stringify({ minutes } satisfies SnoozeReminderRequest),
+    }),
 };
 
 /**
