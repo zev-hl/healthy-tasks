@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   NOTIFICATION_LISTS,
   NOTIFICATION_LIST_LABELS,
@@ -9,7 +10,8 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 
 export function ProfilePage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [prefs, setPrefs] = useState<NotificationPreferencesDto | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +62,17 @@ export function ProfilePage() {
               ) : null}
             </div>
           </div>
+          <div className="spacer" />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              logout();
+              navigate('/login');
+            }}
+          >
+            Log out
+          </button>
         </div>
       </div>
 
