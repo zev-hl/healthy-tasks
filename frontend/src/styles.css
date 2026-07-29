@@ -763,6 +763,7 @@ textarea:focus-visible {
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--surface-sunk);
+  color: var(--ink-2);
   border: 1px solid var(--border-soft);
   cursor: pointer;
   text-align: left;
@@ -781,6 +782,7 @@ textarea:focus-visible {
 .mday-team-name {
   font-weight: 600;
   font-size: 12.5px;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
