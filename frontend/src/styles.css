@@ -747,11 +747,72 @@ textarea:focus-visible {
   flex: none;
 }
 
+/* Manager team strip */
+.mday-team {
+  margin-bottom: 20px;
+}
+.mday-team-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.mday-team-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border-soft);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.mday-team-card:hover {
+  background: var(--canvas-deep);
+  border-color: var(--border);
+}
+.mday-team-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.mday-team-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mday-team-open {
+  font-size: 11px;
+  color: var(--muted-2);
+}
+.mday-team-pill {
+  flex: none;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+}
+.mday-team-pill.late {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+.mday-team-pill.ontime {
+  background: var(--ok-soft);
+  color: var(--ok-deep);
+}
+
 @media (max-width: 1100px) {
   .mday-grid {
     grid-template-columns: 1fr;
   }
   .mday-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mday-team-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }

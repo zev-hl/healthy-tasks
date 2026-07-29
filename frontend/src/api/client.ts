@@ -1,4 +1,5 @@
 import type {
+  ActiveUserDto,
   AdminResetLinkResponse,
   AttachmentDownloadResponse,
   ConfirmAttachmentRequest,
@@ -27,7 +28,6 @@ import type {
   TaskRef,
   TaskRowDto,
   TaskSearchRequest,
-  TaskUserRef,
   UpdateCommentRequest,
   UpdateTaskRequest,
   UpdateUserRequest,
@@ -162,8 +162,8 @@ export const api = {
     }),
   userFilterOptions: () => request<UserFilterOptions>('/api/users/filter-options'),
 
-  // --- Active users (any authenticated user) ---
-  listActiveUsers: () => request<TaskUserRef[]>('/api/users/active'),
+  // --- Active users (any authenticated user) — richer directory (Phase 10) ---
+  listActiveUsers: () => request<ActiveUserDto[]>('/api/users/active'),
 
   // --- Per-user screen preferences (Phase 6) ---
   getPreference: (screen: ScreenKey) => request<{ state: unknown }>(`/api/preferences/${screen}`),

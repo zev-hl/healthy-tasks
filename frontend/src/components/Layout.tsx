@@ -1,10 +1,13 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import type { ActiveUserDto } from '@healthy-tasks/shared';
 import { useAuth } from '../auth/AuthContext';
 import { NotificationProvider, useNotifications } from '../notifications/NotificationContext';
 import { CommandPalette } from './CommandPalette';
 import { Avatar, userLabel } from './ui/Avatar';
 import { SAVED_VIEWS } from '../lib/views';
+import { api } from '../api/client';
+import { nowContext } from '../lib/taskSearch';
 
 const isMac =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
@@ -20,6 +23,38 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const navigate = useNavigate();
   const me = user?.id ?? '';
   const unreadTotal = unread?.total ?? 0;
+
+  // MY TEAM group: the current user's direct reports + aggregate team tallies.
+  const [reports, setReports] = useState<ActiveUserDto[]>([]);
+  const [teamStats, setTeamStats] = useState<{ open: number; overdue: number } | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    let cancelled = false;
+    api
+      .listActiveUsers()
+      .then(async (users) => {
+        const r = users.filter((u) => u.supervisorId === me && u.id !== me);
+        if (cancelled) return;
+        setReports(r);
+        if (r.length > 0) {
+          const d = await api.getTaskDashboard({
+            filters: { assigneeIds: r.map((x) => x.id) },
+            ...nowContext(),
+          });
+          if (!cancelled) {
+            setTeamStats({
+              open: d.total - (d.byStatus.Completed ?? 0) - (d.byStatus.Canceled ?? 0),
+              overdue: d.overdue,
+            });
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [me]);
+  const reportIds = reports.map((r) => r.id);
 
   return (
     <aside className="sidebar">
@@ -59,6 +94,36 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           </button>
         ))}
       </div>
+
+      {reports.length > 0 && (
+        <div className="side-group">
+          <div className="side-group-label">My team</div>
+          <button
+            type="button"
+            className="view-item"
+            onClick={() =>
+              navigate('/tasks', { state: { filters: { assigneeIds: reportIds }, viewLabel: 'Everyone reporting to me' } })
+            }
+          >
+            <span className="view-square" style={{ background: 'var(--accent)' }} aria-hidden="true" />
+            <span className="view-label">Everyone reporting to me</span>
+            {teamStats && <span className="view-count">{teamStats.open}</span>}
+          </button>
+          <button
+            type="button"
+            className="view-item"
+            onClick={() =>
+              navigate('/tasks', {
+                state: { filters: { assigneeIds: reportIds, overdue: true }, viewLabel: 'Their overdue' },
+              })
+            }
+          >
+            <span className="view-square" style={{ background: 'var(--danger)' }} aria-hidden="true" />
+            <span className="view-label">Their overdue</span>
+            {teamStats && <span className="view-count">{teamStats.overdue}</span>}
+          </button>
+        </div>
+      )}
 
       {user?.role === 'Admin' && (
         <div className="side-group">

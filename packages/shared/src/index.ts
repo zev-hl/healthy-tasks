@@ -199,6 +199,17 @@ export interface TaskUserRef {
   title: string | null;
 }
 
+/**
+ * Richer directory entry returned by GET /api/users/active. Superset of
+ * `TaskUserRef` with the reporting/role fields that power team views (My Day
+ * team strip, "reporting to me"). The embedded `TaskUserRef` stays minimal;
+ * only this list carries org structure. Visible to any authenticated user.
+ */
+export interface ActiveUserDto extends TaskUserRef {
+  supervisorId: string | null;
+  role: Role;
+}
+
 export interface TaskDto {
   id: number;
   name: string;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Link, useNavigate } from 'react-router-dom';
 import {
   TASK_NAME_MIN_LENGTH,
+  type ActiveUserDto,
   type NotificationsDto,
   type TaskDashboardDto,
   type TaskRowDto,
@@ -104,6 +105,7 @@ function Check({ onDone, busy }: { onDone: () => void; busy: boolean }) {
 export function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const me = user?.id ?? '';
   const isManager = user?.role !== 'Member';
   const firstName = user?.firstName?.trim() || user?.email?.split('@')[0] || 'there';
 
@@ -111,6 +113,8 @@ export function HomePage() {
   const [today, setToday] = useState<TaskRowDto[]>([]);
   const [rightList, setRightList] = useState<TaskRowDto[]>([]);
   const [notif, setNotif] = useState<NotificationsDto | null>(null);
+  const [reports, setReports] = useState<ActiveUserDto[]>([]);
+  const [reportStats, setReportStats] = useState<{ id: string; open: number; late: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<number>>(new Set());
@@ -125,7 +129,7 @@ export function HomePage() {
     const weekEnd = new Date(t);
     weekEnd.setDate(t.getDate() + 7);
     try {
-      const [dashboard, todayRes, notifs, rightRes] = await Promise.all([
+      const [dashboard, todayRes, notifs, rightRes, users] = await Promise.all([
         api.getTaskDashboard({ filters: {}, ...ctx }),
         api.queryTasks({
           filters: effectiveFilters({ dueTo: dateStr(t), includeNoDue: false, statuses: ACTIVE_STATUSES }),
@@ -155,18 +159,39 @@ export function HomePage() {
               pageSize: 6,
               ...ctx,
             }),
+        api.listActiveUsers(),
       ]);
       setDash(dashboard);
       setToday(todayRes.rows);
       setNotif(notifs);
       setRightList(rightRes.rows);
+
+      // Manager team strip: direct reports + per-report open/overdue tallies.
+      const directReports = users.filter((u) => u.supervisorId === me && u.id !== me);
+      setReports(directReports);
+      if (isManager && directReports.length > 0) {
+        const stats = await Promise.all(
+          directReports.map((r) =>
+            api
+              .getTaskDashboard({ filters: { assigneeIds: [r.id] }, ...ctx })
+              .then((d) => ({
+                id: r.id,
+                open: d.total - (d.byStatus.Completed ?? 0) - (d.byStatus.Canceled ?? 0),
+                late: d.overdue,
+              })),
+          ),
+        );
+        setReportStats(stats);
+      } else {
+        setReportStats([]);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load your day');
     } finally {
       setLoading(false);
     }
-  }, [isManager]);
+  }, [isManager, me]);
 
   useEffect(() => {
     void load();
@@ -280,6 +305,50 @@ export function HomePage() {
           </button>
         ))}
       </div>
+
+      {isManager && reports.length > 0 && (
+        <section className="card mday-team">
+          <div className="mday-card-head">
+            <h3>My team</h3>
+            <span className="mono mday-count">
+              {reports.length} {reports.length === 1 ? 'person' : 'people'} ·{' '}
+              {reportStats.reduce((s, x) => s + x.open, 0)} open
+            </span>
+            <div className="spacer" />
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => goFilter({ assigneeIds: reports.map((r) => r.id) }, 'My team')}
+            >
+              Open in All tasks
+            </button>
+          </div>
+          <div className="mday-team-grid">
+            {reports.map((r) => {
+              const s = reportStats.find((x) => x.id === r.id);
+              const late = s?.late ?? 0;
+              const open = s?.open ?? 0;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  className="mday-team-card"
+                  onClick={() => goFilter({ assigneeIds: [r.id] }, userLabel(r))}
+                >
+                  <Avatar user={r} px={28} decorative />
+                  <span className="mday-team-info">
+                    <span className="mday-team-name">{userLabel(r)}</span>
+                    <span className="mono mday-team-open">{open} open</span>
+                  </span>
+                  <span className={`mday-team-pill ${late > 0 ? 'late' : 'ontime'}`}>
+                    {late > 0 ? `${late} late` : 'on time'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <div className="mday-grid">
         {/* Today list */}
