@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=Instrument+Serif:ital@0;1&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f2eee7; color: #211d19; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+  a { color: #0f7b6c; }
+  a:hover { color: #0b5f54; }
+</style>
+</helmet>
+
+<section style="padding:56px 64px 40px;display:flex;flex-direction:column;gap:28px;">
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:920px;">
+    <span style="font:500 12px 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8a8177;">Turn 2 &middot; My Day, developed</span>
+    <h1 style="margin:0;font:400 40px 'Instrument Serif',serif;letter-spacing:-0.01em;color:#211d19;">One screen, every role</h1>
+    <p style="margin:0;font:400 15px/1.55 'Plus Jakarta Sans',sans-serif;color:#5c554d;text-wrap:pretty;">Same route, same components, no permission branching in the layout. A Member sees their own work. A Manager or Admin sees the same thing plus a team strip &mdash; which is nothing more than <code style="font:400 13px 'IBM Plex Mono',monospace;color:#93361f;">filters.assigneeIds</code> pre-set to their direct reports. Statuses, priorities and fields are the ones in <code style="font:400 13px 'IBM Plex Mono',monospace;color:#93361f;">packages/shared</code>.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start;">
+
+    <div id="2a" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">2a</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">My Day &mdash; Member (Marcus Kane)</span>
+      </div>
+      <div style="width:1440px;height:610px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">3</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Views</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;"></span>Assigned to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">9</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#7857c8;"></span>Needs my review<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b8720a;"></span>Blocked<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">1</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;"></span>Created by me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">14</span></div>
+            </div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">MK</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Marcus Kane</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Member</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:20px;overflow:hidden;">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <span style="font:400 32px 'Instrument Serif',serif;color:#211d19;line-height:1.1;">Good morning, Marcus</span>
+              <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#8a8177;">Wednesday, Jul 29 &middot; 3 tasks due today &middot; next at 2:00 PM</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:8px 12px;width:270px;">
+                <span style="width:12px;height:12px;border-radius:50%;border:1.5px solid #b6ada1;"></span>
+                <span style="font:400 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Add a task&hellip;</span>
+              </div>
+              <span style="background:#0f7b6c;color:#fff;font:600 13px 'Plus Jakarta Sans',sans-serif;padding:9px 15px;border-radius:10px;">New task</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+            <div style="background:#fbe6e0;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#93361f;letter-spacing:-0.02em;">2</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Overdue</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#a2604f;">Oldest is 4 days late</span>
+            </div>
+            <div style="background:#fdf0dc;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#8c5606;letter-spacing:-0.02em;">3</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#8c5606;">Due today</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#a5793c;">Next at 2:00 PM</span>
+            </div>
+            <div style="background:#e3f2ef;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;letter-spacing:-0.02em;">5</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">In Progress</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#3d8579;">1 waiting on another task</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.02em;">2</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Completed today</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Keep it going</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;">
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid #f0ebe4;">
+                <span style="font:700 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Today</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;">5 tasks</span>
+                <span style="margin-left:auto;font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">View all</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;background:#fefaf7;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #d3a698;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b3452f;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Collect updated licenses (18 of 24)</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#fbe6e0;color:#93361f;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;flex:none;">Overdue 4d</span>
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">#483</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b8720a;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Q3 HRA outreach batch &mdash; final review</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8c5606;flex:none;">in 3h &middot; 2:00 PM</span>
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">#496</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;background:#fdfcfa;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Registry lookups &mdash; last 6 nurses</span>
+                <span style="flex:none;display:flex;align-items:center;gap:6px;">
+                  <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:8px;">Snooze</span>
+                  <span style="background:#e3f2ef;color:#0b5f54;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:8px;">Start</span>
+                  <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:8px;">Reassign</span>
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">File cohort 12 licenses in credentialing folder</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#ece6f8;color:#5b3f96;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;flex:none;">Review</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;flex:none;">in 6h</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;">
+                <span style="width:17px;height:17px;border-radius:50%;background:#2f7d4f;flex:none;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px);"></span></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;opacity:0.4;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;text-decoration:line-through;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Confirm registry access for cohort</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">done 9:12 AM</span>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+                <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Waiting on you</span>
+                <div style="display:flex;gap:10px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span>
+                  <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><strong style="font-weight:600;color:#211d19;">Dana Reyes</strong> mentioned you on <span style="color:#0f7b6c;font-weight:600;">#482</span></span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">18m ago</span></span>
+                </div>
+                <div style="display:flex;gap:10px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#fdf0dc;color:#8c5606;display:flex;align-items:center;justify-content:center;font:600 8.5px 'IBM Plex Mono',monospace;flex:none;">REM</span>
+                  <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><strong style="font-weight:600;color:#211d19;">#496</strong> starts in 1 hour</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">1:00 PM</span></span>
+                </div>
+                <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">See all notifications (3)</span>
+              </div>
+              <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+                <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Next up this week</span>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#8a8177;width:44px;flex:none;">Thu</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Vendor contract review</span><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;flex:none;"></span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#8a8177;width:44px;flex:none;">Fri</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Transport vendor onboarding</span><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;flex:none;"></span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#8a8177;width:44px;flex:none;">Mon</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Quarterly audit prep kickoff</span><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;flex:none;"></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>A sorted task list cannot answer &ldquo;what is late, what is next, and how much did I finish&rdquo; without the reader doing the filtering in their head. Four counts and one day list do it in a glance &mdash; and every count is already in <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">TaskDashboardDto</code>.</li>
+          <li>Nothing here is role-gated. A Member gets the same components, the same route, and the same rail; only the Admin group is conditional, exactly as it is today.</li>
+          <li>Needs my review earns its place now that <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">Review</code> is a real status with no distinct treatment anywhere in the current UI.</li>
+          <li>Row hover gives Snooze / Start / Reassign, so the three most common edits never require opening a task.</li>
+          <li>Anyone who prefers the grid can still make All tasks their landing page &mdash; this does not take the list away.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="2b" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">2b</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">My Day &mdash; Manager / Admin (Dana Reyes), same screen plus a team strip</span>
+      </div>
+      <div style="width:1440px;height:700px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:22px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Views</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">3</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;"></span>Assigned to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">12</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#7857c8;"></span>Needs my review<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">4</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b8720a;"></span>Blocked<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;"></span>Created by me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">31</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">My team</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Everyone reporting to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">47</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Their overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">5</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Admin</span>
+            <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Users</div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:18px;overflow:hidden;">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <span style="font:400 32px 'Instrument Serif',serif;color:#211d19;line-height:1.1;">Good morning, Dana</span>
+              <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#8a8177;">Wednesday, Jul 29 &middot; 5 tasks due today &middot; 4 people reporting to you</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:8px 12px;width:270px;">
+                <span style="width:12px;height:12px;border-radius:50%;border:1.5px solid #b6ada1;"></span>
+                <span style="font:400 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Add a task&hellip;</span>
+              </div>
+              <span style="background:#0f7b6c;color:#fff;font:600 13px 'Plus Jakarta Sans',sans-serif;padding:9px 15px;border-radius:10px;">New task</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+            <div style="background:#fbe6e0;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#93361f;letter-spacing:-0.02em;">3</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Overdue</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#a2604f;">Oldest is 17 days late</span>
+            </div>
+            <div style="background:#fdf0dc;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#8c5606;letter-spacing:-0.02em;">5</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#8c5606;">Due today</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#a5793c;">Next at 2:00 PM</span>
+            </div>
+            <div style="background:#e3f2ef;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;letter-spacing:-0.02em;">12</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">In Progress</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#3d8579;">2 waiting on another task</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:15px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 28px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.02em;">4</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Completed today</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Keep it going</span>
+            </div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:14px 18px;display:flex;flex-direction:column;gap:11px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">My team</span>
+              <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;">4 people &middot; 47 open</span>
+              <span style="margin-left:auto;font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">Open in All tasks</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+              <div style="background:#faf8f5;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
+                <span style="width:28px;height:28px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+                <span style="display:flex;flex-direction:column;gap:1px;overflow:hidden;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Marcus Kane</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#8a8177;">9 open</span></span>
+                <span style="margin-left:auto;background:#fbe6e0;color:#93361f;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:2px 8px;border-radius:999px;flex:none;">2 late</span>
+              </div>
+              <div style="background:#faf8f5;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
+                <span style="width:28px;height:28px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+                <span style="display:flex;flex-direction:column;gap:1px;overflow:hidden;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Aisha Lin</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#8a8177;">14 open</span></span>
+                <span style="margin-left:auto;background:#fbe6e0;color:#93361f;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:2px 8px;border-radius:999px;flex:none;">3 late</span>
+              </div>
+              <div style="background:#faf8f5;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
+                <span style="width:28px;height:28px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">JB</span>
+                <span style="display:flex;flex-direction:column;gap:1px;overflow:hidden;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Jordan Bell</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#8a8177;">16 open</span></span>
+                <span style="margin-left:auto;background:#e2f0e6;color:#256240;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:2px 8px;border-radius:999px;flex:none;">on time</span>
+              </div>
+              <div style="background:#faf8f5;border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;">
+                <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">SP</span>
+                <span style="display:flex;flex-direction:column;gap:1px;overflow:hidden;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Sam Ortiz</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#8a8177;">8 open</span></span>
+                <span style="margin-left:auto;background:#e2f0e6;color:#256240;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:2px 8px;border-radius:999px;flex:none;">on time</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start;">
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid #f0ebe4;">
+                <span style="font:700 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Today</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;">8 tasks</span>
+                <span style="margin-left:auto;font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">View all</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;background:#fefaf7;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #d3a698;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b3452f;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Credential renewal &mdash; RN cohort 12</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#fdf0dc;color:#8c5606;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;flex:none;">On Hold</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#fbe6e0;color:#93361f;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;flex:none;">Overdue 17d</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Update intake script for Medicaid renewals</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;flex:none;">in 6h &middot; 5:00 PM</span>
+                <span style="width:24px;height:24px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b8720a;border-radius:1px;"></span></span>
+                <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Approve outreach copy &mdash; Aisha</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;background:#ece6f8;color:#5b3f96;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;flex:none;">Review</span>
+                <span style="width:24px;height:24px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;">
+                <span style="width:17px;height:17px;border-radius:50%;background:#2f7d4f;flex:none;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px);"></span></span>
+                <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;opacity:0.4;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;text-decoration:line-through;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Send July compliance digest</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">done 9:12 AM</span>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+                <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Waiting on you</span>
+                <div style="display:flex;gap:10px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+                  <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><strong style="font-weight:600;color:#211d19;">Marcus Kane</strong> mentioned you on <span style="color:#0f7b6c;font-weight:600;">#482</span></span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">22m ago</span></span>
+                </div>
+                <div style="display:flex;gap:10px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+                  <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><strong style="font-weight:600;color:#211d19;">Aisha Lin</strong> assigned you <span style="color:#0f7b6c;font-weight:600;">#517</span></span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">1h ago</span></span>
+                </div>
+                <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">See all notifications (7)</span>
+              </div>
+              <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+                <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Needs my review</span>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;width:38px;flex:none;">#491</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Outreach copy &mdash; Spanish</span><span style="width:22px;height:22px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;width:38px;flex:none;">#505</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Site visit notes &mdash; Bronx</span><span style="width:22px;height:22px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;flex:none;">JB</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;width:38px;flex:none;">#512</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Transport SLA summary</span><span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;flex:none;">SP</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>The only additions for a Manager or Admin are the My team rail group, the team strip, and a Needs-my-review panel. Everything else is byte-identical to <a href="#2a">2a</a>.</li>
+          <li>Each team card sets <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">filters.assigneeIds</code> to that person and opens All tasks &mdash; the same assignee filter a manager would set by hand, pre-applied. No new endpoint; the roster comes from <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">supervisorId</code>.</li>
+          <li>&ldquo;2 late&rdquo; / &ldquo;on time&rdquo; is the existing overdue quick-filter counted per assignee, not a new metric.</li>
+          <li>A Manager who is also a doer still sees their own work first. The team strip sits below their own counts, not above them.</li>
+          <li>When goals land in a later phase, the tile strip is where they go &mdash; a fifth tile per person, or a target line under each team card.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section style="padding:0 64px 96px;display:flex;flex-direction:column;gap:28px;">
+  <div style="display:flex;flex-direction:column;gap:8px;max-width:900px;">
+    <span style="font:500 12px 'IBM Plex Mono',monospace;letter-spacing:0.14em;text-transform:uppercase;color:#8a8177;">Turn 1 · zev-hl/healthy-tasks</span>
+    <h1 style="margin:0;font:400 40px 'Instrument Serif',serif;letter-spacing:-0.01em;color:#211d19;">A friendlier Healthy Tasks</h1>
+    <p style="margin:0;font:400 15px/1.55 'Plus Jakarta Sans',sans-serif;color:#5c554d;text-wrap:pretty;">Every screen currently in the app, redrawn: foundations, My Day, Tasks, Task detail, Notifications, Users, Profile, and Sign in. Same data model and same features — different structure, hierarchy, and tone. Notes under each frame say what changed and why.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:flex-start;">
+
+    <div id="1a" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1a</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Foundations — palette, type, states</span>
+      </div>
+      <div style="width:1440px;background:#faf8f5;border:1px solid #e0d9cf;border-radius:14px;padding:32px;display:grid;grid-template-columns:1fr 1fr;gap:32px;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Palette</span>
+          <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;">
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:10px;background:#0f7b6c;"></div><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#5c554d;">#0F7B6C</span><span style="font:500 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Accent</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:10px;background:#e3f2ef;"></div><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#5c554d;">#E3F2EF</span><span style="font:500 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Accent soft</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:10px;background:#b8720a;"></div><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#5c554d;">#B8720A</span><span style="font:500 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Attention</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:10px;background:#b3452f;"></div><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#5c554d;">#B3452F</span><span style="font:500 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Overdue</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:10px;background:#f7f4ef;border:1px solid #e7e1d8;"></div><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#5c554d;">#F7F4EF</span><span style="font:500 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Canvas</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px;"><div style="height:56px;border-radius:10px;background:#211d19;"></div><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#5c554d;">#211D19</span><span style="font:500 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Ink</span></div>
+          </div>
+          <p style="margin:0;font:400 12.5px/1.5 'Plus Jakarta Sans',sans-serif;color:#7d746a;text-wrap:pretty;">Warm neutrals instead of cool gray, one green accent instead of default blue. Blue is reserved for links, so accent and link never compete.</p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Type</span>
+          <div style="display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 20px;">
+            <span style="font:400 32px 'Instrument Serif',serif;color:#211d19;line-height:1.1;">Good morning, Dana</span>
+            <span style="font:700 19px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.01em;color:#211d19;">Credential renewal — RN cohort 12</span>
+            <span style="font:400 14px/1.55 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Body copy sits at 14px with generous leading. Labels are 12px, 600 weight.</span>
+            <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#7d746a;">#482 · Due in 3 hours · 14:00</span>
+          </div>
+          <p style="margin:0;font:400 12.5px/1.5 'Plus Jakarta Sans',sans-serif;color:#7d746a;text-wrap:pretty;">Instrument Serif for one warm greeting per screen, Plus Jakarta Sans for the interface, IBM Plex Mono for ids, dates, and counts so numbers align and never read as prose.</p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Status &amp; priority</span>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#eeeae4;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#a49a8e;"></span>Open</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#e3f2ef;color:#0b5f54;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#0f7b6c;"></span>In Progress</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#fdf0dc;color:#8c5606;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#b8720a;"></span>On Hold</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#ece6f8;color:#5b3f96;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#7857c8;"></span>Review</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#e2f0e6;color:#256240;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#2f7d4f;"></span>Completed</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#f2eee7;color:#8a8177;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#c9c1b6;"></span>Canceled</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;background:#fbe6e0;color:#93361f;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:999px;"><span style="width:7px;height:7px;border-radius:50%;background:#b3452f;"></span>Overdue</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:14px 18px;">
+            <div style="display:flex;align-items:center;gap:7px;"><span style="display:flex;align-items:flex-end;gap:2px;height:12px;"><span style="width:3px;height:5px;background:#c9c1b6;border-radius:1px;"></span><span style="width:3px;height:8px;background:#c9c1b6;border-radius:1px;"></span><span style="width:3px;height:11px;background:#c9c1b6;border-radius:1px;"></span></span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Low</span></div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="display:flex;align-items:flex-end;gap:2px;height:12px;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Medium</span></div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="display:flex;align-items:flex-end;gap:2px;height:12px;"><span style="width:3px;height:5px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b8720a;border-radius:1px;"></span></span><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#8c5606;">High</span></div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="display:flex;align-items:flex-end;gap:2px;height:12px;"><span style="width:3px;height:5px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b3452f;border-radius:1px;"></span></span><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Urgent</span></div>
+          </div>
+          <p style="margin:0;font:400 12.5px/1.5 'Plus Jakarta Sans',sans-serif;color:#7d746a;text-wrap:pretty;">The six statuses and four priorities come straight from <code style="font:400 11.5px 'IBM Plex Mono',monospace;color:#93361f;">TASK_STATUS_LABELS</code> and <code style="font:400 11.5px 'IBM Plex Mono',monospace;color:#93361f;">TASK_PRIORITIES</code>. Overdue is the seventh pill but it is a derived date state, not a status. A three-bar ramp reads priority at a glance and takes less room than the word.</p>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Dates, people, empty states</span>
+          <div style="display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#a49a8e;text-decoration:line-through;">7/12/2026, 7:00:00 PM</span>
+              <span style="font:500 12px 'Plus Jakarta Sans',sans-serif;color:#c9c1b6;">→</span>
+              <span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Overdue 17 days</span>
+              <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;">Jul 12, 7:00 PM</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#a49a8e;text-decoration:line-through;">d.reyes@healthlifeny.com</span>
+              <span style="font:500 12px 'Plus Jakarta Sans',sans-serif;color:#c9c1b6;">→</span>
+              <span style="display:inline-flex;align-items:center;gap:7px;"><span style="width:24px;height:24px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 10.5px 'Plus Jakarta Sans',sans-serif;">DR</span><span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span></span>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px;background:#fff;border:1px dashed #ddd5ca;border-radius:12px;padding:22px;">
+            <span style="width:34px;height:34px;border-radius:10px;background:#f2eee7;"></span>
+            <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Nothing overdue. Nice.</span>
+            <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Clear this filter to see the other 47 tasks.</span>
+            <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">Clear filter</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>The current palette is browser-default blue on cool gray with no accent of its own; warm neutrals plus one green make the app feel like a product rather than a scaffold.</li>
+          <li><code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">toLocaleString()</code> appears on every date in the app. Relative wording first, absolute second, is the single highest-value change per line of code.</li>
+          <li>Raw email addresses are used as person labels in eight places. Avatar plus display name is shorter and scans faster.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1b" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1b</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">My Day — replaces the empty welcome card at <code style="font:400 12px 'IBM Plex Mono',monospace;color:#7d746a;">/</code></span>
+      </div>
+      <div style="width:1440px;height:576px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Views</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">3</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;"></span>Assigned to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">12</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b8720a;"></span>Blocked<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;"></span>Created by me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">31</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Admin</span>
+            <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Users</div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:30px 34px;display:flex;flex-direction:column;gap:24px;overflow:hidden;">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <span style="font:400 34px 'Instrument Serif',serif;color:#211d19;line-height:1.1;">Good morning, Dana</span>
+              <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#8a8177;">Wednesday, Jul 29 · 5 tasks due today</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:8px 12px;width:280px;">
+                <span style="width:12px;height:12px;border-radius:50%;border:1.5px solid #b6ada1;"></span>
+                <span style="font:400 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Add a task…</span>
+              </div>
+              <span style="background:#0f7b6c;color:#fff;font:600 13px 'Plus Jakarta Sans',sans-serif;padding:9px 15px;border-radius:10px;">New task</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+            <div style="background:#fbe6e0;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 30px 'Plus Jakarta Sans',sans-serif;color:#93361f;letter-spacing:-0.02em;">3</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Overdue</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#a2604f;">Oldest is 17 days late</span>
+            </div>
+            <div style="background:#fdf0dc;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 30px 'Plus Jakarta Sans',sans-serif;color:#8c5606;letter-spacing:-0.02em;">5</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#8c5606;">Due today</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#a5793c;">Next at 2:00 PM</span>
+            </div>
+            <div style="background:#e3f2ef;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 30px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;letter-spacing:-0.02em;">12</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">In Progress</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#3d8579;">2 blocked on someone else</span>
+            </div>
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:2px;">
+              <span style="font:700 30px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.02em;">4</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Completed today</span>
+              <span style="font:400 11.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Keep it going</span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 356px;gap:20px;align-items:start;">
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;overflow:hidden;">
+              <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #f0ebe4;">
+                <span style="font:700 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Today</span>
+                <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;">8 tasks</span>
+                <span style="margin-left:auto;font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">View all</span>
+              </div>
+              <div style="display:flex;flex-direction:column;">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;background:#fefaf7;">
+                  <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #d3a698;flex:none;"></span>
+                  <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b3452f;border-radius:1px;"></span></span>
+                  <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Credential renewal — RN cohort 12</span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;background:#fbe6e0;color:#93361f;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;flex:none;">Overdue 17d</span>
+                  <span style="width:24px;height:24px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;">
+                  <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                  <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b8720a;border-radius:1px;"></span></span>
+                  <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Q3 HRA outreach batch — final review</span>
+                  <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8c5606;flex:none;">in 3h · 2:00 PM</span>
+                  <span style="width:24px;height:24px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;">
+                  <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                  <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                  <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Update intake script for Medicaid renewals</span>
+                  <span style="font:400 12px 'IBM Plex Mono',monospace;color:#8a8177;flex:none;">in 6h · 5:00 PM</span>
+                  <span style="width:24px;height:24px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid #f5f1ea;background:#fdfcfa;">
+                  <span style="width:17px;height:17px;border-radius:50%;border:1.5px solid #cdc5b9;flex:none;"></span>
+                  <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                  <span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Site visit notes — Bronx clinic</span>
+                  <span style="display:flex;align-items:center;gap:6px;flex:none;">
+                    <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:8px;">Snooze</span>
+                    <span style="background:#e3f2ef;color:#0b5f54;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:8px;">Start</span>
+                    <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:8px;">Reassign</span>
+                  </span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 18px;">
+                  <span style="width:17px;height:17px;border-radius:50%;background:#2f7d4f;flex:none;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px);"></span></span>
+                  <span style="display:flex;align-items:flex-end;gap:2px;height:11px;flex:none;opacity:0.45;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                  <span style="font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;text-decoration:line-through;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Send July compliance digest</span>
+                  <span style="font:400 12px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">done 9:12 AM</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px;">
+              <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+                <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Waiting on you</span>
+                <div style="display:flex;gap:10px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+                  <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><strong style="font-weight:600;color:#211d19;">Marcus Kane</strong> mentioned you on <span style="color:#0f7b6c;font-weight:600;">#482</span></span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">22m ago</span></span>
+                </div>
+                <div style="display:flex;gap:10px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+                  <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><strong style="font-weight:600;color:#211d19;">Aisha Lin</strong> assigned you <span style="color:#0f7b6c;font-weight:600;">#517</span></span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">1h ago</span></span>
+                </div>
+                <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">See all notifications (7)</span>
+              </div>
+              <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+                <span style="font:700 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Next up this week</span>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#8a8177;width:44px;flex:none;">Thu</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Vendor contract review</span><span style="width:7px;height:7px;border-radius:2px;background:#b8720a;flex:none;"></span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#8a8177;width:44px;flex:none;">Fri</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Staff training slots — publish</span><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;flex:none;"></span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="font:500 11.5px 'IBM Plex Mono',monospace;color:#8a8177;width:44px;flex:none;">Mon</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Quarterly audit prep kickoff</span><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;flex:none;"></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>Today <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">HomePage</code> is a card that says notifications and search “arrive in later phases”. Landing on a live personal view is the difference between a tool people check and one they avoid.</li>
+          <li>The left rail replaces the four-link top bar and absorbs work that currently requires building a filter: Overdue, Assigned to me, Blocked, Created by me are one click each.</li>
+          <li>The dashboard counts you already compute server-side power the four tiles — no new endpoint, and each tile is still a filter.</li>
+          <li>Row hover exposes Snooze / Start / Reassign, so the common edits never require opening the task.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1c" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1c</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Tasks — <code style="font:400 12px 'IBM Plex Mono',monospace;color:#7d746a;">/tasks</code>, four layers of chrome collapsed into one toolbar</span>
+      </div>
+      <div style="width:1440px;height:790px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Views</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">3</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;"></span>Assigned to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">12</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b8720a;"></span>Blocked<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#a49a8e;"></span>Created by me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">31</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Saved</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Audit prep — Q3</div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Credentialing</div>
+            </div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:24px 26px;display:flex;flex-direction:column;gap:14px;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font:700 22px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.015em;color:#211d19;">All tasks</span>
+            <span style="font:400 13px 'IBM Plex Mono',monospace;color:#8a8177;">213</span>
+            <div style="flex:1;"></div>
+            <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:8px 12px;width:300px;">
+              <span style="width:12px;height:12px;border-radius:50%;border:1.5px solid #b6ada1;"></span>
+              <span style="font:400 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Search id, name, or tag…</span>
+              <span style="margin-left:auto;font:400 11px 'IBM Plex Mono',monospace;color:#c9c1b6;">/</span>
+            </div>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:8px 12px;border-radius:10px;">Columns</span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:8px 12px;border-radius:10px;">Export</span>
+            <span style="background:#0f7b6c;color:#fff;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:8px 14px;border-radius:10px;">New task</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="display:flex;background:#fff;border:1px solid #e7e1d8;border-radius:9px;padding:2px;gap:2px;">
+              <span style="background:#211d19;color:#fff;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:7px;">List</span>
+              <span style="color:#5c554d;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:7px;">Board</span>
+              <span style="color:#5c554d;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 11px;border-radius:7px;">Calendar</span>
+            </div>
+            <span style="width:1px;height:22px;background:#e0d9cf;"></span>
+            <span style="display:inline-flex;align-items:center;gap:7px;background:#fbe6e0;color:#93361f;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">Overdue<span style="font:400 13px 'Plus Jakarta Sans',sans-serif;opacity:0.7;">×</span></span>
+            <span style="display:inline-flex;align-items:center;gap:7px;background:#e3f2ef;color:#0b5f54;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">Assignee: Dana Reyes<span style="font:400 13px 'Plus Jakarta Sans',sans-serif;opacity:0.7;">×</span></span>
+            <span style="display:inline-flex;align-items:center;gap:7px;background:#f2eee7;color:#5c554d;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">Tag: credentialing<span style="font:400 13px 'Plus Jakarta Sans',sans-serif;opacity:0.7;">×</span></span>
+            <span style="display:inline-flex;align-items:center;gap:6px;border:1px dashed #ddd5ca;color:#7d746a;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">+ Filter</span>
+            <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;margin-left:2px;">Clear all</span>
+            <div style="flex:1;"></div>
+            <span style="font:500 12px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Sort: Due date ↑</span>
+            <label style="display:inline-flex;align-items:center;gap:7px;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:30px;height:18px;border-radius:999px;background:#0f7b6c;display:inline-flex;align-items:center;padding:2px;justify-content:flex-end;"><span style="width:14px;height:14px;border-radius:50%;background:#fff;"></span></span>Nest sub-tasks</label>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div style="background:#fbe6e0;border-radius:10px;padding:11px 14px;display:flex;align-items:baseline;gap:8px;"><span style="font:700 20px 'Plus Jakarta Sans',sans-serif;color:#93361f;">3</span><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Overdue</span></div>
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:11px 14px;display:flex;align-items:baseline;gap:8px;"><span style="font:700 20px 'Plus Jakarta Sans',sans-serif;color:#211d19;">5</span><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Due today</span></div>
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:11px 14px;display:flex;align-items:baseline;gap:8px;"><span style="font:700 20px 'Plus Jakarta Sans',sans-serif;color:#211d19;">12</span><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">In Progress</span></div>
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:11px 14px;display:flex;align-items:baseline;gap:8px;"><span style="font:700 20px 'Plus Jakarta Sans',sans-serif;color:#211d19;">4</span><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Completed today</span></div>
+          </div>
+
+          <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:14px;padding:10px 18px;background:#faf8f5;border-bottom:1px solid #eee9e1;font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#8a8177;">
+              <span style="width:16px;flex:none;"></span>
+              <span style="width:48px;flex:none;">Id</span>
+              <span style="flex:1;">Task</span>
+              <span style="width:116px;flex:none;">Status</span>
+              <span style="width:40px;flex:none;">Pri</span>
+              <span style="width:146px;flex:none;">Assignee</span>
+              <span style="width:126px;flex:none;">Due ↑</span>
+              <span style="width:150px;flex:none;">Tags</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;background:#fefaf7;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #d3a698;flex:none;"></span>
+              <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#482</span>
+              <span style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;"><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">▾</span><span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Credential renewal — RN cohort 12</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">2 sub</span></span>
+              <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#fdf0dc;color:#8c5606;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#b8720a;"></span>On Hold</span></span>
+              <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;"><span style="width:3px;height:5px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b3452f;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b3452f;border-radius:1px;"></span></span>
+              <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">DR</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span></span>
+              <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Overdue 17d</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#a49a8e;">Jul 12, 7:00 PM</span></span>
+              <span style="width:150px;flex:none;display:flex;gap:4px;overflow:hidden;"><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">credentialing</span><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">+2</span></span>
+            </div>
+
+            <sc-if value="{{ nestSubtasks }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+                <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#483</span>
+                <span style="flex:1;display:flex;align-items:center;gap:8px;padding-left:22px;overflow:hidden;"><span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Collect updated licenses (18 of 24)</span></span>
+                <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#e3f2ef;color:#0b5f54;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#0f7b6c;"></span>In Progress</span></span>
+                <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">MK</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Marcus Kane</span></span>
+                <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">in 3 hours</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#a49a8e;">Today, 2:00 PM</span></span>
+                <span style="width:150px;flex:none;display:flex;gap:4px;"><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">credentialing</span></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:16px;height:16px;border-radius:4px;background:#2f7d4f;flex:none;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px);"></span></span>
+                <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#484</span>
+                <span style="flex:1;display:flex;align-items:center;gap:8px;padding-left:22px;overflow:hidden;"><span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;text-decoration:line-through;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Confirm registry access for cohort</span></span>
+                <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#e2f0e6;color:#256240;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#2f7d4f;"></span>Completed</span></span>
+                <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;opacity:0.4;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+                <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">DR</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Dana Reyes</span></span>
+                <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">done Mon</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#c9c1b6;">Jul 27, 4:10 PM</span></span>
+                <span style="width:150px;flex:none;"></span>
+              </div>
+            </sc-if>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+              <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#496</span>
+              <span style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;"><span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Q3 HRA outreach batch — final review</span></span>
+              <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#e3f2ef;color:#0b5f54;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#0f7b6c;"></span>In Progress</span></span>
+              <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;"><span style="width:3px;height:5px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#b8720a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#b8720a;border-radius:1px;"></span></span>
+              <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">MK</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Marcus Kane</span></span>
+              <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#8c5606;">in 3 hours</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#a49a8e;">Today, 2:00 PM</span></span>
+              <span style="width:150px;flex:none;display:flex;gap:4px;"><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">outreach</span></span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;background:#fdfcfa;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+              <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#501</span>
+              <span style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;"><span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Update intake script for Medicaid renewals</span></span>
+              <span style="flex:none;display:flex;align-items:center;gap:6px;">
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:8px;">Set status</span>
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:8px;">Assign</span>
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:8px;">Due date</span>
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 8px;border-radius:8px;">…</span>
+              </span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+              <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#508</span>
+              <span style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;"><span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Vendor contract review — transport partner</span></span>
+              <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#eeeae4;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#a49a8e;"></span>Open</span></span>
+              <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+              <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#f2eee7;color:#a49a8e;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">?</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Unassigned</span></span>
+              <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Thursday</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#a49a8e;">Jul 30, 7:00 PM</span></span>
+              <span style="width:150px;flex:none;display:flex;gap:4px;"><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">contracts</span></span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+              <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#517</span>
+              <span style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;"><span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Staff training slots — publish September</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">↑ #496</span></span>
+              <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#eeeae4;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#a49a8e;"></span>Open</span></span>
+              <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;"><span style="width:3px;height:5px;background:#c9c1b6;border-radius:1px;"></span><span style="width:3px;height:8px;background:#c9c1b6;border-radius:1px;"></span><span style="width:3px;height:11px;background:#c9c1b6;border-radius:1px;"></span></span>
+              <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">AL</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Aisha Lin</span></span>
+              <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Friday</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#a49a8e;">Aug 1, 7:00 PM</span></span>
+              <span style="width:150px;flex:none;display:flex;gap:4px;"><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">training</span></span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;">
+              <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+              <span style="width:48px;flex:none;font:400 12px 'IBM Plex Mono',monospace;color:#0f7b6c;">#523</span>
+              <span style="flex:1;display:flex;align-items:center;gap:8px;overflow:hidden;"><span style="font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Quarterly audit prep kickoff</span></span>
+              <span style="width:116px;flex:none;"><span style="display:inline-flex;align-items:center;gap:6px;background:#eeeae4;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#a49a8e;"></span>Open</span></span>
+              <span style="width:40px;flex:none;display:flex;align-items:flex-end;gap:2px;height:11px;"><span style="width:3px;height:5px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:8px;background:#7d746a;border-radius:1px;"></span><span style="width:3px;height:11px;background:#e0d9cf;border-radius:1px;"></span></span>
+              <span style="width:146px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">DR</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span></span>
+              <span style="width:126px;flex:none;display:flex;flex-direction:column;"><span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Next Monday</span><span style="font:400 10.5px 'IBM Plex Mono',monospace;color:#a49a8e;">Aug 4, 7:00 PM</span></span>
+              <span style="width:150px;flex:none;display:flex;gap:4px;"><span style="background:#f2eee7;color:#5c554d;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:3px 7px;border-radius:6px;">audit</span></span>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#8a8177;">1–25 of 213</span>
+            <div style="flex:1;"></div>
+            <span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Rows 25</span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#c9c1b6;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:6px 11px;border-radius:8px;">←</span>
+            <span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Page 1 of 9</span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:6px 11px;border-radius:8px;">→</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>Today the page stacks a title bar, a dashboard card, a search row, an optional Columns panel, a header row <em>and</em> a per-column filter row before the first task. Here the filter row becomes removable chips, so active filters are visible and reversible without opening eight popovers.</li>
+          <li>Status pills, the priority ramp, avatars, and relative due dates replace plain text in cells — the same 14 columns, roughly half the visual noise.</li>
+          <li>Whole rows are clickable (currently only the small <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">#id</code> link is, and it opens a new tab). Row 4 shows the hover state with inline quick actions.</li>
+          <li>The dashboard shrinks to a 4-tile strip. Parents-only / Children / Standalone are moved into the Views rail — they are navigation, not statistics.</li>
+          <li>List / Board / Calendar is scaffolding for later; the same query already supports grouping by status.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1d" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1d</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Task detail — seven stacked cards become a main column plus a properties rail</span>
+      </div>
+      <div style="width:1440px;height:960px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Views</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">3</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;"></span>Assigned to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">12</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b8720a;"></span>Blocked<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2</span></div>
+            </div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:10px;padding:16px 28px;border-bottom:1px solid #e7e1d8;background:#fff;">
+            <span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">All tasks</span>
+            <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#c9c1b6;">/</span>
+            <span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#8a8177;">#482</span>
+            <div style="flex:1;"></div>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 12px;border-radius:9px;">Remind me</span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 12px;border-radius:9px;">Copy link</span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 10px;border-radius:9px;">…</span>
+            <span style="background:#0f7b6c;color:#fff;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 14px;border-radius:9px;">Mark complete</span>
+          </div>
+
+          <div style="flex:1;display:grid;grid-template-columns:1fr 340px;gap:0;overflow:hidden;">
+            <div style="padding:26px 28px;display:flex;flex-direction:column;gap:20px;overflow:hidden;">
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;align-items:flex-start;gap:10px;">
+                  <span style="font:700 25px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.02em;color:#211d19;line-height:1.2;">Credential renewal — RN cohort 12</span>
+                  <span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;background:#f2eee7;padding:4px 8px;border-radius:7px;margin-top:5px;flex:none;">Edit</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
+                  <span style="display:inline-flex;align-items:center;gap:6px;background:#fdf0dc;color:#8c5606;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;"><span style="width:6px;height:6px;border-radius:50%;background:#b8720a;"></span>On Hold<span style="font:400 10px 'Plus Jakarta Sans',sans-serif;opacity:0.7;">▾</span></span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e7e1d8;color:#93361f;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;"><span style="display:flex;align-items:flex-end;gap:2px;height:9px;"><span style="width:2.5px;height:4px;background:#b3452f;border-radius:1px;"></span><span style="width:2.5px;height:6.5px;background:#b3452f;border-radius:1px;"></span><span style="width:2.5px;height:9px;background:#b3452f;border-radius:1px;"></span></span>Urgent</span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #e7e1d8;font:600 12px 'Plus Jakarta Sans',sans-serif;color:#211d19;padding:4px 10px 4px 4px;border-radius:999px;"><span style="width:20px;height:20px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9px 'Plus Jakarta Sans',sans-serif;">DR</span>Dana Reyes</span>
+                  <span style="display:inline-flex;align-items:center;gap:6px;background:#fbe6e0;color:#93361f;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">Overdue 17 days</span>
+                  <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 9px;border-radius:7px;">credentialing</span>
+                  <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 9px;border-radius:7px;">compliance</span>
+                  <span style="border:1px dashed #ddd5ca;color:#a49a8e;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 9px;border-radius:7px;">+ Tag</span>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:18px;border-bottom:1px solid #e7e1d8;">
+                <span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;padding-bottom:9px;border-bottom:2px solid #0f7b6c;">Work</span>
+                <span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#7d746a;padding-bottom:9px;">Comments <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">3</span></span>
+                <span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#7d746a;padding-bottom:9px;">History <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">18</span></span>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Description</span>
+                <div style="background:#fff;border:1px solid #e7e1d8;border-radius:11px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;">
+                  <p style="margin:0;font:400 13.5px/1.6 'Plus Jakarta Sans',sans-serif;color:#3d3731;text-wrap:pretty;">All RN licenses in cohort 12 expire Aug 31. Collect updated license copies, verify against the state registry, and file each one in the credentialing folder. <span style="background:#e3f2ef;color:#0b5f54;font-weight:600;border-radius:4px;padding:0 3px;">@Marcus Kane</span> is handling the registry lookups.</p>
+                  <p style="margin:0;font:400 13.5px/1.6 'Plus Jakarta Sans',sans-serif;color:#3d3731;">Blocked until the state portal batch export is restored (ticket with vendor since Jul 24).</p>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Sub-tasks</span>
+                  <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">1 of 2 done</span>
+                  <span style="width:120px;height:5px;border-radius:999px;background:#eee9e1;overflow:hidden;"><span style="display:block;width:50%;height:5px;background:#0f7b6c;"></span></span>
+                  <div style="flex:1;"></div>
+                  <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">+ Add sub-task</span>
+                </div>
+                <div style="background:#fff;border:1px solid #e7e1d8;border-radius:11px;overflow:hidden;">
+                  <div style="display:flex;align-items:center;gap:11px;padding:11px 16px;border-bottom:1px solid #f5f1ea;">
+                    <span style="width:16px;height:16px;border-radius:4px;border:1.5px solid #cdc5b9;flex:none;"></span>
+                    <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;flex:none;">#483</span>
+                    <span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;">Collect updated licenses (18 of 24)</span>
+                    <span style="display:inline-flex;align-items:center;gap:6px;background:#e3f2ef;color:#0b5f54;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">In Progress</span>
+                    <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">in 3h</span>
+                    <span style="width:22px;height:22px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">MK</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:11px;padding:11px 16px;">
+                    <span style="width:16px;height:16px;border-radius:4px;background:#2f7d4f;flex:none;display:flex;align-items:center;justify-content:center;"><span style="width:7px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px);"></span></span>
+                    <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;flex:none;">#484</span>
+                    <span style="font:500 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;text-decoration:line-through;flex:1;">Confirm registry access for cohort</span>
+                    <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">done Mon</span>
+                    <span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;">DR</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Attachments</span>
+                <div style="display:flex;gap:10px;">
+                  <div style="flex:1;background:#fff;border:1px solid #e7e1d8;border-radius:11px;padding:11px 14px;display:flex;align-items:center;gap:11px;">
+                    <span style="width:30px;height:30px;border-radius:8px;background:#fbe6e0;color:#93361f;display:flex;align-items:center;justify-content:center;font:600 9.5px 'IBM Plex Mono',monospace;flex:none;">PDF</span>
+                    <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">cohort12-license-tracker.pdf</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#a49a8e;">1.2 MB · Dana · Jul 22</span></span>
+                  </div>
+                  <div style="flex:1;background:#fff;border:1px solid #e7e1d8;border-radius:11px;padding:11px 14px;display:flex;align-items:center;gap:11px;">
+                    <span style="width:30px;height:30px;border-radius:8px;background:#e2f0e6;color:#256240;display:flex;align-items:center;justify-content:center;font:600 9.5px 'IBM Plex Mono',monospace;flex:none;">XLS</span>
+                    <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">registry-export-jul24.xlsx</span><span style="font:400 11px 'IBM Plex Mono',monospace;color:#a49a8e;">88 KB · Marcus · Jul 24</span></span>
+                  </div>
+                  <div style="width:150px;border:1px dashed #ddd5ca;border-radius:11px;display:flex;align-items:center;justify-content:center;font:600 12px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Drop a file</div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Latest comment</span>
+                <div style="display:flex;gap:11px;">
+                  <span style="width:30px;height:30px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <span style="display:flex;align-items:baseline;gap:8px;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Marcus Kane</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">22m ago</span></span>
+                    <span style="font:400 13px/1.55 'Plus Jakarta Sans',sans-serif;color:#3d3731;"><span style="background:#e3f2ef;color:#0b5f54;font-weight:600;border-radius:4px;padding:0 3px;">@Dana Reyes</span> vendor says the export is back tomorrow AM. I can clear the last 6 lookups by noon.</span>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e7e1d8;border-radius:11px;padding:11px 14px;">
+                  <span style="width:26px;height:26px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 10px 'Plus Jakarta Sans',sans-serif;">DR</span>
+                  <span style="font:400 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;flex:1;">Write a comment… use @ to mention someone</span>
+                  <span style="background:#f2eee7;color:#a49a8e;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 12px;border-radius:8px;">Send</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="border-left:1px solid #e7e1d8;background:#fff;padding:24px 22px;display:flex;flex-direction:column;gap:22px;overflow:hidden;">
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Details</span>
+                <div style="display:flex;flex-direction:column;gap:9px;">
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="width:80px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Start</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Jul 8, 7:00 AM</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="width:80px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Due</span><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#93361f;">Jul 12, 7:00 PM</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="width:80px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Creator</span><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:20px;height:20px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 9px 'Plus Jakarta Sans',sans-serif;">AL</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Aisha Lin</span></span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="width:80px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Created</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#5c554d;">Jul 2</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;"><span style="width:80px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Status set</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#5c554d;">5 days ago</span></div>
+                </div>
+              </div>
+
+              <div style="height:1px;background:#f0ebe4;"></div>
+
+              <div style="display:flex;flex-direction:column;gap:12px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Relationships</span>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Parent</span>
+                  <div style="display:flex;align-items:center;gap:8px;background:#f7f4ef;border-radius:9px;padding:8px 10px;"><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;">#470</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Credentialing program 2026</span></div>
+                  <span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;margin-top:4px;">Blocked by</span>
+                  <div style="display:flex;align-items:center;gap:8px;background:#fdf0dc;border-radius:9px;padding:8px 10px;"><span style="width:6px;height:6px;border-radius:50%;background:#b8720a;flex:none;"></span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8c5606;">#455</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#8c5606;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">State portal export fix</span></div>
+                  <span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;margin-top:4px;">Blocks</span>
+                  <div style="display:flex;align-items:center;gap:8px;background:#f7f4ef;border-radius:9px;padding:8px 10px;"><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#0f7b6c;">#517</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Staff training slots</span></div>
+                  <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;margin-top:2px;">+ Link a task</span>
+                </div>
+              </div>
+
+              <div style="height:1px;background:#f0ebe4;"></div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Reminders</span>
+                <div style="display:flex;align-items:center;gap:8px;background:#f7f4ef;border-radius:9px;padding:8px 10px;"><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;flex:1;">1 hour before start</span><span style="font:400 12px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">×</span></div>
+                <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">+ Add reminder</span>
+              </div>
+
+              <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px;">
+                <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Recent activity</span>
+                <span style="font:400 12px/1.5 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Marcus changed Status to On Hold · 5 days ago</span>
+                <span style="font:400 12px/1.5 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Aisha set Due to Jul 12 · Jul 6</span>
+                <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">See all history</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>Today seven <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">.card</code> blocks (header, description, attachments, details, tags, relationships, comments, history) stack at identical weight, so the page is a long scroll with no focal point. Properties move to a rail; the middle column is the actual work.</li>
+          <li>Three different save models coexist — inline Save/Cancel for name and description, staged “Save changes” for five fields, immediate save for tags and links. The chip row makes status, priority, assignee, and due date single-click edits that save immediately, so “Save changes” disappears entirely.</li>
+          <li>Child tasks become a real checklist with a progress bar rather than a link list, which is how sub-tasks are actually used.</li>
+          <li>Editability is signalled by a persistent Edit chip instead of a dashed outline that only appears on hover.</li>
+          <li>History moves behind a tab; keeping it inline forces every visit to scroll past 18 audit rows.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1e" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1e</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Notifications — <code style="font:400 12px 'IBM Plex Mono',monospace;color:#7d746a;">/notifications</code>, three tables become one readable feed</span>
+      </div>
+      <div style="width:1440px;height:700px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Views</span>
+            <div style="display:flex;flex-direction:column;gap:2px;">
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#b3452f;"></span>Overdue<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">3</span></div>
+              <div style="display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;font:500 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:7px;height:7px;border-radius:2px;background:#0f7b6c;"></span>Assigned to me<span style="margin-left:auto;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">12</span></div>
+            </div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:28px 32px;display:flex;flex-direction:column;gap:18px;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font:700 22px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.015em;color:#211d19;">Notifications</span>
+            <span style="font:400 13px 'IBM Plex Mono',monospace;color:#8a8177;">7 unread</span>
+            <div style="flex:1;"></div>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 12px;border-radius:9px;">Mark all read</span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 12px;border-radius:9px;">Settings</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="background:#211d19;color:#fff;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:6px 12px;border-radius:999px;">All <span style="font:400 11.5px 'IBM Plex Mono',monospace;opacity:0.7;">12</span></span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:6px 12px;border-radius:999px;">Mentioned <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">5</span></span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:6px 12px;border-radius:999px;">Assigned <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">4</span></span>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:6px 12px;border-radius:999px;">Reminders <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">3</span></span>
+            <div style="flex:1;"></div>
+            <label style="display:inline-flex;align-items:center;gap:7px;font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;"><span style="width:30px;height:18px;border-radius:999px;background:#ddd5ca;display:inline-flex;align-items:center;padding:2px;"><span style="width:14px;height:14px;border-radius:50%;background:#fff;"></span></span>Unread only</label>
+          </div>
+
+          <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;overflow:hidden;">
+            <div style="padding:9px 18px;background:#faf8f5;border-bottom:1px solid #eee9e1;font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#8a8177;">Today</div>
+
+            <div style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid #f5f1ea;background:#f4faf8;">
+              <span style="width:7px;height:7px;border-radius:50%;background:#0f7b6c;margin-top:7px;flex:none;"></span>
+              <span style="width:32px;height:32px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11.5px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;overflow:hidden;">
+                <span style="font:400 13.5px 'Plus Jakarta Sans',sans-serif;color:#3d3731;"><strong style="font-weight:700;color:#211d19;">Marcus Kane</strong> mentioned you on <strong style="font-weight:600;color:#0f7b6c;">#482 Credential renewal — RN cohort 12</strong></span>
+                <span style="font:400 12.5px/1.5 'Plus Jakarta Sans',sans-serif;color:#7d746a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">“@Dana Reyes vendor says the export is back tomorrow AM. I can clear the last 6 lookups by noon.”</span>
+              </div>
+              <span style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none;">
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">22m ago</span>
+                <span style="display:flex;gap:6px;"><span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:7px;">Reply</span><span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:7px;">Mark read</span></span>
+              </span>
+            </div>
+
+            <div style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid #f5f1ea;background:#f4faf8;">
+              <span style="width:7px;height:7px;border-radius:50%;background:#0f7b6c;margin-top:7px;flex:none;"></span>
+              <span style="width:32px;height:32px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 11.5px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;overflow:hidden;">
+                <span style="font:400 13.5px 'Plus Jakarta Sans',sans-serif;color:#3d3731;"><strong style="font-weight:700;color:#211d19;">Aisha Lin</strong> assigned you <strong style="font-weight:600;color:#0f7b6c;">#517 Staff training slots — publish September</strong></span>
+                <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Due Friday, Aug 1 · Medium priority · blocked by #482</span>
+              </div>
+              <span style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none;">
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">1h ago</span>
+                <span style="display:flex;gap:6px;"><span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:7px;">Open</span><span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:7px;">Mark read</span></span>
+              </span>
+            </div>
+
+            <div style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid #f5f1ea;background:#fefaf7;">
+              <span style="width:7px;height:7px;border-radius:50%;background:#b8720a;margin-top:7px;flex:none;"></span>
+              <span style="width:32px;height:32px;border-radius:8px;background:#fdf0dc;color:#8c5606;display:flex;align-items:center;justify-content:center;font:600 9.5px 'IBM Plex Mono',monospace;flex:none;">REM</span>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px;overflow:hidden;">
+                <span style="font:400 13.5px 'Plus Jakarta Sans',sans-serif;color:#3d3731;"><strong style="font-weight:700;color:#211d19;">Starting in 1 hour</strong> — <strong style="font-weight:600;color:#0f7b6c;">#496 Q3 HRA outreach batch — final review</strong></span>
+                <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Starts today at 2:00 PM · High priority · reminder set 1 hour before</span>
+              </div>
+              <span style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none;">
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">1:00 PM</span>
+                <span style="display:flex;gap:6px;"><span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:7px;">Snooze</span><span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:4px 9px;border-radius:7px;">Dismiss</span></span>
+              </span>
+            </div>
+
+            <sc-if value="{{ showRead }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:9px 18px;background:#faf8f5;border-bottom:1px solid #eee9e1;border-top:1px solid #eee9e1;font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#8a8177;">Yesterday</div>
+              <div style="display:flex;gap:12px;padding:14px 18px;border-bottom:1px solid #f5f1ea;">
+                <span style="width:7px;flex:none;"></span>
+                <span style="width:32px;height:32px;border-radius:50%;background:#f2eee7;color:#8a8177;display:flex;align-items:center;justify-content:center;font:600 11.5px 'Plus Jakarta Sans',sans-serif;flex:none;">JB</span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:3px;overflow:hidden;">
+                  <span style="font:400 13.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;"><strong style="font-weight:600;color:#5c554d;">Jordan Bell</strong> mentioned you on <span style="font-weight:600;color:#0f7b6c;">#455 State portal export fix</span></span>
+                  <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">“Vendor ticket escalated — @Dana Reyes FYI for the cohort 12 timeline.”</span>
+                </div>
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">Yesterday, 4:40 PM</span>
+              </div>
+              <div style="display:flex;gap:12px;padding:14px 18px;">
+                <span style="width:7px;flex:none;"></span>
+                <span style="width:32px;height:32px;border-radius:50%;background:#f2eee7;color:#8a8177;display:flex;align-items:center;justify-content:center;font:600 11.5px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+                <div style="flex:1;display:flex;flex-direction:column;gap:3px;overflow:hidden;">
+                  <span style="font:400 13.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;"><strong style="font-weight:600;color:#5c554d;">Aisha Lin</strong> unassigned you from <span style="font-weight:600;color:#0f7b6c;">#509 Transport vendor onboarding</span></span>
+                  <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Now assigned to Marcus Kane</span>
+                </div>
+                <span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;flex:none;">Yesterday, 11:02 AM</span>
+              </div>
+            </sc-if>
+          </div>
+
+          <span style="font:400 12px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Updates every 30 seconds · <span style="color:#0f7b6c;font-weight:600;">Notification settings</span></span>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>The page is currently three separate 5–6 column tables (Mentioned, Reminders, Assigned) with <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">Task Id / Task Name / When / From / Comment</code> headers. A notification is a sentence, not a row of fields — one feed with type tabs says the same thing in a third of the space, and the existing three lists become the tabs.</li>
+          <li>The comment body is the reason someone opens this screen, so it gets a full line instead of a clipped cell.</li>
+          <li>Read and unread group by day and separate by tint plus a dot, rather than relying on a blue row background alone.</li>
+          <li>Reply, Snooze, and Dismiss on hover mean a mention can be handled without leaving the page.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1f" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1f</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Users — <code style="font:400 12px 'IBM Plex Mono',monospace;color:#7d746a;">/admin/users</code>, a read-only roster with edits in the modal</span>
+      </div>
+      <div style="width:1440px;height:454px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">All tasks</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <span style="font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#a49a8e;padding:0 10px;">Admin</span>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;background:#e3f2ef;font:600 13.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">Users</div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#f7f4ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:26px 28px;display:flex;flex-direction:column;gap:14px;overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font:700 22px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.015em;color:#211d19;">Users</span>
+            <span style="font:400 13px 'IBM Plex Mono',monospace;color:#8a8177;">34 active · 6 inactive</span>
+            <div style="flex:1;"></div>
+            <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:8px 12px;width:250px;">
+              <span style="width:12px;height:12px;border-radius:50%;border:1.5px solid #b6ada1;"></span>
+              <span style="font:400 13px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Search name or email…</span>
+            </div>
+            <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:8px 12px;border-radius:10px;">Merge users</span>
+            <span style="background:#0f7b6c;color:#fff;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:8px 14px;border-radius:10px;">Add user</span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="display:inline-flex;align-items:center;gap:7px;background:#e3f2ef;color:#0b5f54;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">Status: Active<span style="font:400 13px 'Plus Jakarta Sans',sans-serif;opacity:0.7;">×</span></span>
+            <span style="display:inline-flex;align-items:center;gap:6px;border:1px dashed #ddd5ca;color:#7d746a;font:600 12px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:999px;">+ Filter</span>
+            <div style="flex:1;"></div>
+            <span style="font:500 12px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Sorted by name</span>
+          </div>
+
+          <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:14px;padding:10px 18px;background:#faf8f5;border-bottom:1px solid #eee9e1;font:600 10.5px 'IBM Plex Mono',monospace;letter-spacing:0.1em;text-transform:uppercase;color:#8a8177;">
+              <span style="flex:1;">Person</span>
+              <span style="width:96px;flex:none;">Role</span>
+              <span style="width:190px;flex:none;">Title</span>
+              <span style="width:190px;flex:none;">Supervisor</span>
+              <span style="width:86px;flex:none;">Status</span>
+              <span style="width:104px;flex:none;">Last seen</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+              <span style="flex:1;display:flex;align-items:center;gap:10px;overflow:hidden;">
+                <span style="width:30px;height:30px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span>
+                <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">d.reyes@healthlifeny.com</span></span>
+                <span style="background:#e3f2ef;color:#0b5f54;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:2px 7px;border-radius:6px;flex:none;">You</span>
+              </span>
+              <span style="width:96px;flex:none;"><span style="background:#ece6f8;color:#5b3f96;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Admin</span></span>
+              <span style="width:190px;flex:none;font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Director of Operations</span>
+              <span style="width:190px;flex:none;font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">—</span>
+              <span style="width:86px;flex:none;"><span style="background:#e2f0e6;color:#256240;font:600 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Active</span></span>
+              <span style="width:104px;flex:none;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">now</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;background:#f4faf8;">
+              <span style="flex:1;display:flex;align-items:center;gap:10px;overflow:hidden;">
+                <span style="width:30px;height:30px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">MK</span>
+                <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Marcus Kane</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">m.kane@healthlifeny.com</span></span>
+              </span>
+              <span style="width:96px;flex:none;"><span style="background:#e3f2ef;color:#0b5f54;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Manager</span></span>
+              <span style="width:190px;flex:none;font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Credentialing Lead</span>
+              <span style="width:190px;flex:none;display:flex;align-items:center;gap:7px;overflow:hidden;"><span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span></span>
+              <span style="width:86px;flex:none;"><span style="background:#e2f0e6;color:#256240;font:600 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Active</span></span>
+              <span style="width:104px;flex:none;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">12m ago</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;">
+              <span style="flex:1;display:flex;align-items:center;gap:10px;overflow:hidden;">
+                <span style="width:30px;height:30px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span>
+                <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Aisha Lin</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">a.lin@healthlifeny.com</span></span>
+              </span>
+              <span style="width:96px;flex:none;"><span style="background:#e3f2ef;color:#0b5f54;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Manager</span></span>
+              <span style="width:190px;flex:none;font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Program Manager, Outreach</span>
+              <span style="width:190px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;flex:none;">DR</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span></span>
+              <span style="width:86px;flex:none;"><span style="background:#e2f0e6;color:#256240;font:600 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Active</span></span>
+              <span style="width:104px;flex:none;font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">2h ago</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid #f5f1ea;background:#fdfcfa;">
+              <span style="flex:1;display:flex;align-items:center;gap:10px;overflow:hidden;">
+                <span style="width:30px;height:30px;border-radius:50%;background:#f2eee7;color:#5c554d;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">JB</span>
+                <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Jordan Bell</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#8a8177;">j.bell@healthlifeny.com</span></span>
+              </span>
+              <span style="flex:none;display:flex;align-items:center;gap:6px;">
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:8px;">Edit</span>
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:8px;">Reset password</span>
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 10px;border-radius:8px;">Deactivate</span>
+                <span style="background:#f2eee7;color:#5c554d;font:600 11.5px 'Plus Jakarta Sans',sans-serif;padding:5px 8px;border-radius:8px;">…</span>
+              </span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;">
+              <span style="flex:1;display:flex;align-items:center;gap:10px;overflow:hidden;opacity:0.6;">
+                <span style="width:30px;height:30px;border-radius:50%;background:#f2eee7;color:#8a8177;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;flex:none;">RT</span>
+                <span style="display:flex;flex-direction:column;overflow:hidden;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Renee Tran</span><span style="font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">r.tran@healthlifeny.com</span></span>
+                <span style="background:#fbe6e0;color:#93361f;font:600 10.5px 'Plus Jakarta Sans',sans-serif;padding:2px 7px;border-radius:6px;flex:none;">Inactive</span>
+              </span>
+              <span style="width:96px;flex:none;"><span style="background:#f2eee7;color:#5c554d;font:700 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Member</span></span>
+              <span style="width:190px;flex:none;font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Care Coordinator</span>
+              <span style="width:190px;flex:none;display:flex;align-items:center;gap:7px;"><span style="width:22px;height:22px;border-radius:50%;background:#ece6f8;color:#5b3f96;display:flex;align-items:center;justify-content:center;font:600 9.5px 'Plus Jakarta Sans',sans-serif;flex:none;">AL</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">Aisha Lin</span></span>
+              <span style="width:86px;flex:none;"><span style="background:#f2eee7;color:#8a8177;font:600 11px 'Plus Jakarta Sans',sans-serif;padding:3px 9px;border-radius:999px;">Inactive</span></span>
+              <span style="width:104px;flex:none;font:400 11.5px 'IBM Plex Mono',monospace;color:#a49a8e;">May 4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>Email, First name, and Last name are three columns totalling 520px of a 1380px table. Merging them into one Person cell removes the horizontal scroll the CSS currently works around, so all nine columns fit at 1280px.</li>
+          <li>The inline-editable grid is gone. Every cell is currently a live input at rest, which makes the whole screen read as a form and puts eight fields one stray keystroke from a change; the roster is now read-only and all editing runs through the <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">UserEditModal</code> that already exists.</li>
+          <li>That also removes the dirty-row tracking, the per-row tint, and the Save-all bar &mdash; one editing path instead of two.</li>
+          <li>Status is a badge rather than a select; inactive people dim in place instead of relying on <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">opacity:0.55</code> on a whole row.</li>
+          <li>Row actions (Edit, Reset password, Deactivate, Merge) appear on hover, so the pinned Actions column and its 170px are no longer needed.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1g" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1g</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Profile &amp; notification preferences — <code style="font:400 12px 'IBM Plex Mono',monospace;color:#7d746a;">/profile</code></span>
+      </div>
+      <div style="width:1440px;height:448px;background:#f7f4ef;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+
+        <div style="width:232px;flex:none;background:#fff;border-right:1px solid #e7e1d8;padding:20px 14px;display:flex;flex-direction:column;gap:24px;">
+          <div style="display:flex;align-items:center;gap:9px;padding:0 6px;">
+            <div style="width:26px;height:26px;border-radius:8px;background:#0f7b6c;color:#fff;display:flex;align-items:center;justify-content:center;font:700 13px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">My Day</div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Notifications<span style="margin-left:auto;font:600 11px 'IBM Plex Mono',monospace;background:#b3452f;color:#fff;padding:1px 6px;border-radius:999px;">7</span></div>
+            <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:9px;font:500 13.5px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">All tasks</div>
+          </div>
+          <div style="margin-top:auto;display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:10px;background:#e3f2ef;">
+            <span style="width:28px;height:28px;border-radius:50%;background:#fff;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 11px 'Plus Jakarta Sans',sans-serif;">DR</span>
+            <span style="display:flex;flex-direction:column;"><span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0b5f54;">Dana Reyes</span><span style="font:400 11px 'Plus Jakarta Sans',sans-serif;color:#3d8579;">Admin</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;padding:28px 32px;display:flex;flex-direction:column;gap:20px;overflow:hidden;">
+          <span style="font:700 22px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.015em;color:#211d19;">Your profile</span>
+
+          <div style="display:grid;grid-template-columns:340px 1fr;gap:20px;align-items:start;">
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:16px;">
+              <div style="display:flex;align-items:center;gap:14px;">
+                <span style="width:56px;height:56px;border-radius:50%;background:#e3f2ef;color:#0b5f54;display:flex;align-items:center;justify-content:center;font:600 19px 'Plus Jakarta Sans',sans-serif;">DR</span>
+                <span style="display:flex;flex-direction:column;gap:3px;">
+                  <span style="font:700 17px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Dana Reyes</span>
+                  <span style="background:#ece6f8;color:#5b3f96;font:700 10.5px 'Plus Jakarta Sans',sans-serif;padding:2px 8px;border-radius:999px;align-self:flex-start;">Admin</span>
+                </span>
+              </div>
+              <div style="height:1px;background:#f0ebe4;"></div>
+              <div style="display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;gap:10px;"><span style="width:82px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Email</span><span style="font:400 12.5px 'IBM Plex Mono',monospace;color:#211d19;">d.reyes@healthlifeny.com</span></div>
+                <div style="display:flex;gap:10px;"><span style="width:82px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Title</span><span style="font:500 12.5px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Director of Operations</span></div>
+                <div style="display:flex;gap:10px;"><span style="width:82px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Supervisor</span><span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#a49a8e;">—</span></div>
+                <div style="display:flex;gap:10px;"><span style="width:82px;flex:none;font:500 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Job&nbsp;role</span><span style="font:400 12.5px/1.45 'Plus Jakarta Sans',sans-serif;color:#211d19;">Owns credentialing, outreach and audit programs.</span></div>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 12px;border-radius:9px;">Change password</span>
+                <span style="background:#fff;border:1px solid #e7e1d8;color:#5c554d;font:600 12.5px 'Plus Jakarta Sans',sans-serif;padding:7px 12px;border-radius:9px;">Log out</span>
+              </div>
+            </div>
+
+            <div style="background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
+                <span style="font:700 15px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Notifications</span>
+                <span style="font:400 12.5px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Choose what reaches you, and where.</span>
+                <div style="flex:1;"></div>
+                <span style="font:500 11px 'IBM Plex Mono',monospace;color:#8a8177;width:64px;text-align:center;">In app</span>
+                <span style="font:500 11px 'IBM Plex Mono',monospace;color:#8a8177;width:64px;text-align:center;">Email</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid #f0ebe4;">
+                <span style="flex:1;display:flex;flex-direction:column;gap:2px;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Mentioned in a comment</span><span style="font:400 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Someone types @your name on a task.</span></span>
+                <span style="width:64px;display:flex;justify-content:center;"><span style="width:32px;height:19px;border-radius:999px;background:#0f7b6c;display:inline-flex;align-items:center;padding:2px;justify-content:flex-end;"><span style="width:15px;height:15px;border-radius:50%;background:#fff;"></span></span></span>
+                <span style="width:64px;display:flex;justify-content:center;"><span style="width:32px;height:19px;border-radius:999px;background:#0f7b6c;display:inline-flex;align-items:center;padding:2px;justify-content:flex-end;"><span style="width:15px;height:15px;border-radius:50%;background:#fff;"></span></span></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid #f0ebe4;">
+                <span style="flex:1;display:flex;flex-direction:column;gap:2px;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Assigned to you</span><span style="font:400 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">A task is assigned to or taken from you.</span></span>
+                <span style="width:64px;display:flex;justify-content:center;"><span style="width:32px;height:19px;border-radius:999px;background:#0f7b6c;display:inline-flex;align-items:center;padding:2px;justify-content:flex-end;"><span style="width:15px;height:15px;border-radius:50%;background:#fff;"></span></span></span>
+                <span style="width:64px;display:flex;justify-content:center;"><span style="width:32px;height:19px;border-radius:999px;background:#ddd5ca;display:inline-flex;align-items:center;padding:2px;"><span style="width:15px;height:15px;border-radius:50%;background:#fff;"></span></span></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid #f0ebe4;">
+                <span style="flex:1;display:flex;flex-direction:column;gap:2px;"><span style="font:600 13px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Task reminders</span><span style="font:400 12px 'Plus Jakarta Sans',sans-serif;color:#8a8177;">Your own reminders, ahead of a start time.</span></span>
+                <span style="width:64px;display:flex;justify-content:center;"><span style="width:32px;height:19px;border-radius:999px;background:#0f7b6c;display:inline-flex;align-items:center;padding:2px;justify-content:flex-end;"><span style="width:15px;height:15px;border-radius:50%;background:#fff;"></span></span></span>
+                <span style="width:64px;display:flex;justify-content:center;"><span style="width:32px;height:19px;border-radius:999px;background:#ddd5ca;display:inline-flex;align-items:center;padding:2px;"><span style="width:15px;height:15px;border-radius:50%;background:#fff;"></span></span></span>
+              </div>
+              <span style="font:400 12px/1.5 'Plus Jakarta Sans',sans-serif;color:#a49a8e;margin-top:6px;">Changes save as you make them. Email goes to d.reyes@healthlifeny.com.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>Preferences are currently a bare <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">List / Receive / Also email me</code> checkbox grid with the explanation in a paragraph underneath. Each row now says what the notification actually is, in place.</li>
+          <li>Toggles instead of checkboxes read as settings rather than a form to submit — matching the code, which already saves optimistically on change.</li>
+          <li>The disabled Email column stays visible but dimmed when Receive is off, so the dependency is legible instead of mysterious.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div id="1h" style="width:1440px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font:500 11px 'IBM Plex Mono',monospace;background:#211d19;color:#f7f4ef;padding:3px 7px;border-radius:5px;">1h</span>
+        <span style="font:600 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;">Sign in — also covers Forgot password and Reset password</span>
+      </div>
+      <div style="width:1440px;height:700px;background:#fff;border:1px solid #e0d9cf;border-radius:14px;overflow:hidden;display:flex;box-shadow:0 1px 2px rgba(33,29,25,0.04);">
+        <div style="width:620px;flex:none;background:#0f7b6c;padding:48px 52px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:28px;height:28px;border-radius:9px;background:#fff;color:#0f7b6c;display:flex;align-items:center;justify-content:center;font:700 14px 'Plus Jakarta Sans',sans-serif;">H</div>
+            <span style="font:700 16px 'Plus Jakarta Sans',sans-serif;color:#fff;letter-spacing:-0.01em;">Healthy Tasks</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px;">
+            <span style="font:400 40px/1.15 'Instrument Serif',serif;color:#fff;">What to do, when to do it, and how close you are to smashing your growth goals today.</span>
+            <span style="font:400 14px/1.6 'Plus Jakarta Sans',sans-serif;color:#bfe0da;max-width:420px;text-wrap:pretty;">Creativity and excellence are up&nbsp;to you — assigned, dated, and visible. No spreadsheet archaeology.</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:22px;">
+            <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:700 22px 'Plus Jakarta Sans',sans-serif;color:#fff;">213</span><span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#8fc5bc;">open tasks</span></span>
+            <span style="width:1px;height:34px;background:#3d9488;"></span>
+            <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:700 22px 'Plus Jakarta Sans',sans-serif;color:#fff;">34</span><span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#8fc5bc;">people</span></span>
+            <span style="width:1px;height:34px;background:#3d9488;"></span>
+            <span style="display:flex;flex-direction:column;gap:2px;"><span style="font:700 22px 'Plus Jakarta Sans',sans-serif;color:#fff;">4</span><span style="font:500 11.5px 'Plus Jakarta Sans',sans-serif;color:#8fc5bc;">programs</span></span>
+          </div>
+        </div>
+
+        <div style="flex:1;background:#faf8f5;display:flex;align-items:center;justify-content:center;padding:48px;">
+          <div style="width:380px;display:flex;flex-direction:column;gap:20px;">
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              <span style="font:700 24px 'Plus Jakarta Sans',sans-serif;letter-spacing:-0.02em;color:#211d19;">Welcome back</span>
+              <span style="font:400 13.5px 'Plus Jakarta Sans',sans-serif;color:#7d746a;">Sign in with your Health Life email.</span>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:9px;background:#e9f2fb;border-radius:10px;padding:11px 13px;">
+              <span style="width:6px;height:6px;border-radius:50%;background:#3b6ea5;margin-top:6px;flex:none;"></span>
+              <span style="font:400 12.5px/1.5 'Plus Jakarta Sans',sans-serif;color:#2d557f;">You were signed out after 30 minutes of inactivity. Your unsaved task edits were kept.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <label style="display:flex;flex-direction:column;gap:6px;">
+                <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Email</span>
+                <span style="background:#fff;border:1px solid #e7e1d8;border-radius:10px;padding:11px 13px;font:400 13.5px 'IBM Plex Mono',monospace;color:#211d19;">d.reyes@healthlifeny.com</span>
+              </label>
+              <label style="display:flex;flex-direction:column;gap:6px;">
+                <span style="font:600 12px 'Plus Jakarta Sans',sans-serif;color:#5c554d;">Password</span>
+                <span style="background:#fff;border:1.5px solid #0f7b6c;border-radius:10px;padding:11px 13px;display:flex;align-items:center;gap:8px;"><span style="flex:1;font:400 14px 'Plus Jakarta Sans',sans-serif;color:#211d19;letter-spacing:0.18em;">••••••••••</span><span style="font:600 11.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;">Show</span></span>
+              </label>
+              <span style="background:#0f7b6c;color:#fff;font:600 14px 'Plus Jakarta Sans',sans-serif;padding:12px;border-radius:10px;text-align:center;">Sign in</span>
+              <span style="font:600 12.5px 'Plus Jakarta Sans',sans-serif;color:#0f7b6c;text-align:center;">Forgot your password?</span>
+            </div>
+            <span style="font:400 11.5px/1.5 'Plus Jakarta Sans',sans-serif;color:#a49a8e;text-align:center;">Trouble signing in? Ask an admin to send a reset link.</span>
+          </div>
+        </div>
+      </div>
+      <div style="width:1440px;background:#fff;border:1px solid #e7e1d8;border-radius:12px;padding:18px 22px;display:flex;flex-direction:column;gap:8px;">
+        <span style="font:600 11px 'IBM Plex Mono',monospace;letter-spacing:0.12em;text-transform:uppercase;color:#8a8177;">Why</span>
+        <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 13px/1.5 'Plus Jakarta Sans',sans-serif;color:#5c554d;">
+          <li>The current sign-in is a 380px card floating at 8vh on a gray field — correct, but it is the first thing anyone sees and it says nothing about the product. The left panel costs nothing and sets the tone.</li>
+          <li>The session-expiry notice keeps its calm informational treatment and gains a reassurance that work was not lost, which is what the <code style="font:400 12px 'IBM Plex Mono',monospace;color:#93361f;">useUnsavedChangesWarning</code> hook already provides.</li>
+          <li>Forgot password and Reset password reuse this exact frame with the form swapped — three screens, one layout.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;nestSubtasks&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Tasks list&quot;},&quot;unreadOnly&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Inbox&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      nestSubtasks: this.props.nestSubtasks ?? true,
+      showRead: !(this.props.unreadOnly ?? false),
+    };
+  }
+}
+</script>
+</body>
+</html>
