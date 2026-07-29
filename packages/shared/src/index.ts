@@ -775,8 +775,11 @@ export interface AssignedNotificationDto {
   taskId: number;
   taskName: string;
   startAt: string | null; // ISO — the task's Start Date & Time
+  dueAt: string | null; // ISO — the task's Due Date & Time
   priority: TaskPriority;
   action: AssignAction;
+  actor: TaskUserRef | null; // who assigned/unassigned (null for legacy rows)
+  blockedByCount: number; // open blockers on the task
   createdAt: string; // ISO
   read: boolean;
 }
@@ -833,6 +836,18 @@ export interface ReminderDto {
 export interface AddReminderRequest {
   leadMinutes: number;
 }
+
+/** Snooze a due reminder for `minutes` from now; it re-surfaces after that. */
+export interface SnoozeReminderRequest {
+  minutes: number;
+}
+
+/** Preset snooze durations offered on a due reminder (minutes from now). */
+export const REMINDER_SNOOZE_OPTIONS: { minutes: number; label: string }[] = [
+  { minutes: 60, label: '1 hour' },
+  { minutes: 180, label: '3 hours' },
+  { minutes: 1440, label: 'Tomorrow' },
+];
 
 // --- Notification preferences (user profile) -------------------------------
 
