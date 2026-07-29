@@ -8,85 +8,115 @@
    =========================================================================== */
 
 :root {
-  /* --- Typography --- */
-  --font-sans: -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Roboto, system-ui,
-    'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'Cascadia Code', 'SFMono-Regular', 'Segoe UI Mono', Menlo, Consolas,
-    monospace;
+  /* --- Typography (three families) --- */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 
-  /* --- Neutrals (cool slate) --- */
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #f8f9fb; /* header cells, subtle raised */
-  --surface-3: #f1f3f6; /* hover fills, deeper wells */
-  --border: #e7e9ee; /* hairline */
-  --border-strong: #d6dae1;
-  --text: #1b1f24; /* near-black */
-  --text-secondary: #3c424d; /* darkened — form labels, secondary text */
-  --muted: #565c67; /* darkened — th, meta, subtitles, dt labels */
-  --text-faint: #767d89; /* darkened — placeholders, faint hints */
+  /* --- Surfaces & neutrals (warm paper) --- */
+  --canvas: #f7f4ef; /* app background behind content */
+  --canvas-deep: #f2eee7; /* desk background, neutral chip fill */
+  --surface: #ffffff; /* cards, sidebar, table body */
+  --surface-sunk: #faf8f5; /* table header row, group header */
+  --border: #e7e1d8; /* 1px borders */
+  --border-soft: #f0ebe4; /* dividers inside a card */
+  --row-line: #f5f1ea; /* between table rows */
+  --border-dashed: #ddd5ca; /* dashed drop zones, "+ Filter" */
+  --ink: #211d19; /* primary text, dark buttons */
+  --ink-2: #3d3731; /* body prose */
+  --ink-3: #5c554d; /* secondary text, inactive nav */
+  --muted: #7d746a; /* captions */
+  --muted-2: #8a8177; /* meta, uppercase labels */
+  --faint: #a49a8e; /* placeholders, completed text */
+  --faint-2: #c9c1b6; /* disabled glyphs, low-priority bars */
 
-  /* --- Accent (indigo/violet) --- */
-  --accent: #5e6ad2;
-  --accent-hover: #515bc2;
-  --accent-active: #454ead;
-  --accent-fg: #ffffff;
-  --accent-tint: #eef0fc; /* selected rows, active fills */
-  --accent-tint-2: #e1e4f8;
-  --accent-ring: rgba(94, 106, 210, 0.32);
-  --link: #4b55bd;
+  /* --- Accent (teal) --- */
+  --accent: #0f7b6c; /* primary actions, links, active nav, In Progress */
+  --accent-deep: #0b5f54; /* text on accent-soft, hover */
+  --accent-soft: #e3f2ef; /* active nav bg, In Progress pill, avatar */
+  --accent-tint: #f4faf8; /* unread notification row */
+  --accent-mid: #3d8579; /* supporting text on accent surfaces */
 
   /* --- Semantic --- */
-  --danger: #e5484d;
-  --danger-hover: #d13a3f;
-  --danger-tint: #fdecec;
-  --danger-text: #b4272c;
-  --success: #2fa66a;
-  --success-tint: #e7f7ee;
-  --success-text: #1c7a4a;
-  --warning: #e0900f;
-  --warning-tint: #fbf0da;
-  --warning-text: #8a5a09;
-
-  /* --- Status dots/pills --- */
-  --status-open: #8a919c;
-  --status-progress: #5e6ad2;
-  --status-hold: #e0900f;
-  --status-review: #8b5cf6;
-  --status-blocked: #e5484d;
-  --status-done: #2fa66a;
-  --status-cancelled: #b3b8c0;
-
-  /* --- Priority dots --- */
-  --prio-low: #9aa1ab;
-  --prio-medium: #4b83e8;
-  --prio-high: #e0900f;
-  --prio-urgent: #e5484d;
+  --warn: #b8720a;
+  --warn-deep: #8c5606;
+  --warn-soft: #fdf0dc;
+  --warn-tint: #fefaf7;
+  --danger: #b3452f;
+  --danger-deep: #93361f;
+  --danger-soft: #fbe6e0;
+  --ok: #2f7d4f;
+  --ok-deep: #256240;
+  --ok-soft: #e2f0e6;
+  --review: #7857c8;
+  --review-deep: #5b3f96;
+  --review-soft: #ece6f8;
+  --info-soft: #e9f2fb;
+  --info-text: #2d557f;
+  --info-dot: #3b6ea5;
 
   /* --- Radius --- */
-  --radius-sm: 5px;
-  --radius: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-full: 999px;
+  --radius-check: 4px;
+  --radius-chip: 6px;
+  --radius-tag: 7px;
+  --radius-sm: 8px;
+  --radius: 10px; /* button, nav item, input */
+  --radius-md: 12px; /* card */
+  --radius-lg: 14px; /* outer frame */
+  --radius-full: 999px; /* pill, avatar, toggle */
 
-  /* --- Shadows (soft, layered) --- */
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow: 0 4px 14px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.05);
-  --shadow-md: 0 10px 28px rgba(16, 24, 40, 0.12), 0 2px 6px rgba(16, 24, 40, 0.06);
-  --shadow-lg: 0 22px 48px rgba(16, 24, 40, 0.18), 0 4px 12px rgba(16, 24, 40, 0.08);
+  /* --- Shadow --- the only in-page shadow is the frame; overlays float --- */
+  --shadow-frame: 0 1px 2px rgba(33, 29, 25, 0.04);
+  --shadow-pop: 0 10px 30px rgba(33, 29, 25, 0.12), 0 2px 8px rgba(33, 29, 25, 0.06);
 
   /* --- Motion --- */
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 120ms;
-  --dur: 180ms;
-  --dur-slow: 280ms;
+  --dur: 150ms;
+  --dur-slow: 220ms;
 
-  /* Back-compat aliases (older rules referenced these names) */
+  /* ---- Back-compat aliases → new palette (Phase 9 classes recolor automatically
+     until each screen is rebuilt) ---- */
+  --bg: var(--canvas);
+  --surface-2: var(--surface-sunk);
+  --surface-3: var(--canvas-deep);
+  --border-strong: var(--border-dashed);
+  --text: var(--ink);
+  --text-secondary: var(--ink-3);
+  --text-faint: var(--faint);
+  --accent-hover: var(--accent-deep);
+  --accent-active: var(--accent-deep);
+  --accent-fg: #ffffff;
+  --accent-tint-2: var(--accent-soft);
+  --accent-ring: rgba(15, 123, 108, 0.28);
+  --link: var(--accent);
+  --danger-hover: var(--danger-deep);
+  --danger-tint: var(--danger-soft);
+  --danger-text: var(--danger-deep);
+  --success: var(--ok);
+  --success-tint: var(--ok-soft);
+  --success-text: var(--ok-deep);
+  --warning: var(--warn);
+  --warning-tint: var(--warn-soft);
+  --warning-text: var(--warn-deep);
+  --status-open: var(--faint);
+  --status-progress: var(--accent);
+  --status-hold: var(--warn);
+  --status-review: var(--review);
+  --status-blocked: var(--danger);
+  --status-done: var(--ok);
+  --status-cancelled: var(--faint-2);
+  --prio-low: var(--faint-2);
+  --prio-medium: var(--muted);
+  --prio-high: var(--warn);
+  --prio-urgent: var(--danger);
+  --shadow-sm: var(--shadow-frame);
+  --shadow: var(--shadow-frame);
+  --shadow-md: var(--shadow-pop);
+  --shadow-lg: var(--shadow-pop);
   --panel: var(--surface);
   --primary: var(--accent);
-  --primary-hover: var(--accent-hover);
+  --primary-hover: var(--accent-deep);
 }
 
 * {
@@ -95,58 +125,72 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-  /* Global text-size knob. Everything below is sized in rem, so raising or
-     lowering this single value scales the whole app up or down. (History is
-     pinned in px so it stays compact regardless.) */
-  font-size: 17px;
+  font-size: 16px;
 }
 
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 1rem;
+  font-size: 13.5px;
   line-height: 1.5;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'cv11', 'ss01';
-  text-rendering: optimizeLegibility;
 }
 
 h1,
 h2,
 h3,
 h4 {
-  letter-spacing: -0.014em;
-  color: var(--text);
+  color: var(--ink);
+  letter-spacing: -0.015em;
+  font-weight: 700;
+  margin: 0;
 }
-
 h2 {
-  font-size: 1.25rem;
-  font-weight: 650;
+  font-size: 22px;
 }
 h3 {
-  font-size: 1rem;
-  font-weight: 650;
+  font-size: 15px;
+}
+h4 {
+  font-size: 13.5px;
 }
 
 a {
-  color: var(--link);
+  color: var(--accent);
   text-decoration: none;
 }
 a:hover {
-  text-decoration: underline;
+  color: var(--accent-deep);
 }
 
 hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
   margin: 1rem 0;
 }
 
 ::selection {
-  background: var(--accent-tint-2);
+  background: var(--accent-soft);
+}
+
+/* Typographic utilities (numbers/ids/labels use mono; one warm serif line/screen) */
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1;
+}
+.serif {
+  font-family: var(--font-serif);
+}
+.u-label {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted-2);
 }
 
 /* --- Global keyboard focus (accessibility) --- */
@@ -155,7 +199,6 @@ hr {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
-/* Elements that draw their own ring don't need the generic one */
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
@@ -399,12 +442,12 @@ input,
 select,
 textarea {
   width: 100%;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13.5px;
   font-family: inherit;
-  color: var(--text);
+  color: var(--ink);
   background: var(--surface);
   transition:
     border-color var(--dur) var(--ease),
@@ -412,24 +455,24 @@ textarea {
 }
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-faint);
+  color: var(--faint);
 }
 input:hover,
 select:hover,
 textarea:hover {
-  border-color: #c4c9d2;
+  border-color: var(--border-dashed);
 }
 input:focus,
 select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-ring);
+  box-shadow: inset 0 0 0 0.5px var(--accent);
 }
 input:disabled,
 select:disabled,
 textarea:disabled {
-  background: var(--surface-3);
+  background: var(--canvas-deep);
   color: var(--muted);
   cursor: not-allowed;
 }
@@ -441,69 +484,67 @@ textarea:disabled {
 button {
   cursor: pointer;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: 0.5rem 0.95rem;
-  font-size: 0.9rem;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 600;
   font-family: inherit;
   background: var(--accent);
-  color: var(--accent-fg);
-  box-shadow: var(--shadow-sm);
+  color: #fff;
   transition:
     background var(--dur) var(--ease),
     border-color var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease),
-    transform var(--dur-fast) var(--ease);
+    color var(--dur) var(--ease);
 }
 
 button:hover {
-  background: var(--accent-hover);
+  background: var(--accent-deep);
 }
 button:active {
-  transform: translateY(0.5px);
-  background: var(--accent-active);
+  background: var(--accent-deep);
 }
 
 button:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
-  transform: none;
 }
 
+/* Secondary: white with a hairline border */
 button.secondary {
   background: var(--surface);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  color: var(--ink-3);
+  border: 1px solid var(--border);
 }
 button.secondary:hover {
-  background: var(--surface-2);
-  border-color: #c4c9d2;
-  color: var(--text);
+  background: var(--surface-sunk);
+  border-color: var(--border-dashed);
+  color: var(--ink);
 }
 
-button.ghost {
-  background: transparent;
-  color: var(--text-secondary);
+/* Tertiary/ghost: soft fill, no border (row/hover actions) */
+button.ghost,
+button.tertiary {
+  background: var(--canvas-deep);
+  color: var(--ink-3);
   border: 1px solid transparent;
-  box-shadow: none;
 }
-button.ghost:hover {
-  background: var(--surface-3);
-  color: var(--text);
+button.ghost:hover,
+button.tertiary:hover {
+  background: #ebe4d9;
+  color: var(--ink);
 }
 
 button.danger {
   background: var(--danger);
+  color: #fff;
 }
 button.danger:hover {
-  background: var(--danger-hover);
+  background: var(--danger-deep);
 }
 
 button.btn-sm {
-  padding: 0.3rem 0.6rem;
-  font-size: 0.82rem;
+  padding: 5px 10px;
+  font-size: 12.5px;
 }
 
 .btn-row {
@@ -522,26 +563,25 @@ button.btn-sm {
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 1.55rem;
-  height: 1.55rem;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-full);
-  font-size: 0.62rem;
-  font-weight: 650;
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1;
-  color: #fff;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   user-select: none;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  /* fill + text color set inline by the Avatar component (soft/deep pair) */
 }
 .avatar-xs {
-  width: 1.25rem;
-  height: 1.25rem;
-  font-size: 0.54rem;
+  width: 20px;
+  height: 20px;
+  font-size: 8px;
 }
 .avatar-lg {
-  width: 2.25rem;
-  height: 2.25rem;
-  font-size: 0.85rem;
+  width: 56px;
+  height: 56px;
+  font-size: 20px;
 }
 /* user = avatar + name, inline */
 .user-chip {
@@ -634,6 +674,104 @@ button.btn-sm {
 }
 .dot.dot-pop {
   animation: status-pop 0.5s var(--ease) both;
+}
+
+/* --- Status pill (redesign) --- */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.status-pill-lg {
+  padding: 5px 11px;
+  font-size: 12.5px;
+}
+.status-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+.status-pill-lg .status-pill-dot {
+  width: 7px;
+  height: 7px;
+}
+.status-pill-caret {
+  font-size: 9px;
+  opacity: 0.7;
+  margin-left: 1px;
+}
+
+/* --- Priority ramp (three bars) --- */
+.prio-ramp-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.prio-ramp {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+}
+.prio-ramp i {
+  width: 3px;
+  border-radius: 1px;
+}
+.prio-ramp i:nth-child(1) {
+  height: 5px;
+}
+.prio-ramp i:nth-child(2) {
+  height: 8px;
+}
+.prio-ramp i:nth-child(3) {
+  height: 11px;
+}
+.prio-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.prio-label-High {
+  font-weight: 600;
+  color: var(--warn-deep);
+}
+.prio-label-Urgent {
+  font-weight: 600;
+  color: var(--danger-deep);
+}
+
+/* --- Relative dates (redesign) --- */
+.datestack {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.25;
+}
+.due-primary {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.due-primary.tone-overdue {
+  color: var(--danger-deep);
+}
+.due-primary.tone-due-today {
+  color: var(--warn-deep);
+}
+.due-secondary {
+  font-size: 10.5px;
+  color: var(--faint);
+}
+.ago {
+  font-size: 11.5px;
+  color: var(--faint);
 }
 
 /* Pill form (thin colored chip) — used where a filled cue reads better */
@@ -2049,31 +2187,35 @@ tr.unread-row:hover td {
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: 0.5rem;
-  padding: 2.75rem 1.5rem;
+  gap: 8px;
+  padding: 40px 24px;
+  border: 1px dashed var(--border-dashed);
+  border-radius: var(--radius-md);
+  background: var(--surface);
   color: var(--muted);
 }
 .empty-state.compact {
-  padding: 1.5rem 1rem;
+  padding: 24px 18px;
 }
 .empty-state-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: var(--radius-full);
-  background: var(--surface-3);
-  color: var(--text-faint);
-  margin-bottom: 0.25rem;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--canvas-deep);
+  color: var(--faint);
+  margin-bottom: 2px;
 }
 .empty-state-title {
   font-weight: 600;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
+  color: var(--ink-2);
+  font-size: 14px;
 }
 .empty-state-text {
-  font-size: 0.85rem;
+  font-size: 12.5px;
+  color: var(--muted);
   max-width: 26rem;
 }
 /* Empty state that fills a table (spanning cell) */

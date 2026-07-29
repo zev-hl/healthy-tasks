@@ -22,33 +22,26 @@ export interface UserLike {
   title?: string | null;
 }
 
-// Curated palette: saturated-but-not-neon, all legible with white text.
-const AVATAR_COLORS = [
-  '#6366f1', // indigo
-  '#8b5cf6', // violet
-  '#a855f7', // purple
-  '#d946ef', // fuchsia
-  '#ec4899', // pink
-  '#f43f5e', // rose
-  '#ef4444', // red
-  '#f97316', // orange
-  '#d97706', // amber
-  '#ca8a04', // yellow-dark
-  '#16a34a', // green
-  '#059669', // emerald
-  '#0d9488', // teal
-  '#0891b2', // cyan
-  '#0ea5e9', // sky
-  '#3b82f6', // blue
-  '#64748b', // slate
+// Soft fill + deep text pairs, assigned deterministically per user id.
+const AVATAR_PAIRS: Array<{ bg: string; fg: string }> = [
+  { bg: 'var(--accent-soft)', fg: 'var(--accent-deep)' },
+  { bg: 'var(--canvas-deep)', fg: 'var(--ink-3)' },
+  { bg: 'var(--review-soft)', fg: 'var(--review-deep)' },
 ];
 
-export function avatarColor(key: string): string {
+function hash(key: string): number {
   let h = 0;
-  for (let i = 0; i < key.length; i++) {
-    h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_COLORS[h % AVATAR_COLORS.length] ?? '#64748b';
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+export function avatarPair(key: string): { bg: string; fg: string } {
+  return AVATAR_PAIRS[hash(key) % AVATAR_PAIRS.length] ?? AVATAR_PAIRS[0]!;
+}
+
+/** Back-compat: returns just the fill color of the deterministic pair. */
+export function avatarColor(key: string): string {
+  return avatarPair(key).bg;
 }
 
 export function userInitials(u: UserLike): string {
@@ -95,25 +88,44 @@ function sizeClass(size: Size): string {
 export function Avatar({
   user,
   size = 'md',
+  px,
   decorative = false,
 }: {
   user: UserLike;
   size?: Size;
+  /** Explicit diameter in px (overrides `size`); font is ~36% of it. */
+  px?: number;
   /** True when a visible name sits beside it (avatar becomes aria-hidden). */
   decorative?: boolean;
 }) {
   const key = user.id || user.email || userLabel(user);
   const label = userLabel(user);
+  const { bg, fg } = avatarPair(key);
+  const style = px
+    ? { background: bg, color: fg, width: px, height: px, fontSize: Math.round(px * 0.36) }
+    : { background: bg, color: fg };
   return (
     <span
-      className={sizeClass(size)}
-      style={{ background: avatarColor(key) }}
+      className={px ? 'avatar' : sizeClass(size)}
+      style={style}
       title={decorative ? undefined : label}
       role={decorative ? undefined : 'img'}
       aria-hidden={decorative || undefined}
       aria-label={decorative ? undefined : label}
     >
       {userInitials(user)}
+    </span>
+  );
+}
+
+/** Placeholder avatar for an unassigned slot: neutral circle with "?". */
+export function UnassignedAvatar({ size = 'md', px }: { size?: Size; px?: number }) {
+  const style = px
+    ? { background: 'var(--canvas-deep)', color: 'var(--faint)', width: px, height: px, fontSize: Math.round(px * 0.4) }
+    : { background: 'var(--canvas-deep)', color: 'var(--faint)' };
+  return (
+    <span className={px ? 'avatar' : sizeClass(size)} style={style} aria-hidden="true">
+      ?
     </span>
   );
 }
