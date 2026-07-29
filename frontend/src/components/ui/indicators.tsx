@@ -91,6 +91,7 @@ export function PriorityRamp({
         style={dimmed ? { opacity: 0.4 } : undefined}
         role="img"
         aria-label={`${priority} priority`}
+        title={`${priority} priority`}
       >
         <i style={{ background: bars[0] }} />
         <i style={{ background: bars[1] }} />
