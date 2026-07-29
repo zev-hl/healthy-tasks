@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_PAGE_SIZE,
@@ -130,7 +130,12 @@ export function TaskSearchPage() {
   const location = useLocation();
 
   // --- Load reference data + persisted state (once) ------------------------
+  // Guarded so React StrictMode's double-invoke can't fire a second async
+  // hydration that resolves after (and clobbers) an incoming My Day merge.
+  const hydratedOnce = useRef(false);
   useEffect(() => {
+    if (hydratedOnce.current) return;
+    hydratedOnce.current = true;
     void api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
     void api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
     void api
