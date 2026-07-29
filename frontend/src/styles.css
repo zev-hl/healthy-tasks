@@ -2944,49 +2944,272 @@ button.dash-stat:hover {
   box-shadow: 0 0 0 2px var(--surface);
 }
 
-.notif-section {
-  margin-bottom: 1rem;
+/* ---------------------------------------------------------------------------
+   Notifications — unified feed (Phase 10 redesign)
+   One day-grouped stream replaces the three tables. Type pills + unread toggle
+   sit above; each row carries an icon, title/task, meta, hover actions, and an
+   unread tint + dot.
+   --------------------------------------------------------------------------- */
+
+.notif-page {
+  max-width: 760px;
+  margin: 0 auto;
 }
-.notif-section h3 {
-  margin: 0 0 0.5rem;
-}
-.notif-head {
+.notif-topbar {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.85rem;
 }
-.notif-table {
-  min-width: 0;
-  width: 100%;
-}
-.notif-table th,
-.notif-table td {
-  text-align: left;
-  vertical-align: top;
-  padding: 0.5rem 0.6rem;
-}
-.notif-table .comment-cell {
-  white-space: normal;
-  max-width: 34rem;
-}
-.notif-table .comment-cell .rich-text {
+.notif-topbar h1 {
   margin: 0;
 }
-tr.unread-row td {
+.notif-topcount {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.notif-topbar .link-button {
+  align-self: center;
+}
+
+.notif-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.notif-pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  margin-left: 0.4rem;
+  border-radius: var(--radius-full);
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.seg-btn.active .notif-pill-count {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+.notif-unread-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.84rem;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notif-feed {
+  padding: 0;
+  overflow: hidden;
+}
+.notif-feed-loading {
+  padding: 1.25rem;
+}
+.notif-feed .empty-state {
+  padding: 2rem 1.25rem;
+}
+
+.notif-day-group + .notif-day-group {
+  border-top: 1px solid var(--border);
+}
+.notif-day-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.4rem 1rem;
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notif-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.7rem 1rem 0.7rem 1.15rem;
+  border-bottom: 1px solid var(--row-line);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+.notif-list .notif-item:last-child {
+  border-bottom: none;
+}
+.notif-item:hover {
+  background: var(--surface-sunk);
+}
+.notif-item.is-unread {
   background: var(--accent-tint);
 }
-tr.unread-row:hover td {
-  background: var(--accent-tint-2);
+.notif-item.is-unread:hover {
+  background: var(--accent-soft);
 }
-.unread-dot {
-  display: inline-block;
+/* Accent spine on unread rows. */
+.notif-item.is-unread::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+.notif-item-icon {
+  flex: none;
+  margin-top: 1px;
+}
+.notif-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.notif-badge.reminder {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+}
+.notif-badge.assigned {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.notif-item-body {
+  flex: 1;
+  min-width: 0;
+}
+.notif-item-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.5rem;
+}
+.notif-item-title {
+  font-size: 0.9rem;
+  color: var(--ink-2);
+}
+.notif-item-title strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.notif-item-task {
+  font-size: 0.86rem;
+  color: var(--ink-3);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.notif-item-task:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.notif-item-id {
+  color: var(--muted-2);
+}
+.notif-item-comment {
+  margin: 0.3rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-left: 2px solid var(--border);
+  background: var(--surface-sunk);
+  border-radius: 0 var(--radius-chip) var(--radius-chip) 0;
+  color: var(--ink-2);
+  font-size: 0.85rem;
+}
+.notif-item-comment .rich-text {
+  margin: 0;
+}
+.notif-item-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.notif-meta-sep {
+  color: var(--faint-2);
+}
+
+.notif-item-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  align-self: center;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.notif-item:hover .notif-item-actions,
+.notif-item:focus-within .notif-item-actions {
+  opacity: 1;
+}
+.notif-action {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 550;
+  color: var(--ink-3);
+  cursor: pointer;
+  box-shadow: none;
+}
+.notif-action:hover {
+  background: var(--canvas-deep);
+  color: var(--ink);
+}
+/* Keep actions reachable without hover (touch / keyboard). */
+@media (hover: none) {
+  .notif-item-actions {
+    opacity: 1;
+  }
+}
+
+.notif-unread-dot {
+  position: absolute;
+  top: 0.85rem;
+  right: 1rem;
   width: 0.5rem;
   height: 0.5rem;
-  margin-right: 0.4rem;
   border-radius: 50%;
   background: var(--accent);
-  vertical-align: middle;
+}
+.notif-item:hover .notif-unread-dot,
+.notif-item:focus-within .notif-unread-dot {
+  display: none;
+}
+
+.notif-foot {
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
 }
 
 /* Segmented control */
