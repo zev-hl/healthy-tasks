@@ -393,9 +393,11 @@ describe('active users endpoint', () => {
     const res = await request(app).get('/api/users/active').set(auth(tok));
     assert.equal(res.status, 200);
     assert.ok(res.body.some((u: { email: string }) => u.email === ADMIN_EMAIL));
-    // Minimal ref shape — no role/supervisor leakage.
-    assert.equal('role' in res.body[0], false);
-    assert.equal('supervisorId' in res.body[0], false);
+    // Directory-ref shape (Phase 9): includes role + supervisorId (the My Day
+    // team strip needs supervisorId), but never leaks credentials.
+    assert.equal('role' in res.body[0], true);
+    assert.equal('supervisorId' in res.body[0], true);
+    assert.equal('passwordHash' in res.body[0], false);
   });
 
   it('excludes inactive users', async () => {
