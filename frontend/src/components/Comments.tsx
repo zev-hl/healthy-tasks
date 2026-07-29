@@ -6,6 +6,7 @@ import { RichText } from './RichText';
 import { AttachmentSection } from './AttachmentSection';
 import { Avatar, userLabel } from './ui/Avatar';
 import { EmptyState } from './ui/EmptyState';
+import { TimeStamp } from './ui/TimeStamp';
 
 interface Props {
   task: TaskDetailDto;
@@ -13,10 +14,6 @@ interface Props {
   onChanged: (task: TaskDetailDto) => void;
   /** Reports whether there's an in-progress draft (new comment or an edit). */
   onDirtyChange?: (dirty: boolean) => void;
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString();
 }
 
 export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props) {
@@ -150,7 +147,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                 <Avatar user={c.author} size="xs" decorative />
                 <span className="comment-author">{userLabel(c.author)}</span>
                 <span className="muted comment-time">
-                  {formatDateTime(c.editedAt ?? c.createdAt)}
+                  <TimeStamp iso={c.editedAt ?? c.createdAt} />
                   {c.editedAt ? ' (edited)' : ''}
                 </span>
               </div>

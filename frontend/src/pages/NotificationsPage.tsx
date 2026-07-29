@@ -12,10 +12,7 @@ import { useNotifications } from '../notifications/NotificationContext';
 import { UserChip } from '../components/ui/Avatar';
 import { PriorityDot } from '../components/ui/indicators';
 import { TableEmptyRow } from '../components/ui/EmptyState';
-
-function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
-}
+import { TimeStamp } from '../components/ui/TimeStamp';
 
 const EMPTY: NotificationsDto = { mentioned: [], reminders: [], assigned: [] };
 
@@ -122,7 +119,9 @@ export function NotificationsPage() {
               <tr key={m.id} className={m.read ? '' : 'unread-row'}>
                 {taskIdCell('notification', m.id, m.taskId, m.read)}
                 <td>{m.taskName}</td>
-                <td>{fmt(m.commentAt)}</td>
+                <td>
+                  <TimeStamp iso={m.commentAt} />
+                </td>
                 <td>
                   <UserChip user={m.commenter} />
                 </td>
@@ -159,7 +158,9 @@ export function NotificationsPage() {
               <tr key={r.id} className={r.read ? '' : 'unread-row'}>
                 {taskIdCell('reminder', r.id, r.taskId, r.read)}
                 <td>{r.taskName}</td>
-                <td>{fmt(r.startAt)}</td>
+                <td>
+                  <TimeStamp iso={r.startAt} />
+                </td>
                 <td>
                   <PriorityDot priority={r.priority} />
                 </td>
@@ -198,7 +199,9 @@ export function NotificationsPage() {
               <tr key={a.id} className={a.read ? '' : 'unread-row'}>
                 {taskIdCell('notification', a.id, a.taskId, a.read)}
                 <td>{a.taskName}</td>
-                <td>{fmt(a.startAt)}</td>
+                <td>
+                  <TimeStamp iso={a.startAt} />
+                </td>
                 <td>
                   <PriorityDot priority={a.priority} />
                 </td>

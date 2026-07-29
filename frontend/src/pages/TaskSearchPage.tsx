@@ -28,6 +28,7 @@ import { TaskDashboard } from '../components/TaskDashboard';
 import { UserChip } from '../components/ui/Avatar';
 import { StatusDot, PriorityDot } from '../components/ui/indicators';
 import { TableEmptyRow } from '../components/ui/EmptyState';
+import { TimeStamp } from '../components/ui/TimeStamp';
 
 interface ColumnState {
   key: TaskColumnKey;
@@ -54,10 +55,6 @@ const defaultColumns = (): ColumnState[] =>
 
 function isSortable(key: TaskColumnKey): key is TaskSortField {
   return (TASK_SORT_FIELDS as readonly string[]).includes(key);
-}
-
-function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
 }
 
 /** Reconcile persisted columns with the current column set (tolerate additions). */
@@ -464,7 +461,7 @@ export function TaskSearchPage() {
       case 'status':
         return <StatusDot status={row.status} />;
       case 'statusChangedAt':
-        return fmt(row.statusChangedAt);
+        return <TimeStamp iso={row.statusChangedAt} />;
       case 'priority':
         return <PriorityDot priority={row.priority} />;
       case 'assignee':
@@ -476,11 +473,11 @@ export function TaskSearchPage() {
       case 'creator':
         return <UserChip user={row.creator} />;
       case 'createdAt':
-        return fmt(row.createdAt);
+        return <TimeStamp iso={row.createdAt} />;
       case 'startAt':
-        return fmt(row.startAt);
+        return <TimeStamp iso={row.startAt} />;
       case 'dueAt':
-        return fmt(row.dueAt);
+        return <TimeStamp iso={row.dueAt} />;
       case 'parentChild':
         if (row.parentId != null)
           return (

@@ -286,6 +286,40 @@ textarea:focus-visible {
 .detail-main {
   min-width: 0;
 }
+/* Save-model cues: staged Details vs. auto-saved sections. */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.section-hint {
+  font-size: 0.75rem;
+  margin: 0.2rem 0 0.85rem;
+}
+.section-auto {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.unsaved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--warning-tint);
+  color: var(--warning-text);
+}
+.unsaved-badge::before {
+  content: '';
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--warning);
+}
 @media (min-width: 981px) {
   .detail-layout {
     display: grid;

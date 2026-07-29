@@ -8,6 +8,7 @@ import {
 import { api, ApiError } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
 import { EmptyState } from './ui/EmptyState';
+import { TimeStamp } from './ui/TimeStamp';
 
 interface Props {
   taskId: number;
@@ -120,7 +121,7 @@ export function TaskHistory({ taskId, version }: Props) {
               <div className="history-what">{describe(entry)}</div>
               <div className="muted history-meta">
                 {entry.user ? userLabel(entry.user) : 'Unknown user'} ·{' '}
-                {new Date(entry.changedAt).toLocaleString()}
+                <TimeStamp iso={entry.changedAt} />
               </div>
             </div>
           </li>

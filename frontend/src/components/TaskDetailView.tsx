@@ -22,6 +22,7 @@ import { TaskPickerModal } from './TaskPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { UserChip } from './ui/Avatar';
 import { StatusDot, PriorityDot } from './ui/indicators';
+import { TimeStamp } from './ui/TimeStamp';
 import {
   isoToParts,
   partsToIso,
@@ -30,11 +31,6 @@ import {
   DEFAULT_DUE_HOUR,
 } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString();
-}
 
 type PickerKind = 'parent' | DependencyType;
 
@@ -395,9 +391,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <UserChip user={task.creator} />
           </dd>
           <dt className="muted">Created</dt>
-          <dd style={{ margin: 0 }}>{formatDateTime(task.createdAt)}</dd>
+          <dd style={{ margin: 0 }}>
+            <TimeStamp iso={task.createdAt} />
+          </dd>
           <dt className="muted">Status changed</dt>
-          <dd style={{ margin: 0 }}>{formatDateTime(task.statusChangedAt)}</dd>
+          <dd style={{ margin: 0 }}>
+            <TimeStamp iso={task.statusChangedAt} />
+          </dd>
         </dl>
       </div>
 
@@ -452,7 +452,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {/* Attachments (saved immediately) */}
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Attachments</h3>
+        <h3 style={{ marginTop: 0 }}>
+          Attachments <span className="section-auto">· saved automatically</span>
+        </h3>
         <AttachmentSection
           attachments={task.attachments}
           target={{ kind: 'task', taskId: task.id }}
@@ -466,7 +468,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       <aside className="detail-side">
       {/* Details: staged fields saved by "Save changes" */}
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Details</h3>
+        <div className="section-head">
+          <h3 style={{ margin: 0 }}>Details</h3>
+          {fieldsDirty && <span className="unsaved-badge">Unsaved</span>}
+        </div>
+        <p className="muted section-hint">
+          Assignee, priority, status and dates save together — click Save changes.
+        </p>
         {fieldsError && <div className="alert error">{fieldsError}</div>}
 
         <div className="field">
@@ -561,7 +569,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {/* Tags (saved immediately) — below the Details section */}
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Tags</h3>
+        <h3 style={{ marginTop: 0 }}>
+          Tags <span className="section-auto">· saved automatically</span>
+        </h3>
         <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
           {task.tags.length === 0 && <span className="muted">No tags</span>}
           {task.tags.map((t) => (
@@ -619,7 +629,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       <div className="detail-main">
       {/* Relationships (saved immediately) */}
       <div className="card" style={{ marginBottom: '1rem' }}>
-        <h3 style={{ marginTop: 0 }}>Relationships</h3>
+        <h3 style={{ marginTop: 0 }}>
+          Relationships <span className="section-auto">· saved automatically</span>
+        </h3>
 
         <div className="rel-section">
           <div className="rel-heading">
