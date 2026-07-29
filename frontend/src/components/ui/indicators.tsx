@@ -27,6 +27,11 @@ const PRIORITY_COLORS: Record<TaskPriority, string> = {
   Low: 'var(--prio-low)',
 };
 
+export const statusColor = (status: TaskStatus): string =>
+  STATUS_COLORS[status] ?? 'var(--status-open)';
+export const priorityColor = (priority: TaskPriority): string =>
+  PRIORITY_COLORS[priority] ?? 'var(--prio-medium)';
+
 export function StatusDot({
   status,
   justCompleted = false,

@@ -136,6 +136,8 @@ export function TaskDashboard({
                 {stat('Overdue', data.overdue, OVERDUE_STAT)}
                 {stat('Completed Today', data.completedToday, COMPLETED_TODAY_STAT)}
               </div>
+
+              <div className="dash-hint muted">Click a count to filter the results below.</div>
             </>
           )}
         </div>

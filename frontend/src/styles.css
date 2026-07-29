@@ -320,6 +320,16 @@ textarea:focus-visible {
   border-radius: 50%;
   background: var(--warning);
 }
+/* A live status/priority color dot beside a select. */
+.select-with-cue {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.select-with-cue select {
+  flex: 1;
+  min-width: 0;
+}
 @media (min-width: 981px) {
   .detail-layout {
     display: grid;
@@ -1031,6 +1041,26 @@ th {
 }
 
 /* Comments */
+.comment-composer {
+  margin-bottom: 1rem;
+}
+/* Collapsed composer: a single-line prompt that expands into the editor. */
+.comment-composer-stub {
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+  box-shadow: none;
+  font-weight: 400;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius);
+}
+.comment-composer-stub:hover {
+  background: var(--surface-2);
+  border-color: #c4c9d2;
+  color: var(--text-secondary);
+}
 .comment-list {
   list-style: none;
   margin: 0 0 1rem;
@@ -1317,6 +1347,16 @@ th.sortable:hover {
   color: var(--accent);
   font-size: 0.72rem;
 }
+/* Faint sortability affordance — appears on hover for unsorted columns. */
+.sort-hint {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+th.sortable:hover .sort-hint {
+  opacity: 1;
+}
 
 /* Results grid */
 .results-table {
@@ -1594,6 +1634,11 @@ input[type='radio'] {
   gap: 1.25rem;
   margin-top: 0.5rem;
   animation: fade-slide-in var(--dur-slow) var(--ease) both;
+}
+.dash-hint {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  margin-top: -0.35rem;
 }
 
 .dash-group {

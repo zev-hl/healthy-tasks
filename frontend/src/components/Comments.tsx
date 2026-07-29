@@ -19,6 +19,7 @@ interface Props {
 export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props) {
   const [composerKey, setComposerKey] = useState(0);
   const [composerBody, setComposerBody] = useState('');
+  const [composerOpen, setComposerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +66,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       onChanged(await api.createComment(task.id, { body: composerBody }));
       setComposerBody('');
       setComposerKey((k) => k + 1); // remount to clear the editor
+      setComposerOpen(false); // collapse back to the single-line prompt
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not post comment');
     } finally {
@@ -75,6 +77,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   function cancelComposer() {
     setComposerBody('');
     setComposerKey((k) => k + 1); // remount to clear the editor
+    setComposerOpen(false);
   }
 
   function startEdit(c: CommentDto) {
@@ -114,24 +117,34 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       {error && <div className="alert error">{error}</div>}
 
       <div className="comment-composer">
-        <h4 style={{ margin: '0 0 0.35rem' }}>Add a comment</h4>
-        <RichTextEditor
-          key={`composer-${composerKey}`}
-          value=""
-          onChange={setComposerBody}
-          withMentions
-          mentionFetch={mentionFetch}
-          ariaLabel="New comment"
-        />
-        {composerActive && (
-          <div className="btn-row">
-            <button type="button" disabled={submitting} onClick={submitComment}>
-              {submitting ? 'Saving…' : 'Save'}
-            </button>
-            <button type="button" className="secondary" onClick={cancelComposer}>
-              Cancel
-            </button>
-          </div>
+        {composerOpen ? (
+          <>
+            <RichTextEditor
+              key={`composer-${composerKey}`}
+              value=""
+              onChange={setComposerBody}
+              withMentions
+              mentionFetch={mentionFetch}
+              ariaLabel="New comment"
+              autoFocus
+            />
+            <div className="btn-row">
+              <button type="button" disabled={submitting || !composerActive} onClick={submitComment}>
+                {submitting ? 'Saving…' : 'Comment'}
+              </button>
+              <button type="button" className="secondary" onClick={cancelComposer}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="comment-composer-stub"
+            onClick={() => setComposerOpen(true)}
+          >
+            Add a comment…
+          </button>
         )}
       </div>
 

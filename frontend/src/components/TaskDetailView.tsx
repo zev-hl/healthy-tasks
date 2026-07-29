@@ -21,7 +21,7 @@ import { TaskRefLink } from './TaskRefLink';
 import { TaskPickerModal } from './TaskPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { UserChip } from './ui/Avatar';
-import { StatusDot, PriorityDot } from './ui/indicators';
+import { StatusDot, PriorityDot, statusColor, priorityColor } from './ui/indicators';
 import { TimeStamp } from './ui/TimeStamp';
 import {
   isoToParts,
@@ -496,32 +496,38 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
         <div className="field">
           <label htmlFor="task-priority">Priority</label>
-          <select
-            id="task-priority"
-            value={priority}
-            onChange={(e) => setPriority(e.target.value as TaskPriority)}
-          >
-            {TASK_PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          <div className="select-with-cue">
+            <span className="dot" style={{ background: priorityColor(priority) }} aria-hidden="true" />
+            <select
+              id="task-priority"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as TaskPriority)}
+            >
+              {TASK_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="field">
           <label htmlFor="task-status">Status</label>
-          <select
-            id="task-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as TaskStatus)}
-          >
-            {TASK_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {TASK_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
+          <div className="select-with-cue">
+            <span className="dot" style={{ background: statusColor(status) }} aria-hidden="true" />
+            <select
+              id="task-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as TaskStatus)}
+            >
+              {TASK_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {TASK_STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="field">
