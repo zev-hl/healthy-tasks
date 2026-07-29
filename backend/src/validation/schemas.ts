@@ -259,6 +259,7 @@ export const taskDashboardSchema = z.object({
 export const userSearchSchema = z.object({
   filters: z
     .object({
+      query: z.string().max(200).optional(),
       firstName: z.array(z.string()).optional(),
       lastName: z.array(z.string()).optional(),
       email: z.array(z.string()).optional(),

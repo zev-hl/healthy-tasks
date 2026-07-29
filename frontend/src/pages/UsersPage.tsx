@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   Role,
+  UserCountsDto,
   UserDto,
   UserFilterOptions,
   UserSearchFilters,
@@ -57,6 +58,7 @@ export function UsersPage() {
   const [supervisors, setSupervisors] = useState<UserDto[]>([]);
   const [mergeAll, setMergeAll] = useState<UserDto[]>([]);
   const [options, setOptions] = useState<UserFilterOptions | null>(null);
+  const [counts, setCounts] = useState<UserCountsDto | null>(null);
 
   const [filters, setFilters] = useState<UserSearchFilters>({});
   const [sort, setSort] = useState<UserSort[]>(DEFAULT_SORT);
@@ -79,10 +81,14 @@ export function UsersPage() {
   const loadOptions = useCallback(() => {
     void api.userFilterOptions().then(setOptions).catch(() => setOptions(null));
   }, []);
+  const loadCounts = useCallback(() => {
+    void api.userCounts().then(setCounts).catch(() => {});
+  }, []);
 
   useEffect(() => {
     void api.listSupervisors().then(setSupervisors).catch(() => setSupervisors([]));
     loadOptions();
+    loadCounts();
     void api
       .getPreference('users')
       .then(({ state }) => {
@@ -96,7 +102,7 @@ export function UsersPage() {
       })
       .catch(() => {})
       .finally(() => setHydrated(true));
-  }, [loadOptions]);
+  }, [loadOptions, loadCounts]);
 
   const snapshot = useMemo<PersistedUsersState>(
     () => ({ filters, sort, page, pageSize }),
@@ -226,7 +232,16 @@ export function UsersPage() {
     <div className="users-page">
       <div className="tasks-toolbar">
         <h1>Users</h1>
-        <span className="mono tasks-total">{loading ? '…' : total}</span>
+        <span className="mono tasks-total">
+          {counts ? `${counts.active} active · ${counts.inactive} inactive` : loading ? '…' : total}
+        </span>
+        <input
+          className="tasks-search"
+          value={filters.query ?? ''}
+          onChange={(e) => patchFilters({ query: e.target.value })}
+          placeholder="Search name or email…"
+          aria-label="Search users"
+        />
         <div className="spacer" />
         <button className="secondary" onClick={openMerge}>
           Merge users
@@ -436,6 +451,7 @@ export function UsersPage() {
             setNotice(message);
             void load();
             loadOptions();
+            loadCounts();
           }}
         />
       )}
@@ -448,6 +464,7 @@ export function UsersPage() {
             setNotice('User created. A password-reset link was emailed / logged to the console.');
             void load();
             loadOptions();
+            loadCounts();
           }}
         />
       )}
@@ -461,6 +478,7 @@ export function UsersPage() {
             setNotice(message);
             void load();
             loadOptions();
+            loadCounts();
           }}
         />
       )}

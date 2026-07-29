@@ -4,12 +4,14 @@ import type {
   AdminResetLinkResponse,
   PaginatedResult,
   TaskUserRef,
+  UserCountsDto,
   UserDto,
   UserFilterOptions,
 } from '@healthy-tasks/shared';
 import {
   listUsers,
   searchUsers,
+  getUserCounts,
   getUserFilterOptions,
   listActiveUsers,
   listEligibleSupervisors,
@@ -40,6 +42,11 @@ export async function searchUsersController(req: Request, res: Response): Promis
   const { rows, total, page, pageSize } = await searchUsers(req.body as UserSearchInput);
   const body: PaginatedResult<UserDto> = { rows: rows.map(toUserDto), total, page, pageSize };
   res.json(body);
+}
+
+/** Roster-wide active/inactive tallies for the Users header. */
+export async function userCountsController(_req: Request, res: Response): Promise<void> {
+  res.json((await getUserCounts()) satisfies UserCountsDto);
 }
 
 /** Distinct values for the Users-screen filter checklists. */

@@ -691,6 +691,8 @@ export interface UserSort {
 export type UserStatusFilter = 'active' | 'inactive' | 'all';
 
 export interface UserSearchFilters {
+  // Free-text substring match across name + email (toolbar search box).
+  query?: string;
   // Text-like columns filter by an exact multi-select of distinct values.
   firstName?: string[];
   lastName?: string[];
@@ -699,6 +701,12 @@ export interface UserSearchFilters {
   supervisorIds?: string[]; // match users whose supervisor is one of these
   roles?: Role[];
   status?: UserStatusFilter;
+}
+
+/** Roster-wide active/inactive tallies for the Users header (ignores filters). */
+export interface UserCountsDto {
+  active: number;
+  inactive: number;
 }
 
 /** Distinct values available for each Users-screen filter checklist. */
