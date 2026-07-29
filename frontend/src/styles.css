@@ -1022,6 +1022,307 @@ textarea:focus-visible {
   color: var(--accent);
 }
 
+/* ---------------------------------------------------------------------------
+   Task detail (/tasks/:id) — redesign
+   --------------------------------------------------------------------------- */
+.detail-page {
+  padding: 20px 26px;
+  max-width: 1200px;
+}
+.detail-topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.detail-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.detail-breadcrumb a {
+  color: var(--ink-3);
+}
+.detail-breadcrumb a:hover {
+  color: var(--accent);
+}
+.crumb-sep {
+  color: var(--faint);
+}
+.detail-breadcrumb .mono {
+  color: var(--muted-2);
+}
+
+.detail-headerblock {
+  margin-bottom: 18px;
+  border-radius: var(--radius-md);
+}
+.detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.detail-title {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.edit-chip {
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+  border: none;
+  font-weight: 500;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.edit-chip:hover {
+  background: #ebe4d9;
+  color: var(--ink);
+}
+
+.detail-props {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.prop-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.prop-chip:not(.due-chip):not(.add-tag-chip) {
+  cursor: pointer;
+}
+.prop-chip:not(.due-chip):not(.add-tag-chip):hover {
+  border-color: var(--border-dashed);
+  background: var(--surface-sunk);
+}
+.prop-chip.is-status {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.prop-chip.is-status:hover {
+  background: transparent;
+}
+.prop-overlay-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.prop-caret {
+  font-size: 9px;
+  color: var(--muted-2);
+}
+.due-chip {
+  cursor: default;
+}
+.due-chip.is-empty {
+  color: var(--muted);
+}
+.add-tag-chip {
+  border-style: dashed;
+  border-color: var(--border-dashed);
+  color: var(--ink-3);
+  font-weight: 600;
+  font-size: 12px;
+  gap: 4px;
+}
+.tag-inline-input {
+  width: 66px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+}
+.tag-inline-input:focus {
+  border: none;
+  box-shadow: none;
+}
+.badge.tag .tag-x {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: inherit;
+  padding: 0 0 0 5px;
+  margin: 0;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.badge.tag .tag-x:hover {
+  background: transparent;
+  color: var(--danger);
+}
+
+.detail-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+
+.detail-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.detail-tab {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+}
+.detail-tab:hover {
+  background: transparent;
+  color: var(--ink);
+}
+.detail-tab.active {
+  color: var(--accent-deep);
+  border-bottom-color: var(--accent);
+}
+
+.detail-work {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.detail-content .card {
+  padding: 18px 20px;
+}
+
+.subtask-count {
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+.subtask-progress {
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--canvas-deep);
+  overflow: hidden;
+  margin: 6px 0 10px;
+}
+.subtask-progress span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  border-radius: var(--radius-full);
+  transition: width var(--dur-slow) var(--ease);
+}
+.subtask-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.subtask-row:last-child {
+  border-bottom: none;
+}
+.subtask-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+}
+.subtask-row.is-done .subtask-name {
+  text-decoration: line-through;
+  color: var(--faint);
+  font-weight: 500;
+}
+.subtask-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.detail-rail {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+.rail-section {
+  padding: 16px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.rail-section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+.rail-section:last-child {
+  padding-bottom: 0;
+}
+.rail-section-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+  margin-bottom: 10px;
+}
+.rail-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+.rail-label {
+  width: 78px;
+  flex: none;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.rail-dates {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.rail-dates input {
+  padding: 5px 7px;
+  font-size: 12px;
+}
+.rail-reminders-hint {
+  font-size: 11px;
+  margin: 0 0 8px;
+}
+
+@media (max-width: 1000px) {
+  .detail-cols {
+    grid-template-columns: 1fr;
+  }
+}
+
 .container {
   max-width: 980px;
   margin: 1.75rem auto;
