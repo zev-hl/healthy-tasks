@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_TASK_COLUMN_ORDER,
@@ -9,26 +9,35 @@ import {
   TASK_SORT_FIELDS,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
+  type ActiveUserDto,
   type TaskColumnKey,
+  type TaskDashboardDto,
   type TaskRowDto,
   type TaskSearchFilters,
   type TaskSearchRequest,
   type TaskSort,
   type TaskSortField,
-  type TaskUserRef,
 } from '@healthy-tasks/shared';
 import { api, ApiError, exportTasksToExcel } from '../api/client';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
-import { dashboardStatPatch, effectiveFilters, nowContext } from '../lib/taskSearch';
+import {
+  COMPLETED_TODAY_STAT,
+  OVERDUE_STAT,
+  dashboardActiveStats,
+  dashboardStatPatch,
+  effectiveFilters,
+  nowContext,
+  statusStat,
+} from '../lib/taskSearch';
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
 import { FilterPopover } from '../components/FilterPopover';
-import { TaskDashboard } from '../components/TaskDashboard';
-import { UserChip } from '../components/ui/Avatar';
-import { StatusDot, PriorityDot } from '../components/ui/indicators';
+import { UserChip, UnassignedAvatar } from '../components/ui/Avatar';
+import { StatusPill, PriorityRamp } from '../components/ui/indicators';
+import { AnimatedCount } from '../components/ui/AnimatedCount';
 import { TableEmptyRow } from '../components/ui/EmptyState';
-import { TimeStamp } from '../components/ui/TimeStamp';
+import { DueDate, AgoDate } from '../components/ui/dates';
 
 interface ColumnState {
   key: TaskColumnKey;
@@ -43,11 +52,11 @@ interface PersistedState {
   page: number;
   pageSize: number;
   nestGlobal: boolean;
-  dashboardCollapsed: boolean;
 }
 
 const UNASSIGNED = '__unassigned__';
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const FILTERABLE: TaskColumnKey[] = ['status', 'priority', 'assignee', 'tags', 'startAt', 'dueAt', 'statusChangedAt'];
 
 const defaultFilters: TaskSearchFilters = { includeNoStart: true, includeNoDue: true };
 const defaultColumns = (): ColumnState[] =>
@@ -71,7 +80,6 @@ function reconcileColumns(saved: unknown): ColumnState[] {
   return valid;
 }
 
-// --- Tags chip cell: up to 3 chips + "+N" ----------------------------------
 function TagsCell({ tags }: { tags: string[] }) {
   if (tags.length === 0) return <span className="muted">—</span>;
   const shown = tags.slice(0, 3);
@@ -100,9 +108,7 @@ export function TaskSearchPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [nestGlobal, setNestGlobal] = useState(false);
-  const [dashboardCollapsed, setDashboardCollapsed] = useState(false);
 
-  // Per-row collapse in nested mode (client-side hide of a parent's subtree).
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   const [rows, setRows] = useState<TaskRowDto[]>([]);
@@ -111,13 +117,16 @@ export function TaskSearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
-  const [users, setUsers] = useState<TaskUserRef[]>([]);
+  const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [dash, setDash] = useState<TaskDashboardDto | null>(null);
   const [showColumns, setShowColumns] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const debouncedText = useDebouncedValue(searchText, 350);
   const navigate = useNavigate();
+  const location = useLocation();
 
   // --- Load reference data + persisted state (once) ------------------------
   useEffect(() => {
@@ -135,17 +144,28 @@ export function TaskSearchPage() {
           if (typeof s.page === 'number' && s.page >= 1) setPage(s.page);
           if (typeof s.pageSize === 'number') setPageSize(s.pageSize);
           if (typeof s.nestGlobal === 'boolean') setNestGlobal(s.nestGlobal);
-          if (typeof s.dashboardCollapsed === 'boolean') setDashboardCollapsed(s.dashboardCollapsed);
         }
       })
       .catch(() => {})
       .finally(() => setHydrated(true));
   }, []);
 
+  // A saved View / My Day tile / team card navigates here with a filter shape in
+  // router state; apply it once hydration is done (so it wins over persisted).
+  useEffect(() => {
+    if (!hydrated) return;
+    const st = location.state as { filters?: TaskSearchFilters } | null;
+    if (st?.filters) {
+      setFilters({ ...defaultFilters, ...st.filters });
+      setPage(1);
+      window.history.replaceState({}, '');
+    }
+  }, [hydrated, location.state]);
+
   // --- Persist state (debounced) after hydration ---------------------------
   const snapshot = useMemo<PersistedState>(
-    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal, dashboardCollapsed }),
-    [searchText, filters, sort, columns, page, pageSize, nestGlobal, dashboardCollapsed],
+    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal }),
+    [searchText, filters, sort, columns, page, pageSize, nestGlobal],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -162,7 +182,6 @@ export function TaskSearchPage() {
       page,
       pageSize,
       nest: nestGlobal,
-      // Clock context for the overdue / completed-today quick-filters.
       ...nowContext(),
     };
     try {
@@ -181,7 +200,22 @@ export function TaskSearchPage() {
     if (hydrated) void runQuery();
   }, [hydrated, runQuery]);
 
-  // --- Change handlers (filter/search/sort edits reset to page 1) ----------
+  // --- Dashboard counts for the current view (for the stat strip) ----------
+  useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+    void api
+      .getTaskDashboard({ text: debouncedText.trim() || undefined, filters: effectiveFilters(filters), ...nowContext() })
+      .then((d) => {
+        if (!cancelled) setDash(d);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, debouncedText, filters]);
+
+  // --- Change handlers -----------------------------------------------------
   const patchFilters = (patch: Partial<TaskSearchFilters>) => {
     setFilters((f) => ({ ...f, ...patch }));
     setPage(1);
@@ -195,13 +229,14 @@ export function TaskSearchPage() {
     setSort((s) => cycleSort(s, key, additive));
     setPage(1);
   };
-  // Clicking a dashboard count applies/toggles its quick-filter (single-select),
-  // layering on top of any popover filters already set.
   const onSelectStat = (key: string) => patchFilters(dashboardStatPatch(filters, key));
+  const clearAllFilters = () => {
+    setFilters(defaultFilters);
+    setPage(1);
+  };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  // --- Column ordering / visibility ----------------------------------------
   const visibleColumns = columns.filter((c) => c.visible);
   const moveColumn = (index: number, delta: number) => {
     setColumns((cols) => {
@@ -218,11 +253,6 @@ export function TaskSearchPage() {
   const toggleColumn = (key: TaskColumnKey) =>
     setColumns((cols) => cols.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c)));
 
-  // --- Hierarchy display ---------------------------------------------------
-  // The server returns rows already in nested (tree) order with a `depth` when
-  // nesting is on. Per-row collapse is a client-side hide of a parent's subtree
-  // among the loaded rows; a row's caret shows when the next row is one level
-  // deeper (i.e. it has children on this page).
   const toggleCollapse = (id: number) =>
     setCollapsed((prev) => {
       const n = new Set(prev);
@@ -238,7 +268,6 @@ export function TaskSearchPage() {
       return { row, depth, hasChildrenHere: nestGlobal && nextDepth > depth };
     });
     if (!nestGlobal) return items;
-    // Hide rows sitting under a collapsed ancestor.
     const visible: typeof items = [];
     let collapseDepth = Infinity;
     for (const it of items) {
@@ -265,23 +294,24 @@ export function TaskSearchPage() {
       assigneeIds: next.filter((v) => v !== UNASSIGNED),
     });
 
-  const filtersActive =
-    (filters.assigneeIds?.length ?? 0) > 0 ||
-    filters.includeUnassigned ||
-    (filters.statuses?.length ?? 0) > 0 ||
-    (filters.priorities?.length ?? 0) > 0 ||
-    (filters.tags?.length ?? 0) > 0 ||
-    !!filters.statusChangedFrom ||
-    !!filters.statusChangedTo ||
-    !!filters.startFrom ||
-    !!filters.startTo ||
-    !!filters.dueFrom ||
-    !!filters.dueTo ||
-    filters.includeNoStart === false ||
-    filters.includeNoDue === false ||
-    !!filters.overdue ||
-    !!filters.completedToday ||
-    !!filters.relation;
+  // --- Active-filter chips (removable) -------------------------------------
+  const chips: { id: string; label: string; clear: Partial<TaskSearchFilters> }[] = [];
+  {
+    const assignN = (filters.assigneeIds?.length ?? 0) + (filters.includeUnassigned ? 1 : 0);
+    if (assignN > 0) chips.push({ id: 'assignee', label: `Assignee · ${assignN}`, clear: { assigneeIds: [], includeUnassigned: false } });
+    if (filters.statuses?.length) chips.push({ id: 'status', label: `Status · ${filters.statuses.length}`, clear: { statuses: [] } });
+    if (filters.priorities?.length) chips.push({ id: 'priority', label: `Priority · ${filters.priorities.length}`, clear: { priorities: [] } });
+    if (filters.tags?.length) chips.push({ id: 'tags', label: `Tags · ${filters.tags.length}`, clear: { tags: [] } });
+    if (filters.overdue) chips.push({ id: 'overdue', label: 'Overdue', clear: { overdue: undefined } });
+    if (filters.completedToday) chips.push({ id: 'completedToday', label: 'Completed today', clear: { completedToday: undefined } });
+    if (filters.blocked) chips.push({ id: 'blocked', label: 'Blocked', clear: { blocked: undefined } });
+    if (filters.creatorIds?.length) chips.push({ id: 'creator', label: `Created by · ${filters.creatorIds.length}`, clear: { creatorIds: [] } });
+    if (filters.relation) chips.push({ id: 'relation', label: `Relation · ${filters.relation}`, clear: { relation: undefined } });
+    if (filters.statusChangedFrom || filters.statusChangedTo) chips.push({ id: 'sc', label: 'Status changed', clear: { statusChangedFrom: null, statusChangedTo: null } });
+    if (filters.startFrom || filters.startTo || filters.includeNoStart === false) chips.push({ id: 'start', label: 'Start date', clear: { startFrom: null, startTo: null, includeNoStart: true } });
+    if (filters.dueFrom || filters.dueTo || filters.includeNoDue === false) chips.push({ id: 'due', label: 'Due date', clear: { dueFrom: null, dueTo: null, includeNoDue: true } });
+  }
+  const filtersActive = chips.length > 0;
 
   async function handleExport() {
     setExporting(true);
@@ -299,15 +329,11 @@ export function TaskSearchPage() {
     }
   }
 
-  /** The collapsible filter control for a column's filter-row cell (null if the column isn't filterable). */
   function columnFilter(key: TaskColumnKey) {
     switch (key) {
       case 'assignee':
         return (
-          <FilterPopover
-            label="Assignee"
-            active={(filters.assigneeIds?.length ?? 0) > 0 || !!filters.includeUnassigned}
-          >
+          <FilterPopover label="Assignee" active={(filters.assigneeIds?.length ?? 0) > 0 || !!filters.includeUnassigned}>
             <MultiSelect options={assigneeOptions} selected={assigneeSelected} onChange={onAssigneeChange} />
           </FilterPopover>
         );
@@ -343,59 +369,33 @@ export function TaskSearchPage() {
         );
       case 'statusChangedAt':
         return (
-          <FilterPopover
-            label="Status changed"
-            active={!!filters.statusChangedFrom || !!filters.statusChangedTo}
-          >
+          <FilterPopover label="Status changed" active={!!filters.statusChangedFrom || !!filters.statusChangedTo}>
             <div className="pop-range">
               <label>
                 From
-                <input
-                  type="datetime-local"
-                  value={filters.statusChangedFrom ?? ''}
-                  onChange={(e) => patchFilters({ statusChangedFrom: e.target.value || null })}
-                />
+                <input type="datetime-local" value={filters.statusChangedFrom ?? ''} onChange={(e) => patchFilters({ statusChangedFrom: e.target.value || null })} />
               </label>
               <label>
                 To
-                <input
-                  type="datetime-local"
-                  value={filters.statusChangedTo ?? ''}
-                  onChange={(e) => patchFilters({ statusChangedTo: e.target.value || null })}
-                />
+                <input type="datetime-local" value={filters.statusChangedTo ?? ''} onChange={(e) => patchFilters({ statusChangedTo: e.target.value || null })} />
               </label>
             </div>
           </FilterPopover>
         );
       case 'startAt':
         return (
-          <FilterPopover
-            label="Start"
-            active={!!filters.startFrom || !!filters.startTo || filters.includeNoStart === false}
-          >
+          <FilterPopover label="Start" active={!!filters.startFrom || !!filters.startTo || filters.includeNoStart === false}>
             <div className="pop-range">
               <label>
                 From
-                <input
-                  type="date"
-                  value={filters.startFrom ?? ''}
-                  onChange={(e) => patchFilters({ startFrom: e.target.value || null })}
-                />
+                <input type="date" value={filters.startFrom ?? ''} onChange={(e) => patchFilters({ startFrom: e.target.value || null })} />
               </label>
               <label>
                 To
-                <input
-                  type="date"
-                  value={filters.startTo ?? ''}
-                  onChange={(e) => patchFilters({ startTo: e.target.value || null })}
-                />
+                <input type="date" value={filters.startTo ?? ''} onChange={(e) => patchFilters({ startTo: e.target.value || null })} />
               </label>
               <label className="check-inline">
-                <input
-                  type="checkbox"
-                  checked={filters.includeNoStart ?? true}
-                  onChange={(e) => patchFilters({ includeNoStart: e.target.checked })}
-                />
+                <input type="checkbox" checked={filters.includeNoStart ?? true} onChange={(e) => patchFilters({ includeNoStart: e.target.checked })} />
                 <span>Include tasks without a Start Date</span>
               </label>
             </div>
@@ -403,33 +403,18 @@ export function TaskSearchPage() {
         );
       case 'dueAt':
         return (
-          <FilterPopover
-            label="Due"
-            active={!!filters.dueFrom || !!filters.dueTo || filters.includeNoDue === false}
-          >
+          <FilterPopover label="Due" active={!!filters.dueFrom || !!filters.dueTo || filters.includeNoDue === false}>
             <div className="pop-range">
               <label>
                 From
-                <input
-                  type="date"
-                  value={filters.dueFrom ?? ''}
-                  onChange={(e) => patchFilters({ dueFrom: e.target.value || null })}
-                />
+                <input type="date" value={filters.dueFrom ?? ''} onChange={(e) => patchFilters({ dueFrom: e.target.value || null })} />
               </label>
               <label>
                 To
-                <input
-                  type="date"
-                  value={filters.dueTo ?? ''}
-                  onChange={(e) => patchFilters({ dueTo: e.target.value || null })}
-                />
+                <input type="date" value={filters.dueTo ?? ''} onChange={(e) => patchFilters({ dueTo: e.target.value || null })} />
               </label>
               <label className="check-inline">
-                <input
-                  type="checkbox"
-                  checked={filters.includeNoDue ?? true}
-                  onChange={(e) => patchFilters({ includeNoDue: e.target.checked })}
-                />
+                <input type="checkbox" checked={filters.includeNoDue ?? true} onChange={(e) => patchFilters({ includeNoDue: e.target.checked })} />
                 <span>Include tasks without a Due Date</span>
               </label>
             </div>
@@ -444,104 +429,146 @@ export function TaskSearchPage() {
     switch (key) {
       case 'id':
         return (
-          <Link to={`/tasks/${row.id}`} onClick={(e) => e.stopPropagation()}>
+          <Link to={`/tasks/${row.id}`} className="mono task-id-link" onClick={(e) => e.stopPropagation()}>
             #{row.id}
           </Link>
         );
       case 'name':
         return (
-          <Link
-            to={`/tasks/${row.id}`}
-            className="task-name-link"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <Link to={`/tasks/${row.id}`} className="task-name-link" onClick={(e) => e.stopPropagation()}>
             {row.name}
           </Link>
         );
       case 'status':
-        return <StatusDot status={row.status} />;
+        return <StatusPill status={row.status} />;
       case 'statusChangedAt':
-        return <TimeStamp iso={row.statusChangedAt} />;
+        return <AgoDate iso={row.statusChangedAt} />;
       case 'priority':
-        return <PriorityDot priority={row.priority} />;
+        return <PriorityRamp priority={row.priority} />;
       case 'assignee':
         return row.assignee ? (
           <UserChip user={row.assignee} />
         ) : (
-          <span className="muted">Unassigned</span>
+          <span className="user-chip muted">
+            <UnassignedAvatar px={22} />
+            <span className="user-name">Unassigned</span>
+          </span>
         );
       case 'creator':
         return <UserChip user={row.creator} />;
       case 'createdAt':
-        return <TimeStamp iso={row.createdAt} />;
+        return <AgoDate iso={row.createdAt} />;
       case 'startAt':
-        return <TimeStamp iso={row.startAt} />;
+        return <DueDate iso={row.startAt} />;
       case 'dueAt':
-        return <TimeStamp iso={row.dueAt} />;
+        return <DueDate iso={row.dueAt} />;
       case 'parentChild':
         if (row.parentId != null)
           return (
-            <Link to={`/tasks/${row.parentId}`} onClick={(e) => e.stopPropagation()}>
+            <Link to={`/tasks/${row.parentId}`} className="mono" onClick={(e) => e.stopPropagation()}>
               ↑ #{row.parentId}
             </Link>
           );
-        if (row.childrenCount > 0) return `${row.childrenCount} sub-task${row.childrenCount === 1 ? '' : 's'}`;
+        if (row.childrenCount > 0)
+          return <span className="mono muted">{row.childrenCount} sub</span>;
         return <span className="muted">—</span>;
       case 'tags':
         return <TagsCell tags={row.tags} />;
     }
   }
 
+  const statTiles = dash
+    ? [
+        { key: OVERDUE_STAT, label: 'Overdue', value: dash.overdue, cls: 'ts-danger' },
+        { key: statusStat('InProgress'), label: 'In progress', value: dash.byStatus.InProgress ?? 0, cls: 'ts-accent' },
+        { key: statusStat('Review'), label: 'In review', value: dash.byStatus.Review ?? 0, cls: 'ts-review' },
+        { key: COMPLETED_TODAY_STAT, label: 'Completed today', value: dash.completedToday, cls: 'ts-ok' },
+      ]
+    : [];
+  const activeStats = dashboardActiveStats(filters);
+
+  const sortSummary = sort.length
+    ? `${TASK_COLUMN_LABELS[sort[0]!.field]} ${sort[0]!.dir === 'asc' ? '↑' : '↓'}${sort.length > 1 ? ` +${sort.length - 1}` : ''}`
+    : null;
+
+  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(total, page * pageSize);
+
   return (
-    <div className="container container-wide">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-        <h2 style={{ margin: 0 }}>Tasks</h2>
+    <div className="tasks-page">
+      {/* Toolbar */}
+      <div className="tasks-toolbar">
+        <h1>Tasks</h1>
+        <span className="mono tasks-total">{loading ? '…' : total}</span>
+        <input
+          className="tasks-search"
+          value={searchText}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search Id, name, or tags…"
+          aria-label="Search tasks"
+        />
         <div className="spacer" />
-        {filtersActive && (
-          <button
-            className="secondary"
-            onClick={() => {
-              setFilters(defaultFilters);
-              setPage(1);
-            }}
-          >
-            Clear filters
-          </button>
-        )}
         <button className="secondary" onClick={() => setShowColumns((v) => !v)}>
           Columns
         </button>
         <button className="secondary" onClick={handleExport} disabled={exporting}>
-          {exporting ? 'Exporting…' : 'Export to Excel'}
+          {exporting ? 'Exporting…' : 'Export'}
         </button>
-        <Link to="/tasks/new">
-          <button>New task</button>
-        </Link>
+        <button onClick={() => navigate('/tasks/new')}>New task</button>
       </div>
 
-      {/* Dashboard: collapsible counts for the current filtered result set */}
-      <TaskDashboard
-        text={debouncedText}
-        filters={filters}
-        collapsed={dashboardCollapsed}
-        onToggleCollapsed={() => setDashboardCollapsed((v) => !v)}
-        onSelectStat={onSelectStat}
-      />
+      {error && <div className="alert error">{error}</div>}
 
-      {/* Search (separate from filters) */}
-      <div className="search-row">
-        <input
-          value={searchText}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search by Task Id, Name, or Tags…"
-          aria-label="Search tasks"
-          style={{ flex: 1 }}
-        />
-        {searchText && (
-          <button className="secondary" onClick={() => onSearchChange('')}>
-            Clear search
+      {/* Stat strip */}
+      <div className="tasks-stats">
+        {statTiles.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`tasks-stat ${t.cls}${activeStats.has(t.key) ? ' active' : ''}`}
+            aria-pressed={activeStats.has(t.key)}
+            onClick={() => onSelectStat(t.key)}
+          >
+            <span className="tasks-stat-value">
+              <AnimatedCount value={t.value} />
+            </span>
+            <span className="tasks-stat-label">{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Chip row: view segmented + active filters + sort/nest */}
+      <div className="tasks-chiprow">
+        <div className="seg">
+          <button type="button" className="seg-btn active">
+            List
+          </button>
+          <button type="button" className="seg-btn" disabled title="Coming later">
+            Board
+          </button>
+          <button type="button" className="seg-btn" disabled title="Coming later">
+            Calendar
+          </button>
+        </div>
+        <span className="chip-divider" />
+        {chips.map((c) => (
+          <button key={c.id} type="button" className="filter-chip" onClick={() => patchFilters(c.clear)}>
+            {c.label}
+            <span className="chip-x" aria-hidden="true">
+              ×
+            </span>
+          </button>
+        ))}
+        <button type="button" className={`add-filter${showFilters ? ' open' : ''}`} onClick={() => setShowFilters((v) => !v)}>
+          + Filter
+        </button>
+        {filtersActive && (
+          <button type="button" className="link-button" onClick={clearAllFilters}>
+            Clear all
           </button>
         )}
+        <div className="spacer" />
+        {sortSummary && <span className="mono tasks-sort">Sort: {sortSummary}</span>}
         <label className="nest-toggle">
           <input
             type="checkbox"
@@ -552,43 +579,43 @@ export function TaskSearchPage() {
               setPage(1);
             }}
           />
-          Nest sub-tasks
+          Nest
         </label>
       </div>
 
-      {error && <div className="alert error">{error}</div>}
+      {/* + Filter panel */}
+      {showFilters && (
+        <div className="card panel tasks-filter-panel">
+          {FILTERABLE.map((k) => (
+            <div key={k} className="tasks-filter-field">
+              <span className="u-label">{TASK_COLUMN_LABELS[k]}</span>
+              {columnFilter(k)}
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* Columns panel — horizontal (mirrors the on-screen order), ← → reorder */}
+      {/* Columns panel */}
       {showColumns && (
         <div className="card panel">
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
             <strong>Columns</strong>
             <div className="spacer" />
-            <button className="secondary" onClick={() => setColumns(defaultColumns())}>
+            <button className="secondary btn-sm" onClick={() => setColumns(defaultColumns())}>
               Reset
             </button>
           </div>
           <ul className="columns-list">
             {columns.map((c, i) => (
               <li key={c.key} className="col-chip">
-                <button
-                  className="col-move"
-                  disabled={i === 0}
-                  aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} left`}
-                  onClick={() => moveColumn(i, -1)}
-                >
+                <button className="col-move" disabled={i === 0} aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} left`} onClick={() => moveColumn(i, -1)}>
                   ←
                 </button>
                 <label>
                   <input type="checkbox" checked={c.visible} onChange={() => toggleColumn(c.key)} />
                   {TASK_COLUMN_LABELS[c.key]}
                 </label>
-                <button
-                  className="col-move"
-                  disabled={i === columns.length - 1}
-                  aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} right`}
-                  onClick={() => moveColumn(i, 1)}
-                >
+                <button className="col-move" disabled={i === columns.length - 1} aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} right`} onClick={() => moveColumn(i, 1)}>
                   →
                 </button>
               </li>
@@ -598,8 +625,8 @@ export function TaskSearchPage() {
       )}
 
       {/* Results */}
-      <div className="table-scroll">
-        <table className="results-table">
+      <div className="table-scroll tasks-table-wrap">
+        <table className="results-table tasks-table">
           <thead>
             <tr>
               <th style={{ width: 24 }} />
@@ -614,20 +641,10 @@ export function TaskSearchPage() {
                 />
               ))}
             </tr>
-            <tr className="filter-row">
-              <th />
-              {visibleColumns.map((c) => (
-                <th key={c.key}>{columnFilter(c.key)}</th>
-              ))}
-            </tr>
           </thead>
           <tbody>
             {displayRows.map(({ row, depth, hasChildrenHere }) => (
-              <tr
-                key={row.id}
-                className={`row-clickable${depth > 0 ? ' tree-child-enter' : ''}`}
-                onClick={() => navigate(`/tasks/${row.id}`)}
-              >
+              <tr key={row.id} className={`row-clickable${depth > 0 ? ' tree-child-enter' : ''}`} onClick={() => navigate(`/tasks/${row.id}`)}>
                 <td style={{ textAlign: 'center' }}>
                   {hasChildrenHere ? (
                     <button
@@ -645,7 +662,7 @@ export function TaskSearchPage() {
                   ) : null}
                 </td>
                 {visibleColumns.map((c, ci) => (
-                  <td key={c.key} style={ci === 0 ? { paddingLeft: `${0.8 + depth * 1.25}rem` } : undefined}>
+                  <td key={c.key} className={`col-${c.key}${depth > 0 && ci === 0 ? ' is-child' : ''}`} style={ci === 0 ? { paddingLeft: `${10 + depth * 22}px` } : undefined}>
                     {renderCell(c.key, row)}
                   </td>
                 ))}
@@ -656,19 +673,16 @@ export function TaskSearchPage() {
                 <td className="empty-cell" colSpan={visibleColumns.length + 1}>
                   <div className="empty-state compact">
                     <span className="loading-inline">
-                      <span className="spinner" /> Loading tasks…
+                      <span className="mono">Loading…</span>
                     </span>
                   </div>
                 </td>
               </tr>
             )}
             {!loading && displayRows.length === 0 && (
-              <TableEmptyRow
-                colSpan={visibleColumns.length + 1}
-                title={filtersActive || searchText ? 'No tasks match' : 'No tasks yet'}
-              >
+              <TableEmptyRow colSpan={visibleColumns.length + 1} title={filtersActive || searchText ? 'No tasks match' : 'No tasks yet'}>
                 {filtersActive || searchText
-                  ? 'Try adjusting your filters or search terms.'
+                  ? 'Clear a filter to see the tasks it hid.'
                   : 'Create your first task to get started.'}
               </TableEmptyRow>
             )}
@@ -676,14 +690,14 @@ export function TaskSearchPage() {
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Pager */}
       <div className="pager">
-        <span className="muted">
-          {loading ? 'Loading…' : `${total} result${total === 1 ? '' : 's'}`}
+        <span className="mono muted">
+          {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
         </span>
         <div className="spacer" />
-        <label>
-          Rows:{' '}
+        <label className="mono">
+          Rows{' '}
           <select
             value={pageSize}
             onChange={(e) => {
@@ -698,17 +712,13 @@ export function TaskSearchPage() {
             ))}
           </select>
         </label>
-        <button className="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+        <button className="secondary btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
           ← Prev
         </button>
-        <span>
+        <span className="mono">
           Page {page} of {totalPages}
         </span>
-        <button
-          className="secondary"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
+        <button className="secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
           Next →
         </button>
       </div>

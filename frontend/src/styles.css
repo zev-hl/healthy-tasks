@@ -817,6 +817,211 @@ textarea:focus-visible {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Tasks (/tasks) — redesign
+   --------------------------------------------------------------------------- */
+.tasks-page {
+  padding: 22px 26px;
+}
+.tasks-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.tasks-toolbar h1 {
+  font-size: 22px;
+}
+.tasks-total {
+  font-size: 13px;
+  color: var(--muted-2);
+}
+.tasks-search {
+  width: 300px;
+  max-width: 40vw;
+}
+
+.tasks-stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.tasks-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.tasks-stat:hover {
+  border-color: var(--border-dashed);
+}
+.tasks-stat-value {
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.tasks-stat-label {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.ts-danger .tasks-stat-value {
+  color: var(--danger-deep);
+}
+.ts-accent .tasks-stat-value {
+  color: var(--accent-deep);
+}
+.ts-review .tasks-stat-value {
+  color: var(--review-deep);
+}
+.ts-ok .tasks-stat-value {
+  color: var(--ok-deep);
+}
+.tasks-stat.active {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.tasks-stat.ts-danger.active {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.tasks-stat.ts-accent.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.tasks-stat.ts-review.active {
+  border-color: var(--review);
+  background: var(--review-soft);
+}
+.tasks-stat.ts-ok.active {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.tasks-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.chip-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.filter-chip:hover {
+  filter: brightness(0.97);
+  background: var(--accent-soft);
+}
+.chip-x {
+  opacity: 0.7;
+  font-size: 13px;
+}
+.add-filter {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px dashed var(--border-dashed);
+  background: transparent;
+  color: var(--ink-3);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.add-filter:hover {
+  border-color: var(--muted);
+  color: var(--ink);
+  background: transparent;
+}
+.add-filter.open {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent-deep);
+  background: transparent;
+}
+.tasks-sort {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+.tasks-chiprow .nest-toggle {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+.tasks-filter-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+}
+.tasks-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 150px;
+}
+
+/* Table look */
+.tasks-table {
+  min-width: 980px;
+}
+.tasks-table thead th {
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+  border-bottom: 1px solid var(--border);
+}
+.tasks-table tbody td {
+  border-bottom: 1px solid var(--row-line);
+  font-size: 12.5px;
+  padding: 11px 14px;
+  vertical-align: middle;
+}
+.tasks-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.tasks-table .task-name-link {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.tasks-table td.is-child,
+.tasks-table td.is-child .task-name-link {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.task-id-link {
+  color: var(--muted-2);
+  font-size: 12px;
+}
+.task-id-link:hover {
+  color: var(--accent);
+}
+
 .container {
   max-width: 980px;
   margin: 1.75rem auto;
