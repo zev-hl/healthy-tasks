@@ -291,8 +291,28 @@ export function UsersPage() {
                   <td>
                     <UserChip user={u} label={u.email} />
                   </td>
-                  <td>{u.firstName || <span className="muted">—</span>}</td>
-                  <td>{u.lastName || <span className="muted">—</span>}</td>
+                  <td>
+                    {u.firstName ? (
+                      u.firstName
+                    ) : merged ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      <button type="button" className="incomplete-link" onClick={() => setEditing(u)}>
+                        + Add
+                      </button>
+                    )}
+                  </td>
+                  <td>
+                    {u.lastName ? (
+                      u.lastName
+                    ) : merged ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      <button type="button" className="incomplete-link" onClick={() => setEditing(u)}>
+                        + Add
+                      </button>
+                    )}
+                  </td>
                   <td>
                     <span className={`badge role-${u.role}`}>{u.role}</span>
                   </td>

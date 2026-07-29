@@ -320,6 +320,23 @@ textarea:focus-visible {
   border-radius: 50%;
   background: var(--warning);
 }
+/* Prompt to complete a required-but-missing name in the Users table. */
+.incomplete-link {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--warning-text);
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.incomplete-link:hover {
+  background: transparent;
+  color: var(--warning);
+}
+
 /* A live status/priority color dot beside a select. */
 .select-with-cue {
   display: flex;
