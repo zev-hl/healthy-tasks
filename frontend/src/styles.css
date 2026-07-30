@@ -4317,6 +4317,14 @@ tr.just-completed > td {
   margin-left: 0.5rem;
 }
 
+/* Savebar "All changes saved" fades out shortly after a save, then goes blank. */
+.savebar-flag.saved {
+  transition: opacity var(--dur-slow) var(--ease);
+}
+.savebar-flag.saved.is-fading {
+  opacity: 0;
+}
+
 /* --- Review workflow: locked chips + banner + reviewer picker ------------- */
 .prop-chip.is-locked {
   opacity: 0.85;

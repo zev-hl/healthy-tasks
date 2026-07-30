@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   TASK_NAME_MIN_LENGTH,
@@ -67,19 +67,25 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Reviewed / Recall actions.
   const [pendingReview, setPendingReview] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
-  // Whether anything has been saved during this viewing of the task. Drives the
-  // persistent "All changes saved" savebar label: it only appears after a save
-  // and stays until the task is re-displayed (this component is keyed by task id,
-  // so it resets on refresh or navigation). A fresh, untouched task shows no flag.
-  const [savedThisView, setSavedThisView] = useState(false);
+  // Savebar "All changes saved" label lifecycle: appears on a save, holds
+  // briefly, then fades out and goes blank. 'hidden' is the resting state, so a
+  // fresh/untouched task shows no flag.
+  const [savedState, setSavedState] = useState<'hidden' | 'shown' | 'fading'>('hidden');
+  const savedTimers = useRef<number[]>([]);
 
   // A "Task saved." confirmation auto-clears so it reads as a transient flash;
-  // the savebar's "All changes saved" label (via savedThisView) is what persists.
+  // the savebar's "All changes saved" label follows the same fade-then-blank arc.
   const flashSaved = useCallback(() => {
     setNotice('Task saved.');
-    setSavedThisView(true);
     window.setTimeout(() => setNotice(null), 2500);
+    savedTimers.current.forEach((t) => window.clearTimeout(t));
+    savedTimers.current = [];
+    setSavedState('shown');
+    savedTimers.current.push(window.setTimeout(() => setSavedState('fading'), 1800));
+    savedTimers.current.push(window.setTimeout(() => setSavedState('hidden'), 2100));
   }, []);
+  // Cancel pending fade timers on unmount.
+  useEffect(() => () => savedTimers.current.forEach((t) => window.clearTimeout(t)), []);
 
   // Inline name edit.
   const [editingName, setEditingName] = useState(false);
@@ -585,8 +591,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <span className="savebar-dot" aria-hidden="true" />
               Unsaved changes
             </span>
-          ) : savedThisView ? (
-            <span className="savebar-flag saved">All changes saved</span>
+          ) : savedState !== 'hidden' ? (
+            <span className={`savebar-flag saved${savedState === 'fading' ? ' is-fading' : ''}`}>
+              All changes saved
+            </span>
           ) : null}
           {fieldsError && <span className="savebar-error">{fieldsError}</span>}
           <div className="spacer" />
