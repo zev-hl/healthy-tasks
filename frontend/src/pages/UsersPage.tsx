@@ -84,9 +84,15 @@ export function UsersPage() {
   const loadCounts = useCallback(() => {
     void api.userCounts().then(setCounts).catch(() => {});
   }, []);
+  // Eligible-supervisor list for the edit dropdown. Kept in a callback so it can
+  // be refreshed after any user mutation (create/edit/merge) — otherwise a newly
+  // added Manager won't appear until a full page reload.
+  const loadSupervisors = useCallback(() => {
+    void api.listSupervisors().then(setSupervisors).catch(() => setSupervisors([]));
+  }, []);
 
   useEffect(() => {
-    void api.listSupervisors().then(setSupervisors).catch(() => setSupervisors([]));
+    loadSupervisors();
     loadOptions();
     loadCounts();
     void api
@@ -102,7 +108,7 @@ export function UsersPage() {
       })
       .catch(() => {})
       .finally(() => setHydrated(true));
-  }, [loadOptions, loadCounts]);
+  }, [loadSupervisors, loadOptions, loadCounts]);
 
   const snapshot = useMemo<PersistedUsersState>(
     () => ({ filters, sort, page, pageSize }),
@@ -450,6 +456,7 @@ export function UsersPage() {
             setEditing(null);
             setNotice(message);
             void load();
+            loadSupervisors();
             loadOptions();
             loadCounts();
           }}
@@ -463,6 +470,7 @@ export function UsersPage() {
             setShowCreate(false);
             setNotice('User created. A password-reset link was emailed / logged to the console.');
             void load();
+            loadSupervisors();
             loadOptions();
             loadCounts();
           }}
@@ -477,6 +485,7 @@ export function UsersPage() {
             setShowMerge(false);
             setNotice(message);
             void load();
+            loadSupervisors();
             loadOptions();
             loadCounts();
           }}
