@@ -330,6 +330,64 @@ textarea:focus-visible {
   margin-bottom: 0.6rem;
 }
 
+/* Phase 11: "Repeat on" weekday selector (Google-style round toggles). */
+.weekday-picker {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.weekday-chip {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.weekday-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Collapsible recurrence block at the bottom of the template's Name & Notes card. */
+.recur-collapse {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 0.85rem;
+}
+.recur-collapse-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+}
+.recur-collapse-head .recur-caret {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.recur-collapse-head[aria-expanded='true'] .recur-caret {
+  transform: rotate(90deg);
+}
+.recur-collapse-summary {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.recur-collapse-body {
+  margin-top: 0.85rem;
+}
+
 /* Phase 11: template editor node cards + dependency rows. */
 .tpl-node {
   border: 1px solid var(--border);
@@ -363,6 +421,35 @@ textarea:focus-visible {
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   flex-wrap: wrap;
+}
+/* Per-node dependency rows (Blocked by / Blocks), mirroring task relationships. */
+.tpl-node-rels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-soft);
+}
+.tpl-rel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 220px;
+  flex: 1;
+}
+.tpl-rel-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-2);
+}
+.tpl-rel-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .sidebar {

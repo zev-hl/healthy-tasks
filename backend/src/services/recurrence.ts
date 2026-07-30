@@ -19,6 +19,8 @@ export interface RecurrenceConfig {
   recurrenceType: RecurrenceType;
   intervalCount: number | null;
   intervalUnit: RecurrenceUnit | null;
+  /** Weekly-only "repeat on" weekdays (0=Sun … 6=Sat); empty ⇒ the anchor's day. */
+  weekdays: number[];
   anchorDate: Date | null;
   endType: RecurrenceEndType;
   endDate: Date | null;
@@ -50,7 +52,44 @@ export function addInterval(date: Date, unit: RecurrenceUnit, count: number): Da
       return addDays(date, count * 7);
     case 'Month':
       return addMonths(date, count);
+    case 'Year':
+      return addMonths(date, count * 12);
   }
+}
+
+function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/**
+ * The `seq`-th (1-based) date of a weekly "repeat on" schedule. Occurrence #1 is
+ * always the anchor itself (the series start / source task, whatever weekday it
+ * falls on, matching Google's "keep the original date" behavior); occurrences
+ * 2, 3, … are the selected weekdays (0=Sun … 6=Sat) enumerated strictly after
+ * the anchor, every `intervalWeeks` weeks. The anchor's time-of-day is preserved.
+ * Empty weekdays falls back to the plain weekly step.
+ */
+function weeklyByweekdayDate(anchor: Date, intervalWeeks: number, weekdays: number[], seq: number): Date {
+  if (seq === 1) return anchor;
+  const days = [...new Set(weekdays)].filter((w) => w >= 0 && w <= 6).sort((a, b) => a - b);
+  if (days.length === 0) return addDays(anchor, intervalWeeks * 7 * (seq - 1));
+  const anchorDay = startOfUtcDay(anchor);
+  const timeOfDay = anchor.getTime() - anchorDay.getTime();
+  const weekStart0 = addDays(anchorDay, -anchorDay.getUTCDay()); // Sunday of the anchor's week
+  let count = 0;
+  const HARD_CAP = 200000;
+  for (let c = 0; c < HARD_CAP; c++) {
+    const base = addDays(weekStart0, c * intervalWeeks * 7);
+    for (const wd of days) {
+      const d = addDays(base, wd);
+      if (d.getTime() > anchorDay.getTime()) {
+        // seq 2 → the 1st byweekday date after the anchor, etc.
+        count += 1;
+        if (count === seq - 1) return new Date(d.getTime() + timeOfDay);
+      }
+    }
+  }
+  throw new Error('weeklyByweekdayDate: seq out of range');
 }
 
 /** Whether a template has a live (auto-generating) recurrence. */
@@ -67,6 +106,11 @@ export function fixedAnchorForSeq(cfg: RecurrenceConfig, seq: number): Date {
   if (cfg.recurrenceType !== 'Fixed') throw new Error('fixedAnchorForSeq: not a Fixed schedule');
   if (!cfg.anchorDate || !cfg.intervalUnit || !cfg.intervalCount) {
     throw new Error('fixedAnchorForSeq: incomplete recurrence config');
+  }
+  // Weekly with selected weekdays enumerates by-weekday; every other unit steps
+  // the anchor by whole intervals.
+  if (cfg.intervalUnit === 'Week' && cfg.weekdays.length > 0) {
+    return weeklyByweekdayDate(cfg.anchorDate, cfg.intervalCount, cfg.weekdays, seq);
   }
   return addInterval(cfg.anchorDate, cfg.intervalUnit, cfg.intervalCount * (seq - 1));
 }

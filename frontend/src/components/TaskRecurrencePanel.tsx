@@ -4,6 +4,7 @@ import {
   DEFAULT_TEMPLATE_LEAD_DAYS,
   RECURRENCE_UNIT_LABELS,
   RECURRENCE_UNITS,
+  WEEKDAYS,
   type RecurrenceEndType,
   type RecurrenceUnit,
   type SetTaskRecurrenceRequest,
@@ -11,14 +12,18 @@ import {
   type TaskRecurrenceDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { WeekdayPicker } from './WeekdayPicker';
 
 /** Human summary of a task's recurrence rule for the rail. */
 function describeRecurrence(r: TaskRecurrenceDto): string {
   const unit = RECURRENCE_UNIT_LABELS[r.intervalUnit];
-  const base =
+  let base =
     r.recurrenceType === 'Fixed'
       ? `Every ${r.intervalCount} ${unit}`
       : `${r.intervalCount} ${unit} after each completion`;
+  if (r.recurrenceType === 'Fixed' && r.intervalUnit === 'Week' && r.weekdays.length > 0) {
+    base += ` on ${r.weekdays.map((d) => WEEKDAYS[d]?.label.slice(0, 3)).join(', ')}`;
+  }
   let end = '';
   if (r.endType === 'AfterOccurrences' && r.maxOccurrences) end = ` · ${r.maxOccurrences} times`;
   else if (r.endType === 'OnDate' && r.endDate) end = ` · until ${r.endDate.slice(0, 10)}`;
@@ -48,6 +53,7 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
   const [type, setType] = useState<TaskRecurrenceDto['recurrenceType']>(rec?.recurrenceType ?? 'Fixed');
   const [count, setCount] = useState(String(rec?.intervalCount ?? 1));
   const [unit, setUnit] = useState<RecurrenceUnit>(rec?.intervalUnit ?? 'Week');
+  const [weekdays, setWeekdays] = useState<number[]>(rec?.weekdays ?? []);
   const [endType, setEndType] = useState<RecurrenceEndType>(rec?.endType ?? 'Never');
   const [endDate, setEndDate] = useState(rec?.endDate?.slice(0, 10) ?? '');
   const [maxOccurrences, setMaxOccurrences] = useState(String(rec?.maxOccurrences ?? 3));
@@ -57,6 +63,7 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
     setType(rec?.recurrenceType ?? 'Fixed');
     setCount(String(rec?.intervalCount ?? 1));
     setUnit(rec?.intervalUnit ?? 'Week');
+    setWeekdays(rec?.weekdays ?? []);
     setEndType(rec?.endType ?? 'Never');
     setEndDate(rec?.endDate?.slice(0, 10) ?? '');
     setMaxOccurrences(String(rec?.maxOccurrences ?? 3));
@@ -76,6 +83,7 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
       recurrenceType: type,
       intervalCount,
       intervalUnit: unit,
+      weekdays: unit === 'Week' ? weekdays : [],
       endType,
       endDate: endType === 'OnDate' ? endDate || null : null,
       maxOccurrences: endType === 'AfterOccurrences' ? Number(maxOccurrences) : null,
@@ -180,6 +188,12 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
               </select>
             </div>
           </div>
+          {unit === 'Week' && (
+            <div className="field">
+              <label>Repeat on</label>
+              <WeekdayPicker value={weekdays} onChange={setWeekdays} />
+            </div>
+          )}
           <div className="field">
             <label htmlFor="recur-end">Ends</label>
             <select id="recur-end" value={endType} onChange={(e) => setEndType(e.target.value as RecurrenceEndType)}>

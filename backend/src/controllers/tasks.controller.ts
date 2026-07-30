@@ -12,6 +12,7 @@ import { HttpError } from '../utils/http-error.js';
 import {
   createTask,
   deleteTask,
+  duplicateTask,
   exitReview,
   getTaskDetail,
   listAllTags,
@@ -36,6 +37,7 @@ import {
 import type {
   CreateTaskInput,
   DependencyInput,
+  DuplicateTaskInput,
   SetParentInput,
   UpdateTaskInput,
 } from '../validation/schemas.js';
@@ -171,4 +173,11 @@ export async function deleteTaskController(req: Request, res: Response): Promise
   // Admin-only; also enforced in the service.
   await deleteTask({ id: req.user.id, role: req.user.role }, parseTaskId(req));
   res.status(204).send();
+}
+
+export async function duplicateTaskController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  const { includeDescendants } = req.body as DuplicateTaskInput;
+  const task = await duplicateTask(req.user.id, parseTaskId(req), includeDescendants ?? false);
+  res.status(201).json(task satisfies TaskDetailDto);
 }

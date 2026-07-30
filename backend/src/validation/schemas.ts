@@ -155,6 +155,12 @@ export const updateTaskSchema = z.object({
   coalesceHistory: z.boolean().optional(),
 });
 
+// Duplicate a task: optionally clone its whole sub-tree.
+export const duplicateTaskSchema = z.object({
+  includeDescendants: z.boolean().optional(),
+});
+export type DuplicateTaskInput = z.infer<typeof duplicateTaskSchema>;
+
 // --- Task relationships (Phase 3) ------------------------------------------
 
 const taskId = z.number().int().positive('A valid task id is required');
@@ -338,11 +344,15 @@ const offsetDays = z
 // links within a single payload (server ids don't exist yet on create).
 const nodeKey = z.string().trim().min(1).max(100);
 
+// Weekly "repeat on" weekdays (0=Sun … 6=Sat).
+const weekdaysSchema = z.array(z.number().int().min(0).max(6)).max(7).optional();
+
 const recurrenceInputSchema = z
   .object({
     recurrenceType: z.enum(RECURRENCE_TYPES),
     intervalCount: z.number().int().min(1).max(365).nullable().optional(),
     intervalUnit: z.enum(RECURRENCE_UNITS).nullable().optional(),
+    weekdays: weekdaysSchema,
     anchorDate: z
       .union([z.null(), z.literal(''), z.coerce.date()])
       .optional()
@@ -453,6 +463,7 @@ export const setTaskRecurrenceSchema = z
     recurrenceType: z.enum(['Fixed', 'RelativeToCompletion']),
     intervalCount: z.number().int().min(1).max(365),
     intervalUnit: z.enum(RECURRENCE_UNITS),
+    weekdays: weekdaysSchema,
     endType: z.enum(RECURRENCE_END_TYPES).optional(),
     endDate: z
       .union([z.null(), z.literal(''), z.coerce.date()])

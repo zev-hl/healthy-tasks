@@ -3292,4 +3292,85 @@ describe('task-level recurrence (Phase 11)', () => {
       .send({ seq: 2 });
     assert.equal(dup.status, 409);
   });
+
+  it('weekly "repeat on" generates occurrences only on the selected weekdays', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Standup', {
+      startAt: '2026-08-03T09:00:00.000Z',
+      dueAt: '2026-08-03T09:30:00.000Z',
+    });
+    await setRecurrence(admin, t.id, {
+      recurrenceType: 'Fixed',
+      intervalCount: 1,
+      intervalUnit: 'Week',
+      weekdays: [1, 3], // Monday & Wednesday
+      endType: 'AfterOccurrences',
+      maxOccurrences: 6,
+      leadTimeDays: 0,
+    });
+
+    const ghosts = await request(app).get('/api/tasks/ghosts').set(auth(admin));
+    const mine = ghosts.body.filter((g: { sourceId: number }) => g.sourceId === t.id);
+    assert.equal(mine.length, 5, 'seq 2..6 are ghosts (seq 1 is the source task)');
+    for (const g of mine as { startAt: string; dueAt: string }[]) {
+      const wd = new Date(g.startAt).getUTCDay();
+      assert.ok([1, 3].includes(wd), `ghost weekday ${wd} should be Mon(1) or Wed(3)`);
+      // The 30-minute span is preserved on each occurrence.
+      assert.equal(new Date(g.dueAt).getTime() - new Date(g.startAt).getTime(), 30 * 60 * 1000);
+    }
+  });
+});
+
+describe('task duplication (Phase 11 follow-on)', () => {
+  it('duplicates a single task as a fresh copy (status reset, no descendants)', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Original', { priority: 'High', tags: ['x'], dueAt: '2026-09-01T00:00:00.000Z' });
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(tok)).send({ status: 'InProgress' });
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/duplicate`)
+      .set(auth(tok))
+      .send({ includeDescendants: false });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.notEqual(res.body.id, t.id);
+    assert.equal(res.body.name, 'Original');
+    assert.equal(res.body.priority, 'High');
+    assert.deepEqual(res.body.tags, ['x']);
+    assert.equal(res.body.status, 'Open', 'a copy starts fresh');
+    assert.equal(res.body.children.length, 0);
+  });
+
+  it('duplicates a whole sub-tree with internal dependencies remapped', async () => {
+    const tok = await adminToken();
+    const parent = await makeTask(tok, 'Parent');
+    const child = await makeTask(tok, 'Child');
+    await request(app).put(`/api/tasks/${child.id}/parent`).set(auth(tok)).send({ parentId: parent.id });
+    await request(app)
+      .post(`/api/tasks/${parent.id}/dependencies`)
+      .set(auth(tok))
+      .send({ type: 'blocks', otherTaskId: child.id });
+
+    const res = await request(app)
+      .post(`/api/tasks/${parent.id}/duplicate`)
+      .set(auth(tok))
+      .send({ includeDescendants: true });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.notEqual(res.body.id, parent.id);
+    assert.equal(res.body.children.length, 1, 'the sub-tree is cloned');
+    const newChildId = res.body.children[0].id as number;
+    assert.notEqual(newChildId, child.id);
+    // The internal dependency is carried onto the copies (not the originals).
+    assert.equal(res.body.blocks.length, 1);
+    assert.equal(res.body.blocks[0].id, newChildId);
+
+    const newChild = await request(app).get(`/api/tasks/${newChildId}`).set(auth(tok));
+    assert.equal(newChild.body.parentId, res.body.id, 'the child copy hangs off the new root');
+
+    // Duplicating just the parent (no descendants) leaves the copy childless.
+    const solo = await request(app)
+      .post(`/api/tasks/${parent.id}/duplicate`)
+      .set(auth(tok))
+      .send({ includeDescendants: false });
+    assert.equal(solo.body.children.length, 0);
+  });
 });

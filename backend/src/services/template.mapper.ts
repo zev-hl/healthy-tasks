@@ -94,6 +94,7 @@ export function toTemplateDto(t: TemplateWithGraph): TemplateDto {
     recurrenceType: t.recurrenceType,
     intervalCount: t.intervalCount,
     intervalUnit: t.intervalUnit,
+    weekdays: t.weekdays,
     anchorDate: iso(t.anchorDate),
     endType: t.endType,
     endDate: iso(t.endDate),

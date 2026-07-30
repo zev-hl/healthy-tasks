@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   createTaskSchema,
   updateTaskSchema,
+  duplicateTaskSchema,
   setParentSchema,
   dependencySchema,
   presignAttachmentSchema,
@@ -31,6 +32,7 @@ import {
   addDependencyController,
   removeDependencyController,
   deleteTaskController,
+  duplicateTaskController,
 } from '../controllers/tasks.controller.js';
 import {
   presignTaskAttachmentController,
@@ -77,6 +79,8 @@ tasksRouter.post('/:id/reviewed', asyncHandler(reviewedController));
 tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));
 // Deleting a task is Admin-only (also enforced in the service).
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
+// Duplicate a task, optionally its whole sub-tree.
+tasksRouter.post('/:id/duplicate', validateBody(duplicateTaskSchema), asyncHandler(duplicateTaskController));
 
 // Parent / Child
 tasksRouter.put('/:id/parent', validateBody(setParentSchema), asyncHandler(setParentController));

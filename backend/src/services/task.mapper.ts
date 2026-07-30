@@ -73,6 +73,7 @@ export function toTaskRecurrenceDto(r: TaskRecurrence, occurrenceCount: number):
     recurrenceType: r.recurrenceType as Exclude<RecurrenceType, 'None'>,
     intervalCount: r.intervalCount,
     intervalUnit: r.intervalUnit,
+    weekdays: r.weekdays,
     anchorDate: r.anchorDate.toISOString(),
     endType: r.endType,
     endDate: r.endDate?.toISOString() ?? null,

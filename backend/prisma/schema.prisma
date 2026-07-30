@@ -531,6 +531,7 @@ enum RecurrenceUnit {
   Day
   Week
   Month
+  Year
 }
 
 // End condition for a recurrence. `Never` recurs indefinitely; `OnDate` stops
@@ -567,6 +568,9 @@ model TaskTemplate {
   recurrenceType TemplateRecurrenceType @default(None)
   intervalCount  Int?
   intervalUnit   RecurrenceUnit?
+  // For a weekly interval, the specific weekdays it repeats on (0=Sun … 6=Sat).
+  // Empty ⇒ repeats on the anchor's own weekday. Ignored for non-weekly units.
+  weekdays       Int[]           @default([])
   // Start of the series: the first occurrence's anchor (its "instantiation
   // date", from which node offsets are measured).
   anchorDate     DateTime?
@@ -708,6 +712,8 @@ model TaskRecurrence {
   recurrenceType TemplateRecurrenceType
   intervalCount  Int
   intervalUnit   RecurrenceUnit
+  // Weekly-only: weekdays it repeats on (0=Sun … 6=Sat); empty ⇒ the anchor's day.
+  weekdays       Int[]             @default([])
   anchorDate     DateTime
   endType        RecurrenceEndType @default(Never)
   endDate        DateTime?

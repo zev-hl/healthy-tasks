@@ -48,6 +48,7 @@ function toRecurrenceConfig(t: {
   recurrenceType: RecurrenceConfig['recurrenceType'];
   intervalCount: number | null;
   intervalUnit: RecurrenceConfig['intervalUnit'];
+  weekdays: number[];
   anchorDate: Date | null;
   endType: RecurrenceConfig['endType'];
   endDate: Date | null;
@@ -58,6 +59,7 @@ function toRecurrenceConfig(t: {
     recurrenceType: t.recurrenceType,
     intervalCount: t.intervalCount,
     intervalUnit: t.intervalUnit,
+    weekdays: t.weekdays,
     anchorDate: t.anchorDate,
     endType: t.endType,
     endDate: t.endDate,
@@ -154,6 +156,7 @@ function recurrenceData(r: RecurrenceInputParsed | undefined) {
       recurrenceType: 'None' as const,
       intervalCount: null,
       intervalUnit: null,
+      weekdays: [],
       anchorDate: null,
       endType: 'Never' as const,
       endDate: null,
@@ -171,6 +174,8 @@ function recurrenceData(r: RecurrenceInputParsed | undefined) {
     recurrenceType: r.recurrenceType,
     intervalCount: r.intervalCount ?? null,
     intervalUnit: r.intervalUnit ?? null,
+    // Weekday selection only applies to a weekly interval.
+    weekdays: r.intervalUnit === 'Week' ? (r.weekdays ?? []) : [],
     anchorDate: r.anchorDate,
     endType,
     endDate: endType === 'OnDate' ? (r.endDate ?? null) : null,

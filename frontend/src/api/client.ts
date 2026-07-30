@@ -235,6 +235,11 @@ export const api = {
       body: JSON.stringify({ type, otherTaskId }),
     }),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
+  duplicateTask: (id: number, includeDescendants: boolean) =>
+    request<TaskDetailDto>(`/api/tasks/${id}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({ includeDescendants }),
+    }),
 
   // --- Attachments (Phase 4) ---
   presignTaskAttachment: (taskId: number, body: PresignAttachmentRequest) =>

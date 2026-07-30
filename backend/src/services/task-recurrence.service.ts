@@ -32,6 +32,7 @@ type RecurrenceRow = {
   recurrenceType: RecurrenceConfig['recurrenceType'];
   intervalCount: number;
   intervalUnit: NonNullable<RecurrenceConfig['intervalUnit']>;
+  weekdays: number[];
   anchorDate: Date;
   endType: RecurrenceConfig['endType'];
   endDate: Date | null;
@@ -45,6 +46,7 @@ function toConfig(r: RecurrenceRow): RecurrenceConfig {
     recurrenceType: r.recurrenceType,
     intervalCount: r.intervalCount,
     intervalUnit: r.intervalUnit,
+    weekdays: r.weekdays,
     anchorDate: r.anchorDate,
     endType: r.endType,
     endDate: r.endDate,
@@ -84,6 +86,8 @@ export async function setTaskRecurrence(
     recurrenceType: input.recurrenceType,
     intervalCount: input.intervalCount,
     intervalUnit: input.intervalUnit,
+    // Weekday selection only applies to a weekly interval.
+    weekdays: input.intervalUnit === 'Week' ? (input.weekdays ?? []) : [],
     anchorDate: anchor,
     endType,
     endDate: endType === 'OnDate' ? (input.endDate ?? null) : null,
@@ -174,10 +178,23 @@ async function generateTaskOccurrence(params: {
   }
 }
 
-/** Shift a date by (seq−1) recurrence intervals (used for Fixed schedules). */
-function shifted(date: Date | null, cfg: RecurrenceConfig, seq: number): Date | null {
-  if (!date) return null;
-  return addInterval(date, cfg.intervalUnit!, cfg.intervalCount! * (seq - 1));
+/**
+ * The start/due for the seq-th occurrence of a Fixed schedule. The occurrence's
+ * earliest date is `fixedAnchorForSeq` (which handles the weekly "repeat on"
+ * enumeration); the source's start and due both shift by the same delta from the
+ * recurrence anchor, so the span is preserved and the earliest lands on the
+ * occurrence date.
+ */
+function occurrenceStartDue(
+  cfg: RecurrenceConfig,
+  src: { startAt: Date | null; dueAt: Date | null },
+  seq: number,
+): { startAt: Date | null; dueAt: Date | null } {
+  const delta = fixedAnchorForSeq(cfg, seq).getTime() - cfg.anchorDate!.getTime();
+  return {
+    startAt: src.startAt ? new Date(src.startAt.getTime() + delta) : null,
+    dueAt: src.dueAt ? new Date(src.dueAt.getTime() + delta) : null,
+  };
 }
 
 // --- Ghost previews --------------------------------------------------------
@@ -194,17 +211,20 @@ function ghostsForSource(s: GhostSource, now: Date): GhostOccurrenceDto[] {
   const cfg = toConfig(s.recurrence);
   // seq 1 is the source itself; occurrences carry their own seqs.
   const fired = new Set<number>([1, ...s.recurrenceOccurrences.map((o) => o.recurrenceSeq ?? 0)]);
-  return upcomingFixedSeqs(cfg, fired).map(({ seq, anchor }) => ({
-    sourceType: 'task' as const,
-    sourceId: s.id,
-    sourceName: s.name,
-    seq,
-    name: s.name,
-    startAt: shifted(s.startAt, cfg, seq)?.toISOString() ?? null,
-    dueAt: shifted(s.dueAt, cfg, seq)?.toISOString() ?? null,
-    priority: s.priority as GhostOccurrenceDto['priority'],
-    withinLeadTime: isWithinLeadTime(anchor, cfg.leadTimeDays, now),
-  }));
+  return upcomingFixedSeqs(cfg, fired).map(({ seq, anchor }) => {
+    const { startAt, dueAt } = occurrenceStartDue(cfg, s, seq);
+    return {
+      sourceType: 'task' as const,
+      sourceId: s.id,
+      sourceName: s.name,
+      seq,
+      name: s.name,
+      startAt: startAt?.toISOString() ?? null,
+      dueAt: dueAt?.toISOString() ?? null,
+      priority: s.priority as GhostOccurrenceDto['priority'],
+      withinLeadTime: isWithinLeadTime(anchor, cfg.leadTimeDays, now),
+    };
+  });
 }
 
 const ghostSourceSelect = {
@@ -259,11 +279,12 @@ export async function materializeTaskOccurrence(
   });
   if (already) throw HttpError.conflict('That occurrence has already been materialized');
 
+  const { startAt, dueAt } = occurrenceStartDue(cfg, source, seq);
   const newId = await generateTaskOccurrence({
     source: source as SourceTask,
     seq,
-    startAt: shifted(source.startAt, cfg, seq),
-    dueAt: shifted(source.dueAt, cfg, seq),
+    startAt,
+    dueAt,
     actorId,
   });
   if (newId === null) throw HttpError.conflict('That occurrence has already been materialized');
@@ -288,13 +309,8 @@ async function materializeDueForSource(s: ScheduleSource, now: Date): Promise<nu
   if (cfg.recurrenceType === 'Fixed') {
     const fired = new Set<number>([1, ...s.recurrenceOccurrences.map((o) => o.recurrenceSeq ?? 0)]);
     for (const seq of dueFixedSeqs(cfg, fired, now)) {
-      const id = await generateTaskOccurrence({
-        source: s,
-        seq,
-        startAt: shifted(s.startAt, cfg, seq),
-        dueAt: shifted(s.dueAt, cfg, seq),
-        actorId: s.creatorId,
-      });
+      const { startAt, dueAt } = occurrenceStartDue(cfg, s, seq);
+      const id = await generateTaskOccurrence({ source: s, seq, startAt, dueAt, actorId: s.creatorId });
       if (id !== null) count += 1;
     }
     return count;

@@ -36,6 +36,7 @@ type TemplateForSchedule = {
   recurrenceType: RecurrenceConfig['recurrenceType'];
   intervalCount: number | null;
   intervalUnit: RecurrenceConfig['intervalUnit'];
+  weekdays: number[];
   anchorDate: Date | null;
   endType: RecurrenceConfig['endType'];
   endDate: Date | null;
@@ -61,6 +62,7 @@ const scheduleSelect = {
   recurrenceType: true,
   intervalCount: true,
   intervalUnit: true,
+  weekdays: true,
   anchorDate: true,
   endType: true,
   endDate: true,
@@ -76,6 +78,7 @@ function toConfig(t: TemplateForSchedule): RecurrenceConfig {
     recurrenceType: t.recurrenceType,
     intervalCount: t.intervalCount,
     intervalUnit: t.intervalUnit,
+    weekdays: t.weekdays,
     anchorDate: t.anchorDate,
     endType: t.endType,
     endDate: t.endDate,

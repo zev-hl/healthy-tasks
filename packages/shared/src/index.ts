@@ -924,13 +924,25 @@ export const RECURRENCE_TYPE_LABELS: Record<RecurrenceType, string> = {
   RelativeToCompletion: 'Relative to prior completion',
 };
 
-export const RECURRENCE_UNITS = ['Day', 'Week', 'Month'] as const;
+export const RECURRENCE_UNITS = ['Day', 'Week', 'Month', 'Year'] as const;
 export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
 export const RECURRENCE_UNIT_LABELS: Record<RecurrenceUnit, string> = {
   Day: 'day(s)',
   Week: 'week(s)',
   Month: 'month(s)',
+  Year: 'year(s)',
 };
+
+/** Weekday labels for the "repeat on" selector (0=Sun … 6=Sat), Google order. */
+export const WEEKDAYS: { value: number; short: string; label: string }[] = [
+  { value: 0, short: 'S', label: 'Sunday' },
+  { value: 1, short: 'M', label: 'Monday' },
+  { value: 2, short: 'T', label: 'Tuesday' },
+  { value: 3, short: 'W', label: 'Wednesday' },
+  { value: 4, short: 'T', label: 'Thursday' },
+  { value: 5, short: 'F', label: 'Friday' },
+  { value: 6, short: 'S', label: 'Saturday' },
+];
 
 export const RECURRENCE_END_TYPES = ['Never', 'OnDate', 'AfterOccurrences'] as const;
 export type RecurrenceEndType = (typeof RECURRENCE_END_TYPES)[number];
@@ -991,6 +1003,8 @@ export interface TemplateDto {
   recurrenceType: RecurrenceType;
   intervalCount: number | null;
   intervalUnit: RecurrenceUnit | null;
+  /** Weekly-only: weekdays it repeats on (0=Sun … 6=Sat); empty ⇒ anchor's day. */
+  weekdays: number[];
   anchorDate: string | null; // ISO
   endType: RecurrenceEndType;
   endDate: string | null; // ISO
@@ -1075,6 +1089,7 @@ export interface RecurrenceInput {
   recurrenceType: RecurrenceType;
   intervalCount?: number | null;
   intervalUnit?: RecurrenceUnit | null;
+  weekdays?: number[];
   anchorDate?: string | null; // ISO
   endType?: RecurrenceEndType;
   endDate?: string | null; // ISO
@@ -1161,6 +1176,7 @@ export interface TaskRecurrenceDto {
   recurrenceType: Exclude<RecurrenceType, 'None'>;
   intervalCount: number;
   intervalUnit: RecurrenceUnit;
+  weekdays: number[];
   anchorDate: string; // ISO — the source task's earliest date (start ?? due)
   endType: RecurrenceEndType;
   endDate: string | null; // ISO
@@ -1177,6 +1193,7 @@ export interface SetTaskRecurrenceRequest {
   recurrenceType: Exclude<RecurrenceType, 'None'>;
   intervalCount: number;
   intervalUnit: RecurrenceUnit;
+  weekdays?: number[];
   endType?: RecurrenceEndType;
   endDate?: string | null; // ISO
   maxOccurrences?: number | null;
