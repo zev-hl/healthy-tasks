@@ -15,6 +15,8 @@ import { TaskCreatePage } from './pages/TaskCreatePage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { MyGoalsPage } from './pages/MyGoalsPage';
+import { TeamGoalsPage } from './pages/TeamGoalsPage';
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
@@ -56,6 +58,15 @@ export const router = createBrowserRouter([
           { path: '/tasks/:id', element: <TaskDetailPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
           { path: '/profile', element: <ProfilePage /> },
+          { path: '/goals', element: <MyGoalsPage /> },
+          {
+            path: '/goals/team',
+            element: (
+              <RequireAuth roles={['Admin', 'Manager']}>
+                <TeamGoalsPage />
+              </RequireAuth>
+            ),
+          },
           {
             path: '/admin/users',
             element: (
