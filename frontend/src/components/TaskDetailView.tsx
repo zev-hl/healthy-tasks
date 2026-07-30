@@ -23,6 +23,7 @@ import { TaskPickerModal } from './TaskPickerModal';
 import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
+import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
 import { StatusPill, PriorityRamp } from './ui/indicators';
 import { DueDate, AgoDate } from './ui/dates';
@@ -842,6 +843,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )}
             </div>
           </div>
+
+          <TaskRecurrencePanel task={task} onChanged={applyTask} />
 
           <div className="rail-section">
             <div className="rail-section-title">Reminders</div>

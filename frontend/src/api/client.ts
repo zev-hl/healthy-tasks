@@ -36,6 +36,17 @@ import type {
   UserCountsDto,
   UserFilterOptions,
   UserSearchRequest,
+  ApplyToFutureRequest,
+  ApplyToFutureResultDto,
+  CreateTemplateRequest,
+  FutureOccurrenceDto,
+  GhostOccurrenceDto,
+  InstantiateResultDto,
+  InstantiateTemplateRequest,
+  SetTaskRecurrenceRequest,
+  TemplateDto,
+  TemplateSummaryDto,
+  UpdateTemplateRequest,
 } from '@healthy-tasks/shared';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
@@ -293,6 +304,51 @@ export const api = {
     request<void>(`/api/reminders/${id}/snooze`, {
       method: 'POST',
       body: JSON.stringify({ minutes } satisfies SnoozeReminderRequest),
+    }),
+
+  // --- Task-level recurrence & ghosts (Phase 11) ---
+  // Ghost previews of every active recurring task (all authenticated users).
+  getTaskGhosts: () => request<GhostOccurrenceDto[]>('/api/tasks/ghosts'),
+  setTaskRecurrence: (taskId: number, body: SetTaskRecurrenceRequest) =>
+    request<TaskDetailDto>(`/api/tasks/${taskId}/recurrence`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  clearTaskRecurrence: (taskId: number) =>
+    request<TaskDetailDto>(`/api/tasks/${taskId}/recurrence`, { method: 'DELETE' }),
+  materializeTaskOccurrence: (taskId: number, seq: number) =>
+    request<TaskDetailDto>(`/api/tasks/${taskId}/recurrence/materialize`, {
+      method: 'POST',
+      body: JSON.stringify({ seq }),
+    }),
+
+  // --- Task templates (Phase 11, Admin/Manager) ---
+  listTemplates: () => request<TemplateSummaryDto[]>('/api/templates'),
+  getTemplate: (id: number) => request<TemplateDto>(`/api/templates/${id}`),
+  createTemplate: (body: CreateTemplateRequest) =>
+    request<TemplateDto>('/api/templates', { method: 'POST', body: JSON.stringify(body) }),
+  updateTemplate: (id: number, body: UpdateTemplateRequest) =>
+    request<TemplateDto>(`/api/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteTemplate: (id: number) =>
+    request<void>(`/api/templates/${id}`, { method: 'DELETE' }),
+  // Ghost previews across every active fixed-schedule template (Gantt/Calendar).
+  getAllTemplateGhosts: () => request<GhostOccurrenceDto[]>('/api/templates/ghosts'),
+  getTemplateGhosts: (id: number) => request<GhostOccurrenceDto[]>(`/api/templates/${id}/ghosts`),
+  getTemplateFuture: (id: number) => request<FutureOccurrenceDto[]>(`/api/templates/${id}/future`),
+  instantiateTemplate: (id: number, body: InstantiateTemplateRequest) =>
+    request<InstantiateResultDto>(`/api/templates/${id}/instantiate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  materializeTemplateGhost: (id: number, seq: number) =>
+    request<InstantiateResultDto>(`/api/templates/${id}/materialize`, {
+      method: 'POST',
+      body: JSON.stringify({ seq }),
+    }),
+  applyTemplateToFuture: (id: number, occurrenceIds: number[]) =>
+    request<ApplyToFutureResultDto>(`/api/templates/${id}/apply-to-future`, {
+      method: 'POST',
+      body: JSON.stringify({ occurrenceIds } satisfies ApplyToFutureRequest),
     }),
 };
 

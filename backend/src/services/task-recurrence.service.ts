@@ -115,6 +115,7 @@ interface SourceTask {
   priority: Prisma.TaskCreateInput['priority'];
   tags: string[];
   creatorId: string;
+  instanceLabel: string | null;
 }
 
 /** The assignee to carry forward: the most recent instance's assignee (the last
@@ -156,6 +157,8 @@ async function generateTaskOccurrence(params: {
         tags: source.tags,
         startAt,
         dueAt,
+        // Carry the PO/batch label so the filterable field matches the copied name.
+        instanceLabel: source.instanceLabel,
         recurrenceSourceId: source.id,
         recurrenceSeq: seq,
       },
@@ -211,6 +214,7 @@ const ghostSourceSelect = {
   priority: true,
   tags: true,
   creatorId: true,
+  instanceLabel: true,
   startAt: true,
   dueAt: true,
   recurrence: true,

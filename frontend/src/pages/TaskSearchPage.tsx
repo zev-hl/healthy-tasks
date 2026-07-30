@@ -10,7 +10,9 @@ import {
   TASK_SORT_FIELDS,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
+  isSupervisorRole,
   type ActiveUserDto,
+  type GhostOccurrenceDto,
   type TaskColumnKey,
   type TaskDashboardDto,
   type TaskRowDto,
@@ -20,6 +22,7 @@ import {
   type TaskSortField,
 } from '@healthy-tasks/shared';
 import { api, ApiError, exportTasksToExcel } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
 import {
@@ -147,6 +150,23 @@ export function TaskSearchPage() {
   const debouncedText = useDebouncedValue(searchText, 350);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+
+  // Phase 11: ghost previews for the date views. Task ghosts are visible to all;
+  // template ghosts only to Admin/Manager. Fetched only for Gantt/Calendar.
+  const [ghosts, setGhosts] = useState<GhostOccurrenceDto[]>([]);
+  const isManager = user ? isSupervisorRole(user.role) : false;
+  const loadGhosts = useCallback(async () => {
+    try {
+      const [taskG, tplG] = await Promise.all([
+        api.getTaskGhosts(),
+        isManager ? api.getAllTemplateGhosts() : Promise.resolve<GhostOccurrenceDto[]>([]),
+      ]);
+      setGhosts([...taskG, ...tplG]);
+    } catch {
+      setGhosts([]);
+    }
+  }, [isManager]);
 
   // --- Load reference data + persisted state (once) ------------------------
   // Guarded so React StrictMode's double-invoke can't fire a second async
@@ -240,6 +260,17 @@ export function TaskSearchPage() {
   useEffect(() => {
     if (hydrated) void runQuery();
   }, [hydrated, runQuery]);
+
+  // Load ghost previews when a date view is active (and refresh with the query).
+  useEffect(() => {
+    if (hydrated && (view === 'gantt' || view === 'calendar')) void loadGhosts();
+  }, [hydrated, view, loadGhosts]);
+
+  // Re-run the query and refresh ghosts together (e.g. after materializing one).
+  const refreshViews = useCallback(() => {
+    void runQuery();
+    void loadGhosts();
+  }, [runQuery, loadGhosts]);
 
   // --- Dashboard counts for the current view (for the stat strip) ----------
   useEffect(() => {
@@ -346,6 +377,7 @@ export function TaskSearchPage() {
     if (filters.overdue) chips.push({ id: 'overdue', label: 'Overdue', clear: { overdue: undefined } });
     if (filters.completedToday) chips.push({ id: 'completedToday', label: 'Completed today', clear: { completedToday: undefined } });
     if (filters.blocked) chips.push({ id: 'blocked', label: 'Blocked', clear: { blocked: undefined } });
+    if (filters.instanceLabel) chips.push({ id: 'instanceLabel', label: `Label · ${filters.instanceLabel}`, clear: { instanceLabel: undefined } });
     if (filters.creatorIds?.length) chips.push({ id: 'creator', label: `Created by · ${filters.creatorIds.length}`, clear: { creatorIds: [] } });
     if (filters.relation) chips.push({ id: 'relation', label: `Relation · ${filters.relation}`, clear: { relation: undefined } });
     if (filters.statusChangedFrom || filters.statusChangedTo) chips.push({ id: 'sc', label: 'Status changed', clear: { statusChangedFrom: null, statusChangedTo: null } });
@@ -642,6 +674,18 @@ export function TaskSearchPage() {
               {columnFilter(k)}
             </div>
           ))}
+          {/* Phase 11: free-text filter on a generated task's PO/batch label. */}
+          <div className="tasks-filter-field">
+            <span className="u-label">Instance label</span>
+            <input
+              className="tasks-search"
+              style={{ minWidth: 160 }}
+              value={filters.instanceLabel ?? ''}
+              onChange={(e) => patchFilters({ instanceLabel: e.target.value || undefined })}
+              placeholder="PO / batch…"
+              aria-label="Filter by instance label"
+            />
+          </div>
         </div>
       )}
 
@@ -789,10 +833,12 @@ export function TaskSearchPage() {
           mode={calendarMode}
           onScaleChange={setCalendarScale}
           onModeChange={setCalendarMode}
+          ghosts={ghosts}
+          onChanged={refreshViews}
         />
       )}
       {view === 'gantt' && (
-        <TaskGantt rows={rows} loading={loading} onChanged={() => void runQuery()} />
+        <TaskGantt rows={rows} loading={loading} onChanged={refreshViews} ghosts={ghosts} />
       )}
     </div>
   );

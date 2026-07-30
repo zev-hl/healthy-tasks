@@ -290,6 +290,75 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 
+/* Phase 11: global banner when the recurrence background timer is down. Shown to
+   every user via the notifications heartbeat's `schedulerDown` flag. */
+.scheduler-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1.5rem;
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+  border-bottom: 1px solid var(--danger);
+  font-size: 0.9rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.scheduler-banner strong {
+  font-weight: 650;
+}
+
+/* Phase 11: task recurrence panel in the detail rail. */
+.recur-interval {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.recur-badge {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.08rem 0.4rem;
+  border-radius: var(--radius-chip);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.recur-form .field {
+  margin-bottom: 0.6rem;
+}
+
+/* Phase 11: template editor node cards + dependency rows. */
+.tpl-node {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+.tpl-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.tpl-node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.tpl-node-grid .field {
+  margin: 0;
+}
+.tpl-dep {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .sidebar {
   position: fixed;
   top: 0;
@@ -4661,6 +4730,20 @@ tr.just-completed > td {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Phase 11: ghost chip for a future recurring occurrence (click to materialize). */
+.cal-chip.ghost {
+  background: transparent;
+  border: 1px dashed var(--accent-mid);
+  color: var(--accent-deep);
+  font-style: italic;
+}
+.cal-chip.ghost:hover {
+  background: var(--accent-tint);
+}
+.cal-chip.ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* --- Gantt ---------------------------------------------------------------- */
 .gantt-scroll {
@@ -4823,6 +4906,23 @@ tr.just-completed > td {
 }
 .gantt-bar.done {
   opacity: 0.6;
+}
+/* Phase 11: ghost preview of a future recurring occurrence (not a real task). */
+.gantt-bar.ghost {
+  background: transparent;
+  border: 1px dashed var(--accent-mid);
+  color: var(--accent-deep);
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.gantt-bar.ghost:hover {
+  background: var(--accent-tint);
+  opacity: 1;
+}
+.gantt-bar.ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .gantt-bar-label {
   font-size: 0.72rem;
