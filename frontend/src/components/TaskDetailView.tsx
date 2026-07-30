@@ -113,14 +113,21 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const stagedStartIso = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
   const stagedDueIso = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
 
-  // Dirty until every staged field matches what's persisted (dates compared as
-  // normalized ISO instants so a date-only edit round-trips cleanly).
+  // Dirty until every staged field matches what's persisted. The editor only has
+  // minute precision, so normalize the persisted value through the same
+  // date+time round-trip before comparing — otherwise a stored timestamp with
+  // seconds/ms (e.g. from an import) would read as permanently "unsaved" and
+  // Discard could never clear it.
+  const normalizeMinute = (iso: string | null, defaultHour: number): string | null => {
+    const p = isoToParts(iso);
+    return partsToIso(p.date, p.time, defaultHour);
+  };
   const fieldsDirty =
     assigneeId !== (task.assigneeId ?? '') ||
     priority !== task.priority ||
     status !== task.status ||
-    stagedStartIso !== (task.startAt ?? null) ||
-    stagedDueIso !== (task.dueAt ?? null);
+    stagedStartIso !== normalizeMinute(task.startAt, DEFAULT_START_HOUR) ||
+    stagedDueIso !== normalizeMinute(task.dueAt, DEFAULT_DUE_HOUR);
 
   // Commit all staged fields at once. `statusOverride` lets the top-bar
   // "Mark complete" / "Reopen" buttons set the status and save in one click.
