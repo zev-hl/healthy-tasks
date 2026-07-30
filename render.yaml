@@ -52,7 +52,7 @@ projects:
             type: web
             runtime: node
             plan: standard
-            region: oregon # keep this close to your Neon region to cut DB latency
+            region: virginia # us-east-1, near NY users; MUST match the Neon region (US East / N. Virginia) to cut DB latency
             branch: main
             autoDeployTrigger: commit
             # NOTE: `npm ci` omits devDependencies whenever NODE_ENV=production is
@@ -175,7 +175,7 @@ projects:
             type: web
             runtime: node
             plan: starter # cheaper than prod; free tier also works but cold-starts
-            region: oregon
+            region: virginia # keep both environments in the same region as their Neon DB
             branch: staging
             autoDeployTrigger: commit
             buildCommand: >-
