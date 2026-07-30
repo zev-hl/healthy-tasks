@@ -67,10 +67,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Reviewed / Recall actions.
   const [pendingReview, setPendingReview] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
+  // Whether anything has been saved during this viewing of the task. Drives the
+  // persistent "All changes saved" savebar label: it only appears after a save
+  // and stays until the task is re-displayed (this component is keyed by task id,
+  // so it resets on refresh or navigation). A fresh, untouched task shows no flag.
+  const [savedThisView, setSavedThisView] = useState(false);
 
-  // A "Task saved." confirmation auto-clears so it reads as a transient flash.
+  // A "Task saved." confirmation auto-clears so it reads as a transient flash;
+  // the savebar's "All changes saved" label (via savedThisView) is what persists.
   const flashSaved = useCallback(() => {
     setNotice('Task saved.');
+    setSavedThisView(true);
     window.setTimeout(() => setNotice(null), 2500);
   }, []);
 
@@ -578,9 +585,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <span className="savebar-dot" aria-hidden="true" />
               Unsaved changes
             </span>
-          ) : (
+          ) : savedThisView ? (
             <span className="savebar-flag saved">All changes saved</span>
-          )}
+          ) : null}
           {fieldsError && <span className="savebar-error">{fieldsError}</span>}
           <div className="spacer" />
           {fieldsDirty && (
