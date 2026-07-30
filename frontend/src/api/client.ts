@@ -47,6 +47,13 @@ import type {
   TemplateDto,
   TemplateSummaryDto,
   UpdateTemplateRequest,
+  GoalDto,
+  CreateGoalRequest,
+  UpdateGoalRequest,
+  UpdateGoalProgressRequest,
+  RejectGoalRequest,
+  ResolveGoalRequest,
+  GoalTeamRequest,
 } from '@healthy-tasks/shared';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
@@ -355,6 +362,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ occurrenceIds } satisfies ApplyToFutureRequest),
     }),
+
+  // --- SMART Goals (Phase 12) ---
+  listMyGoals: () => request<GoalDto[]>('/api/goals/mine'),
+  listTeamGoals: (body: GoalTeamRequest = {}) =>
+    request<GoalDto[]>('/api/goals/team', { method: 'POST', body: JSON.stringify(body) }),
+  getGoal: (id: number) => request<GoalDto>(`/api/goals/${id}`),
+  createGoal: (body: CreateGoalRequest) =>
+    request<GoalDto>('/api/goals', { method: 'POST', body: JSON.stringify(body) }),
+  updateGoal: (id: number, body: UpdateGoalRequest) =>
+    request<GoalDto>(`/api/goals/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteGoal: (id: number) => request<void>(`/api/goals/${id}`, { method: 'DELETE' }),
+  updateGoalProgress: (id: number, body: UpdateGoalProgressRequest) =>
+    request<GoalDto>(`/api/goals/${id}/progress`, { method: 'PATCH', body: JSON.stringify(body) }),
+  submitGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/submit`, { method: 'POST' }),
+  approveGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/approve`, { method: 'POST' }),
+  rejectGoal: (id: number, body: RejectGoalRequest) =>
+    request<GoalDto>(`/api/goals/${id}/reject`, { method: 'POST', body: JSON.stringify(body) }),
+  finalizeGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/finalize`, { method: 'POST' }),
+  resolveGoal: (id: number, body: ResolveGoalRequest) =>
+    request<GoalDto>(`/api/goals/${id}/resolve`, { method: 'POST', body: JSON.stringify(body) }),
 };
 
 /**

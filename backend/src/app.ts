@@ -11,6 +11,7 @@ import { preferencesRouter } from './routes/preferences.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { remindersRouter } from './routes/reminders.routes.js';
 import { templatesRouter } from './routes/templates.routes.js';
+import { goalsRouter } from './routes/goals.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp() {
@@ -45,6 +46,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/reminders', remindersRouter);
   app.use('/api/templates', templatesRouter);
+  app.use('/api/goals', goalsRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

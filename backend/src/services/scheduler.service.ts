@@ -12,6 +12,7 @@ import {
 } from './recurrence.js';
 import { carryForwardAssignees, generateOccurrence } from './template-instantiation.service.js';
 import { materializeDueTaskRecurrences } from './task-recurrence.service.js';
+import { runGoalReviewPass } from './goal.service.js';
 
 /**
  * Recurrence scheduler (Phase 11). A real background timer (started from
@@ -201,6 +202,14 @@ export async function runScheduler(now: Date): Promise<number> {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('scheduler: task-recurrence pass failed', err);
+  }
+
+  // SMART Goals (Phase 12): move Active goals past their deadline to UnderReview.
+  try {
+    await runGoalReviewPass(now);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('scheduler: goal-review pass failed', err);
   }
 
   await prisma.schedulerState.upsert({

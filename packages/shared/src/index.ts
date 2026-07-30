@@ -1200,3 +1200,201 @@ export interface SetTaskRecurrenceRequest {
   leadTimeDays?: number;
   isActive?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// SMART Goals (Phase 12)
+// ---------------------------------------------------------------------------
+
+/**
+ * A goal's lifecycle status. Draft → PendingApproval → Approved (Active) →
+ * UnderReview → Resolved. A PendingApproval goal can be rejected back to Draft.
+ * Enum keys are space-free; use GOAL_STATUS_LABELS for display.
+ */
+export const GOAL_STATUSES = [
+  'Draft',
+  'PendingApproval',
+  'Approved',
+  'UnderReview',
+  'Resolved',
+] as const;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
+
+export const GOAL_STATUS_LABELS: Record<GoalStatus, string> = {
+  Draft: 'Draft',
+  PendingApproval: 'Pending Approval',
+  Approved: 'Approved',
+  UnderReview: 'Under Review',
+  Resolved: 'Resolved',
+};
+
+/** Terminal status: a Resolved goal is never edited further. */
+export const GOAL_TERMINAL_STATUS: GoalStatus = 'Resolved';
+
+/**
+ * How Much (Measurable) metric. `Other` carries a free-text unit label; the
+ * others imply their unit (Count = plain number, Percentage = %, Currency =
+ * money, Frequency = times).
+ */
+export const GOAL_METRIC_TYPES = ['Count', 'Percentage', 'Frequency', 'Currency', 'Other'] as const;
+export type GoalMetricType = (typeof GOAL_METRIC_TYPES)[number];
+
+export const GOAL_METRIC_TYPE_LABELS: Record<GoalMetricType, string> = {
+  Count: 'Count',
+  Percentage: 'Percentage',
+  Frequency: 'Frequency',
+  Currency: 'Currency',
+  Other: 'Other / Custom',
+};
+
+/** Metric types that require a free-text unit label. */
+export const GOAL_METRIC_TYPES_NEEDING_UNIT: readonly GoalMetricType[] = ['Other'];
+
+/** The supervisor's verdict, set on the transition to Resolved. */
+export const GOAL_RESOLUTIONS = [
+  'Exceeded',
+  'Met',
+  'PartiallyMet',
+  'Missed',
+  'InProgress',
+] as const;
+export type GoalResolution = (typeof GOAL_RESOLUTIONS)[number];
+
+export const GOAL_RESOLUTION_LABELS: Record<GoalResolution, string> = {
+  Exceeded: 'Exceeded',
+  Met: 'Met',
+  PartiallyMet: 'Partially Met',
+  Missed: 'Missed',
+  InProgress: 'In Progress',
+};
+
+export const GOAL_SPECIFIC_MIN_LENGTH = 3;
+
+/** Format a goal target/result value with its metric unit for display. */
+export function goalValueLabel(
+  value: number | null | undefined,
+  metricType: GoalMetricType,
+  unitLabel: string | null,
+): string {
+  if (value === null || value === undefined) return '—';
+  const n = String(value);
+  switch (metricType) {
+    case 'Percentage':
+      return `${n}%`;
+    case 'Currency':
+      return `$${n}`;
+    case 'Frequency':
+      return `${n}×`;
+    case 'Other':
+      return unitLabel ? `${n} ${unitLabel}` : n;
+    default:
+      return n;
+  }
+}
+
+/** A SMART goal, with its owner/creator and workflow audit refs resolved. */
+export interface GoalDto {
+  id: number;
+  // The employee the goal belongs to.
+  ownerId: string;
+  owner: TaskUserRef;
+  // Whoever drafted it (employee or supervisor).
+  createdById: string;
+  createdBy: TaskUserRef;
+  // What (Specific).
+  specific: string;
+  // How Much (Measurable).
+  metricType: GoalMetricType;
+  unitLabel: string | null;
+  targetValue: number;
+  // By When (Time-bound). The deadline is the review period for this phase.
+  deadline: string; // ISO
+  risks: string | null;
+  mitigations: string | null;
+  notes: string | null;
+  // The actuals, in the same metric/unit as the target.
+  resultValue: number | null;
+  resultsFinalizedAt: string | null; // ISO — set when the employee marks Results final
+  // Set by the supervisor when resolving.
+  resolution: GoalResolution | null;
+  supervisorComments: string | null;
+  // The supervisor's reason if the goal was rejected back to Draft (stays visible).
+  rejectionComments: string | null;
+  status: GoalStatus;
+  // Workflow audit stamps.
+  submittedAt: string | null;
+  approvedAt: string | null;
+  approvedById: string | null;
+  approvedBy: TaskUserRef | null;
+  underReviewAt: string | null;
+  resolvedAt: string | null;
+  resolvedById: string | null;
+  resolvedBy: TaskUserRef | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Request shapes --------------------------------------------------------
+
+/**
+ * Draft a new goal. `ownerId` defaults to the caller (an employee drafting their
+ * own); a supervisor may set it to one of their direct reports. The goal always
+ * starts as a Draft and must be supervisor-approved before it becomes Active.
+ */
+export interface CreateGoalRequest {
+  ownerId?: string | null;
+  specific: string;
+  metricType: GoalMetricType;
+  unitLabel?: string | null;
+  targetValue: number;
+  deadline: string; // ISO
+  risks?: string | null;
+  mitigations?: string | null;
+  notes?: string | null;
+}
+
+/** Edit a Draft goal (creator or owner, while status = Draft). */
+export interface UpdateGoalRequest {
+  specific?: string;
+  metricType?: GoalMetricType;
+  unitLabel?: string | null;
+  targetValue?: number;
+  deadline?: string; // ISO
+  risks?: string | null;
+  mitigations?: string | null;
+  notes?: string | null;
+}
+
+/** Employee's progress updates while the goal is Approved (Active). */
+export interface UpdateGoalProgressRequest {
+  resultValue?: number | null;
+  notes?: string | null;
+  risks?: string | null;
+  mitigations?: string | null;
+}
+
+/** Supervisor rejects a PendingApproval goal back to Draft (comments required). */
+export interface RejectGoalRequest {
+  comments: string;
+}
+
+/** Supervisor resolves an UnderReview goal (both fields required). */
+export interface ResolveGoalRequest {
+  resolution: GoalResolution;
+  supervisorComments: string;
+}
+
+/**
+ * Team Goals filters (supervisor/admin), mirroring the Task Search filter
+ * conventions: by employee, by status, and by deadline range.
+ */
+export interface GoalTeamFilters {
+  /** Restrict to these owners (a supervisor's direct reports; any user for Admin). */
+  ownerIds?: string[];
+  statuses?: GoalStatus[];
+  deadlineFrom?: string | null; // ISO
+  deadlineTo?: string | null; // ISO
+}
+
+export interface GoalTeamRequest {
+  filters?: GoalTeamFilters;
+}

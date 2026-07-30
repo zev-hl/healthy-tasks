@@ -81,6 +81,18 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       </nav>
 
       <div className="side-group">
+        <div className="side-group-label">Goals</div>
+        <NavLink to="/goals" className={navItemClass}>
+          My Goals
+        </NavLink>
+        {(user?.role === 'Admin' || user?.role === 'Manager') && (
+          <NavLink to="/goals/team" className={navItemClass}>
+            Team Goals
+          </NavLink>
+        )}
+      </div>
+
+      <div className="side-group">
         <div className="side-group-label">Quick Views</div>
         {SAVED_VIEWS.map((v) => (
           <button

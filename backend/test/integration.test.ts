@@ -3374,3 +3374,555 @@ describe('task duplication (Phase 11 follow-on)', () => {
     assert.equal(solo.body.children.length, 0);
   });
 });
+
+describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
+  const SUP_PW = 'SupPass123!';
+  const EMP_PW = 'EmpPass123!';
+
+  // The scheduler's goal-review pass moves Active goals past their deadline to
+  // Under Review; import it so the deadline tests can drive it deterministically.
+  let runScheduler: (now: Date) => Promise<number>;
+  before(async () => {
+    ({ runScheduler } = await import('../src/services/scheduler.service.js'));
+  });
+
+  // A supervisor (Manager) + one direct report, a second unrelated supervisor +
+  // report (to prove visibility/authority isolation), and their tokens.
+  async function seedTeam() {
+    const supervisor = await seedUser({ email: 'sup@test.local', role: 'Manager', password: SUP_PW });
+    const employee = await seedUser({
+      email: 'emp@test.local',
+      role: 'Member',
+      password: EMP_PW,
+      supervisorId: supervisor.id,
+    });
+    const otherSup = await seedUser({ email: 'sup2@test.local', role: 'Manager', password: SUP_PW });
+    const otherEmp = await seedUser({
+      email: 'emp2@test.local',
+      role: 'Member',
+      password: EMP_PW,
+      supervisorId: otherSup.id,
+    });
+    return {
+      supervisor,
+      employee,
+      otherSup,
+      otherEmp,
+      supToken: await login('sup@test.local', SUP_PW),
+      empToken: await login('emp@test.local', EMP_PW),
+      otherSupToken: await login('sup2@test.local', SUP_PW),
+      otherEmpToken: await login('emp2@test.local', EMP_PW),
+    };
+  }
+
+  const validGoal = (extra: Record<string, unknown> = {}) => ({
+    specific: 'Cut order-picking errors',
+    metricType: 'Percentage',
+    targetValue: 2,
+    deadline: '2026-12-31T00:00:00.000Z',
+    ...extra,
+  });
+
+  async function createGoal(token: string, body: Record<string, unknown> = {}) {
+    const res = await request(app).post('/api/goals').set(auth(token)).send(validGoal(body));
+    assert.equal(res.status, 201, `create goal failed: ${JSON.stringify(res.body)}`);
+    return res.body as { id: number; status: string; [k: string]: unknown };
+  }
+
+  const post = (token: string, path: string, body?: unknown) =>
+    request(app).post(path).set(auth(token)).send(body ?? {});
+
+  it('runs the full Draft→PendingApproval→Approved→UnderReview→Resolved happy path', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken);
+    assert.equal(goal.status, 'Draft');
+    assert.equal((goal as { ownerId: string }).ownerId, t.employee.id);
+
+    // Employee submits for approval.
+    const submitted = await post(t.empToken, `/api/goals/${goal.id}/submit`);
+    assert.equal(submitted.status, 200);
+    assert.equal(submitted.body.status, 'PendingApproval');
+    assert.ok(submitted.body.submittedAt);
+
+    // Supervisor approves → Active.
+    const approved = await post(t.supToken, `/api/goals/${goal.id}/approve`);
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.status, 'Approved');
+    assert.equal(approved.body.approvedById, t.supervisor.id);
+
+    // Employee records results + notes while Active.
+    const progress = await request(app)
+      .patch(`/api/goals/${goal.id}/progress`)
+      .set(auth(t.empToken))
+      .send({ resultValue: 1.5, notes: 'Halfway there' });
+    assert.equal(progress.status, 200);
+    assert.equal(progress.body.resultValue, 1.5);
+    assert.equal(progress.body.notes, 'Halfway there');
+
+    // Employee marks results final → Under Review.
+    const finalized = await post(t.empToken, `/api/goals/${goal.id}/finalize`);
+    assert.equal(finalized.status, 200);
+    assert.equal(finalized.body.status, 'UnderReview');
+    assert.ok(finalized.body.resultsFinalizedAt);
+
+    // Supervisor resolves with a verdict + comments → Resolved (terminal).
+    const resolved = await post(t.supToken, `/api/goals/${goal.id}/resolve`, {
+      resolution: 'Met',
+      supervisorComments: 'Solid improvement.',
+    });
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.body.status, 'Resolved');
+    assert.equal(resolved.body.resolution, 'Met');
+    assert.equal(resolved.body.supervisorComments, 'Solid improvement.');
+    assert.equal(resolved.body.resolvedById, t.supervisor.id);
+  });
+
+  it('lets a supervisor draft a goal for a direct report, but not for a non-report', async () => {
+    const t = await seedTeam();
+    const forReport = await request(app)
+      .post('/api/goals')
+      .set(auth(t.supToken))
+      .send(validGoal({ ownerId: t.employee.id }));
+    assert.equal(forReport.status, 201);
+    assert.equal(forReport.body.ownerId, t.employee.id);
+    assert.equal(forReport.body.createdById, t.supervisor.id);
+
+    const forStranger = await request(app)
+      .post('/api/goals')
+      .set(auth(t.supToken))
+      .send(validGoal({ ownerId: t.otherEmp.id }));
+    assert.equal(forStranger.status, 403);
+  });
+
+  it('allows ONLY the supervisor (or admin) to approve — not the employee or another manager', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken);
+    await post(t.empToken, `/api/goals/${goal.id}/submit`);
+
+    // Employee cannot approve their own goal.
+    assert.equal((await post(t.empToken, `/api/goals/${goal.id}/approve`)).status, 403);
+    // A manager who is NOT this employee's supervisor cannot approve.
+    assert.equal((await post(t.otherSupToken, `/api/goals/${goal.id}/approve`)).status, 403);
+    // The direct supervisor can.
+    assert.equal((await post(t.supToken, `/api/goals/${goal.id}/approve`)).status, 200);
+  });
+
+  it('allows ONLY the supervisor (or admin) to resolve — not the employee or another manager', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken);
+    await post(t.empToken, `/api/goals/${goal.id}/submit`);
+    await post(t.supToken, `/api/goals/${goal.id}/approve`);
+    await post(t.empToken, `/api/goals/${goal.id}/finalize`);
+
+    const resolveBody = { resolution: 'Met', supervisorComments: 'ok' };
+    assert.equal((await post(t.empToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status, 403);
+    assert.equal((await post(t.otherSupToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status, 403);
+    assert.equal((await post(t.supToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status, 200);
+  });
+
+  it('rejects a Pending goal back to Draft with required comments, then allows edit & resubmit', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken);
+    await post(t.empToken, `/api/goals/${goal.id}/submit`);
+
+    // Rejection comments are required.
+    const empty = await post(t.supToken, `/api/goals/${goal.id}/reject`, { comments: '   ' });
+    assert.equal(empty.status, 400);
+
+    // The employee cannot reject their own goal (supervisor-only action).
+    assert.equal(
+      (await post(t.empToken, `/api/goals/${goal.id}/reject`, { comments: 'no' })).status,
+      403,
+    );
+
+    const rejected = await post(t.supToken, `/api/goals/${goal.id}/reject`, {
+      comments: 'Target is too easy — aim for 1%.',
+    });
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.body.status, 'Draft');
+    assert.equal(rejected.body.rejectionComments, 'Target is too easy — aim for 1%.');
+
+    // Employee edits and resubmits.
+    const edited = await request(app)
+      .patch(`/api/goals/${goal.id}`)
+      .set(auth(t.empToken))
+      .send({ targetValue: 1 });
+    assert.equal(edited.status, 200);
+    assert.equal(edited.body.targetValue, 1);
+
+    const resubmitted = await post(t.empToken, `/api/goals/${goal.id}/submit`);
+    assert.equal(resubmitted.status, 200);
+    assert.equal(resubmitted.body.status, 'PendingApproval');
+
+    // Approval clears the stale rejection reason.
+    const approved = await post(t.supToken, `/api/goals/${goal.id}/approve`);
+    assert.equal(approved.body.rejectionComments, null);
+  });
+
+  it('lets the employee update Results/Notes/Risks/Mitigations while Active, but NOT once Resolved', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken);
+    await post(t.empToken, `/api/goals/${goal.id}/submit`);
+    await post(t.supToken, `/api/goals/${goal.id}/approve`);
+
+    // Active: allowed.
+    const active = await request(app)
+      .patch(`/api/goals/${goal.id}/progress`)
+      .set(auth(t.empToken))
+      .send({ resultValue: 1, risks: 'Staffing', mitigations: 'Cross-train' });
+    assert.equal(active.status, 200);
+    assert.equal(active.body.risks, 'Staffing');
+    assert.equal(active.body.mitigations, 'Cross-train');
+
+    // Drive it to Resolved.
+    await post(t.empToken, `/api/goals/${goal.id}/finalize`);
+    await post(t.supToken, `/api/goals/${goal.id}/resolve`, {
+      resolution: 'Met',
+      supervisorComments: 'Done.',
+    });
+
+    // Resolved is terminal: every edit path is rejected.
+    assert.equal(
+      (
+        await request(app)
+          .patch(`/api/goals/${goal.id}/progress`)
+          .set(auth(t.empToken))
+          .send({ resultValue: 99 })
+      ).status,
+      409,
+    );
+    assert.equal(
+      (
+        await request(app)
+          .patch(`/api/goals/${goal.id}`)
+          .set(auth(t.empToken))
+          .send({ notes: 'late edit' })
+      ).status,
+      409,
+    );
+    // And it cannot be resolved again.
+    assert.equal(
+      (await post(t.supToken, `/api/goals/${goal.id}/resolve`, { resolution: 'Missed', supervisorComments: 'x' }))
+        .status,
+      409,
+    );
+  });
+
+  it('auto-moves an Active goal to Under Review when its deadline passes (scheduler)', async () => {
+    const t = await seedTeam();
+    // Deadline in the near future; approve while it is still ahead.
+    const goal = await createGoal(t.empToken, { deadline: '2026-08-10T00:00:00.000Z' });
+    await post(t.empToken, `/api/goals/${goal.id}/submit`);
+    await post(t.supToken, `/api/goals/${goal.id}/approve`);
+
+    // A tick BEFORE the deadline leaves it Active.
+    await runScheduler(new Date('2026-08-09T00:00:00.000Z'));
+    let current = await request(app).get(`/api/goals/${goal.id}`).set(auth(t.empToken));
+    assert.equal(current.body.status, 'Approved');
+
+    // A tick AFTER the deadline flips it to Under Review (with no resultsFinalizedAt,
+    // distinguishing the deadline trigger from an employee finalize).
+    await runScheduler(new Date('2026-08-11T00:00:00.000Z'));
+    current = await request(app).get(`/api/goals/${goal.id}`).set(auth(t.empToken));
+    assert.equal(current.body.status, 'UnderReview');
+    assert.ok(current.body.underReviewAt);
+    assert.equal(current.body.resultsFinalizedAt, null);
+  });
+
+  it('honors whichever-comes-first: an employee finalize before the deadline wins, deadline is a no-op after', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken, { deadline: '2026-08-10T00:00:00.000Z' });
+    await post(t.empToken, `/api/goals/${goal.id}/submit`);
+    await post(t.supToken, `/api/goals/${goal.id}/approve`);
+
+    // Employee marks final BEFORE the deadline → Under Review now.
+    const finalized = await post(t.empToken, `/api/goals/${goal.id}/finalize`);
+    assert.equal(finalized.body.status, 'UnderReview');
+    assert.ok(finalized.body.resultsFinalizedAt);
+    const firstUnderReviewAt = finalized.body.underReviewAt;
+
+    // A later deadline-crossing tick must NOT touch it (already left Approved),
+    // so underReviewAt stays the finalize time.
+    await runScheduler(new Date('2026-08-11T00:00:00.000Z'));
+    const current = await request(app).get(`/api/goals/${goal.id}`).set(auth(t.empToken));
+    assert.equal(current.body.status, 'UnderReview');
+    assert.equal(current.body.underReviewAt, firstUnderReviewAt);
+
+    // And once Under Review, the employee can no longer finalize again.
+    assert.equal((await post(t.empToken, `/api/goals/${goal.id}/finalize`)).status, 409);
+  });
+
+  it('scopes Team Goals to a supervisor\'s OWN direct reports only (admin sees all)', async () => {
+    const t = await seedTeam();
+    // A goal for each employee under their own supervisor.
+    const mine = await createGoal(t.empToken);
+    const theirs = await createGoal(t.otherEmpToken);
+
+    // Supervisor sees only their report's goal.
+    const supTeam = await post(t.supToken, '/api/goals/team');
+    assert.equal(supTeam.status, 200);
+    const supIds = (supTeam.body as { id: number; ownerId: string }[]).map((g) => g.id);
+    assert.deepEqual(supIds, [mine.id]);
+    assert.ok(!supIds.includes(theirs.id), 'must not see another team\'s goal');
+
+    // The other supervisor sees only their own report's goal.
+    const otherTeam = await post(t.otherSupToken, '/api/goals/team');
+    assert.deepEqual((otherTeam.body as { id: number }[]).map((g) => g.id), [theirs.id]);
+
+    // Admin sees both.
+    const admin = await adminToken();
+    const adminTeam = await post(admin, '/api/goals/team');
+    const adminIds = (adminTeam.body as { id: number }[]).map((g) => g.id).sort((a, b) => a - b);
+    assert.deepEqual(adminIds, [mine.id, theirs.id].sort((a, b) => a - b));
+  });
+
+  it('filters Team Goals by employee, status, and deadline range', async () => {
+    const t = await seedTeam();
+    // Second report under the same supervisor.
+    const emp3 = await seedUser({
+      email: 'emp3@test.local',
+      role: 'Member',
+      password: EMP_PW,
+      supervisorId: t.supervisor.id,
+    });
+    const emp3Token = await login('emp3@test.local', EMP_PW);
+
+    const g1 = await createGoal(t.empToken, { deadline: '2026-09-01T00:00:00.000Z' });
+    const g2 = await createGoal(emp3Token, { deadline: '2026-12-01T00:00:00.000Z' });
+    // Approve g2 so we can filter by status.
+    await post(emp3Token, `/api/goals/${g2.id}/submit`);
+    await post(t.supToken, `/api/goals/${g2.id}/approve`);
+
+    // Filter by employee.
+    const byEmp = await post(t.supToken, '/api/goals/team', { filters: { ownerIds: [emp3.id] } });
+    assert.deepEqual((byEmp.body as { id: number }[]).map((g) => g.id), [g2.id]);
+
+    // Filter by status.
+    const byStatus = await post(t.supToken, '/api/goals/team', { filters: { statuses: ['Approved'] } });
+    assert.deepEqual((byStatus.body as { id: number }[]).map((g) => g.id), [g2.id]);
+
+    // Filter by deadline range (only g1's Sept deadline falls before Oct).
+    const byRange = await post(t.supToken, '/api/goals/team', {
+      filters: { deadlineTo: '2026-10-01T00:00:00.000Z' },
+    });
+    assert.deepEqual((byRange.body as { id: number }[]).map((g) => g.id), [g1.id]);
+
+    // A supervisor cannot widen the ownerIds filter past their reports.
+    const tryStranger = await post(t.supToken, '/api/goals/team', {
+      filters: { ownerIds: [t.otherEmp.id] },
+    });
+    assert.deepEqual(tryStranger.body, []);
+  });
+
+  it('enforces My Goals = only the caller\'s own goals, across all statuses', async () => {
+    const t = await seedTeam();
+    const a = await createGoal(t.empToken);
+    await createGoal(t.otherEmpToken); // belongs to someone else
+
+    const mine = await request(app).get('/api/goals/mine').set(auth(t.empToken));
+    assert.equal(mine.status, 200);
+    assert.deepEqual((mine.body as { id: number; ownerId: string }[]).map((g) => g.id), [a.id]);
+    assert.ok((mine.body as { ownerId: string }[]).every((g) => g.ownerId === t.employee.id));
+  });
+
+  it('hides a goal from users who are neither owner, supervisor, nor admin', async () => {
+    const t = await seedTeam();
+    const goal = await createGoal(t.empToken);
+    // Unrelated employee cannot read it.
+    assert.equal(
+      (await request(app).get(`/api/goals/${goal.id}`).set(auth(t.otherEmpToken))).status,
+      403,
+    );
+    // Unrelated manager cannot read it.
+    assert.equal(
+      (await request(app).get(`/api/goals/${goal.id}`).set(auth(t.otherSupToken))).status,
+      403,
+    );
+    // Owner and supervisor can.
+    assert.equal((await request(app).get(`/api/goals/${goal.id}`).set(auth(t.empToken))).status, 200);
+    assert.equal((await request(app).get(`/api/goals/${goal.id}`).set(auth(t.supToken))).status, 200);
+  });
+
+  it('requires a unit label for a custom (Other) metric', async () => {
+    const t = await seedTeam();
+    const missing = await request(app)
+      .post('/api/goals')
+      .set(auth(t.empToken))
+      .send(validGoal({ metricType: 'Other', unitLabel: '' }));
+    assert.equal(missing.status, 400);
+
+    const ok = await request(app)
+      .post('/api/goals')
+      .set(auth(t.empToken))
+      .send(validGoal({ metricType: 'Other', unitLabel: 'pallets' }));
+    assert.equal(ok.status, 201);
+    assert.equal(ok.body.unitLabel, 'pallets');
+  });
+});
+
+// Retroactive coverage for the trickiest Phase 10 & 11 business rules that were
+// built before the "tests required" process rule existed. These target the
+// specific gaps not already exercised elsewhere in this file: multi-blocker
+// naming on the Kanban drag path, the template parent/child ANCESTRY cycle
+// (distinct from the dependency-cycle test above), and materialize-exactly-once
+// across BOTH triggers (a click-through vs. the scheduler racing on one seq).
+describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
+  let runScheduler: (now: Date) => Promise<number>;
+  before(async () => {
+    ({ runScheduler } = await import('../src/services/scheduler.service.js'));
+  });
+
+  async function createTemplate(token: string, body: Record<string, unknown>) {
+    const res = await request(app).post('/api/templates').set(auth(token)).send(body);
+    assert.equal(res.status, 201, `create template failed: ${JSON.stringify(res.body)}`);
+    return res.body as { id: number };
+  }
+
+  // --- Phase 10: blocked-status rule via Kanban drag, MULTIPLE blockers ------
+
+  it('Kanban drag of a task with several incomplete predecessors into Completed names ALL of them', async () => {
+    const tok = await adminToken();
+    const pred1 = await makeTask(tok, 'First predecessor');
+    const pred2 = await makeTask(tok, 'Second predecessor');
+    const task = await makeTask(tok, 'Doubly blocked');
+    for (const pred of [pred1, pred2]) {
+      await request(app)
+        .post(`/api/tasks/${task.id}/dependencies`)
+        .set(auth(tok))
+        .send({ type: 'blockedBy', otherTaskId: pred.id });
+    }
+
+    // A Kanban drop onto the Completed column is a PATCH of `status` — the same
+    // endpoint/rule as the Task Detail Status field.
+    const res = await request(app).patch(`/api/tasks/${task.id}`).set(auth(tok)).send({ status: 'Completed' });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, new RegExp(`#${pred1.id}`), 'names the first blocker');
+    assert.match(res.body.error, new RegExp(`#${pred2.id}`), 'names the second blocker');
+
+    // Completing one predecessor still leaves the other blocking (still named).
+    await request(app).patch(`/api/tasks/${pred1.id}`).set(auth(tok)).send({ status: 'Completed' });
+    const still = await request(app).patch(`/api/tasks/${task.id}`).set(auth(tok)).send({ status: 'Completed' });
+    assert.equal(still.status, 400);
+    assert.match(still.body.error, new RegExp(`#${pred2.id}`));
+    assert.ok(!new RegExp(`#${pred1.id}\\b`).test(still.body.error), 'the completed predecessor drops off the list');
+  });
+
+  // --- Phase 11: template parent/child ANCESTRY cycle ------------------------
+
+  it('rejects a template tree where a node would be its own ancestor (hierarchy cycle)', async () => {
+    const admin = await adminToken();
+
+    // A node whose parent is itself — the most direct "own ancestor".
+    const selfParent = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: 'Self-parent',
+        nodes: [
+          { key: 'root', parentKey: null, name: 'Root' },
+          { key: 'a', parentKey: 'a', name: 'A is its own parent' },
+        ],
+      });
+    assert.equal(selfParent.status, 400, JSON.stringify(selfParent.body));
+
+    // A deeper loop: b → c → b, with a valid single root present, so it passes
+    // the "exactly one root" check and specifically exercises the ancestry walk.
+    const deepLoop = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: 'Deep loop',
+        nodes: [
+          { key: 'root', parentKey: null, name: 'Root' },
+          { key: 'b', parentKey: 'c', name: 'B' },
+          { key: 'c', parentKey: 'b', name: 'C' },
+        ],
+      });
+    assert.equal(deepLoop.status, 400, JSON.stringify(deepLoop.body));
+  });
+
+  // --- Phase 11: materialize exactly-once across BOTH triggers ---------------
+
+  it('task recurrence: a ghost cannot be double-materialized by a click-through and the scheduler racing', async () => {
+    const admin = await adminToken();
+    // leadTimeDays 30 so seq 2 (+1wk) and seq 3 (+2wk) are within the auto-
+    // materialization window at the Aug-1 tick.
+    const t = await makeTask(admin, 'Nightly sync', {
+      startAt: '2026-08-01T00:00:00.000Z',
+      dueAt: '2026-08-01T01:00:00.000Z',
+    });
+    await request(app)
+      .put(`/api/tasks/${t.id}/recurrence`)
+      .set(auth(admin))
+      .send({
+        recurrenceType: 'Fixed',
+        intervalCount: 1,
+        intervalUnit: 'Week',
+        endType: 'AfterOccurrences',
+        maxOccurrences: 3,
+        leadTimeDays: 30,
+      });
+
+    // Trigger A: user clicks the seq-2 ghost to materialize it now.
+    const click = await request(app)
+      .post(`/api/tasks/${t.id}/recurrence/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(click.status, 201, JSON.stringify(click.body));
+
+    // Trigger B: the scheduler runs over a window where seq 2 is also due. It
+    // must NOT create a second seq-2 task (the unique (source, seq) claim holds).
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+
+    const seq2Count = await prisma.task.count({
+      where: { recurrenceSourceId: t.id, recurrenceSeq: 2 },
+    });
+    assert.equal(seq2Count, 1, 'exactly one real task for seq 2 despite both triggers');
+
+    // Reverse race: the scheduler already made seq 2, so a later click is a 409.
+    const dupClick = await request(app)
+      .post(`/api/tasks/${t.id}/recurrence/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(dupClick.status, 409, 'click-through after the scheduler is rejected');
+  });
+
+  it('template recurrence: a ghost cannot be double-materialized by a click-through and the scheduler racing', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(admin, {
+      name: 'Monthly audit',
+      nodes: [{ key: 'root', parentKey: null, name: 'Audit', startOffsetDays: 0, dueOffsetDays: 1 }],
+      recurrence: {
+        recurrenceType: 'Fixed',
+        intervalCount: 1,
+        intervalUnit: 'Month',
+        anchorDate: '2026-08-01T00:00:00.000Z',
+        endType: 'AfterOccurrences',
+        maxOccurrences: 3,
+        leadTimeDays: 40, // seq 1 (Aug 1) and seq 2 (Sep 1) are within the window at Aug 1
+      },
+    });
+
+    // Trigger A: click-through materialize of seq 2.
+    const click = await request(app)
+      .post(`/api/templates/${tpl.id}/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(click.status, 201, JSON.stringify(click.body));
+
+    // Trigger B: the scheduler runs over the same window. seq 2 is already
+    // claimed, so it fires only the remaining due seq(s), never a duplicate.
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+
+    const seq2Occurrences = await prisma.templateOccurrence.count({
+      where: { templateId: tpl.id, seq: 2 },
+    });
+    assert.equal(seq2Occurrences, 1, 'exactly one occurrence row for seq 2');
+
+    const dupClick = await request(app)
+      .post(`/api/templates/${tpl.id}/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(dupClick.status, 409, 'click-through after the scheduler is rejected');
+  });
+});
