@@ -1,4 +1,4 @@
-# Healthy Tasks — Architecture
+# HL Central — Architecture
 
 _Running architecture document. First created in Phase 12; it captures the
 application as it stands through Phase 11 and documents the Phase 12 SMART Goals
@@ -8,7 +8,7 @@ feature added on top. Keep it current as later phases land._
 
 ## 1. What the app is
 
-Healthy Tasks is an internal task-management application for a warehouse/operations
+HL Central is an internal task-management application for a warehouse/operations
 team. It provides task CRUD with hierarchy and dependencies, rich-text content and
 attachments, an audit trail, search/dashboards, notifications, three schedule
 views (Kanban/Calendar/Gantt), reusable task templates with recurring tasks, and —

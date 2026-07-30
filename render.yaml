@@ -1,5 +1,5 @@
 # =============================================================================
-# Healthy Tasks — Render Blueprint (Infrastructure-as-Code)
+# HL Central — Render Blueprint (Infrastructure-as-Code)
 # =============================================================================
 # This describes how the app deploys on Render. It defines TWO environments —
 # Production and Staging — inside a single Blueprint, using Render's
@@ -102,7 +102,7 @@ projects:
               - key: EMAIL_PROVIDER
                 value: console # change to "smtp" once a provider is wired up
               - key: EMAIL_FROM
-                value: Healthy Tasks <no-reply@healthy-tasks.local>
+                value: HL Central <no-reply@healthy-tasks.local>
               - key: SMTP_HOST # only used when EMAIL_PROVIDER=smtp
                 sync: false
               - key: SMTP_PORT
@@ -206,7 +206,7 @@ projects:
               - key: EMAIL_PROVIDER
                 value: console
               - key: EMAIL_FROM
-                value: Healthy Tasks (staging) <no-reply@healthy-tasks.local>
+                value: HL Central (staging) <no-reply@healthy-tasks.local>
               - key: STORAGE_DRIVER
                 value: s3
               - key: S3_BUCKET # SEPARATE bucket from prod, e.g. healthy-tasks-staging

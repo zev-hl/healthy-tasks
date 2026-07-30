@@ -1,5 +1,5 @@
 /* ===========================================================================
-   Healthy Tasks — Design System (Phase 9)
+   HL Central — Design System (Phase 9)
    Light-only. Dense-but-refined (Linear/Attio direction).
    Tokens first, then base, then components. Structural/layout rules from
    phases 1–8 are preserved verbatim in spirit; only the *look* is upgraded and
@@ -484,14 +484,7 @@ textarea:focus-visible {
   width: 26px;
   height: 26px;
   flex: none;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
+  object-fit: contain;
 }
 .side-brand-name {
   font-weight: 700;
@@ -1607,17 +1600,13 @@ textarea:focus-visible {
   gap: 10px;
 }
 .auth-aside-mark {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   flex: none;
-  border-radius: 9px;
+  border-radius: 50%;
   background: #fff;
-  color: var(--accent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 14px;
+  object-fit: contain;
+  padding: 3px;
 }
 .auth-aside-name {
   font-weight: 700;

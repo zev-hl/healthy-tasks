@@ -1,4 +1,4 @@
-# Healthy Tasks
+# HL Central
 
 A task-management web app. **This repository is Phase 1 — the foundation only:**
 project scaffold, user data model, authentication, and admin user management.

@@ -44,7 +44,7 @@ services:
       FRONTEND_URL: 'http://localhost:5173'
       CORS_ORIGIN: 'http://localhost:5173'
       EMAIL_PROVIDER: 'console'
-      EMAIL_FROM: 'Healthy Tasks <no-reply@healthy-tasks.local>'
+      EMAIL_FROM: 'HL Central <no-reply@healthy-tasks.local>'
       SEED_ADMIN_EMAIL: 'admin@healthy-tasks.local'
       SEED_ADMIN_PASSWORD: 'ChangeMe123!'
       # Object storage (Phase 4). Server-side ops use the compose-internal

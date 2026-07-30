@@ -2,7 +2,7 @@
   "name": "healthy-tasks",
   "version": "0.1.0",
   "private": true,
-  "description": "Healthy Tasks — task management web app (Phase 1: foundation)",
+  "description": "HL Central — task management web app",
   "workspaces": [
     "packages/*",
     "backend",

@@ -67,9 +67,9 @@ export const mailer: Mailer =
 export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
   await mailer.send({
     to,
-    subject: 'Reset your Healthy Tasks password',
+    subject: 'Reset your HL Central password',
     text: [
-      'A password reset was requested for your Healthy Tasks account.',
+      'A password reset was requested for your HL Central account.',
       '',
       'Open this link to set a new password:',
       resetLink,

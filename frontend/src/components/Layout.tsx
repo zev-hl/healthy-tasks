@@ -59,10 +59,8 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   return (
     <aside className="sidebar">
       <Link to="/" className="side-brand">
-        <span className="side-brand-mark" aria-hidden="true">
-          H
-        </span>
-        <span className="side-brand-name">Healthy Tasks</span>
+        <img className="side-brand-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
+        <span className="side-brand-name">HL Central</span>
       </Link>
 
       <nav className="side-nav">

@@ -276,7 +276,7 @@ async function alertAdminsSchedulerDown(lastTickAt: Date, now: Date): Promise<vo
     try {
       await mailer.send({
         to: a.email,
-        subject: '⚠️ Healthy Tasks recurrence scheduler is not running',
+        subject: '⚠️ HL Central recurrence scheduler is not running',
         text: [
           'The background scheduler that generates recurring tasks has stopped ticking.',
           `Last run: ${lastTickAt.toISOString()} (~${minutes} minutes ago).`,

@@ -32,7 +32,7 @@ export const env = {
 
   email: {
     provider: optional('EMAIL_PROVIDER', 'console'),
-    from: optional('EMAIL_FROM', 'Healthy Tasks <no-reply@healthy-tasks.local>'),
+    from: optional('EMAIL_FROM', 'HL Central <no-reply@healthy-tasks.local>'),
     smtpHost: process.env.SMTP_HOST,
     smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
     smtpUser: process.env.SMTP_USER,

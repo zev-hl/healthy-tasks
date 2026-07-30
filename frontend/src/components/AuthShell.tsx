@@ -13,10 +13,8 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <div className="auth-split">
         <aside className="auth-aside">
           <div className="auth-aside-brand">
-            <span className="auth-aside-mark" aria-hidden="true">
-              H
-            </span>
-            <span className="auth-aside-name">Healthy Tasks</span>
+            <img className="auth-aside-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
+            <span className="auth-aside-name">HL Central</span>
           </div>
 
           <div className="auth-aside-copy">

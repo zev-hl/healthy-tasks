@@ -1,4 +1,4 @@
-// Prisma schema for Healthy Tasks — Phase 1 (foundation).
+// Prisma schema for HL Central — Phase 1 (foundation).
 // Later phases (tasks, comments, notifications) will add models here.
 
 generator client {
