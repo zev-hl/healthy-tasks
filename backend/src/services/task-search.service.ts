@@ -52,6 +52,8 @@ function toTaskRowDto(t: TaskRow): TaskRowDto {
     childrenCount: t._count.children,
     tags: t.tags,
     blockedByIds: t.blockedBy.map((b) => b.blockerId),
+    instanceLabel: t.instanceLabel,
+    templateId: t.templateId,
   };
 }
 
@@ -174,6 +176,13 @@ async function buildWhere(input: TaskSearchInput | TaskDashboardInput): Promise<
   if (f.blocked) {
     and.push({ blockedBy: { some: { blocker: { status: { notIn: [...TERMINAL_TASK_STATUSES] } } } } });
   }
+
+  // Template provenance (Phase 11): filter by instance label (partial) or source
+  // template — the "stored as its own filterable field" half of instance labels.
+  if (f.instanceLabel && f.instanceLabel.trim()) {
+    and.push({ instanceLabel: { contains: f.instanceLabel.trim(), mode: 'insensitive' } });
+  }
+  if (f.templateId) and.push({ templateId: f.templateId });
 
   return and.length > 0 ? { AND: and } : {};
 }

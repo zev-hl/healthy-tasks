@@ -17,6 +17,7 @@ import {
   getNotificationPreferences,
   updateNotificationPreferences,
 } from '../services/notification-preference.service.js';
+import { checkSchedulerHealth, isSchedulerDown } from '../services/scheduler.service.js';
 import type { UpdateNotificationPreferencesInput } from '../validation/schemas.js';
 
 function currentUserId(req: Request): string {
@@ -39,8 +40,14 @@ export async function listNotificationsController(req: Request, res: Response): 
 /** GET /api/notifications/unread-count — the 30s bell poll (and email heartbeat). */
 export async function unreadCountController(req: Request, res: Response): Promise<void> {
   const userId = currentUserId(req);
-  await processDueReminderEmails(userId, new Date());
-  res.json((await getUnreadCounts(userId)) satisfies UnreadCountDto);
+  const now = new Date();
+  await processDueReminderEmails(userId, now);
+  // Watchdog for the recurrence timer: if it has gone stale, email admins (once
+  // per outage) AND report `schedulerDown` so every client shows a global banner.
+  await checkSchedulerHealth(now);
+  const counts = await getUnreadCounts(userId);
+  const schedulerDown = await isSchedulerDown(now);
+  res.json({ ...counts, schedulerDown } satisfies UnreadCountDto);
 }
 
 /** POST /api/notifications/:id/read — mark a Mentioned/Assigned entry read. */

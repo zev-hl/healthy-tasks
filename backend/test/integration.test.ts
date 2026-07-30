@@ -48,9 +48,12 @@ beforeEach(async () => {
   // Fresh state for every test. RESTART IDENTITY resets the Task id sequence so
   // sequential-id assertions are deterministic (first task id = 1).
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "Task", "PasswordResetToken", "User" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "Task", "PasswordResetToken", "User", "SchedulerState" RESTART IDENTITY CASCADE',
   );
-  // CASCADE also clears Comment/Attachment/CommentMention/MentionEvent.
+  // CASCADE also clears Comment/Attachment/CommentMention/MentionEvent and the
+  // Phase 11 template tables (TaskTemplate cascades from User; occurrences +
+  // generated tasks cascade from Task). SchedulerState is unlinked, so it is
+  // truncated explicitly to isolate the scheduler tests.
   memoryStorage.__reset();
   await seedUser({ email: ADMIN_EMAIL, role: 'Admin', password: ADMIN_PASSWORD });
 });
@@ -2662,5 +2665,631 @@ describe('gantt date coalescing (Phase 10)', () => {
       .send({ dueAt: D2, coalesceHistory: true });
     const dueEntries = (await history(tok, t.id)).filter((e) => e.field === 'dueAt');
     assert.equal(dueEntries.length, 2, 'a drag past the window starts a new entry');
+  });
+});
+
+describe('task templates / recurring tasks (Phase 11)', () => {
+  // Drive the scheduler deterministically instead of relying on the background
+  // timer (which only runs from server.ts, never under tests).
+  let runScheduler: (now: Date) => Promise<number>;
+  before(async () => {
+    ({ runScheduler } = await import('../src/services/scheduler.service.js'));
+  });
+
+  const MGR_EMAIL = 'tmgr@test.local';
+  const MEM_EMAIL = 'tmem@test.local';
+  async function managerToken(): Promise<string> {
+    await seedUser({ email: MGR_EMAIL, role: 'Manager', password: MEMBER_PASSWORD });
+    return login(MGR_EMAIL, MEMBER_PASSWORD);
+  }
+  async function memberToken(): Promise<string> {
+    await seedUser({ email: MEM_EMAIL, role: 'Member', password: MEMBER_PASSWORD });
+    return login(MEM_EMAIL, MEMBER_PASSWORD);
+  }
+
+  // A simple two-level template: root "Inspect" (role Inspector) blocks child
+  // "Pack" (role Packer); relative offsets in days from the instantiation anchor.
+  function twoLevelBody(extra: Record<string, unknown> = {}) {
+    return {
+      name: 'Shipment intake',
+      nodes: [
+        {
+          key: 'root',
+          parentKey: null,
+          name: 'Inspect',
+          defaultPriority: 'High',
+          startOffsetDays: 0,
+          dueOffsetDays: 2,
+          assigneeRole: 'Inspector',
+        },
+        {
+          key: 'pack',
+          parentKey: 'root',
+          name: 'Pack',
+          startOffsetDays: 2,
+          dueOffsetDays: 4,
+          assigneeRole: 'Packer',
+        },
+      ],
+      dependencies: [{ blockerKey: 'root', blockedKey: 'pack' }],
+      ...extra,
+    };
+  }
+
+  async function createTemplate(token: string, body: Record<string, unknown>) {
+    const res = await request(app).post('/api/templates').set(auth(token)).send(body);
+    assert.equal(res.status, 201, `create template failed: ${JSON.stringify(res.body)}`);
+    return res.body;
+  }
+
+  it('forbids Members from all template management (list/create/instantiate)', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(admin, twoLevelBody());
+    const mem = await memberToken();
+
+    for (const call of [
+      request(app).get('/api/templates').set(auth(mem)),
+      request(app).post('/api/templates').set(auth(mem)).send(twoLevelBody()),
+      request(app).get(`/api/templates/${tpl.id}`).set(auth(mem)),
+      request(app)
+        .post(`/api/templates/${tpl.id}/instantiate`)
+        .set(auth(mem))
+        .send({ anchorStart: '2026-08-10T00:00:00.000Z' }),
+    ]) {
+      const res = await call;
+      assert.equal(res.status, 403, 'Members must not access template management');
+    }
+  });
+
+  it('lets a Manager create a multi-level template with roles and dependencies', async () => {
+    const mgr = await managerToken();
+    const tpl = await createTemplate(mgr, twoLevelBody());
+
+    const res = await request(app).get(`/api/templates/${tpl.id}`).set(auth(mgr));
+    assert.equal(res.status, 200);
+    assert.equal(res.body.nodes.length, 2);
+    assert.equal(res.body.dependencies.length, 1);
+    assert.deepEqual([...res.body.roles].sort(), ['Inspector', 'Packer']);
+    const root = res.body.nodes.find((n: { parentNodeId: number | null }) => n.parentNodeId === null);
+    assert.ok(root, 'has exactly one root node');
+    assert.equal(root.defaultPriority, 'High');
+  });
+
+  it('rejects an invalid tree (two roots, and a dependency cycle)', async () => {
+    const admin = await adminToken();
+    const twoRoots = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: 'bad',
+        nodes: [
+          { key: 'a', parentKey: null, name: 'A' },
+          { key: 'b', parentKey: null, name: 'B' },
+        ],
+      });
+    assert.equal(twoRoots.status, 400);
+
+    const cycle = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: 'bad2',
+        nodes: [
+          { key: 'a', parentKey: null, name: 'A' },
+          { key: 'b', parentKey: 'a', name: 'B' },
+        ],
+        dependencies: [
+          { blockerKey: 'a', blockedKey: 'b' },
+          { blockerKey: 'b', blockedKey: 'a' },
+        ],
+      });
+    assert.equal(cycle.status, 400);
+  });
+
+  it('manually instantiates a real, independent tree with the label prefixed + filterable', async () => {
+    const admin = await adminToken();
+    const inspector = await seedUser({ email: 'insp@test.local', role: 'Member' });
+    const tpl = await createTemplate(admin, twoLevelBody());
+
+    const res = await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({
+        instanceLabel: 'PO-4521',
+        anchorStart: '2026-08-10T00:00:00.000Z',
+        roleAssignments: [{ role: 'Inspector', assigneeId: inspector.id }],
+      });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.taskIds.length, 2);
+
+    // Root task: label prefixed onto the name, stored as its own field, dates
+    // resolved from the offsets, role resolved to the chosen user.
+    const rootRes = await request(app).get(`/api/tasks/${res.body.rootTaskId}`).set(auth(admin));
+    assert.equal(rootRes.body.name, 'PO-4521: Inspect');
+    assert.equal(rootRes.body.instanceLabel, 'PO-4521');
+    assert.equal(rootRes.body.assigneeId, inspector.id);
+    assert.equal(rootRes.body.startAt, new Date('2026-08-10T00:00:00.000Z').toISOString());
+    assert.equal(rootRes.body.dueAt, new Date('2026-08-12T00:00:00.000Z').toISOString());
+    // The child is a real, dependent task under the real parent.
+    assert.equal(rootRes.body.children.length, 1);
+    assert.equal(rootRes.body.blocks.length, 1, 'root blocks the child (dependency carried through)');
+
+    // Instance label is a filterable attribute, not just baked into the name.
+    const q = await request(app)
+      .post('/api/tasks/query')
+      .set(auth(admin))
+      .send({ filters: { instanceLabel: 'PO-4521' } });
+    assert.equal(q.body.total, 2, 'both generated tasks match the instance-label filter');
+    const none = await request(app)
+      .post('/api/tasks/query')
+      .set(auth(admin))
+      .send({ filters: { instanceLabel: 'ZZZ' } });
+    assert.equal(none.body.total, 0);
+  });
+
+  it('fixed "every 3 weeks", limit 3 → materializes exactly 3, spaced 3 weeks, then stops', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(
+      admin,
+      twoLevelBody({
+        recurrence: {
+          recurrenceType: 'Fixed',
+          intervalCount: 3,
+          intervalUnit: 'Week',
+          anchorDate: '2026-08-01T00:00:00.000Z',
+          endType: 'AfterOccurrences',
+          maxOccurrences: 3,
+          leadTimeDays: 0,
+        },
+      }),
+    );
+
+    const scheduledCount = async (): Promise<number> =>
+      prisma.templateOccurrence.count({ where: { templateId: tpl.id, origin: 'scheduled' } });
+
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 1);
+    await runScheduler(new Date('2026-08-15T00:00:00.000Z')); // before the 3-week mark
+    assert.equal(await scheduledCount(), 1, 'no early second occurrence');
+    await runScheduler(new Date('2026-08-22T00:00:00.000Z')); // +3 weeks
+    assert.equal(await scheduledCount(), 2);
+    await runScheduler(new Date('2026-09-12T00:00:00.000Z')); // +6 weeks
+    assert.equal(await scheduledCount(), 3);
+    await runScheduler(new Date('2026-10-03T00:00:00.000Z')); // +9 weeks → past the limit
+    assert.equal(await scheduledCount(), 3, 'stops after the occurrence limit');
+
+    const occ = await prisma.templateOccurrence.findMany({
+      where: { templateId: tpl.id, origin: 'scheduled' },
+      orderBy: { seq: 'asc' },
+    });
+    assert.deepEqual(
+      occ.map((o) => o.anchorStart.toISOString()),
+      [
+        '2026-08-01T00:00:00.000Z',
+        '2026-08-22T00:00:00.000Z',
+        '2026-09-12T00:00:00.000Z',
+      ],
+      'occurrences are spaced exactly 3 weeks apart',
+    );
+  });
+
+  it('relative-to-completion only schedules the next occurrence after the prior root completes', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(
+      admin,
+      {
+        name: 'Relative series',
+        nodes: [{ key: 'root', parentKey: null, name: 'Do the thing', dueOffsetDays: 1 }],
+        recurrence: {
+          recurrenceType: 'RelativeToCompletion',
+          intervalCount: 3,
+          intervalUnit: 'Day',
+          anchorDate: '2026-08-01T00:00:00.000Z',
+          endType: 'Never',
+          leadTimeDays: 0,
+        },
+      },
+    );
+    const scheduledCount = async (): Promise<number> =>
+      prisma.templateOccurrence.count({ where: { templateId: tpl.id, origin: 'scheduled' } });
+
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 1, 'first occurrence fires at the anchor');
+
+    // Long after, but the root is still open → no next occurrence.
+    await runScheduler(new Date('2026-08-30T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 1, 'no next occurrence while the prior root is open');
+
+    // Complete the first root, then run past (completedAt + 3 days).
+    const first = await prisma.templateOccurrence.findFirst({
+      where: { templateId: tpl.id, seq: 1 },
+      select: { rootTaskId: true },
+    });
+    await request(app).patch(`/api/tasks/${first!.rootTaskId}`).set(auth(admin)).send({ status: 'Completed' });
+    const root = await prisma.task.findUnique({
+      where: { id: first!.rootTaskId! },
+      select: { statusChangedAt: true },
+    });
+    const after = new Date(root!.statusChangedAt!.getTime() + 4 * 24 * 60 * 60 * 1000);
+    await runScheduler(after);
+    assert.equal(await scheduledCount(), 2, 'the next occurrence is scheduled only after completion');
+  });
+
+  it('scheduled occurrences auto-assign the same person(s) as the previous instance', async () => {
+    const admin = await adminToken();
+    const owner = await seedUser({ email: 'owner@test.local', role: 'Member' });
+    const tpl = await createTemplate(
+      admin,
+      {
+        name: 'Owned series',
+        nodes: [
+          { key: 'root', parentKey: null, name: 'Owned task', assigneeRole: 'Owner', startOffsetDays: 0, dueOffsetDays: 1 },
+        ],
+        recurrence: {
+          recurrenceType: 'Fixed',
+          intervalCount: 1,
+          intervalUnit: 'Week',
+          anchorDate: '2026-08-01T00:00:00.000Z',
+          endType: 'AfterOccurrences',
+          maxOccurrences: 5,
+          leadTimeDays: 0,
+        },
+      },
+    );
+
+    // Seed the "previous instance" by manually instantiating with the owner mapped.
+    await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2026-07-01T00:00:00.000Z', roleAssignments: [{ role: 'Owner', assigneeId: owner.id }] });
+
+    // The next scheduled fire carries the owner forward automatically.
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+    const seq1 = await prisma.templateOccurrence.findFirst({
+      where: { templateId: tpl.id, seq: 1 },
+      include: { rootTask: { select: { assigneeId: true } } },
+    });
+    assert.equal(seq1?.rootTask?.assigneeId, owner.id, 'the scheduled root reuses the prior assignee');
+  });
+
+  it('computes fixed-schedule ghosts (not persisted) and none for relative-to-completion', async () => {
+    const admin = await adminToken();
+    const fixed = await createTemplate(
+      admin,
+      twoLevelBody({
+        recurrence: {
+          recurrenceType: 'Fixed',
+          intervalCount: 2,
+          intervalUnit: 'Week',
+          anchorDate: '2026-08-01T00:00:00.000Z',
+          endType: 'AfterOccurrences',
+          maxOccurrences: 4,
+          leadTimeDays: 14,
+        },
+      }),
+    );
+
+    const ghosts = await request(app).get(`/api/templates/${fixed.id}/ghosts`).set(auth(admin));
+    assert.equal(ghosts.status, 200);
+    assert.equal(ghosts.body.length, 4, 'all four bounded occurrences are previewed as ghosts');
+    assert.equal(ghosts.body[0].seq, 1);
+    assert.equal(ghosts.body[0].sourceType, 'template');
+    assert.equal(ghosts.body[0].startAt, new Date('2026-08-01T00:00:00.000Z').toISOString());
+    // Ghosts are computed, never rows.
+    assert.equal(await prisma.templateOccurrence.count({ where: { templateId: fixed.id } }), 0);
+
+    const rel = await createTemplate(admin, {
+      name: 'Relative',
+      nodes: [{ key: 'root', parentKey: null, name: 'R', dueOffsetDays: 1 }],
+      recurrence: {
+        recurrenceType: 'RelativeToCompletion',
+        intervalCount: 3,
+        intervalUnit: 'Day',
+        anchorDate: '2026-08-01T00:00:00.000Z',
+        endType: 'Never',
+      },
+    });
+    const relGhosts = await request(app).get(`/api/templates/${rel.id}/ghosts`).set(auth(admin));
+    assert.deepEqual(relGhosts.body, [], 'relative-to-completion has no computable future ghosts');
+  });
+
+  it('materializes a ghost on click-through and it stops appearing as a ghost', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(
+      admin,
+      twoLevelBody({
+        recurrence: {
+          recurrenceType: 'Fixed',
+          intervalCount: 1,
+          intervalUnit: 'Month',
+          anchorDate: '2026-08-01T00:00:00.000Z',
+          endType: 'AfterOccurrences',
+          maxOccurrences: 3,
+          leadTimeDays: 7,
+        },
+      }),
+    );
+
+    const res = await request(app)
+      .post(`/api/templates/${tpl.id}/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.occurrence.seq, 2);
+    assert.ok(res.body.rootTaskId);
+
+    const ghosts = await request(app).get(`/api/templates/${tpl.id}/ghosts`).set(auth(admin));
+    const seqs = ghosts.body.map((g: { seq: number }) => g.seq);
+    assert.deepEqual(seqs.sort(), [1, 3], 'the materialized seq 2 is no longer a ghost');
+
+    // Re-materializing the same seq is rejected.
+    const dup = await request(app)
+      .post(`/api/templates/${tpl.id}/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(dup.status, 409);
+  });
+
+  it('"this and following": ghosts reflect edits live, and future instances update only on confirm', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(
+      admin,
+      twoLevelBody({
+        recurrence: {
+          recurrenceType: 'Fixed',
+          intervalCount: 1,
+          intervalUnit: 'Week',
+          anchorDate: '2026-08-01T00:00:00.000Z',
+          endType: 'AfterOccurrences',
+          maxOccurrences: 4,
+          leadTimeDays: 30,
+        },
+      }),
+    );
+    const full = await request(app).get(`/api/templates/${tpl.id}`).set(auth(admin));
+    const nodes = full.body.nodes as { id: number; parentNodeId: number | null; name: string }[];
+    const rootId = nodes.find((n) => n.parentNodeId === null)!.id;
+    const childId = nodes.find((n) => n.parentNodeId !== null)!.id;
+
+    // Materialize seq 1 (a future, not-yet-started instance).
+    await request(app).post(`/api/templates/${tpl.id}/materialize`).set(auth(admin)).send({ seq: 1 });
+
+    // Edit the template: rename + re-prioritize the root ("this and following").
+    const editRes = await request(app)
+      .patch(`/api/templates/${tpl.id}`)
+      .set(auth(admin))
+      .send({
+        nodes: [
+          {
+            id: rootId,
+            key: 'root',
+            parentKey: null,
+            name: 'Inspect carefully',
+            defaultPriority: 'Urgent',
+            startOffsetDays: 0,
+            dueOffsetDays: 2,
+            assigneeRole: 'Inspector',
+          },
+          {
+            id: childId,
+            key: 'pack',
+            parentKey: 'root',
+            name: 'Pack',
+            startOffsetDays: 2,
+            dueOffsetDays: 4,
+            assigneeRole: 'Packer',
+          },
+        ],
+        dependencies: [{ blockerKey: 'root', blockedKey: 'pack' }],
+      });
+    assert.equal(editRes.status, 200, JSON.stringify(editRes.body));
+
+    // Future ghosts recompute automatically — no extra work needed.
+    const ghosts = await request(app).get(`/api/templates/${tpl.id}/ghosts`).set(auth(admin));
+    assert.ok(
+      ghosts.body.every((g: { name: string }) => g.name === 'Inspect carefully'),
+      'ghosts reflect the edited template live',
+    );
+
+    // The already-materialized future instance is NOT auto-updated; it is offered
+    // for an explicit confirm, then re-synced.
+    const future = await request(app).get(`/api/templates/${tpl.id}/future`).set(auth(admin));
+    assert.equal(future.body.length, 1, 'the materialized, not-yet-done instance is listed');
+    const occId = future.body[0].occurrenceId;
+
+    const rootTaskId = future.body[0].rootTaskId;
+    const beforeApply = await request(app).get(`/api/tasks/${rootTaskId}`).set(auth(admin));
+    assert.equal(beforeApply.body.name, 'Inspect', 'not silently rewritten before confirming');
+
+    const apply = await request(app)
+      .post(`/api/templates/${tpl.id}/apply-to-future`)
+      .set(auth(admin))
+      .send({ occurrenceIds: [occId] });
+    assert.equal(apply.status, 200);
+    assert.equal(apply.body.updatedOccurrences, 1);
+
+    const afterApply = await request(app).get(`/api/tasks/${rootTaskId}`).set(auth(admin));
+    assert.equal(afterApply.body.name, 'Inspect carefully', 'confirmed re-sync updates the task');
+    assert.equal(afterApply.body.priority, 'Urgent');
+  });
+
+  it('never rewrites a completed instance when applying template edits', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(admin, {
+      name: 'Single',
+      nodes: [{ key: 'root', parentKey: null, name: 'Original', defaultPriority: 'Low', dueOffsetDays: 1 }],
+    });
+    const inst = await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2026-08-10T00:00:00.000Z' });
+    const rootTaskId = inst.body.rootTaskId;
+    const occId = inst.body.occurrence.id;
+
+    await request(app).patch(`/api/tasks/${rootTaskId}`).set(auth(admin)).send({ status: 'Completed' });
+
+    // A completed occurrence is excluded from the future list...
+    const future = await request(app).get(`/api/templates/${tpl.id}/future`).set(auth(admin));
+    assert.equal(future.body.length, 0, 'completed instances are not offered for update');
+
+    // ...and even a forced apply leaves the completed task untouched.
+    const full = await request(app).get(`/api/templates/${tpl.id}`).set(auth(admin));
+    const rootNodeId = full.body.nodes[0].id;
+    await request(app)
+      .patch(`/api/templates/${tpl.id}`)
+      .set(auth(admin))
+      .send({ nodes: [{ id: rootNodeId, key: 'root', parentKey: null, name: 'Changed', defaultPriority: 'Urgent', dueOffsetDays: 1 }] });
+    await request(app)
+      .post(`/api/templates/${tpl.id}/apply-to-future`)
+      .set(auth(admin))
+      .send({ occurrenceIds: [occId] });
+
+    const task = await request(app).get(`/api/tasks/${rootTaskId}`).set(auth(admin));
+    assert.equal(task.body.name, 'Original', 'past/completed work is never rewritten');
+    assert.equal(task.body.priority, 'Low');
+  });
+});
+
+describe('task-level recurrence (Phase 11)', () => {
+  let runScheduler: (now: Date) => Promise<number>;
+  before(async () => {
+    ({ runScheduler } = await import('../src/services/scheduler.service.js'));
+  });
+
+  async function memberToken(email: string): Promise<string> {
+    await seedUser({ email, role: 'Member', password: MEMBER_PASSWORD });
+    return login(email, MEMBER_PASSWORD);
+  }
+
+  const setRecurrence = (token: string, taskId: number, body: Record<string, unknown>) =>
+    request(app).put(`/api/tasks/${taskId}/recurrence`).set(auth(token)).send(body);
+
+  it('lets a Member set a regular task to recur AND see its ghosts', async () => {
+    const mem = await memberToken('rec-mem@test.local');
+    const t = await makeTask(mem, 'Weekly standup', {
+      startAt: '2026-08-01T09:00:00.000Z',
+      dueAt: '2026-08-01T10:00:00.000Z',
+    });
+
+    const set = await setRecurrence(mem, t.id, {
+      recurrenceType: 'Fixed',
+      intervalCount: 1,
+      intervalUnit: 'Week',
+      endType: 'AfterOccurrences',
+      maxOccurrences: 6,
+      leadTimeDays: 0,
+    });
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+    assert.ok(set.body.recurrence, 'the task now carries a recurrence rule');
+    assert.equal(set.body.recurrence.recurrenceType, 'Fixed');
+
+    const ghosts = await request(app).get('/api/tasks/ghosts').set(auth(mem));
+    assert.equal(ghosts.status, 200);
+    const mine = ghosts.body.filter((g: { sourceId: number }) => g.sourceId === t.id);
+    assert.equal(mine.length, 5, 'seq 2..6 are ghosts (the source task is occurrence #1)');
+    assert.equal(mine[0].sourceType, 'task');
+    // Ghosts are computed, never persisted rows.
+    assert.equal(await prisma.task.count({ where: { recurrenceSourceId: t.id } }), 0);
+  });
+
+  it('requires a start or due date before a task can recur', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'No dates');
+    const res = await setRecurrence(admin, t.id, {
+      recurrenceType: 'Fixed',
+      intervalCount: 1,
+      intervalUnit: 'Week',
+    });
+    assert.equal(res.status, 400);
+  });
+
+  it('scheduler materializes due occurrences and carries the assignee forward', async () => {
+    const admin = await adminToken();
+    const owner = await seedUser({ email: 'rec-owner@test.local', role: 'Member' });
+    const t = await makeTask(admin, 'Recurring job', {
+      startAt: '2026-08-01T00:00:00.000Z',
+      dueAt: '2026-08-01T02:00:00.000Z',
+      assigneeId: owner.id,
+    });
+    await setRecurrence(admin, t.id, {
+      recurrenceType: 'Fixed',
+      intervalCount: 1,
+      intervalUnit: 'Week',
+      endType: 'AfterOccurrences',
+      maxOccurrences: 4,
+      leadTimeDays: 0,
+    });
+
+    await runScheduler(new Date('2026-08-08T00:00:00.000Z')); // seq 2 is due (+1 week)
+    const occ = await prisma.task.findFirst({
+      where: { recurrenceSourceId: t.id, recurrenceSeq: 2 },
+    });
+    assert.ok(occ, 'the +1 week occurrence was materialized');
+    assert.equal(occ!.assigneeId, owner.id, 'the assignee is carried forward from the prior instance');
+    assert.equal(occ!.startAt?.toISOString(), '2026-08-08T00:00:00.000Z', 'dates shift by one interval');
+    assert.equal(occ!.dueAt?.toISOString(), '2026-08-08T02:00:00.000Z');
+    // seq 3 (+2 weeks) is not yet due.
+    assert.equal(await prisma.task.count({ where: { recurrenceSourceId: t.id } }), 1);
+  });
+
+  it('relative-to-completion schedules the next only after the prior instance completes', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Relative job', { dueAt: '2026-08-01T00:00:00.000Z' });
+    await setRecurrence(admin, t.id, {
+      recurrenceType: 'RelativeToCompletion',
+      intervalCount: 3,
+      intervalUnit: 'Day',
+      leadTimeDays: 0,
+    });
+
+    await runScheduler(new Date('2026-08-30T00:00:00.000Z')); // source still open
+    assert.equal(await prisma.task.count({ where: { recurrenceSourceId: t.id } }), 0, 'nothing while open');
+
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Completed' });
+    const src = await prisma.task.findUnique({ where: { id: t.id }, select: { statusChangedAt: true } });
+    await runScheduler(new Date(src!.statusChangedAt!.getTime() + 4 * 24 * 60 * 60 * 1000));
+    assert.equal(
+      await prisma.task.count({ where: { recurrenceSourceId: t.id } }),
+      1,
+      'the next instance is scheduled only after completion',
+    );
+  });
+
+  it('materializes a task ghost on click-through and it stops being a ghost', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Monthly report', {
+      startAt: '2026-08-01T00:00:00.000Z',
+      dueAt: '2026-08-01T01:00:00.000Z',
+    });
+    await setRecurrence(admin, t.id, {
+      recurrenceType: 'Fixed',
+      intervalCount: 1,
+      intervalUnit: 'Month',
+      endType: 'AfterOccurrences',
+      maxOccurrences: 3,
+      leadTimeDays: 0,
+    });
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/recurrence/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.equal(res.body.recurrenceSeq, 2);
+    assert.equal(res.body.recurrenceSourceId, t.id);
+    assert.equal(res.body.startAt, '2026-09-01T00:00:00.000Z', 'one month after the source start');
+
+    const ghosts = await request(app).get('/api/tasks/ghosts').set(auth(admin));
+    const seqs = ghosts.body
+      .filter((g: { sourceId: number }) => g.sourceId === t.id)
+      .map((g: { seq: number }) => g.seq)
+      .sort();
+    assert.deepEqual(seqs, [3], 'seq 2 is now a real task; only seq 3 remains a ghost');
+
+    const dup = await request(app)
+      .post(`/api/tasks/${t.id}/recurrence/materialize`)
+      .set(auth(admin))
+      .send({ seq: 2 });
+    assert.equal(dup.status, 409);
   });
 });

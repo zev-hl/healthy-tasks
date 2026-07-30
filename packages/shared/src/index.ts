@@ -235,6 +235,10 @@ export interface TaskDto {
   priorAssigneeId: string | null;
   priorAssignee: TaskUserRef | null;
   priorStatus: TaskStatus | null;
+  // Phase 11: set on tasks generated from a template. `instanceLabel` is the
+  // PO/batch label (also prefixed onto `name`); `templateId` traces the source.
+  instanceLabel: string | null;
+  templateId: number | null;
 }
 
 /** Compact task reference for relationship display (id + name + status). */
@@ -257,6 +261,13 @@ export interface TaskDetailDto extends TaskDto {
   // Phase 4: files attached to the task, and its comment thread (newest last).
   attachments: AttachmentDto[];
   comments: CommentDto[];
+  // Phase 11: this task's own recurrence rule (null unless it is set to recur),
+  // plus how it relates to a recurring series it may belong to.
+  recurrence: TaskRecurrenceDto | null;
+  /** If this task is a generated occurrence, the source (definition) task id. */
+  recurrenceSourceId: number | null;
+  /** 1-based occurrence index if this task is a generated recurrence instance. */
+  recurrenceSeq: number | null;
 }
 
 // --- Relationship request shapes (Phase 3) ---------------------------------
@@ -446,6 +457,8 @@ export const TASK_HISTORY_FIELDS = {
   attachment: 'attachment',
   comment: 'comment',
   merge: 'merge',
+  // Phase 11: task generated from a template (provenance, on the root task).
+  template: 'template',
 } as const;
 
 /** Human-readable label for a history `field` key (falls back to the key). */
@@ -464,6 +477,7 @@ export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
   attachment: 'Attachment',
   comment: 'Comment',
   merge: 'Account merge',
+  template: 'Template',
 };
 
 /** A single change-history entry for a task, newest-first in listings. */
@@ -611,6 +625,11 @@ export interface TaskSearchFilters {
   creatorIds?: string[];
   /** Only tasks with an incomplete blocker (a non-terminal `isBlockedBy`). */
   blocked?: boolean;
+  // --- Template provenance (Phase 11) --------------------------------------
+  /** Case-insensitive substring match on a generated task's instance label. */
+  instanceLabel?: string;
+  /** Restrict to tasks generated from this template. */
+  templateId?: number;
 }
 
 export interface TaskSearchRequest {
@@ -686,6 +705,10 @@ export interface TaskRowDto {
   depth?: number;
   /** Phase 10: ids of the tasks this one is blocked by, for Gantt dependency arrows. */
   blockedByIds: number[];
+  /** Phase 11: PO/batch label for a template-generated task (null otherwise). */
+  instanceLabel: string | null;
+  /** Phase 11: source template id for a generated task (null otherwise). */
+  templateId: number | null;
 }
 
 // --- Users screen filtering/sorting ----------------------------------------
@@ -814,6 +837,12 @@ export interface UnreadCountDto {
   mentioned: number;
   reminders: number;
   assigned: number;
+  /**
+   * Phase 11: true when the recurrence background timer has gone stale (stopped
+   * ticking). Surfaced on the heartbeat every client already polls so the app
+   * can show a global "contact an admin" banner to everyone, not just admins.
+   */
+  schedulerDown: boolean;
 }
 
 // --- Reminders (task-detail management) ------------------------------------
@@ -879,3 +908,278 @@ export interface NotificationPreferencesDto {
 }
 
 export type UpdateNotificationPreferencesRequest = Partial<NotificationPreferencesDto>;
+
+// ---------------------------------------------------------------------------
+// Task templates & recurring tasks (Phase 11)
+// ---------------------------------------------------------------------------
+
+// A template is a reusable, non-live definition — never a real Task until
+// instantiated. Only Admin/Manager may manage templates (enforced in service +
+// route + UI). Recurrence is configured per template and comes in two flavours.
+export const RECURRENCE_TYPES = ['None', 'Fixed', 'RelativeToCompletion'] as const;
+export type RecurrenceType = (typeof RECURRENCE_TYPES)[number];
+export const RECURRENCE_TYPE_LABELS: Record<RecurrenceType, string> = {
+  None: 'No recurrence (manual only)',
+  Fixed: 'Fixed calendar schedule',
+  RelativeToCompletion: 'Relative to prior completion',
+};
+
+export const RECURRENCE_UNITS = ['Day', 'Week', 'Month'] as const;
+export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
+export const RECURRENCE_UNIT_LABELS: Record<RecurrenceUnit, string> = {
+  Day: 'day(s)',
+  Week: 'week(s)',
+  Month: 'month(s)',
+};
+
+export const RECURRENCE_END_TYPES = ['Never', 'OnDate', 'AfterOccurrences'] as const;
+export type RecurrenceEndType = (typeof RECURRENCE_END_TYPES)[number];
+
+export const TEMPLATE_OCCURRENCE_ORIGINS = ['manual', 'scheduled'] as const;
+export type TemplateOccurrenceOrigin = (typeof TEMPLATE_OCCURRENCE_ORIGINS)[number];
+
+/** Default lead time (days) before an occurrence's anchor to auto-materialize. */
+export const DEFAULT_TEMPLATE_LEAD_DAYS = 14;
+
+/**
+ * How far ahead ghost previews are computed for an indefinite (`Never`-ending)
+ * fixed schedule, so a never-ending series doesn't produce an unbounded list.
+ * Bounded series (end date / max occurrences) show all remaining occurrences.
+ */
+export const GHOST_HORIZON_OCCURRENCES = 24;
+
+/** One definition node in a template tree (mirrors a real Task in the hierarchy). */
+export interface TemplateNodeDto {
+  id: number;
+  parentNodeId: number | null;
+  name: string;
+  description: string | null;
+  defaultPriority: TaskPriority;
+  /** Day offsets from the occurrence anchor; null ⇒ that date is left unset. */
+  startOffsetDays: number | null;
+  dueOffsetDays: number | null;
+  /** Free-text job-role placeholder, resolved to a real user at instantiation. */
+  assigneeRole: string | null;
+  orderIndex: number;
+}
+
+/** A dependency edge between two nodes of the same template (blocker → blocked). */
+export interface TemplateDependencyDto {
+  id: number;
+  blockerNodeId: number;
+  blockedNodeId: number;
+}
+
+/** A materialized instantiation of a template into a real task tree. */
+export interface TemplateOccurrenceDto {
+  id: number;
+  /** 1-based schedule index for a scheduled occurrence; null for a manual one. */
+  seq: number | null;
+  origin: TemplateOccurrenceOrigin;
+  instanceLabel: string | null;
+  anchorStart: string; // ISO
+  rootTaskId: number | null;
+  materializedAt: string; // ISO
+}
+
+/** Full template with its tree, dependencies, and a summary of its occurrences. */
+export interface TemplateDto {
+  id: number;
+  name: string;
+  description: string | null;
+  createdBy: TaskUserRef;
+  recurrenceType: RecurrenceType;
+  intervalCount: number | null;
+  intervalUnit: RecurrenceUnit | null;
+  anchorDate: string | null; // ISO
+  endType: RecurrenceEndType;
+  endDate: string | null; // ISO
+  maxOccurrences: number | null;
+  leadTimeDays: number;
+  labelPrefix: string | null;
+  isActive: boolean;
+  nodes: TemplateNodeDto[];
+  dependencies: TemplateDependencyDto[];
+  occurrences: TemplateOccurrenceDto[];
+  /** Distinct assignee-role placeholders across the tree (for the instantiation form). */
+  roles: string[];
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+/** Compact row for the template management list. */
+export interface TemplateSummaryDto {
+  id: number;
+  name: string;
+  description: string | null;
+  createdBy: TaskUserRef;
+  recurrenceType: RecurrenceType;
+  isActive: boolean;
+  nodeCount: number;
+  occurrenceCount: number;
+  updatedAt: string; // ISO
+}
+
+/**
+ * A computed, not-yet-materialized future occurrence (a "ghost"). Never a DB
+ * row: produced on the fly for Fixed schedules and shown as a light/dashed
+ * preview in Gantt and Calendar (never Kanban). A ghost comes from either a
+ * recurring TASK (its future copies) or a recurring TEMPLATE (future
+ * instantiations); `sourceType` + `sourceId` say which and drive materialization.
+ * A ghost is, by definition, a future occurrence whose earliest date (start or
+ * due) is more than the lead time out — nearer ones auto-materialize into real
+ * tasks and so appear as normal bars, not ghosts.
+ */
+export interface GhostOccurrenceDto {
+  sourceType: 'task' | 'template';
+  /** The recurring task id, or the template id. */
+  sourceId: number;
+  sourceName: string;
+  /** 1-based occurrence index this ghost would take when materialized. */
+  seq: number;
+  /** The occurrence's display name (label-prefixed for templates). */
+  name: string;
+  startAt: string | null; // ISO
+  dueAt: string | null; // ISO
+  priority: TaskPriority;
+  /** Within the auto-materialization window (earliest date − leadTimeDays ≤ now). */
+  withinLeadTime: boolean;
+}
+
+// --- Request shapes --------------------------------------------------------
+
+/** A node in a create/update template request. `id` present ⇒ update an existing
+ * node; a negative/absent id ⇒ a new node. `parentRef` links to another node in
+ * the same payload by its (client) id, since server ids aren't known yet. */
+export interface TemplateNodeInput {
+  id?: number;
+  /** Client-local key used to express parent/dependency links within the payload. */
+  key: string;
+  parentKey: string | null;
+  name: string;
+  description?: string | null;
+  defaultPriority?: TaskPriority;
+  startOffsetDays?: number | null;
+  dueOffsetDays?: number | null;
+  assigneeRole?: string | null;
+  orderIndex?: number;
+}
+
+/** A dependency edge in a create/update request, by client-local node keys. */
+export interface TemplateDependencyInput {
+  blockerKey: string;
+  blockedKey: string;
+}
+
+export interface RecurrenceInput {
+  recurrenceType: RecurrenceType;
+  intervalCount?: number | null;
+  intervalUnit?: RecurrenceUnit | null;
+  anchorDate?: string | null; // ISO
+  endType?: RecurrenceEndType;
+  endDate?: string | null; // ISO
+  maxOccurrences?: number | null;
+  leadTimeDays?: number;
+  labelPrefix?: string | null;
+  isActive?: boolean;
+}
+
+export interface CreateTemplateRequest {
+  name: string;
+  description?: string | null;
+  nodes: TemplateNodeInput[];
+  dependencies?: TemplateDependencyInput[];
+  recurrence?: RecurrenceInput;
+}
+
+export type UpdateTemplateRequest = Partial<CreateTemplateRequest>;
+
+/** Maps a role placeholder label to the real user that fills it this instantiation. */
+export interface RoleAssignment {
+  role: string;
+  assigneeId: string | null;
+}
+
+/** Manual instantiation of a template into a real, independent task tree. */
+export interface InstantiateTemplateRequest {
+  /** PO/order/batch label; prefixed onto every generated task name + stored on each. */
+  instanceLabel?: string | null;
+  /** Concrete anchor (instantiation date) that resolves the relative offsets. */
+  anchorStart: string; // ISO
+  /** Resolve each role placeholder to a real user. Unmapped roles ⇒ unassigned. */
+  roleAssignments?: RoleAssignment[];
+}
+
+/** Materialize a specific ghost occurrence into real tasks (click-through). */
+export interface MaterializeGhostRequest {
+  seq: number;
+}
+
+/**
+ * Scope choice when editing a template that already has instances, mirroring
+ * how Google Calendar scopes recurring-event edits. There is deliberately NO
+ * "all including past" option — past/completed instances are never rewritten.
+ */
+export const TEMPLATE_EDIT_SCOPES = ['thisAndFollowing'] as const;
+export type TemplateEditScope = (typeof TEMPLATE_EDIT_SCOPES)[number];
+
+/** Re-sync already-materialized FUTURE occurrences to the current template. */
+export interface ApplyToFutureRequest {
+  /** The occurrence ids the user confirmed should be updated to match. */
+  occurrenceIds: number[];
+}
+
+/** A future materialized occurrence that could be re-synced to the template. */
+export interface FutureOccurrenceDto {
+  occurrenceId: number;
+  seq: number | null;
+  instanceLabel: string | null;
+  anchorStart: string; // ISO
+  rootTaskId: number | null;
+  rootName: string | null;
+  rootStatus: TaskStatus | null;
+  taskCount: number;
+}
+
+/** Result of applying a template edit to already-materialized future instances. */
+export interface ApplyToFutureResultDto {
+  updatedOccurrences: number;
+  updatedTasks: number;
+}
+
+/** Result of a manual instantiation or a ghost materialization. */
+export interface InstantiateResultDto {
+  occurrence: TemplateOccurrenceDto;
+  rootTaskId: number;
+  taskIds: number[];
+}
+
+// --- Task-level recurrence (a regular task set to recur) --------------------
+
+/** A recurrence rule attached directly to a task (the task = occurrence #1). */
+export interface TaskRecurrenceDto {
+  recurrenceType: Exclude<RecurrenceType, 'None'>;
+  intervalCount: number;
+  intervalUnit: RecurrenceUnit;
+  anchorDate: string; // ISO — the source task's earliest date (start ?? due)
+  endType: RecurrenceEndType;
+  endDate: string | null; // ISO
+  maxOccurrences: number | null; // counts the source as #1
+  leadTimeDays: number;
+  isActive: boolean;
+  /** Generated future instances materialized so far (excludes the source #1). */
+  occurrenceCount: number;
+}
+
+/** Set or update a task's recurrence. anchorDate is derived server-side from the
+ * task's earliest date, so it is never supplied here. */
+export interface SetTaskRecurrenceRequest {
+  recurrenceType: Exclude<RecurrenceType, 'None'>;
+  intervalCount: number;
+  intervalUnit: RecurrenceUnit;
+  endType?: RecurrenceEndType;
+  endDate?: string | null; // ISO
+  maxOccurrences?: number | null;
+  leadTimeDays?: number;
+  isActive?: boolean;
+}

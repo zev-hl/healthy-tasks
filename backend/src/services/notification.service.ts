@@ -186,8 +186,11 @@ export async function listNotifications(
   return { mentioned, reminders, assigned };
 }
 
-/** Unread tallies for the bell badge. */
-export async function getUnreadCounts(userId: string): Promise<UnreadCountDto> {
+/** Unread tallies for the bell badge. `schedulerDown` is layered on by the
+ * controller (which owns the scheduler-health read), so this stays count-only. */
+export async function getUnreadCounts(
+  userId: string,
+): Promise<Omit<UnreadCountDto, 'schedulerDown'>> {
   const prefs = await getNotificationPreferences(userId);
   const [mentioned, assigned] = await Promise.all([
     prisma.notification.count({ where: { userId, type: 'mentioned', readAt: null } }),

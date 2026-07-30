@@ -82,6 +82,9 @@ model User {
   reminders              Reminder[]
   notificationPreference NotificationPreference?
 
+  // Task templates authored by this user (Phase 11).
+  createdTemplates TaskTemplate[] @relation("TemplateCreator")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -186,6 +189,32 @@ model Task {
   notifications Notification[]
   reminders     Reminder[]
 
+  // --- Templates & recurrence (Phase 11) ---
+  // Provenance for tasks generated from a Task Template. `instanceLabel` is the
+  // PO/order/batch label chosen at instantiation: it is prefixed onto `name`
+  // AND kept here as its own filterable field (so search can target it without
+  // parsing the name). templateNode/templateOccurrence trace a generated task
+  // back to the definition node and the specific instantiation it came from.
+  instanceLabel        String?
+  templateId           Int?
+  template             TaskTemplate?       @relation("TaskFromTemplate", fields: [templateId], references: [id], onDelete: SetNull)
+  templateNodeId       Int?
+  templateNode         TaskTemplateNode?   @relation("TaskFromTemplateNode", fields: [templateNodeId], references: [id], onDelete: SetNull)
+  templateOccurrenceId Int?
+  templateOccurrence   TemplateOccurrence? @relation("TaskFromOccurrence", fields: [templateOccurrenceId], references: [id], onDelete: SetNull)
+  // Back-relation: the occurrence (if any) whose ROOT task this is.
+  occurrenceRootOf     TemplateOccurrence? @relation("OccurrenceRoot")
+
+  // Task-level recurrence (Phase 11). A regular task can be set to recur: it is
+  // occurrence #1 (the live instance) and its `recurrence` rule generates future
+  // instances, which point back via recurrenceSourceId and carry a 1-based
+  // recurrenceSeq (2, 3, …). Ghosts are the not-yet-generated future ones.
+  recurrence            TaskRecurrence? @relation("TaskRecurrenceSource")
+  recurrenceSourceId    Int?
+  recurrenceSource      Task?           @relation("TaskRecurrenceOccurrences", fields: [recurrenceSourceId], references: [id], onDelete: SetNull)
+  recurrenceOccurrences Task[]          @relation("TaskRecurrenceOccurrences")
+  recurrenceSeq         Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -199,6 +228,16 @@ model Task {
   @@index([startAt])
   @@index([statusChangedAt])
   @@index([createdAt])
+  // Phase 11: filter/trace generated tasks.
+  @@index([templateId])
+  @@index([templateNodeId])
+  @@index([templateOccurrenceId])
+  @@index([instanceLabel])
+  @@index([recurrenceSourceId])
+  // Claim guard: one task per (source, seq) so concurrent scheduler ticks can't
+  // double-generate an occurrence. Both null for ordinary tasks (Postgres treats
+  // nulls as distinct, so plain tasks never collide).
+  @@unique([recurrenceSourceId, recurrenceSeq])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -471,4 +510,211 @@ model NotificationPreference {
   remindersEmail Boolean @default(false)
   assignedInApp  Boolean @default(true)
   assignedEmail  Boolean @default(false)
+}
+
+// ---------------------------------------------------------------------------
+// Task templates & recurring tasks (Phase 11)
+// ---------------------------------------------------------------------------
+
+// How a template's occurrences are scheduled. `None` = a manual-only template
+// (instantiated on demand, never auto-generated). `Fixed` = a calendar cadence
+// (every N days/weeks/months from the anchor), fully computable in advance.
+// `RelativeToCompletion` = the next occurrence is scheduled only once the prior
+// instance's root task is Completed, so future dates are not computable ahead.
+enum TemplateRecurrenceType {
+  None
+  Fixed
+  RelativeToCompletion
+}
+
+enum RecurrenceUnit {
+  Day
+  Week
+  Month
+}
+
+// End condition for a recurrence. `Never` recurs indefinitely; `OnDate` stops
+// once an occurrence's anchor would fall after `endDate`; `AfterOccurrences`
+// stops after `maxOccurrences` scheduled instantiations.
+enum RecurrenceEndType {
+  Never
+  OnDate
+  AfterOccurrences
+}
+
+// How an occurrence came to be: a user-driven manual instantiation, or an
+// automatic scheduled fire. Only `scheduled` occurrences carry a `seq` and count
+// toward the occurrence limit.
+enum TemplateOccurrenceOrigin {
+  manual
+  scheduled
+}
+
+// A reusable, non-live task-tree definition. It is NOT a real Task — it is not
+// searchable/assignable and never appears on Kanban/Dashboard until instantiated
+// into real tasks. Managed by Admin/Manager only (enforced in the service +
+// route). Recurrence fields are all null/None for a manual-only template.
+model TaskTemplate {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+
+  // Author (Admin/Manager). Set at creation, never changes.
+  createdById String
+  createdBy   User   @relation("TemplateCreator", fields: [createdById], references: [id])
+
+  // --- Recurrence config (null/None ⇒ manual-only) ---
+  recurrenceType TemplateRecurrenceType @default(None)
+  intervalCount  Int?
+  intervalUnit   RecurrenceUnit?
+  // Start of the series: the first occurrence's anchor (its "instantiation
+  // date", from which node offsets are measured).
+  anchorDate     DateTime?
+  endType        RecurrenceEndType @default(Never)
+  endDate        DateTime?
+  maxOccurrences Int?
+  // How long before an occurrence's anchor to auto-materialize it into real
+  // tasks (so it reliably reaches Kanban/assignee lists in time). Default 2 wks.
+  leadTimeDays   Int @default(14)
+  // Optional label prefix applied to scheduled occurrences ("BATCH" ⇒ "BATCH-1:
+  // …"); manual instantiations always supply their own label instead.
+  labelPrefix    String?
+  // Paused series generate no new scheduled occurrences (existing ones remain).
+  isActive       Boolean @default(true)
+
+  nodes       TaskTemplateNode[]
+  occurrences TemplateOccurrence[]
+  tasks       Task[] @relation("TaskFromTemplate")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
+  @@index([recurrenceType])
+}
+
+// One definition node in a template's tree. Mirrors the real Task parent/child
+// hierarchy via a self-relation. Dates are RELATIVE offsets (in days) from the
+// instantiation anchor, not fixed dates. `assigneeRole` is a free-text job-role
+// placeholder ("Inspector"), resolved to a real user at instantiation.
+model TaskTemplateNode {
+  id         Int          @id @default(autoincrement())
+  templateId Int
+  template   TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // Self-relation for the definition tree (mirrors Task "TaskHierarchy").
+  parentNodeId Int?
+  parentNode   TaskTemplateNode?  @relation("TemplateNodeHierarchy", fields: [parentNodeId], references: [id], onDelete: Cascade)
+  childNodes   TaskTemplateNode[] @relation("TemplateNodeHierarchy")
+
+  name            String
+  description     String?
+  defaultPriority TaskPriority @default(Medium)
+  // Day offsets from the occurrence anchor; null ⇒ that date is left unset.
+  startOffsetDays Int?
+  dueOffsetDays   Int?
+  // Free-text role placeholder (not a user, not the permission Role enum).
+  assigneeRole    String?
+  // Sibling ordering within a parent.
+  orderIndex      Int @default(0)
+
+  // Dependencies between nodes of the SAME template (carried through to the
+  // generated task tree). Mirrors TaskDependency.
+  blocking  TaskTemplateDependency[] @relation("TemplateBlocker")
+  blockedBy TaskTemplateDependency[] @relation("TemplateBlocked")
+
+  generatedTasks Task[] @relation("TaskFromTemplateNode")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([templateId])
+  @@index([parentNodeId])
+}
+
+// A directed dependency edge between two nodes of the same template (blocker
+// must precede blocked). Mirrors TaskDependency; carried into the generated
+// tasks' real TaskDependency edges at instantiation.
+model TaskTemplateDependency {
+  id            Int              @id @default(autoincrement())
+  blockerNodeId Int
+  blockedNodeId Int
+  blockerNode   TaskTemplateNode @relation("TemplateBlocker", fields: [blockerNodeId], references: [id], onDelete: Cascade)
+  blockedNode   TaskTemplateNode @relation("TemplateBlocked", fields: [blockedNodeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerNodeId, blockedNodeId])
+  @@index([blockerNodeId])
+  @@index([blockedNodeId])
+}
+
+// A materialized instantiation of a template into a real task tree. Recorded so
+// we can count scheduled occurrences toward the limit, find the prior instance's
+// assignees to carry forward, and detect prior-root completion for
+// relative-to-completion series. Ghosts (future, not-yet-materialized) are NOT
+// rows here — they are computed on the fly and never persisted.
+model TemplateOccurrence {
+  id         Int          @id @default(autoincrement())
+  templateId Int
+  template   TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  // 1-based schedule index for a `scheduled` occurrence; NULL for a `manual`
+  // one (so manual instantiations neither collide on the unique index nor count
+  // toward the occurrence limit).
+  seq    Int?
+  origin TemplateOccurrenceOrigin
+
+  instanceLabel String?
+  // The resolved anchor (instantiation date) for this occurrence; node offsets
+  // are measured from here.
+  anchorStart DateTime
+
+  // The generated root task. SetNull if it is later hard-deleted.
+  rootTaskId Int?  @unique
+  rootTask   Task? @relation("OccurrenceRoot", fields: [rootTaskId], references: [id], onDelete: SetNull)
+
+  // Every task generated for this occurrence (root + descendants).
+  tasks Task[] @relation("TaskFromOccurrence")
+
+  materializedAt DateTime @default(now())
+
+  @@unique([templateId, seq])
+  @@index([templateId])
+}
+
+// Singleton (id = 1) health record for the recurrence scheduler. `lastTickAt` is
+// stamped every timer run; the notifications heartbeat reads it and, if it has
+// gone stale, alerts admins that the background timer is down. `lastAlertAt`
+// dedups those alerts (cooldown) so a persistent outage does not spam.
+model SchedulerState {
+  id          Int       @id @default(1)
+  lastTickAt  DateTime?
+  lastAlertAt DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+// A recurrence rule attached directly to a regular task (Phase 11). The task is
+// the definition AND occurrence #1; this row drives generation of future
+// instances. `recurrenceType` here is always Fixed or RelativeToCompletion
+// (absence of a row = not recurring). `anchorDate` is the source task's earliest
+// date (start ?? due) — the reference for the lead-time window, per the product
+// definition of a "ghost" (earliest date more than the lead time out).
+model TaskRecurrence {
+  id     Int  @id @default(autoincrement())
+  taskId Int  @unique
+  task   Task @relation("TaskRecurrenceSource", fields: [taskId], references: [id], onDelete: Cascade)
+
+  recurrenceType TemplateRecurrenceType
+  intervalCount  Int
+  intervalUnit   RecurrenceUnit
+  anchorDate     DateTime
+  endType        RecurrenceEndType @default(Never)
+  endDate        DateTime?
+  maxOccurrences Int?
+  leadTimeDays   Int               @default(14)
+  isActive       Boolean           @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

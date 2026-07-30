@@ -41,7 +41,13 @@ import {
   addTaskReminderController,
   listTaskRemindersController,
 } from '../controllers/reminders.controller.js';
-import { addReminderSchema } from '../validation/schemas.js';
+import {
+  clearTaskRecurrenceController,
+  materializeTaskOccurrenceController,
+  setTaskRecurrenceController,
+  taskGhostsController,
+} from '../controllers/task-recurrence.controller.js';
+import { addReminderSchema, materializeGhostSchema, setTaskRecurrenceSchema } from '../validation/schemas.js';
 
 // All task routes require authentication; any authenticated user may create,
 // read, list, edit, and manage relationships of tasks (no per-user restriction).
@@ -52,9 +58,11 @@ tasksRouter.use(requireAuth);
 tasksRouter.get('/', asyncHandler(listTasksController));
 tasksRouter.post('/', validateBody(createTaskSchema), asyncHandler(createTaskController));
 
-// `/search`, `/tags`, `/query`, `/export` must be declared before `/:id`.
+// `/search`, `/tags`, `/query`, `/export`, `/ghosts` must be declared before `/:id`.
 tasksRouter.get('/search', asyncHandler(searchTasksController));
 tasksRouter.get('/tags', asyncHandler(listTagsController));
+// Phase 11: computed ghost previews of recurring tasks (Gantt/Calendar).
+tasksRouter.get('/ghosts', asyncHandler(taskGhostsController));
 // Task Search screen (Phase 6): POST bodies carry filters/sort/pagination.
 tasksRouter.post('/query', validateBody(taskSearchSchema), asyncHandler(queryTasksController));
 tasksRouter.post('/export', validateBody(taskSearchSchema), asyncHandler(exportTasksController));
@@ -111,4 +119,18 @@ tasksRouter.post(
   '/:id/reminders',
   validateBody(addReminderSchema),
   asyncHandler(addTaskReminderController),
+);
+
+// Recurrence (Phase 11): set/clear a task's own recurrence, and materialize one
+// of its ghost occurrences on click-through.
+tasksRouter.put(
+  '/:id/recurrence',
+  validateBody(setTaskRecurrenceSchema),
+  asyncHandler(setTaskRecurrenceController),
+);
+tasksRouter.delete('/:id/recurrence', asyncHandler(clearTaskRecurrenceController));
+tasksRouter.post(
+  '/:id/recurrence/materialize',
+  validateBody(materializeGhostSchema),
+  asyncHandler(materializeTaskOccurrenceController),
 );
