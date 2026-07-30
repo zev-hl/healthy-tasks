@@ -110,24 +110,27 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [savingFields, setSavingFields] = useState(false);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
 
+  // ISO is built only where it's actually needed: the save payload, the Start<Due
+  // check, and the Due chip display.
   const stagedStartIso = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
   const stagedDueIso = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
 
-  // Dirty until every staged field matches what's persisted. The editor only has
-  // minute precision, so normalize the persisted value through the same
-  // date+time round-trip before comparing — otherwise a stored timestamp with
-  // seconds/ms (e.g. from an import) would read as permanently "unsaved" and
-  // Discard could never clear it.
-  const normalizeMinute = (iso: string | null, defaultHour: number): string | null => {
-    const p = isoToParts(iso);
-    return partsToIso(p.date, p.time, defaultHour);
-  };
+  // Dirtiness is compared in the EDITOR's own representation (date + HH:mm parts),
+  // never by round-tripping through ISO. The persisted value is projected into
+  // the same parts via isoToParts, so it's precision-safe by construction: a
+  // stored timestamp carrying seconds/ms matches cleanly until the user actually
+  // edits a field. (A reusable form-dirty hook would generalize this — see the
+  // Phase 11 note.)
+  const persistedStart = isoToParts(task.startAt);
+  const persistedDue = isoToParts(task.dueAt);
   const fieldsDirty =
     assigneeId !== (task.assigneeId ?? '') ||
     priority !== task.priority ||
     status !== task.status ||
-    stagedStartIso !== normalizeMinute(task.startAt, DEFAULT_START_HOUR) ||
-    stagedDueIso !== normalizeMinute(task.dueAt, DEFAULT_DUE_HOUR);
+    startDate !== persistedStart.date ||
+    startTime !== persistedStart.time ||
+    dueDate !== persistedDue.date ||
+    dueTime !== persistedDue.time;
 
   // Commit all staged fields at once. `statusOverride` lets the top-bar
   // "Mark complete" / "Reopen" buttons set the status and save in one click.
