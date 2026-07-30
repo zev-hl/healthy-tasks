@@ -17,6 +17,10 @@ interface Props {
 
 const DAY_MS = 86_400_000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Display labels for the display-mode toggle. Stored values stay 'range'/'marker'
+// (persisted prefs + hydration depend on them); only the "Marker" label reads "Due"
+// — it plots a single point on the Due Date.
+const CALENDAR_MODE_LABELS: Record<CalendarMode, string> = { range: 'Range', marker: 'Due' };
 
 function dateOnly(iso: string): Date {
   const d = new Date(iso);
@@ -162,7 +166,7 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onMode
               aria-pressed={mode === m}
               onClick={() => onModeChange(m)}
             >
-              {m[0]!.toUpperCase() + m.slice(1)}
+              {CALENDAR_MODE_LABELS[m]}
             </button>
           ))}
         </div>
