@@ -20,6 +20,7 @@ import { AttachmentSection } from './AttachmentSection';
 import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
 import { TaskPickerModal } from './TaskPickerModal';
+import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
 import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
@@ -62,6 +63,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [commentsDirty, setCommentsDirty] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Review workflow (Phase 10): reviewer-picker visibility + a busy flag for the
+  // Reviewed / Recall actions.
+  const [pendingReview, setPendingReview] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   // A "Task saved." confirmation auto-clears so it reads as a transient flash.
   const flashSaved = useCallback(() => {
@@ -127,18 +132,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setFieldsError('Start must be earlier than Due');
       return;
     }
+    // Transitioning INTO Review requires choosing a reviewer first — the actual
+    // save happens in saveReview() once the reviewer-picker is confirmed.
+    if (nextStatus === 'Review' && task.status !== 'Review') {
+      setPendingReview(true);
+      return;
+    }
     const becameCompleted = nextStatus === 'Completed' && task.status !== 'Completed';
     setSavingFields(true);
     try {
-      applyTask(
-        await api.updateTask(task.id, {
-          assigneeId: assigneeId === '' ? null : assigneeId,
-          priority,
-          status: nextStatus,
-          startAt: stagedStartIso,
-          dueAt: stagedDueIso,
-        }),
-      );
+      const updated = await api.updateTask(task.id, {
+        assigneeId: assigneeId === '' ? null : assigneeId,
+        priority,
+        status: nextStatus,
+        startAt: stagedStartIso,
+        dueAt: stagedDueIso,
+      });
+      applyTask(updated);
+      syncStaged(updated);
       flashSaved();
       if (becameCompleted) {
         setJustCompleted(true);
@@ -151,18 +162,81 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
-  // Revert staged fields to the persisted task.
-  function discardFields() {
-    setFieldsError(null);
-    setAssigneeId(task.assigneeId ?? '');
-    setPriority(task.priority);
-    setStatus(task.status);
-    const s = isoToParts(task.startAt);
-    const d = isoToParts(task.dueAt);
+  // Sync the staged property fields to a task (the persisted truth). Used after
+  // every commit and by Discard, so the chips + savebar never show a phantom
+  // "unsaved" once the server has the change (e.g. the reviewer becoming assignee).
+  function syncStaged(t: TaskDetailDto) {
+    setAssigneeId(t.assigneeId ?? '');
+    setPriority(t.priority);
+    setStatus(t.status);
+    const s = isoToParts(t.startAt);
+    const d = isoToParts(t.dueAt);
     setStartDate(s.date);
     setStartTime(s.time);
     setDueDate(d.date);
     setDueTime(d.time);
+  }
+
+  // Revert staged fields to the persisted task.
+  function discardFields() {
+    setFieldsError(null);
+    syncStaged(task);
+  }
+
+  // --- Review workflow (Phase 10) ------------------------------------------
+  // Commit the staged fields with the chosen reviewer; the server makes the
+  // reviewer the temporary assignee and records the prior assignee/status.
+  async function saveReview(reviewerId: string) {
+    setPendingReview(false);
+    setFieldsError(null);
+    setSavingFields(true);
+    try {
+      const updated = await api.updateTask(task.id, {
+        priority,
+        status: 'Review',
+        reviewerId,
+        startAt: stagedStartIso,
+        dueAt: stagedDueIso,
+      });
+      applyTask(updated);
+      syncStaged(updated);
+      flashSaved();
+    } catch (err) {
+      setFieldsError(err instanceof ApiError ? err.message : 'Could not send to Review');
+    } finally {
+      setSavingFields(false);
+    }
+  }
+
+  async function exitReview(kind: 'reviewed' | 'recall') {
+    setError(null);
+    setReviewBusy(true);
+    try {
+      const updated =
+        kind === 'reviewed' ? await api.reviewed(task.id) : await api.recallReview(task.id);
+      applyTask(updated);
+      syncStaged(updated);
+      flashSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update review');
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  /** Is `actorId` a supervisor of `subId` at any level up the chain? (uses the users list) */
+  function isSupervisorAbove(actorId: string, subId: string | null): boolean {
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const seen = new Set<string>();
+    let cur = subId;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const sup = byId.get(cur)?.supervisorId ?? null;
+      if (!sup) break;
+      if (sup === actorId) return true;
+      cur = sup;
+    }
+    return false;
   }
 
   // --- Relationships / picker ----------------------------------------------
@@ -299,6 +373,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
   const isCompleted = task.status === 'Completed';
+  // Review workflow: while in Review, Status + Assignee are locked; the two exits
+  // (Reviewed / Recall) carry their own permissions.
+  const isInReview = task.status === 'Review';
+  const canReview =
+    currentUser.role === 'Admin' ||
+    currentUser.id === task.assigneeId ||
+    isSupervisorAbove(currentUser.id, task.assigneeId);
+  const canRecall =
+    currentUser.id === task.reviewInitiatorId || currentUser.id === task.priorAssigneeId;
 
   // Staged assignee resolved to a user object for the chip display.
   const assigneeUser =
@@ -326,7 +409,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             Delete
           </button>
         )}
-        {isCompleted ? (
+        {isInReview ? (
+          <>
+            {canRecall && (
+              <button type="button" className="secondary btn-sm" disabled={reviewBusy} onClick={() => void exitReview('recall')}>
+                Recall from Review
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-sm"
+              disabled={reviewBusy || !canReview}
+              title={canReview ? undefined : 'Only an admin, the assignee, or a supervisor above them can finish this review'}
+              onClick={() => void exitReview('reviewed')}
+            >
+              {reviewBusy ? 'Saving…' : 'Reviewed'}
+            </button>
+          </>
+        ) : isCompleted ? (
           <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={() => void saveFields('Open')}>
             Reopen
           </button>
@@ -365,15 +465,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
         {/* Property chip row — staged; committed together via "Save changes" */}
         <div className="detail-props">
-          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}`}>
-            <StatusPill status={status} caret />
-            <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
-              {TASK_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {TASK_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
+          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
+            <StatusPill status={status} caret={!isInReview} />
+            {!isInReview && (
+              <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
+                {TASK_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {TASK_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            )}
           </span>
 
           <span className={`prop-chip${priority !== task.priority ? ' is-dirty' : ''}`}>
@@ -388,7 +490,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </select>
           </span>
 
-          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}`}>
+          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
             {assigneeUser ? (
               <UserChip user={assigneeUser} />
             ) : (
@@ -397,15 +499,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <span className="user-name">Unassigned</span>
               </span>
             )}
-            <span className="prop-caret" aria-hidden="true">▾</span>
-            <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
-              <option value="">Unassigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {userLabel(u)}
-                </option>
-              ))}
-            </select>
+            {!isInReview && (
+              <>
+                <span className="prop-caret" aria-hidden="true">▾</span>
+                <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
+                  <option value="">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {userLabel(u)}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </span>
 
           <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
@@ -443,6 +549,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </datalist>
           </span>
         </div>
+
+        {isInReview && (
+          <div className="review-banner" role="status">
+            <span className="review-banner-dot" aria-hidden="true" />
+            <span>
+              In review by <strong>{task.assignee ? userLabel(task.assignee) : 'a reviewer'}</strong>
+              {task.reviewInitiator ? <> · sent by {userLabel(task.reviewInitiator)}</> : null}
+              {' · '}Status and assignee are locked until it is Reviewed or recalled.
+            </span>
+          </div>
+        )}
 
         {/* Save bar for the staged Status / Priority / Assignee / Due chips */}
         <div className={`detail-savebar${fieldsDirty ? ' is-dirty' : ''}`} role="status">
@@ -736,6 +853,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {picker && (
         <TaskPickerModal title={PICKER_TITLES[picker]} excludeId={task.id} onPick={handlePick} onClose={() => setPicker(null)} />
+      )}
+
+      {pendingReview && (
+        <ReviewerPickerModal
+          taskName={task.name}
+          onClose={() => setPendingReview(false)}
+          onPick={(reviewerId) => saveReview(reviewerId)}
+        />
       )}
 
       {confirmDelete && (
