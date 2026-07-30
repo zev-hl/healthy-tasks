@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type TaskRowDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { statusColor } from './ui/indicators';
+import { statusPill } from './ui/indicators';
 
 interface Props {
   rows: TaskRowDto[];
@@ -12,9 +12,9 @@ interface Props {
 
 const DAY_MS = 86_400_000;
 const PX_PER_DAY = 30;
-const ROW_H = 36;
+const ROW_H = 44;
 const HEADER_H = 34;
-const LABEL_W = 240;
+const LABEL_W = 340;
 const MAX_DAYS = 800; // guard against pathological multi-year spans
 
 type DragMode = 'move' | 'start' | 'end';
@@ -233,7 +233,7 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
                 key={task.id}
                 type="button"
                 className="gantt-label"
-                style={{ height: ROW_H, paddingLeft: 10 + depth * 16 }}
+                style={{ height: ROW_H, paddingLeft: 10 + depth * 20 }}
                 onClick={() => navigate(`/tasks/${task.id}`)}
                 title={task.name}
               >
@@ -262,15 +262,22 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
               className="gantt-rows"
               style={{ height: ordered.length * ROW_H, width: timelineWidth }}
             >
-              {/* Weekend / today column shading */}
+              {/* Weekend column shading */}
               {dayCells.map((c) =>
-                c.weekend || c.isToday ? (
+                c.weekend ? (
                   <div
                     key={c.i}
-                    className={`gantt-col-bg${c.isToday ? ' today' : ''}${c.weekend ? ' weekend' : ''}`}
+                    className="gantt-col-bg weekend"
                     style={{ left: c.i * PX_PER_DAY, width: PX_PER_DAY }}
                   />
                 ) : null,
+              )}
+              {/* Vertical "today" guide line */}
+              {todayIdx >= 0 && todayIdx < range.days && (
+                <div
+                  className="gantt-today-line"
+                  style={{ left: todayIdx * PX_PER_DAY + PX_PER_DAY / 2, height: ordered.length * ROW_H }}
+                />
               )}
 
               {/* Dependency arrows (predecessor → dependent) */}
@@ -339,6 +346,7 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
                 }
                 const bothDates = !!task.startAt && !!task.dueAt;
                 const isDragging = drag?.id === task.id;
+                const pill = statusPill(task.status);
                 return (
                   <div
                     key={task.id}
@@ -347,7 +355,9 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
                       top,
                       left: geom.x,
                       width: geom.w,
-                      background: statusColor(task.status),
+                      background: pill.bg,
+                      border: `1px solid ${pill.dot}`,
+                      color: pill.fg,
                     }}
                     onPointerDown={(e) => onPointerDown(e, task, 'move')}
                     onPointerMove={onPointerMove}

@@ -515,7 +515,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
           <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
             {assigneeUser ? (
-              <UserChip user={assigneeUser} />
+              <UserChip
+                user={assigneeUser}
+                label={isInReview ? `${userLabel(assigneeUser)} · reviewing` : undefined}
+              />
             ) : (
               <span className="user-chip muted">
                 <UnassignedAvatar px={20} />
@@ -574,13 +577,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         </div>
 
         {isInReview && (
-          <div className="review-banner" role="status">
-            <span className="review-banner-dot" aria-hidden="true" />
-            <span>
-              In review by <strong>{task.assignee ? userLabel(task.assignee) : 'a reviewer'}</strong>
-              {task.reviewInitiator ? <> · sent by {userLabel(task.reviewInitiator)}</> : null}
-              {' · '}Status and assignee are locked until it is Reviewed or recalled.
-            </span>
+          <div className="review-card" role="status">
+            <div className="review-card-row">
+              <span>Review initiated by</span>
+              <strong>{task.reviewInitiator ? userLabel(task.reviewInitiator) : '—'}</strong>
+            </div>
+            <div className="review-card-row">
+              <span>Will restore assignee</span>
+              <strong>{task.priorAssignee ? userLabel(task.priorAssignee) : 'Unassigned'}</strong>
+            </div>
+            <div className="review-card-row">
+              <span>Will restore status to</span>
+              <strong>{task.priorStatus ? TASK_STATUS_LABELS[task.priorStatus] : '—'}</strong>
+            </div>
           </div>
         )}
 
@@ -882,7 +891,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {pendingReview && (
         <ReviewerPickerModal
+          taskRef={`#${task.id}`}
           taskName={task.name}
+          currentAssignee={task.assignee ? userLabel(task.assignee) : null}
+          returnStatus={TASK_STATUS_LABELS[task.status]}
           onClose={() => setPendingReview(false)}
           onPick={(reviewerId) => saveReview(reviewerId)}
         />

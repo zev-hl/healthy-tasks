@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TASK_STATUS_LABELS, type TaskRowDto } from '@healthy-tasks/shared';
-import { statusColor } from './ui/indicators';
+import { statusPill } from './ui/indicators';
 
 export type CalendarScale = 'month' | 'week' | 'day';
 export type CalendarMode = 'range' | 'marker';
@@ -12,6 +12,7 @@ interface Props {
   scale: CalendarScale;
   mode: CalendarMode;
   onScaleChange: (s: CalendarScale) => void;
+  onModeChange: (m: CalendarMode) => void;
 }
 
 const DAY_MS = 86_400_000;
@@ -61,20 +62,20 @@ function CalTaskChip({
         : isEnd
           ? ' range-end'
           : ' range-mid';
+  const pill = statusPill(task.status);
   return (
     <button
       type="button"
       className={`cal-chip${posClass}`}
-      style={{ borderLeftColor: statusColor(task.status) }}
+      style={{ background: pill.bg, color: pill.fg }}
       title={`#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]}`}
       onClick={() => onOpen(task.id)}
     >
-      {mode === 'marker' && (
-        <span className="cal-chip-dot" style={{ background: statusColor(task.status) }} />
-      )}
-      {(isStart || single || mode === 'marker') && (
-        <span className="cal-chip-name">{task.name}</span>
-      )}
+      {mode === 'marker' && <span className="cal-chip-dot" style={{ background: pill.dot }} />}
+      <span className="cal-chip-name">
+        {mode === 'range' && !single && !isStart ? '▸ ' : ''}
+        {task.name}
+      </span>
     </button>
   );
 }
@@ -90,7 +91,7 @@ function taskSpan(task: TaskRowDto, mode: CalendarMode): { start: Date; end: Dat
   return null;
 }
 
-export function TaskCalendar({ rows, loading, scale, mode, onScaleChange }: Props) {
+export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onModeChange }: Props) {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
 
@@ -152,6 +153,19 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange }: Prop
   return (
     <div className="calendar-wrap">
       <div className="calendar-toolbar">
+        <div className="seg" role="group" aria-label="Calendar display mode">
+          {(['range', 'marker'] as CalendarMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`seg-btn${mode === m ? ' active' : ''}`}
+              aria-pressed={mode === m}
+              onClick={() => onModeChange(m)}
+            >
+              {m[0]!.toUpperCase() + m.slice(1)}
+            </button>
+          ))}
+        </div>
         <div className="seg" role="group" aria-label="Calendar scale">
           {(['month', 'week', 'day'] as CalendarScale[]).map((s) => (
             <button
@@ -226,12 +240,16 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange }: Prop
             const cap = isMonth ? 3 : 20;
             const extra = items.length - cap;
             const outside = isMonth && day.getMonth() !== anchor.getMonth();
+            const isToday = sameDay(day, today);
             return (
               <div
                 key={day.toISOString()}
-                className={`calendar-cell${outside ? ' outside' : ''}${sameDay(day, today) ? ' is-today' : ''}`}
+                className={`calendar-cell${outside ? ' outside' : ''}${isToday ? ' is-today' : ''}`}
               >
-                <span className="calendar-daynum mono">{day.getDate()}</span>
+                <span className="calendar-daynum mono">
+                  {day.getDate()}
+                  {isToday ? ' · Today' : ''}
+                </span>
                 <div className="calendar-cell-tasks">
                   {items.slice(0, cap).map(({ task, isStart, isEnd, single }) => (
                     <CalTaskChip

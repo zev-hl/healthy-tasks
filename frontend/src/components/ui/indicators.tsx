@@ -43,6 +43,11 @@ const STATUS_PILL: Record<TaskStatus, { bg: string; fg: string; dot: string }> =
   Canceled: { bg: 'var(--canvas-deep)', fg: 'var(--muted-2)', dot: 'var(--faint-2)' },
 };
 
+/** Soft-fill / deep-text / dot colours for a status — the pill palette, reused
+ *  by the Calendar range chips and Gantt bars so all three read as one system. */
+export const statusPill = (status: TaskStatus): { bg: string; fg: string; dot: string } =>
+  STATUS_PILL[status] ?? STATUS_PILL.Open;
+
 export function StatusPill({
   status,
   size = 'sm',

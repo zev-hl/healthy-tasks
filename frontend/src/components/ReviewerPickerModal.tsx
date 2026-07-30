@@ -4,8 +4,14 @@ import { api } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
 
 interface Props {
-  /** Context for the title, e.g. the task name. */
+  /** Task ref for the subtitle, e.g. "#482". */
+  taskRef?: string;
+  /** Context for the subtitle, e.g. the task name. */
   taskName?: string;
+  /** Current assignee's display name (shown in the consequence preview). */
+  currentAssignee?: string | null;
+  /** Status the task returns to when the review completes (its current status label). */
+  returnStatus?: string | null;
   /** Called with the chosen reviewer's user id once confirmed. */
   onPick: (userId: string) => void | Promise<void>;
   onClose: () => void;
@@ -15,9 +21,17 @@ interface Props {
  * Reviewer selection popup (Phase 10). Shown whenever a task's Status is set to
  * Review — from the Task Detail Status field or a Kanban drop into Review. Lists
  * every user (no restriction for now); the chosen reviewer becomes the task's
- * temporary assignee. Reused by both entry points.
+ * temporary assignee, and a preview spells out what will be restored later.
+ * Reused by both entry points.
  */
-export function ReviewerPickerModal({ taskName, onPick, onClose }: Props) {
+export function ReviewerPickerModal({
+  taskRef,
+  taskName,
+  currentAssignee,
+  returnStatus,
+  onPick,
+  onClose,
+}: Props) {
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
@@ -61,10 +75,11 @@ export function ReviewerPickerModal({ taskName, onPick, onClose }: Props) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>Send to Review</h3>
+        <h3 style={{ marginTop: 0 }}>Send for review</h3>
         <p className="muted" style={{ marginTop: 0 }}>
-          Choose a reviewer{taskName ? ` for “${taskName}”` : ''}. They become the temporary
-          assignee until the review is finished.
+          {taskRef ? `${taskRef} ` : ''}
+          {taskName ? `${taskName}. ` : ''}
+          Choose who should review this task — they’ll temporarily become the assignee.
         </p>
         <input
           autoFocus
@@ -94,12 +109,29 @@ export function ReviewerPickerModal({ taskName, onPick, onClose }: Props) {
             </button>
           ))}
         </div>
+        {/* Consequence preview: what the confirm will do, in plain language. */}
+        <div className="reviewer-preview">
+          <div className="reviewer-preview-row">
+            <span className="muted">Current assignee</span>
+            <span>{currentAssignee || 'Unassigned'}</span>
+          </div>
+          <div className="reviewer-preview-row">
+            <span className="muted">Will become</span>
+            <span className="strong-ok">Prior assignee, restored when review completes</span>
+          </div>
+          {returnStatus ? (
+            <div className="reviewer-preview-row">
+              <span className="muted">Status returns to</span>
+              <span>{returnStatus}, when review completes</span>
+            </div>
+          ) : null}
+        </div>
         <div className="btn-row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
           <button type="button" className="secondary" onClick={onClose}>
             Cancel
           </button>
           <button type="button" onClick={confirm} disabled={!selected || submitting}>
-            {submitting ? 'Sending…' : 'Send to Review'}
+            {submitting ? 'Sending…' : 'Send for review'}
           </button>
         </div>
       </div>

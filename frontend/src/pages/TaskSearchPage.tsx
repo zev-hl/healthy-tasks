@@ -631,26 +631,6 @@ export function TaskSearchPage() {
             </label>
           </>
         )}
-        {view === 'calendar' && (
-          <div className="seg cal-mode-seg" role="group" aria-label="Calendar display mode">
-            <button
-              type="button"
-              className={`seg-btn${calendarMode === 'range' ? ' active' : ''}`}
-              aria-pressed={calendarMode === 'range'}
-              onClick={() => setCalendarMode('range')}
-            >
-              Range
-            </button>
-            <button
-              type="button"
-              className={`seg-btn${calendarMode === 'marker' ? ' active' : ''}`}
-              aria-pressed={calendarMode === 'marker'}
-              onClick={() => setCalendarMode('marker')}
-            >
-              Marker
-            </button>
-          </div>
-        )}
       </div>
 
       {/* + Filter panel */}
@@ -808,6 +788,7 @@ export function TaskSearchPage() {
           scale={calendarScale}
           mode={calendarMode}
           onScaleChange={setCalendarScale}
+          onModeChange={setCalendarMode}
         />
       )}
       {view === 'gantt' && (

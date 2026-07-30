@@ -7,7 +7,7 @@ import {
   type TaskStatus,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { Avatar, UnassignedAvatar } from './ui/Avatar';
+import { Avatar, UnassignedAvatar, userLabel } from './ui/Avatar';
 import { PriorityRamp, statusColor } from './ui/indicators';
 import { DueDate } from './ui/dates';
 import { ReviewerPickerModal } from './ReviewerPickerModal';
@@ -145,12 +145,12 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                       </Link>
                       <TagChips tags={task.tags} />
                       <div className="kanban-card-foot">
+                        <DueDate iso={task.dueAt} inline />
                         {task.assignee ? (
                           <Avatar user={task.assignee} size="xs" />
                         ) : (
                           <UnassignedAvatar size="xs" />
                         )}
-                        <DueDate iso={task.dueAt} inline />
                       </div>
                       {locked && (
                         <span className="kanban-lock" title="Locked while in Review">
@@ -171,7 +171,10 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
 
       {pendingReview && (
         <ReviewerPickerModal
+          taskRef={`#${pendingReview.id}`}
           taskName={pendingReview.name}
+          currentAssignee={pendingReview.assignee ? userLabel(pendingReview.assignee) : null}
+          returnStatus={TASK_STATUS_LABELS[pendingReview.status]}
           onClose={() => setPendingReview(null)}
           onPick={async (reviewerId) => {
             const task = pendingReview;
