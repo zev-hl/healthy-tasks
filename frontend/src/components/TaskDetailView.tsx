@@ -29,10 +29,11 @@ import { DueDate, AgoDate } from './ui/dates';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 
-type PickerKind = 'parent' | DependencyType;
+type PickerKind = 'parent' | 'child' | DependencyType;
 
 const PICKER_TITLES: Record<PickerKind, string> = {
   parent: 'Set parent task',
+  child: 'Add an existing task as a sub-task',
   blocks: 'Add a task this one blocks',
   blockedBy: 'Add a task this one is blocked by',
 };
@@ -97,11 +98,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [descDraft, setDescDraft] = useState(initialTask.description ?? '');
   const [savingDesc, setSavingDesc] = useState(false);
 
-  // Tags + sub-task quick-add.
+  // Tags quick-add.
   const [tagDraft, setTagDraft] = useState('');
   const [tagBusy, setTagBusy] = useState(false);
-  const [subtaskDraft, setSubtaskDraft] = useState('');
-  const [addingSub, setAddingSub] = useState(false);
 
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -274,8 +273,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   async function handlePick(picked: TaskRef) {
     const kind = picker;
     setPicker(null);
-    if (kind === 'parent') await runRel(() => api.setParent(task.id, picked.id));
-    else if (kind) await runRel(() => api.addDependency(task.id, kind, picked.id));
+    if (kind === 'parent') {
+      await runRel(() => api.setParent(task.id, picked.id));
+    } else if (kind === 'child') {
+      // Re-parent the chosen existing task under this one, then refresh to show it.
+      setError(null);
+      try {
+        await api.setParent(picked.id, task.id);
+        applyTask(await api.getTask(task.id));
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Could not add the sub-task');
+      }
+    } else if (kind) {
+      await runRel(() => api.addDependency(task.id, kind, picked.id));
+    }
   }
 
   // --- Name / description ---------------------------------------------------
@@ -341,32 +352,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setError(err instanceof ApiError ? err.message : 'Could not remove the tag');
     } finally {
       setTagBusy(false);
-    }
-  }
-
-  // --- Sub-tasks ------------------------------------------------------------
-  async function completeChild(childId: number) {
-    setError(null);
-    try {
-      await api.updateTask(childId, { status: 'Completed' });
-      applyTask(await api.getTask(task.id));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not complete the sub-task');
-    }
-  }
-  async function addSubtask() {
-    const name = subtaskDraft.trim();
-    if (name.length < TASK_NAME_MIN_LENGTH) return;
-    setAddingSub(true);
-    try {
-      const created = await api.createTask({ name });
-      await api.setParent(created.id, task.id);
-      applyTask(await api.getTask(task.id));
-      setSubtaskDraft('');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not add the sub-task');
-    } finally {
-      setAddingSub(false);
     }
   }
 
@@ -676,55 +661,35 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                       {doneChildren} of {task.children.length} done
                     </span>
                   )}
+                  <div className="spacer" />
+                  <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
+                    + Link
+                  </button>
                 </div>
                 {task.children.length > 0 && (
                   <div className="subtask-progress" aria-hidden="true">
                     <span style={{ width: `${(doneChildren / task.children.length) * 100}%` }} />
                   </div>
                 )}
-                <ul className="subtask-list">
-                  {task.children.map((c) => {
-                    const done = c.status === 'Completed';
-                    return (
-                      <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
-                        <button
-                          type="button"
-                          className="mday-check"
-                          aria-label={done ? 'Completed' : 'Mark sub-task complete'}
-                          disabled={done}
-                          onClick={() => completeChild(c.id)}
-                        >
-                          {done && (
-                            <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-                              <path d="M2 6.5 L5 9 L10 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </button>
-                        <Link to={`/tasks/${c.id}`} className="subtask-name">
-                          {c.name}
-                        </Link>
-                        <StatusPill status={c.status} />
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="subtask-add">
-                  <input
-                    value={subtaskDraft}
-                    onChange={(e) => setSubtaskDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void addSubtask();
-                      }
-                    }}
-                    placeholder="Add a sub-task…"
-                    aria-label="Add a sub-task"
-                  />
-                  <button type="button" className="secondary btn-sm" disabled={addingSub || subtaskDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={addSubtask}>
-                    {addingSub ? 'Adding…' : '+ Add'}
-                  </button>
-                </div>
+                {task.children.length === 0 ? (
+                  <p className="muted rel-empty">
+                    No sub-tasks. Use “+ Link” to add an existing task to this one.
+                  </p>
+                ) : (
+                  <ul className="subtask-list">
+                    {task.children.map((c) => {
+                      const done = c.status === 'Completed';
+                      return (
+                        <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
+                          <Link to={`/tasks/${c.id}`} className="subtask-name">
+                            {c.name}
+                          </Link>
+                          <StatusPill status={c.status} />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </section>
 
               {/* Attachments */}

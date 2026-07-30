@@ -260,7 +260,12 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
 
             <div
               className="gantt-rows"
-              style={{ height: ordered.length * ROW_H, width: timelineWidth }}
+              style={{
+                height: ordered.length * ROW_H,
+                width: timelineWidth,
+                // Subtle per-day vertical gridlines behind the rows.
+                backgroundImage: `repeating-linear-gradient(to right, var(--border-soft) 0, var(--border-soft) 1px, transparent 1px, transparent ${PX_PER_DAY}px)`,
+              }}
             >
               {/* Weekend column shading */}
               {dayCells.map((c) =>
