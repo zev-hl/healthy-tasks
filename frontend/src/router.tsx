@@ -9,6 +9,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { HomePage } from './pages/HomePage';
 import { UsersPage } from './pages/UsersPage';
+import { TemplatesPage } from './pages/TemplatesPage';
 import { TaskSearchPage } from './pages/TaskSearchPage';
 import { TaskCreatePage } from './pages/TaskCreatePage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
@@ -60,6 +61,14 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth roles={['Admin']}>
                 <UsersPage />
+              </RequireAuth>
+            ),
+          },
+          {
+            path: '/admin/templates',
+            element: (
+              <RequireAuth roles={['Admin', 'Manager']}>
+                <TemplatesPage />
               </RequireAuth>
             ),
           },

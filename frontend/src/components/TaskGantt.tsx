@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type TaskRowDto } from '@healthy-tasks/shared';
+import { type GhostOccurrenceDto, type TaskRowDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { statusPill } from './ui/indicators';
 
@@ -8,6 +8,9 @@ interface Props {
   rows: TaskRowDto[];
   loading: boolean;
   onChanged: () => void;
+  /** Phase 11: computed future occurrences, overlaid as dashed ghost bars on
+   * their source task's row (task-sourced ghosts whose source is visible). */
+  ghosts?: GhostOccurrenceDto[];
 }
 
 const DAY_MS = 86_400_000;
@@ -70,13 +73,43 @@ function buildTree(rows: TaskRowDto[]): { task: TaskRowDto; depth: number }[] {
  * PATCH a manual edit uses (so Start<Due validation applies), with
  * `coalesceHistory` so repeated nudges collapse into a single History entry.
  */
-export function TaskGantt({ rows, loading, onChanged }: Props) {
+export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
   const navigate = useNavigate();
   const [drag, setDrag] = useState<DragState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [materializing, setMaterializing] = useState<string | null>(null);
   const committing = useRef(false);
 
   const ordered = useMemo(() => buildTree(rows), [rows]);
+
+  // Ghosts overlaid on their source task's row (task-sourced only; a recurring
+  // task appears as a normal row and its future occurrences trail to the right).
+  const ghostsBySource = useMemo(() => {
+    const m = new Map<number, GhostOccurrenceDto[]>();
+    for (const g of ghosts) {
+      if (g.sourceType !== 'task') continue;
+      const list = m.get(g.sourceId) ?? [];
+      list.push(g);
+      m.set(g.sourceId, list);
+    }
+    return m;
+  }, [ghosts]);
+
+  async function materializeGhost(g: GhostOccurrenceDto) {
+    const key = `${g.sourceId}:${g.seq}`;
+    if (materializing) return;
+    setMaterializing(key);
+    setError(null);
+    try {
+      if (g.sourceType === 'task') await api.materializeTaskOccurrence(g.sourceId, g.seq);
+      else await api.materializeTemplateGhost(g.sourceId, g.seq);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create the occurrence');
+    } finally {
+      setMaterializing(null);
+    }
+  }
 
   const effDates = (task: TaskRowDto): { startAt: string | null; dueAt: string | null } =>
     drag && drag.id === task.id
@@ -89,6 +122,18 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
     let max = -Infinity;
     for (const { task } of ordered) {
       for (const iso of [task.startAt, task.dueAt]) {
+        if (iso) {
+          const t = dateOnly(iso);
+          if (t < min) min = t;
+          if (t > max) max = t;
+        }
+      }
+    }
+    // Extend the timeline to cover ghost previews of any visible recurring task.
+    const visibleIds = new Set(ordered.map((o) => o.task.id));
+    for (const g of ghosts) {
+      if (g.sourceType !== 'task' || !visibleIds.has(g.sourceId)) continue;
+      for (const iso of [g.startAt, g.dueAt]) {
         if (iso) {
           const t = dateOnly(iso);
           if (t < min) min = t;
@@ -109,7 +154,7 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
     let days = Math.round((max - min) / DAY_MS) + 5;
     if (days > MAX_DAYS) days = MAX_DAYS;
     return { start, days };
-  }, [ordered]);
+  }, [ordered, ghosts]);
 
   const dayIndex = (iso: string): number => Math.round((dateOnly(iso) - range.start) / DAY_MS);
 
@@ -389,6 +434,34 @@ export function TaskGantt({ rows, loading, onChanged }: Props) {
                     )}
                   </div>
                 );
+              })}
+
+              {/* Ghost bars: future occurrences of a recurring task, on its row.
+                  Dashed/translucent, non-draggable; click to materialize now. */}
+              {ordered.flatMap(({ task }, i) => {
+                const gs = ghostsBySource.get(task.id);
+                if (!gs) return [];
+                const top = i * ROW_H + (ROW_H - 20) / 2;
+                return gs.flatMap((g) => {
+                  const geom = barGeom(g.startAt, g.dueAt);
+                  if (!geom) return [];
+                  const key = `${g.sourceId}:${g.seq}`;
+                  return [
+                    <button
+                      key={`ghost-${key}`}
+                      type="button"
+                      className="gantt-bar ghost"
+                      style={{ top, left: geom.x, width: geom.w }}
+                      onClick={() => void materializeGhost(g)}
+                      disabled={materializing === key}
+                      title={`Upcoming occurrence #${g.seq} of “${g.name}” — click to create it now`}
+                    >
+                      <span className="gantt-bar-label">
+                        {materializing === key ? '…' : `↻ ${g.name}`}
+                      </span>
+                    </button>,
+                  ];
+                });
               })}
             </div>
           </div>

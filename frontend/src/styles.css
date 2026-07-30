@@ -290,6 +290,168 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 
+/* Phase 11: global banner when the recurrence background timer is down. Shown to
+   every user via the notifications heartbeat's `schedulerDown` flag. */
+.scheduler-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1.5rem;
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+  border-bottom: 1px solid var(--danger);
+  font-size: 0.9rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.scheduler-banner strong {
+  font-weight: 650;
+}
+
+/* Phase 11: task recurrence panel in the detail rail. */
+.recur-interval {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.recur-badge {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.08rem 0.4rem;
+  border-radius: var(--radius-chip);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.recur-form .field {
+  margin-bottom: 0.6rem;
+}
+
+/* Phase 11: "Repeat on" weekday selector (Google-style round toggles). */
+.weekday-picker {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.weekday-chip {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.weekday-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Collapsible recurrence block at the bottom of the template's Name & Notes card. */
+.recur-collapse {
+  margin-top: 1rem;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 0.85rem;
+}
+.recur-collapse-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+}
+.recur-collapse-head .recur-caret {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.recur-collapse-head[aria-expanded='true'] .recur-caret {
+  transform: rotate(90deg);
+}
+.recur-collapse-summary {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.recur-collapse-body {
+  margin-top: 0.85rem;
+}
+
+/* Phase 11: template editor node cards + dependency rows. */
+.tpl-node {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+.tpl-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.tpl-node-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+.tpl-node-grid .field {
+  margin: 0;
+}
+.tpl-node-grid .tpl-node-wide {
+  grid-column: 1 / -1;
+}
+.tpl-node-grid textarea {
+  resize: vertical;
+}
+.tpl-dep {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+/* Per-node dependency rows (Blocked by / Blocks), mirroring task relationships. */
+.tpl-node-rels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-soft);
+}
+.tpl-rel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 220px;
+  flex: 1;
+}
+.tpl-rel-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-2);
+}
+.tpl-rel-items {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
 .sidebar {
   position: fixed;
   top: 0;
@@ -1329,12 +1491,15 @@ textarea:focus-visible {
   padding: 5px 7px;
   font-size: 12px;
 }
-/* The date needs a touch more room than the time so neither clips its icon. */
+/* Give each a real minimum so a narrow rail wraps them onto two lines instead
+   of shrinking the time field until it clips its digits. */
 .rail-dates input[type='date'] {
-  flex: 1.3 1 0;
+  flex: 1.3 1 118px;
+  min-width: 116px;
 }
 .rail-dates input[type='time'] {
-  flex: 1 1 0;
+  flex: 1 1 92px;
+  min-width: 92px;
 }
 .rail-reminders-hint {
   font-size: 11px;
@@ -4661,6 +4826,20 @@ tr.just-completed > td {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Phase 11: ghost chip for a future recurring occurrence (click to materialize). */
+.cal-chip.ghost {
+  background: transparent;
+  border: 1px dashed var(--accent-mid);
+  color: var(--accent-deep);
+  font-style: italic;
+}
+.cal-chip.ghost:hover {
+  background: var(--accent-tint);
+}
+.cal-chip.ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* --- Gantt ---------------------------------------------------------------- */
 .gantt-scroll {
@@ -4823,6 +5002,23 @@ tr.just-completed > td {
 }
 .gantt-bar.done {
   opacity: 0.6;
+}
+/* Phase 11: ghost preview of a future recurring occurrence (not a real task). */
+.gantt-bar.ghost {
+  background: transparent;
+  border: 1px dashed var(--accent-mid);
+  color: var(--accent-deep);
+  box-shadow: none;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.gantt-bar.ghost:hover {
+  background: var(--accent-tint);
+  opacity: 1;
+}
+.gantt-bar.ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .gantt-bar-label {
   font-size: 0.72rem;

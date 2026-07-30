@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TASK_STATUS_LABELS, type TaskRowDto } from '@healthy-tasks/shared';
+import { TASK_STATUS_LABELS, type GhostOccurrenceDto, type TaskRowDto } from '@healthy-tasks/shared';
+import { api, ApiError } from '../api/client';
 import { statusPill } from './ui/indicators';
 
 export type CalendarScale = 'month' | 'week' | 'day';
@@ -13,6 +14,32 @@ interface Props {
   mode: CalendarMode;
   onScaleChange: (s: CalendarScale) => void;
   onModeChange: (m: CalendarMode) => void;
+  /** Phase 11: computed future occurrences, shown as dashed ghost chips. */
+  ghosts?: GhostOccurrenceDto[];
+  onChanged?: () => void;
+}
+
+/** A dashed ghost chip for a future recurring occurrence; click to materialize. */
+function CalGhostChip({
+  ghost,
+  busy,
+  onClick,
+}: {
+  ghost: GhostOccurrenceDto;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="cal-chip ghost"
+      title={`Upcoming occurrence #${ghost.seq} of “${ghost.name}” — click to create it now`}
+      onClick={onClick}
+      disabled={busy}
+    >
+      <span className="cal-chip-name">{busy ? '…' : `↻ ${ghost.name}`}</span>
+    </button>
+  );
 }
 
 const DAY_MS = 86_400_000;
@@ -95,9 +122,36 @@ function taskSpan(task: TaskRowDto, mode: CalendarMode): { start: Date; end: Dat
   return null;
 }
 
-export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onModeChange }: Props) {
+export function TaskCalendar({
+  rows,
+  loading,
+  scale,
+  mode,
+  onScaleChange,
+  onModeChange,
+  ghosts = [],
+  onChanged,
+}: Props) {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+  const [materializing, setMaterializing] = useState<string | null>(null);
+  const [ghostError, setGhostError] = useState<string | null>(null);
+
+  async function materializeGhost(g: GhostOccurrenceDto) {
+    const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
+    if (materializing) return;
+    setMaterializing(key);
+    setGhostError(null);
+    try {
+      if (g.sourceType === 'task') await api.materializeTaskOccurrence(g.sourceId, g.seq);
+      else await api.materializeTemplateGhost(g.sourceId, g.seq);
+      onChanged?.();
+    } catch (err) {
+      setGhostError(err instanceof ApiError ? err.message : 'Could not create the occurrence');
+    } finally {
+      setMaterializing(null);
+    }
+  }
 
   // The contiguous list of days shown for the current scale.
   const days = useMemo(() => {
@@ -117,6 +171,18 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onMode
     [rows, mode],
   );
 
+  // Ghosts reuse taskSpan (it only reads startAt/dueAt) so range/marker match.
+  const plottableGhosts = useMemo(
+    () =>
+      ghosts
+        .map((ghost) => ({
+          ghost,
+          span: taskSpan({ startAt: ghost.startAt, dueAt: ghost.dueAt } as TaskRowDto, mode),
+        }))
+        .filter((x) => x.span),
+    [ghosts, mode],
+  );
+
   function tasksOn(day: Date) {
     return plottable
       .filter((x) => inRange(day, x.span!.start, x.span!.end))
@@ -125,6 +191,12 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onMode
         const isEnd = sameDay(day, x.span!.end);
         return { task: x.task, isStart, isEnd, single: isStart && isEnd };
       });
+  }
+
+  // A ghost shows on the start day of its span (marker → the due day) to avoid
+  // over-filling multi-day ranges with repeated ghost chips.
+  function ghostsOn(day: Date) {
+    return plottableGhosts.filter((x) => sameDay(day, x.span!.start)).map((x) => x.ghost);
   }
 
   function shiftPeriod(dir: -1 | 1) {
@@ -213,23 +285,41 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onMode
         {loading && <span className="mono muted">Loading…</span>}
       </div>
 
+      {ghostError && <div className="alert error">{ghostError}</div>}
+
       {scale === 'day' ? (
         <div className="calendar-day-view">
           {(() => {
             const items = tasksOn(anchor);
-            if (items.length === 0)
+            const gitems = ghostsOn(anchor);
+            if (items.length === 0 && gitems.length === 0)
               return <div className="calendar-empty">Nothing scheduled this day.</div>;
-            return items.map(({ task, isStart, isEnd, single }) => (
-              <CalTaskChip
-                key={task.id}
-                task={task}
-                isStart={isStart}
-                isEnd={isEnd}
-                single={single}
-                mode={mode}
-                onOpen={openTask}
-              />
-            ));
+            return (
+              <>
+                {items.map(({ task, isStart, isEnd, single }) => (
+                  <CalTaskChip
+                    key={task.id}
+                    task={task}
+                    isStart={isStart}
+                    isEnd={isEnd}
+                    single={single}
+                    mode={mode}
+                    onOpen={openTask}
+                  />
+                ))}
+                {gitems.map((g) => {
+                  const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
+                  return (
+                    <CalGhostChip
+                      key={`ghost-${key}`}
+                      ghost={g}
+                      busy={materializing === key}
+                      onClick={() => void materializeGhost(g)}
+                    />
+                  );
+                })}
+              </>
+            );
           })()}
         </div>
       ) : (
@@ -267,6 +357,17 @@ export function TaskCalendar({ rows, loading, scale, mode, onScaleChange, onMode
                     />
                   ))}
                   {extra > 0 && <span className="calendar-more mono">+{extra} more</span>}
+                  {ghostsOn(day).map((g) => {
+                    const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
+                    return (
+                      <CalGhostChip
+                        key={`ghost-${key}`}
+                        ghost={g}
+                        busy={materializing === key}
+                        onClick={() => void materializeGhost(g)}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );

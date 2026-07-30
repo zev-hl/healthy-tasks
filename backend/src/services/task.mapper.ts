@@ -1,5 +1,11 @@
-import type { Task, User } from '@prisma/client';
-import type { TaskDto, TaskDetailDto, TaskRef } from '@healthy-tasks/shared';
+import type { Task, TaskRecurrence, User } from '@prisma/client';
+import type {
+  RecurrenceType,
+  TaskDto,
+  TaskDetailDto,
+  TaskRecurrenceDto,
+  TaskRef,
+} from '@healthy-tasks/shared';
 import { toUserRef } from './user.mapper.js';
 import {
   attachmentInclude,
@@ -44,6 +50,9 @@ export const taskDetailInclude = {
   // and the comment thread (oldest first).
   attachments: { include: attachmentInclude, orderBy: { createdAt: 'asc' } },
   comments: { include: commentInclude, orderBy: { createdAt: 'asc' } },
+  // Phase 11: this task's own recurrence rule + how many instances it has spawned.
+  recurrence: true,
+  _count: { select: { recurrenceOccurrences: true } },
 } as const;
 
 export type TaskWithDetail = TaskWithRefs & {
@@ -53,7 +62,27 @@ export type TaskWithDetail = TaskWithRefs & {
   blockedBy: { blocker: TaskRef }[];
   attachments: AttachmentWithUploader[];
   comments: CommentWithRefs[];
+  recurrence: TaskRecurrence | null;
+  recurrenceSourceId: number | null;
+  recurrenceSeq: number | null;
+  _count: { recurrenceOccurrences: number };
 };
+
+export function toTaskRecurrenceDto(r: TaskRecurrence, occurrenceCount: number): TaskRecurrenceDto {
+  return {
+    recurrenceType: r.recurrenceType as Exclude<RecurrenceType, 'None'>,
+    intervalCount: r.intervalCount,
+    intervalUnit: r.intervalUnit,
+    weekdays: r.weekdays,
+    anchorDate: r.anchorDate.toISOString(),
+    endType: r.endType,
+    endDate: r.endDate?.toISOString() ?? null,
+    maxOccurrences: r.maxOccurrences,
+    leadTimeDays: r.leadTimeDays,
+    isActive: r.isActive,
+    occurrenceCount,
+  };
+}
 
 export function toTaskDto(task: TaskWithRefs): TaskDto {
   return {
@@ -78,6 +107,8 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     priorAssigneeId: task.priorAssigneeId,
     priorAssignee: task.priorAssignee ? toUserRef(task.priorAssignee) : null,
     priorStatus: task.priorStatus,
+    instanceLabel: task.instanceLabel,
+    templateId: task.templateId,
   };
 }
 
@@ -95,5 +126,10 @@ export function toTaskDetailDto(task: TaskWithDetail): TaskDetailDto {
     isBlockedBy: task.blockedBy.map((d) => toTaskRef(d.blocker)),
     attachments: task.attachments.map(toAttachmentDto),
     comments: task.comments.map(toCommentDto),
+    recurrence: task.recurrence
+      ? toTaskRecurrenceDto(task.recurrence, task._count.recurrenceOccurrences)
+      : null,
+    recurrenceSourceId: task.recurrenceSourceId,
+    recurrenceSeq: task.recurrenceSeq,
   };
 }

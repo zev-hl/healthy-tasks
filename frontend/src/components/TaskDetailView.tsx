@@ -23,6 +23,7 @@ import { TaskPickerModal } from './TaskPickerModal';
 import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
+import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
 import { StatusPill, PriorityRamp } from './ui/indicators';
 import { DueDate, AgoDate } from './ui/dates';
@@ -61,6 +62,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [dupOpen, setDupOpen] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [commentsDirty, setCommentsDirty] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -355,6 +358,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
+  async function doDuplicate(includeDescendants: boolean) {
+    setDupOpen(false);
+    setDuplicating(true);
+    setError(null);
+    try {
+      const dup = await api.duplicateTask(task.id, includeDescendants);
+      navigate(`/tasks/${dup.id}`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not duplicate the task');
+      setDuplicating(false);
+    }
+  }
+  function onDuplicateClick() {
+    // With sub-tasks, ask whether to clone the whole tree; otherwise duplicate directly.
+    if (task.children.length > 0) setDupOpen(true);
+    else void doDuplicate(false);
+  }
+
   async function handleDeleteTask() {
     setDeleting(true);
     try {
@@ -411,6 +432,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <div className="spacer" />
         <button type="button" className="secondary btn-sm" onClick={copyLink}>
           {copied ? 'Copied ✓' : 'Copy link'}
+        </button>
+        <button type="button" className="secondary btn-sm" disabled={duplicating} onClick={onDuplicateClick}>
+          {duplicating ? 'Duplicating…' : 'Duplicate'}
         </button>
         {currentUser.role === 'Admin' && (
           <button type="button" className="secondary btn-sm" onClick={() => setConfirmDelete(true)}>
@@ -843,6 +867,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </div>
           </div>
 
+          <TaskRecurrencePanel task={task} onChanged={applyTask} />
+
           <div className="rail-section">
             <div className="rail-section-title">Reminders</div>
             <TaskReminders taskId={task.id} />
@@ -863,6 +889,27 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           onClose={() => setPendingReview(false)}
           onPick={(reviewerId) => saveReview(reviewerId)}
         />
+      )}
+
+      {dupOpen && (
+        <div className="modal-backdrop" onClick={() => setDupOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Duplicate task</h3>
+            <p>
+              “{task.name}” has {task.children.length} sub-task
+              {task.children.length === 1 ? '' : 's'}. Duplicate just this task, or the whole tree
+              beneath it?
+            </p>
+            <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="secondary" disabled={duplicating} onClick={() => void doDuplicate(false)}>
+                This task only
+              </button>
+              <button type="button" disabled={duplicating} onClick={() => void doDuplicate(true)}>
+                Task &amp; all sub-tasks
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {confirmDelete && (

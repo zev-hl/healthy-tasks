@@ -10,6 +10,7 @@ import { attachmentsRouter } from './routes/attachments.routes.js';
 import { preferencesRouter } from './routes/preferences.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { remindersRouter } from './routes/reminders.routes.js';
+import { templatesRouter } from './routes/templates.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp() {
@@ -43,6 +44,7 @@ export function createApp() {
   app.use('/api/preferences', preferencesRouter);
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/reminders', remindersRouter);
+  app.use('/api/templates', templatesRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

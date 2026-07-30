@@ -464,3 +464,98 @@ export async function deleteTask(actor: { id: string; role: Role }, id: number):
     }
   }
 }
+
+/** All task ids in the subtree rooted at `rootId` (root first, BFS order). The
+ * Parent/Child graph is acyclic, so no cycle guard is needed. */
+async function collectSubtreeIds(rootId: number): Promise<number[]> {
+  const ids: number[] = [rootId];
+  let frontier: number[] = [rootId];
+  while (frontier.length > 0) {
+    const children = await prisma.task.findMany({
+      where: { parentId: { in: frontier } },
+      select: { id: true },
+    });
+    const childIds = children.map((c) => c.id);
+    ids.push(...childIds);
+    frontier = childIds;
+  }
+  return ids;
+}
+
+/**
+ * Duplicate a task (Phase 11 follow-on). `includeDescendants` clones the whole
+ * sub-tree (parent/child structure preserved, internal dependencies remapped to
+ * the copies); otherwise just the task itself. Copies name/description/priority/
+ * tags/dates/assignee; each copy starts fresh (status Open, its own creator, no
+ * history/comments/attachments/template links). The root copy becomes a sibling
+ * of the original (same parent). Returns the new root task.
+ */
+export async function duplicateTask(
+  actorId: string,
+  rootId: number,
+  includeDescendants: boolean,
+): Promise<TaskDetailDto> {
+  const root = await prisma.task.findUnique({ where: { id: rootId }, select: { id: true, parentId: true } });
+  if (!root) throw HttpError.notFound('Task not found');
+
+  const ids = includeDescendants ? await collectSubtreeIds(rootId) : [rootId];
+  const idSet = new Set(ids);
+  const originals = await prisma.task.findMany({ where: { id: { in: ids } } });
+  const byId = new Map(originals.map((o) => [o.id, o]));
+
+  const idMap = new Map<number, number>(); // original id → clone id
+  const created: { taskId: number; assigneeId: string | null }[] = [];
+
+  await prisma.$transaction(async (tx) => {
+    // BFS order (from collectSubtreeIds) guarantees a parent is cloned before its
+    // children, so the remapped parentId always exists.
+    for (const oid of ids) {
+      const o = byId.get(oid);
+      if (!o) continue;
+      const parentId =
+        oid === rootId
+          ? o.parentId // the root copy is a sibling of the original
+          : o.parentId != null && idMap.has(o.parentId)
+            ? idMap.get(o.parentId)!
+            : null;
+      const clone = await tx.task.create({
+        data: {
+          name: o.name,
+          description: o.description,
+          creatorId: actorId,
+          assigneeId: o.assigneeId,
+          priority: o.priority,
+          tags: o.tags,
+          startAt: o.startAt,
+          dueAt: o.dueAt,
+          parentId,
+          // status/statusChangedAt reset to the defaults: a copy is fresh work.
+        },
+        select: { id: true },
+      });
+      idMap.set(o.id, clone.id);
+      created.push({ taskId: clone.id, assigneeId: o.assigneeId });
+    }
+
+    // Carry internal dependencies (both endpoints within the duplicated set).
+    if (idSet.size > 1) {
+      const edges = await tx.taskDependency.findMany({
+        where: { blockerId: { in: ids }, blockedId: { in: ids } },
+      });
+      for (const e of edges) {
+        const blockerId = idMap.get(e.blockerId);
+        const blockedId = idMap.get(e.blockedId);
+        if (blockerId && blockedId) await tx.taskDependency.create({ data: { blockerId, blockedId } });
+      }
+    }
+  });
+
+  // Assignment notifications for the copies (self-assignments skipped inside).
+  for (const c of created) {
+    if (c.assigneeId) {
+      await createAssignedNotification({ recipientId: c.assigneeId, actorId, taskId: c.taskId, action: 'added' });
+    }
+  }
+
+  return getTaskDetail(idMap.get(rootId)!);
+}

@@ -125,12 +125,17 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         </div>
       )}
 
-      {user?.role === 'Admin' && (
+      {(user?.role === 'Admin' || user?.role === 'Manager') && (
         <div className="side-group">
-          <div className="side-group-label">Admin</div>
-          <NavLink to="/admin/users" className={navItemClass}>
-            Users
+          <div className="side-group-label">Manage</div>
+          <NavLink to="/admin/templates" className={navItemClass}>
+            Templates
           </NavLink>
+          {user?.role === 'Admin' && (
+            <NavLink to="/admin/users" className={navItemClass}>
+              Users
+            </NavLink>
+          )}
         </div>
       )}
 
@@ -149,6 +154,25 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         </Link>
       )}
     </aside>
+  );
+}
+
+/**
+ * Global banner shown to EVERY user (not just admins) when the recurrence
+ * background timer has gone stale — driven by the `schedulerDown` flag on the
+ * unread-count heartbeat that the whole app already polls (Phase 11).
+ */
+function SchedulerBanner() {
+  const { unread } = useNotifications();
+  if (!unread?.schedulerDown) return null;
+  return (
+    <div className="scheduler-banner" role="alert">
+      <span aria-hidden="true">⚠️</span>
+      <span>
+        <strong>Background timer not running.</strong> Recurring tasks won’t be created — please
+        contact an administrator.
+      </span>
+    </div>
   );
 }
 
@@ -172,6 +196,7 @@ export function Layout() {
       <div className="app-shell">
         <Sidebar onOpenCmdk={() => setCmdkOpen(true)} />
         <main className="app-main">
+          <SchedulerBanner />
           <Outlet />
         </main>
       </div>

@@ -8,6 +8,9 @@ import {
   TASK_RELATION_FILTERS,
   USER_SORT_FIELDS,
   MAX_PAGE_SIZE,
+  RECURRENCE_TYPES,
+  RECURRENCE_UNITS,
+  RECURRENCE_END_TYPES,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -152,6 +155,12 @@ export const updateTaskSchema = z.object({
   coalesceHistory: z.boolean().optional(),
 });
 
+// Duplicate a task: optionally clone its whole sub-tree.
+export const duplicateTaskSchema = z.object({
+  includeDescendants: z.boolean().optional(),
+});
+export type DuplicateTaskInput = z.infer<typeof duplicateTaskSchema>;
+
 // --- Task relationships (Phase 3) ------------------------------------------
 
 const taskId = z.number().int().positive('A valid task id is required');
@@ -237,6 +246,9 @@ const taskFiltersSchema = z.object({
   // Saved-view filters (Phase 10).
   creatorIds: z.array(z.string().uuid()).max(200).optional(),
   blocked: z.boolean().optional(),
+  // Template provenance filters (Phase 11).
+  instanceLabel: z.string().trim().max(200).optional(),
+  templateId: z.coerce.number().int().positive().optional(),
 });
 
 export const taskSearchSchema = z.object({
@@ -318,3 +330,164 @@ export type TaskSearchInput = z.infer<typeof taskSearchSchema>;
 export type TaskDashboardInput = z.infer<typeof taskDashboardSchema>;
 export type UserSearchInput = z.infer<typeof userSearchSchema>;
 export type ScreenStateInput = z.infer<typeof screenStateSchema>;
+
+// --- Task templates & recurring tasks (Phase 11) ---------------------------
+
+const templateName = z.string().trim().min(1, 'Name is required').max(300, 'Name is too long');
+// A day offset from the instantiation anchor. Null clears the date; omitted on a
+// node input means "no date". Bounded to a decade to catch fat-finger entries.
+const offsetDays = z
+  .union([z.null(), z.coerce.number().int().min(0).max(3650)])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v));
+// A node key is a client-local identifier used to express parent/dependency
+// links within a single payload (server ids don't exist yet on create).
+const nodeKey = z.string().trim().min(1).max(100);
+
+// Weekly "repeat on" weekdays (0=Sun … 6=Sat).
+const weekdaysSchema = z.array(z.number().int().min(0).max(6)).max(7).optional();
+
+const recurrenceInputSchema = z
+  .object({
+    recurrenceType: z.enum(RECURRENCE_TYPES),
+    intervalCount: z.number().int().min(1).max(365).nullable().optional(),
+    intervalUnit: z.enum(RECURRENCE_UNITS).nullable().optional(),
+    weekdays: weekdaysSchema,
+    anchorDate: z
+      .union([z.null(), z.literal(''), z.coerce.date()])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+    endType: z.enum(RECURRENCE_END_TYPES).optional(),
+    endDate: z
+      .union([z.null(), z.literal(''), z.coerce.date()])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+    maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
+    leadTimeDays: z.number().int().min(0).max(365).optional(),
+    labelPrefix: optionalText,
+    isActive: z.boolean().optional(),
+  })
+  // Structural rules that depend on the chosen recurrence type. Deeper business
+  // validation (e.g. anchor required for a live schedule) lives in the service.
+  .superRefine((r, ctx) => {
+    if (r.recurrenceType !== 'None') {
+      if (!r.intervalCount) {
+        ctx.addIssue({ code: 'custom', path: ['intervalCount'], message: 'Interval is required' });
+      }
+      if (!r.intervalUnit) {
+        ctx.addIssue({ code: 'custom', path: ['intervalUnit'], message: 'Interval unit is required' });
+      }
+    }
+    if (r.endType === 'AfterOccurrences' && !r.maxOccurrences) {
+      ctx.addIssue({ code: 'custom', path: ['maxOccurrences'], message: 'A maximum occurrence count is required' });
+    }
+    if (r.endType === 'OnDate' && !r.endDate) {
+      ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'An end date is required' });
+    }
+  });
+
+const templateNodeInputSchema = z.object({
+  id: z.number().int().positive().optional(),
+  key: nodeKey,
+  parentKey: nodeKey.nullable(),
+  name: templateName,
+  description: optionalText,
+  defaultPriority: z.enum(TASK_PRIORITIES).optional(),
+  startOffsetDays: offsetDays,
+  dueOffsetDays: offsetDays,
+  assigneeRole: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .nullable()
+    .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+  orderIndex: z.number().int().min(0).max(10000).optional(),
+});
+
+const templateDependencyInputSchema = z.object({
+  blockerKey: nodeKey,
+  blockedKey: nodeKey,
+});
+
+export const createTemplateSchema = z.object({
+  name: templateName,
+  description: optionalText,
+  nodes: z.array(templateNodeInputSchema).min(1, 'A template needs at least one node').max(200),
+  dependencies: z.array(templateDependencyInputSchema).max(400).optional(),
+  recurrence: recurrenceInputSchema.optional(),
+});
+
+// PATCH: any top-level piece may be omitted (left unchanged). When `nodes` is
+// present it replaces the whole tree; the service reconciles against existing.
+export const updateTemplateSchema = z.object({
+  name: templateName.optional(),
+  description: optionalText,
+  nodes: z.array(templateNodeInputSchema).min(1).max(200).optional(),
+  dependencies: z.array(templateDependencyInputSchema).max(400).optional(),
+  recurrence: recurrenceInputSchema.optional(),
+});
+
+export const instantiateTemplateSchema = z.object({
+  instanceLabel: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .nullable()
+    .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+  anchorStart: z.coerce.date(),
+  roleAssignments: z
+    .array(
+      z.object({
+        role: z.string().trim().min(1).max(100),
+        assigneeId: optionalUserId,
+      }),
+    )
+    .max(200)
+    .optional(),
+});
+
+export const materializeGhostSchema = z.object({
+  seq: z.number().int().min(1),
+});
+
+export const applyToFutureSchema = z.object({
+  occurrenceIds: z.array(z.number().int().positive()).min(1).max(500),
+});
+
+// Recurrence set directly on a regular task. anchorDate is derived server-side
+// from the task's earliest date, so it is not accepted here.
+export const setTaskRecurrenceSchema = z
+  .object({
+    recurrenceType: z.enum(['Fixed', 'RelativeToCompletion']),
+    intervalCount: z.number().int().min(1).max(365),
+    intervalUnit: z.enum(RECURRENCE_UNITS),
+    weekdays: weekdaysSchema,
+    endType: z.enum(RECURRENCE_END_TYPES).optional(),
+    endDate: z
+      .union([z.null(), z.literal(''), z.coerce.date()])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+    maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
+    leadTimeDays: z.number().int().min(0).max(365).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .superRefine((r, ctx) => {
+    if (r.endType === 'AfterOccurrences' && !r.maxOccurrences) {
+      ctx.addIssue({ code: 'custom', path: ['maxOccurrences'], message: 'A maximum occurrence count is required' });
+    }
+    if (r.endType === 'OnDate' && !r.endDate) {
+      ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'An end date is required' });
+    }
+  });
+
+export type SetTaskRecurrenceInput = z.infer<typeof setTaskRecurrenceSchema>;
+
+export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
+export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
+export type RecurrenceInputParsed = z.infer<typeof recurrenceInputSchema>;
+export type TemplateNodeInputParsed = z.infer<typeof templateNodeInputSchema>;
+export type InstantiateTemplateInput = z.infer<typeof instantiateTemplateSchema>;
+export type MaterializeGhostInput = z.infer<typeof materializeGhostSchema>;
+export type ApplyToFutureInput = z.infer<typeof applyToFutureSchema>;

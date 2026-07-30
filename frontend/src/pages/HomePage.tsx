@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  TASK_NAME_MIN_LENGTH,
   type ActiveUserDto,
   type NotificationsDto,
   type TaskDashboardDto,
@@ -118,8 +117,6 @@ export function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [completing, setCompleting] = useState<Set<number>>(new Set());
-  const [quickName, setQuickName] = useState('');
-  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     const ctx = nowContext();
@@ -238,22 +235,6 @@ export function HomePage() {
     }
   }
 
-  async function quickAdd(e: FormEvent) {
-    e.preventDefault();
-    const name = quickName.trim();
-    if (name.length < TASK_NAME_MIN_LENGTH) return;
-    setAdding(true);
-    try {
-      await api.createTask({ name });
-      setQuickName('');
-      void load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not add the task');
-    } finally {
-      setAdding(false);
-    }
-  }
-
   const goFilter = (filters: TaskSearchFilters, viewLabel: string) =>
     navigate('/tasks', { state: { filters, viewLabel } });
   // Dashboard tiles refine the Tasks list: merge this metric onto the existing
@@ -283,16 +264,6 @@ export function HomePage() {
           </div>
         </div>
         <div className="mday-greet-actions">
-          <form onSubmit={quickAdd} className="mday-quickadd">
-            <span className="mday-quickadd-glyph" aria-hidden="true" />
-            <input
-              value={quickName}
-              onChange={(e) => setQuickName(e.target.value)}
-              placeholder="Add a task…"
-              aria-label="Quick add a task"
-              disabled={adding}
-            />
-          </form>
           <button type="button" onClick={() => navigate('/tasks/new')}>
             New task
           </button>
