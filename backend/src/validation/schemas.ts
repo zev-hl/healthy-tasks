@@ -11,6 +11,10 @@ import {
   RECURRENCE_TYPES,
   RECURRENCE_UNITS,
   RECURRENCE_END_TYPES,
+  GOAL_METRIC_TYPES,
+  GOAL_STATUSES,
+  GOAL_RESOLUTIONS,
+  GOAL_SPECIFIC_MIN_LENGTH,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -483,6 +487,96 @@ export const setTaskRecurrenceSchema = z
   });
 
 export type SetTaskRecurrenceInput = z.infer<typeof setTaskRecurrenceSchema>;
+
+// --- SMART Goals (Phase 12) -------------------------------------------------
+
+const goalSpecific = z
+  .string()
+  .trim()
+  .min(GOAL_SPECIFIC_MIN_LENGTH, `Describe the goal in at least ${GOAL_SPECIFIC_MIN_LENGTH} characters`)
+  .max(4000, 'Too long');
+
+// A finite (non-NaN/Infinity) numeric target/result value.
+const goalNumber = z
+  .number({ invalid_type_error: 'A number is required' })
+  .finite('A finite number is required')
+  .min(-1e12)
+  .max(1e12);
+
+// Required free-text comment (rejection reason / supervisor comments).
+const requiredComment = z.string().trim().min(1, 'Required').max(4000, 'Too long');
+
+// The metric's free-text unit label. Required only when metricType is `Other`;
+// checked in the superRefine below.
+const unitLabel = optionalText;
+
+const metricTypeSchema = z.enum(GOAL_METRIC_TYPES);
+
+export const createGoalSchema = z
+  .object({
+    ownerId: optionalUserId,
+    specific: goalSpecific,
+    metricType: metricTypeSchema,
+    unitLabel,
+    targetValue: goalNumber,
+    deadline: z.coerce.date(),
+    risks: optionalText,
+    mitigations: optionalText,
+    notes: optionalText,
+  })
+  .superRefine((g, ctx) => {
+    if (g.metricType === 'Other' && !g.unitLabel) {
+      ctx.addIssue({ code: 'custom', path: ['unitLabel'], message: 'A unit label is required for a custom metric' });
+    }
+  });
+
+// Draft edit (PATCH). Any field may be omitted (left unchanged). The
+// metric/unit cross-check runs in the service, where the merged value is known.
+export const updateGoalSchema = z.object({
+  specific: goalSpecific.optional(),
+  metricType: metricTypeSchema.optional(),
+  unitLabel,
+  targetValue: goalNumber.optional(),
+  deadline: z.coerce.date().optional(),
+  risks: optionalText,
+  mitigations: optionalText,
+  notes: optionalText,
+});
+
+// Employee progress update while Active (results + soft fields only).
+export const updateGoalProgressSchema = z.object({
+  resultValue: goalNumber.nullable().optional(),
+  notes: optionalText,
+  risks: optionalText,
+  mitigations: optionalText,
+});
+
+export const rejectGoalSchema = z.object({
+  comments: requiredComment,
+});
+
+export const resolveGoalSchema = z.object({
+  resolution: z.enum(GOAL_RESOLUTIONS),
+  supervisorComments: requiredComment,
+});
+
+export const goalTeamSchema = z.object({
+  filters: z
+    .object({
+      ownerIds: z.array(z.string().uuid()).max(500).optional(),
+      statuses: z.array(z.enum(GOAL_STATUSES)).max(GOAL_STATUSES.length).optional(),
+      deadlineFrom: optionalDateTime,
+      deadlineTo: optionalDateTime,
+    })
+    .optional(),
+});
+
+export type CreateGoalInput = z.infer<typeof createGoalSchema>;
+export type UpdateGoalInput = z.infer<typeof updateGoalSchema>;
+export type UpdateGoalProgressInput = z.infer<typeof updateGoalProgressSchema>;
+export type RejectGoalInput = z.infer<typeof rejectGoalSchema>;
+export type ResolveGoalInput = z.infer<typeof resolveGoalSchema>;
+export type GoalTeamInput = z.infer<typeof goalTeamSchema>;
 
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;

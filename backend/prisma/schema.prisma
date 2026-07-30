@@ -85,6 +85,12 @@ model User {
   // Task templates authored by this user (Phase 11).
   createdTemplates TaskTemplate[] @relation("TemplateCreator")
 
+  // SMART goals (Phase 12): goals this user owns, drafted, approved, or resolved.
+  ownedGoals    Goal[] @relation("GoalOwner")
+  createdGoals  Goal[] @relation("GoalCreator")
+  approvedGoals Goal[] @relation("GoalApprover")
+  resolvedGoals Goal[] @relation("GoalResolver")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -222,6 +228,11 @@ model Task {
   @@index([assigneeId])
   @@index([status])
   @@index([parentId])
+  // Phase 10 review-workflow FK indexes (created by the Phase 10 migration but
+  // never declared here — Phase 12 reconciles the drift so `prisma migrate` is
+  // clean; no DB change, the indexes already exist everywhere).
+  @@index([reviewInitiatorId])
+  @@index([priorAssigneeId])
   // Phase 6: support the Search screen's sort/filter columns.
   @@index([priority])
   @@index([dueAt])
@@ -723,4 +734,117 @@ model TaskRecurrence {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// SMART Goals (Phase 12)
+// ---------------------------------------------------------------------------
+
+// A goal's lifecycle status. Draft (editable by its creator/owner) →
+// PendingApproval (submitted to the supervisor) → Approved (Active; the employee
+// updates Results/Notes/Risks/Mitigations) → UnderReview (entered automatically
+// when the deadline passes, or immediately when the employee marks Results final
+// — whichever comes first) → Resolved (the supervisor set Resolution + Comments).
+// Resolved is terminal: it is never silently rewritten (a correction is a
+// deliberate one-off edit), consistent with how history is treated elsewhere.
+// A PendingApproval goal can instead be rejected back to Draft with comments.
+enum GoalStatus {
+  Draft
+  PendingApproval
+  Approved
+  UnderReview
+  Resolved
+}
+
+// The metric a goal's target and result are measured in. `Other` carries a
+// free-text `unitLabel`; the others imply their unit (Count = a plain number,
+// Percentage = %, Currency = money, Frequency = times per period).
+enum GoalMetricType {
+  Count
+  Percentage
+  Frequency
+  Currency
+  Other
+}
+
+// The supervisor's verdict, set only on the transition to Resolved.
+enum GoalResolution {
+  Exceeded
+  Met
+  Missed
+  PartiallyMet
+  InProgress
+}
+
+// A SMART goal that belongs to an employee. Fully independent of the Task system
+// in this phase. Either the employee or their supervisor may draft one for the
+// employee, but the supervisor must always approve it before it becomes Active.
+// Visibility: the owner sees their own; a supervisor sees goals whose owner's
+// `supervisorId` is them (direct reports only); admins see all.
+model Goal {
+  id Int @id @default(autoincrement())
+
+  // The employee the goal belongs to.
+  ownerId String
+  owner   User   @relation("GoalOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Whoever drafted the goal (the employee or their supervisor). Set at creation
+  // and never changes.
+  createdById String
+  createdBy   User   @relation("GoalCreator", fields: [createdById], references: [id])
+
+  // --- SMART fields ---
+  // What (Specific).
+  specific String
+  // How Much (Measurable): a metric type + a target value in that unit, plus a
+  // free-text unit label (required when metricType is `Other`).
+  metricType  GoalMetricType
+  unitLabel   String?
+  targetValue Float
+  // By When (Time-bound): the deadline. In this phase the deadline alone is the
+  // review period — there is no separate review-cycle entity.
+  deadline DateTime
+
+  risks       String?
+  mitigations String?
+  // Editable throughout the goal's life (until it is Resolved).
+  notes String?
+
+  // Results: the actuals, in the same metric type/unit as the target. Entered and
+  // updatable by the employee while the goal is Approved (Active).
+  resultValue Float?
+  // Stamped when the employee marks Results final — this forces the Under-Review
+  // transition even before the deadline.
+  resultsFinalizedAt DateTime?
+
+  // Resolution + Supervisor Comments: set by the supervisor when reviewing
+  // Results, moving the goal to Resolved.
+  resolution         GoalResolution?
+  supervisorComments String?
+
+  // The supervisor's required reason when rejecting a PendingApproval goal back to
+  // Draft. Left visible on the returned draft so the employee can address it and
+  // resubmit.
+  rejectionComments String?
+
+  status GoalStatus @default(Draft)
+
+  // Workflow audit stamps (who / when for each significant transition). The
+  // approver/resolver are SetNull so a deactivated supervisor never blocks reads.
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  approvedById  String?
+  approvedBy    User?     @relation("GoalApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  underReviewAt DateTime?
+  resolvedAt    DateTime?
+  resolvedById  String?
+  resolvedBy    User?     @relation("GoalResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([createdById])
+  @@index([status])
+  @@index([deadline])
 }
