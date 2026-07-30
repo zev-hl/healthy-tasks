@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Healthy Tasks">
+  <defs>
+    <linearGradient id="ht" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f7b6c"/>
+      <stop offset="1" stop-color="#7b86e6"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="url(#ht)"/>
+  <path d="M9 8h3.5v16H9zM19.5 8H23v16h-3.5zM9 14.25h14v3.5H9z" fill="#fff"/>
+</svg>
