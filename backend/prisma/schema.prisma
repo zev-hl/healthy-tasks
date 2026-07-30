@@ -59,6 +59,11 @@ model User {
   createdTasks  Task[] @relation("TaskCreator")
   assignedTasks Task[] @relation("TaskAssignee")
 
+  // Phase 10 review workflow: tasks this user sent to Review, and tasks holding
+  // this user as their pre-review assignee (restored when review ends).
+  reviewInitiatedTasks Task[] @relation("TaskReviewInitiator")
+  priorAssignedTasks   Task[] @relation("TaskPriorAssignee")
+
   // Attachments & comments (Phase 4).
   uploadedAttachments Attachment[]     @relation("AttachmentUploader")
   authoredComments    Comment[]        @relation("CommentAuthor")
@@ -144,6 +149,16 @@ model Task {
 
   startAt DateTime?
   dueAt   DateTime?
+
+  // --- Review workflow (Phase 10) ---
+  // Populated only while status == Review, cleared when the task leaves Review.
+  // reviewInitiator = who sent it to Review (audit/context only). priorAssignee
+  // + priorStatus record what to restore when the Reviewed/Recall button fires.
+  reviewInitiatorId String?
+  reviewInitiator   User?       @relation("TaskReviewInitiator", fields: [reviewInitiatorId], references: [id], onDelete: SetNull)
+  priorAssigneeId   String?
+  priorAssignee     User?       @relation("TaskPriorAssignee", fields: [priorAssigneeId], references: [id], onDelete: SetNull)
+  priorStatus       TaskStatus?
 
   // --- Parent/Child hierarchy (Phase 3) ---
   // One optional parent; children are derived (tasks whose parent is this one).

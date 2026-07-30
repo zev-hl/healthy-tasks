@@ -172,7 +172,13 @@ describe('admin user management', () => {
     const create = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'newbie@test.local', firstName: 'New', lastName: 'Bie', role: 'Member', title: 'Analyst' });
+      .send({
+        email: 'newbie@test.local',
+        firstName: 'New',
+        lastName: 'Bie',
+        role: 'Member',
+        title: 'Analyst',
+      });
 
     assert.equal(create.status, 201);
     assert.equal(create.body.user.email, 'newbie@test.local');
@@ -221,7 +227,13 @@ describe('supervisor role rule', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'report@test.local', firstName: 'Rep', lastName: 'Ort', role: 'Member', supervisorId: member.id });
+      .send({
+        email: 'report@test.local',
+        firstName: 'Rep',
+        lastName: 'Ort',
+        role: 'Member',
+        supervisorId: member.id,
+      });
 
     assert.equal(res.status, 400);
     assert.match(res.body.error, /Manager or Admin/);
@@ -234,7 +246,13 @@ describe('supervisor role rule', () => {
     const res = await request(app)
       .post('/api/users')
       .set('Authorization', `Bearer ${token}`)
-      .send({ email: 'report2@test.local', firstName: 'Rep', lastName: 'Two', role: 'Member', supervisorId: mgr.id });
+      .send({
+        email: 'report2@test.local',
+        firstName: 'Rep',
+        lastName: 'Two',
+        role: 'Member',
+        supervisorId: mgr.id,
+      });
 
     assert.equal(res.status, 201);
     assert.equal(res.body.user.supervisorId, mgr.id);
@@ -865,6 +883,7 @@ describe('blocked-status rule', () => {
 
   it('allows Review/Completed once every predecessor is terminal', async () => {
     const tok = await adminToken();
+    const reviewer = await seedUser({ email: 'rev-blocked@test.local', role: 'Member' });
     const { pred, task } = await taskBlockedBy(tok);
 
     const done = await request(app)
@@ -873,17 +892,19 @@ describe('blocked-status rule', () => {
       .send({ status: 'Completed' });
     assert.equal(done.status, 200);
 
-    const review = await request(app)
-      .patch(`/api/tasks/${task.id}`)
-      .set(auth(tok))
-      .send({ status: 'Review' });
-    assert.equal(review.status, 200);
-
+    // Completed is allowed now the predecessor is terminal.
     const completed = await request(app)
       .patch(`/api/tasks/${task.id}`)
       .set(auth(tok))
       .send({ status: 'Completed' });
     assert.equal(completed.status, 200);
+
+    // Review is allowed too — entering Review now requires a reviewer (Phase 10).
+    const review = await request(app)
+      .patch(`/api/tasks/${task.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+    assert.equal(review.status, 200, JSON.stringify(review.body));
   });
 });
 
@@ -941,12 +962,9 @@ describe('rich-text description (Phase 4)', () => {
   it('persists bold/italic/underline and strips scripts', async () => {
     const tok = await adminToken();
     const t = await makeTask(tok, 'Desc task');
-    const res = await request(app)
-      .patch(`/api/tasks/${t.id}`)
-      .set(auth(tok))
-      .send({
-        description: '<p><strong>Bold</strong> <em>it</em> <u>u</u></p><script>alert(1)</script>',
-      });
+    const res = await request(app).patch(`/api/tasks/${t.id}`).set(auth(tok)).send({
+      description: '<p><strong>Bold</strong> <em>it</em> <u>u</u></p><script>alert(1)</script>',
+    });
     assert.equal(res.status, 200);
     assert.match(res.body.description, /<strong>Bold<\/strong>/);
     assert.match(res.body.description, /<u>u<\/u>/);
@@ -1083,9 +1101,9 @@ describe('task comments (Phase 4)', () => {
       .set(auth(authorTok))
       .send({ body: '<p>Edited</p>' });
     assert.equal(res.status, 200);
-    const edited = (res.body.comments as { id: string; editedAt: string | null; body: string }[]).find(
-      (x) => x.id === c.id,
-    )!;
+    const edited = (
+      res.body.comments as { id: string; editedAt: string | null; body: string }[]
+    ).find((x) => x.id === c.id)!;
     assert.ok(edited.editedAt, 'editedAt should be set after an edit');
     assert.match(edited.body, /Edited/);
 
@@ -1191,8 +1209,16 @@ describe('comment @mentions and mention events (Phase 4)', () => {
 
   it('always creates an event for a newly added mention on edit', async () => {
     const admin = await adminToken();
-    const u1 = await seedUser({ email: 'm1@test.local', role: 'Member', password: MEMBER_PASSWORD });
-    const u2 = await seedUser({ email: 'm2@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u1 = await seedUser({
+      email: 'm1@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const u2 = await seedUser({
+      email: 'm2@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     await seedUser({ email: 'm3@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const authorTok = await login('m3@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'MentionsAdd');
@@ -1277,7 +1303,10 @@ describe('task tags list (Phase 4)', () => {
     assert.deepEqual(tags.body, ['apple', 'Mango', 'zebra']);
 
     // 'zebra' is only on t1; removing it there drops it from the list entirely.
-    await request(app).patch(`/api/tasks/${t1.id}`).set(auth(tok)).send({ tags: ['apple'] });
+    await request(app)
+      .patch(`/api/tasks/${t1.id}`)
+      .set(auth(tok))
+      .send({ tags: ['apple'] });
     tags = await request(app).get('/api/tasks/tags').set(auth(tok));
     assert.deepEqual(tags.body, ['apple', 'Mango']);
   });
@@ -1309,7 +1338,12 @@ describe('task change history (Phase 5)', () => {
     await request(app)
       .patch(`/api/tasks/${t.id}`)
       .set(auth(tok))
-      .send({ status: 'InProgress', priority: 'High', assigneeId: assignee.id, dueAt: '2026-09-01T10:00:00Z' });
+      .send({
+        status: 'InProgress',
+        priority: 'High',
+        assigneeId: assignee.id,
+        dueAt: '2026-09-01T10:00:00Z',
+      });
 
     const entries = await history(tok, t.id);
     const byField = Object.fromEntries(entries.map((e) => [e.field, e]));
@@ -1353,7 +1387,10 @@ describe('task change history (Phase 5)', () => {
     const tok = await adminToken();
     const parent = await makeTask(tok, 'Parent task');
     const child = await makeTask(tok, 'Child task');
-    await request(app).put(`/api/tasks/${child.id}/parent`).set(auth(tok)).send({ parentId: parent.id });
+    await request(app)
+      .put(`/api/tasks/${child.id}/parent`)
+      .set(auth(tok))
+      .send({ parentId: parent.id });
     await request(app).delete(`/api/tasks/${child.id}/parent`).set(auth(tok));
 
     const parentEntries = (await history(tok, child.id)).filter((e) => e.field === 'parentTask');
@@ -1383,7 +1420,10 @@ describe('task change history (Phase 5)', () => {
   it('logs attachment add and remove with the filename', async () => {
     const tok = await adminToken();
     const t = await makeTask(tok, 'Att hist');
-    const confirm = await attachToTask(tok, t.id, { filename: 'report.pdf', contentType: 'application/pdf' });
+    const confirm = await attachToTask(tok, t.id, {
+      filename: 'report.pdf',
+      contentType: 'application/pdf',
+    });
     const attId = (confirm.body.attachments as { id: string }[])[0].id;
     await request(app).delete(`/api/attachments/${attId}`).set(auth(tok));
 
@@ -1399,14 +1439,22 @@ describe('task change history (Phase 5)', () => {
     const authorTok = await login('cauth@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'Cmt hist');
 
-    const add = await request(app).post(`/api/tasks/${t.id}/comments`).set(auth(authorTok)).send({ body: '<p>hi</p>' });
+    const add = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(authorTok))
+      .send({ body: '<p>hi</p>' });
     const cid = add.body.comments[0].id as string;
-    await request(app).patch(`/api/comments/${cid}`).set(auth(authorTok)).send({ body: '<p>edited</p>' });
+    await request(app)
+      .patch(`/api/comments/${cid}`)
+      .set(auth(authorTok))
+      .send({ body: '<p>edited</p>' });
     await request(app).delete(`/api/comments/${cid}`).set(auth(authorTok));
 
     const cmt = (await history(admin, t.id)).filter((e) => e.field === 'comment');
     assert.deepEqual(cmt.map((e) => e.changeType).sort(), ['added', 'removed', 'updated']);
-    assert.ok(cmt.every((e) => e.previousValue === null && e.newValue === null && e.detail === null));
+    assert.ok(
+      cmt.every((e) => e.previousValue === null && e.newValue === null && e.detail === null),
+    );
     assert.ok(cmt.every((e) => e.user?.email === 'cauth@test.local'));
   });
 
@@ -1431,7 +1479,13 @@ describe('admin user edit in place (Phase 5)', () => {
     const res = await request(app)
       .patch(`/api/users/${u.id}`)
       .set(auth(tok))
-      .send({ firstName: 'Jane', lastName: 'Doe', title: 'Lead', role: 'Manager', isActive: false });
+      .send({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        title: 'Lead',
+        role: 'Manager',
+        isActive: false,
+      });
     assert.equal(res.status, 200);
     assert.equal(res.body.firstName, 'Jane');
     assert.equal(res.body.lastName, 'Doe');
@@ -1484,23 +1538,27 @@ describe('account merge (Phase 5)', () => {
       role: 'Manager',
       password: MEMBER_PASSWORD,
     });
-    const report = await seedUser({ email: 'report3@test.local', role: 'Member', supervisorId: dup.id });
+    const report = await seedUser({
+      email: 'report3@test.local',
+      role: 'Member',
+      supervisorId: dup.id,
+    });
 
     // A task created by the duplicate, and a task assigned to the duplicate.
     const dupTok = await login('dup@test.local', MEMBER_PASSWORD);
     const created = await makeTask(dupTok, 'By dup');
     const assigned = await makeTask(adminTok, 'Assigned to dup');
-    await request(app).patch(`/api/tasks/${assigned.id}`).set(auth(adminTok)).send({ assigneeId: dup.id });
-
-    const merge = await request(app)
-      .post('/api/users/merge')
+    await request(app)
+      .patch(`/api/tasks/${assigned.id}`)
       .set(auth(adminTok))
-      .send({
-        survivingId: survivor.id,
-        mergedId: dup.id,
-        confirmEmail: 'dup@test.local',
-        fieldChoices: baseChoices,
-      });
+      .send({ assigneeId: dup.id });
+
+    const merge = await request(app).post('/api/users/merge').set(auth(adminTok)).send({
+      survivingId: survivor.id,
+      mergedId: dup.id,
+      confirmEmail: 'dup@test.local',
+      fieldChoices: baseChoices,
+    });
     assert.equal(merge.status, 200, JSON.stringify(merge.body));
     assert.equal(merge.body.id, survivor.id);
     assert.equal(merge.body.title, 'Keeper');
@@ -1531,15 +1589,12 @@ describe('account merge (Phase 5)', () => {
     const adminTok = await adminToken();
     const survivor = await seedUser({ email: 'surv2@test.local', role: 'Manager' });
     const dup = await seedUser({ email: 'dup2@test.local', role: 'Member' });
-    const res = await request(app)
-      .post('/api/users/merge')
-      .set(auth(adminTok))
-      .send({
-        survivingId: survivor.id,
-        mergedId: dup.id,
-        confirmEmail: 'wrong@test.local',
-        fieldChoices: baseChoices,
-      });
+    const res = await request(app).post('/api/users/merge').set(auth(adminTok)).send({
+      survivingId: survivor.id,
+      mergedId: dup.id,
+      confirmEmail: 'wrong@test.local',
+      fieldChoices: baseChoices,
+    });
     assert.equal(res.status, 400);
     assert.match(res.body.error, /confirmation/i);
   });
@@ -1568,15 +1623,12 @@ describe('account merge (Phase 5)', () => {
     const memberTok = await login('plain5@test.local', MEMBER_PASSWORD);
     const survivor = await seedUser({ email: 'surv5@test.local', role: 'Manager' });
     const dup = await seedUser({ email: 'dup5@test.local', role: 'Member' });
-    const res = await request(app)
-      .post('/api/users/merge')
-      .set(auth(memberTok))
-      .send({
-        survivingId: survivor.id,
-        mergedId: dup.id,
-        confirmEmail: 'dup5@test.local',
-        fieldChoices: baseChoices,
-      });
+    const res = await request(app).post('/api/users/merge').set(auth(memberTok)).send({
+      survivingId: survivor.id,
+      mergedId: dup.id,
+      confirmEmail: 'dup5@test.local',
+      fieldChoices: baseChoices,
+    });
     assert.equal(res.status, 403);
     void adminTok;
   });
@@ -1656,7 +1708,11 @@ describe('task search / query (Phase 6)', () => {
     assert.equal(withNoDue.total, 2, 'no-due task included by default');
 
     const excluded = await queryTasks(tok, {
-      filters: { dueFrom: '2026-09-01T00:00:00Z', dueTo: '2026-09-30T23:59:59Z', includeNoDue: false },
+      filters: {
+        dueFrom: '2026-09-01T00:00:00Z',
+        dueTo: '2026-09-30T23:59:59Z',
+        includeNoDue: false,
+      },
     });
     assert.equal(excluded.total, 1);
     assert.equal(excluded.rows[0]?.name, 'Has due');
@@ -1694,7 +1750,10 @@ describe('task search / query (Phase 6)', () => {
     const tok = await adminToken();
     const parent = await makeTask(tok, 'Parent6');
     const child = await makeTask(tok, 'Child6');
-    await request(app).put(`/api/tasks/${child.id}/parent`).set(auth(tok)).send({ parentId: parent.id });
+    await request(app)
+      .put(`/api/tasks/${child.id}/parent`)
+      .set(auth(tok))
+      .send({ parentId: parent.id });
 
     const rows = (await queryTasks(tok, { sort: [{ field: 'id', dir: 'asc' }] })).rows;
     assert.equal(rows.find((r) => r.id === parent.id)?.childrenCount, 1);
@@ -1756,7 +1815,11 @@ function clockContext(): { now: string; todayStart: string; todayEnd: string } {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
-  return { now: now.toISOString(), todayStart: todayStart.toISOString(), todayEnd: todayEnd.toISOString() };
+  return {
+    now: now.toISOString(),
+    todayStart: todayStart.toISOString(),
+    todayEnd: todayEnd.toISOString(),
+  };
 }
 
 async function dashboard(token: string, body: Record<string, unknown> = {}) {
@@ -1941,7 +2004,14 @@ describe('users search (Phase 6)', () => {
     const sorted = await request(app)
       .post('/api/users/search')
       .set(auth(tok))
-      .send({ sort: [{ field: 'firstName', dir: 'asc' }, { field: 'lastName', dir: 'asc' }], pageSize: 2, page: 1 });
+      .send({
+        sort: [
+          { field: 'firstName', dir: 'asc' },
+          { field: 'lastName', dir: 'asc' },
+        ],
+        pageSize: 2,
+        page: 1,
+      });
     assert.equal(sorted.status, 200);
     assert.equal(sorted.body.pageSize, 2);
     assert.equal(sorted.body.rows.length, 2);
@@ -2030,7 +2100,10 @@ async function setPrefs(token: string, patch: Record<string, boolean>) {
 }
 
 async function addComment(token: string, taskId: number, body: string) {
-  const res = await request(app).post(`/api/tasks/${taskId}/comments`).set(auth(token)).send({ body });
+  const res = await request(app)
+    .post(`/api/tasks/${taskId}/comments`)
+    .set(auth(token))
+    .send({ body });
   assert.equal(res.status, 201, `comment failed: ${JSON.stringify(res.body)}`);
   return res.body as { comments: { id: string }[] };
 }
@@ -2086,7 +2159,11 @@ describe('notifications: Mentioned (Phase 8)', () => {
 
   it('respects the 15-minute gate end-to-end (no duplicate within the window)', async () => {
     const admin = await adminToken();
-    const u = await seedUser({ email: 'gate8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u = await seedUser({
+      email: 'gate8@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const uTok = await login('gate8@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'Gate');
     const span = mention(u.id, 'g');
@@ -2115,7 +2192,11 @@ describe('notifications: Mentioned (Phase 8)', () => {
 describe('notifications: Assigned (Phase 8)', () => {
   it('notifies on assign and unassign, but skips self-assignment', async () => {
     const admin = await adminToken();
-    const u = await seedUser({ email: 'asg8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u = await seedUser({
+      email: 'asg8@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const uTok = await login('asg8@test.local', MEMBER_PASSWORD);
 
     const t = await makeTask(admin, 'Assign8', { assigneeId: u.id });
@@ -2160,7 +2241,10 @@ describe('notifications: Reminders (Phase 8)', () => {
 
     // A task with no Start never surfaces its reminder.
     const t2 = await makeTask(admin, 'No start');
-    await request(app).post(`/api/tasks/${t2.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    await request(app)
+      .post(`/api/tasks/${t2.id}/reminders`)
+      .set(auth(admin))
+      .send({ leadMinutes: 0 });
 
     const list = await getNotifs(admin);
     assert.equal(list.reminders.length, 1, 'only the due (60-min lead) reminder surfaces');
@@ -2188,7 +2272,11 @@ describe('notifications: Reminders (Phase 8)', () => {
 describe('notifications: preferences (Phase 8)', () => {
   it('opting out stops new notifications but keeps existing ones', async () => {
     const admin = await adminToken();
-    const u = await seedUser({ email: 'opt8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u = await seedUser({
+      email: 'opt8@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const uTok = await login('opt8@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'Opt task');
 
@@ -2206,8 +2294,13 @@ describe('notifications: preferences (Phase 8)', () => {
 
   it('opting out of Reminders suppresses the live list and count', async () => {
     const admin = await adminToken();
-    const t = await makeTask(admin, 'Rem opt', { startAt: new Date(Date.now() - 1000).toISOString() });
-    await request(app).post(`/api/tasks/${t.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    const t = await makeTask(admin, 'Rem opt', {
+      startAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    await request(app)
+      .post(`/api/tasks/${t.id}/reminders`)
+      .set(auth(admin))
+      .send({ leadMinutes: 0 });
     assert.equal((await getNotifs(admin)).reminders.length, 1);
 
     await setPrefs(admin, { remindersInApp: false });
@@ -2217,7 +2310,11 @@ describe('notifications: preferences (Phase 8)', () => {
 
   it('sends (logs) an email when "also email me" is enabled', async () => {
     const admin = await adminToken();
-    const u = await seedUser({ email: 'email8@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u = await seedUser({
+      email: 'email8@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const uTok = await login('email8@test.local', MEMBER_PASSWORD);
     await setPrefs(uTok, { mentionedEmail: true });
     const t = await makeTask(admin, 'Email task');
@@ -2233,10 +2330,337 @@ describe('notifications: preferences (Phase 8)', () => {
     const t2 = await makeTask(admin, 'Rem email', {
       startAt: new Date(Date.now() - 1000).toISOString(),
     });
-    await request(app).post(`/api/tasks/${t2.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    await request(app)
+      .post(`/api/tasks/${t2.id}/reminders`)
+      .set(auth(admin))
+      .send({ leadMinutes: 0 });
     const out2 = await captureConsole(async () => {
       await unread(admin);
     });
     assert.match(out2, /Reminder:/);
+  });
+});
+
+// --- Phase 10: review workflow --------------------------------------------
+
+/** Fetch a task's full detail (includes the Phase 10 review fields). */
+async function detail(token: string, taskId: number) {
+  const res = await request(app).get(`/api/tasks/${taskId}`).set(auth(token));
+  assert.equal(res.status, 200, `detail failed: ${JSON.stringify(res.body)}`);
+  return res.body as {
+    status: string;
+    assigneeId: string | null;
+    reviewInitiatorId: string | null;
+    priorAssigneeId: string | null;
+    priorStatus: string | null;
+  };
+}
+
+describe('review workflow (Phase 10)', () => {
+  it('sends a task to Review: reviewer becomes assignee; prior values stored', async () => {
+    const tok = await adminToken();
+    const admin = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
+    const assignee = await seedUser({ email: 'rw-assignee@test.local', role: 'Member' });
+    const reviewer = await seedUser({ email: 'rw-reviewer@test.local', role: 'Member' });
+    const t = await makeTask(tok, 'Needs review', {
+      assigneeId: assignee.id,
+      status: 'InProgress',
+    });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+
+    const d = await detail(tok, t.id);
+    assert.equal(d.status, 'Review');
+    assert.equal(d.assigneeId, reviewer.id, 'reviewer becomes the temporary assignee');
+    assert.equal(d.priorAssigneeId, assignee.id);
+    assert.equal(d.priorStatus, 'InProgress');
+    assert.equal(d.reviewInitiatorId, admin.id);
+
+    // The status + assignee changes are logged like a normal edit.
+    const entries = await history(tok, t.id);
+    const status = entries.find((e) => e.field === 'status');
+    const asg = entries.find((e) => e.field === 'assignee');
+    assert.equal(status?.newValue, 'Review');
+    assert.equal(asg?.newValue, 'rw-reviewer@test.local');
+  });
+
+  it('rejects sending to Review without a reviewer', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'No reviewer');
+    const res = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review' });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /reviewer/i);
+  });
+
+  it('locks Status and Assignee while in Review (other fields still editable)', async () => {
+    const tok = await adminToken();
+    const reviewer = await seedUser({ email: 'lock-reviewer@test.local', role: 'Member' });
+    const other = await seedUser({ email: 'lock-other@test.local', role: 'Member' });
+    const t = await makeTask(tok, 'Locked task');
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+
+    const badStatus = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Completed' });
+    assert.equal(badStatus.status, 400);
+    assert.match(badStatus.body.error, /Review/);
+
+    const badAssign = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ assigneeId: other.id });
+    assert.equal(badAssign.status, 400);
+
+    const okPriority = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ priority: 'High' });
+    assert.equal(okPriority.status, 200, 'non-locked fields still save while in Review');
+  });
+
+  it('Reviewed restores prior assignee + status and clears review fields (detail "Reviewed")', async () => {
+    const tok = await adminToken();
+    const assignee = await seedUser({ email: 'rev-restore@test.local', role: 'Member' });
+    const reviewer = await seedUser({ email: 'rev-who@test.local', role: 'Member' });
+    const t = await makeTask(tok, 'To review', { assigneeId: assignee.id, status: 'OnHold' });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+
+    const res = await request(app).post(`/api/tasks/${t.id}/reviewed`).set(auth(tok));
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+
+    const d = await detail(tok, t.id);
+    assert.equal(d.status, 'OnHold', 'restores prior status');
+    assert.equal(d.assigneeId, assignee.id, 'restores prior assignee');
+    assert.equal(d.priorAssigneeId, null);
+    assert.equal(d.priorStatus, null);
+    assert.equal(d.reviewInitiatorId, null);
+
+    const status = (await history(tok, t.id)).find(
+      (e) => e.field === 'status' && e.newValue === 'OnHold',
+    );
+    assert.equal(status?.detail, 'Reviewed');
+  });
+
+  it('Reviewed permission: reviewer (current assignee) ok; unrelated member 403', async () => {
+    const tok = await adminToken();
+    const reviewer = await seedUser({
+      email: 'perm-reviewer@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const outsider = await seedUser({
+      email: 'perm-out@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const t = await makeTask(tok, 'Perm task');
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+
+    const outsiderTok = await login(outsider.email, MEMBER_PASSWORD);
+    const denied = await request(app).post(`/api/tasks/${t.id}/reviewed`).set(auth(outsiderTok));
+    assert.equal(denied.status, 403);
+
+    const reviewerTok = await login(reviewer.email, MEMBER_PASSWORD);
+    const ok = await request(app).post(`/api/tasks/${t.id}/reviewed`).set(auth(reviewerTok));
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  });
+
+  it('Reviewed permission: a supervisor above the assignee at any level can', async () => {
+    const tok = await adminToken();
+    const top = await seedUser({
+      email: 'sup-top@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
+    const mid = await seedUser({
+      email: 'sup-mid@test.local',
+      role: 'Manager',
+      supervisorId: top.id,
+    });
+    // The reviewer (current assignee during review) reports to mid → top.
+    const reviewer = await seedUser({
+      email: 'sup-reviewer@test.local',
+      role: 'Member',
+      supervisorId: mid.id,
+    });
+    const t = await makeTask(tok, 'Chain task');
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+
+    const topTok = await login(top.email, MEMBER_PASSWORD);
+    const ok = await request(app).post(`/api/tasks/${t.id}/reviewed`).set(auth(topTok));
+    assert.equal(
+      ok.status,
+      200,
+      `two-levels-up supervisor should be allowed: ${JSON.stringify(ok.body)}`,
+    );
+  });
+
+  it('Recall restores like Reviewed but logs "Recalled from review"; initiator/prior-assignee only', async () => {
+    const tok = await adminToken();
+    const assignee = await seedUser({
+      email: 'rec-prior@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const reviewer = await seedUser({ email: 'rec-reviewer@test.local', role: 'Member' });
+    const outsider = await seedUser({
+      email: 'rec-out@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const t = await makeTask(tok, 'Recall task', { assigneeId: assignee.id, status: 'InProgress' });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+
+    // An unrelated member cannot recall.
+    const outTok = await login(outsider.email, MEMBER_PASSWORD);
+    const denied = await request(app).post(`/api/tasks/${t.id}/recall-review`).set(auth(outTok));
+    assert.equal(denied.status, 403);
+
+    // The prior assignee (assignee at time of review) can recall.
+    const priorTok = await login(assignee.email, MEMBER_PASSWORD);
+    const ok = await request(app).post(`/api/tasks/${t.id}/recall-review`).set(auth(priorTok));
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+
+    const d = await detail(tok, t.id);
+    assert.equal(d.status, 'InProgress');
+    assert.equal(d.assigneeId, assignee.id);
+    const status = (await history(tok, t.id)).find(
+      (e) => e.field === 'status' && e.newValue === 'InProgress',
+    );
+    assert.equal(status?.detail, 'Recalled from review');
+  });
+
+  it('the Review initiator can also recall', async () => {
+    const tok = await adminToken();
+    const reviewer = await seedUser({ email: 'rec2-reviewer@test.local', role: 'Member' });
+    const t = await makeTask(tok, 'Initiator recall', { status: 'InProgress' });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+    // admin (the initiator) recalls.
+    const ok = await request(app).post(`/api/tasks/${t.id}/recall-review`).set(auth(tok));
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await detail(tok, t.id)).status, 'InProgress');
+  });
+
+  it('Reviewed/Recall on a task not in Review is a 400', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Not in review');
+    const r1 = await request(app).post(`/api/tasks/${t.id}/reviewed`).set(auth(tok));
+    assert.equal(r1.status, 400);
+    const r2 = await request(app).post(`/api/tasks/${t.id}/recall-review`).set(auth(tok));
+    assert.equal(r2.status, 400);
+  });
+
+  it('rejects a Kanban-style drag of a blocked task into Review with "blocked by #X"', async () => {
+    const tok = await adminToken();
+    const reviewer = await seedUser({ email: 'blk-reviewer@test.local', role: 'Member' });
+    const pred = await makeTask(tok, 'Predecessor');
+    const task = await makeTask(tok, 'Blocked dependent');
+    await request(app)
+      .post(`/api/tasks/${task.id}/dependencies`)
+      .set(auth(tok))
+      .send({ type: 'blockedBy', otherTaskId: pred.id });
+
+    const res = await request(app)
+      .patch(`/api/tasks/${task.id}`)
+      .set(auth(tok))
+      .send({ status: 'Review', reviewerId: reviewer.id });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, new RegExp(`#${pred.id}`));
+  });
+});
+
+// --- Phase 10: Gantt drag History coalescing -------------------------------
+
+describe('gantt date coalescing (Phase 10)', () => {
+  const D0 = '2026-09-01T10:00:00.000Z';
+  const D1 = '2026-09-05T10:00:00.000Z';
+  const D2 = '2026-09-09T10:00:00.000Z';
+
+  it('coalesces repeated same-field date edits within 60s into one entry', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Gantt task', { dueAt: D0 });
+
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ dueAt: D1, coalesceHistory: true });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ dueAt: D2, coalesceHistory: true });
+
+    const dueEntries = (await history(tok, t.id)).filter((e) => e.field === 'dueAt');
+    assert.equal(dueEntries.length, 1, 'the two drags collapse into a single entry');
+    assert.equal(
+      dueEntries[0]!.previousValue,
+      new Date(D0).toISOString(),
+      'keeps the true before value',
+    );
+    assert.equal(dueEntries[0]!.newValue, new Date(D2).toISOString(), 'reflects the latest value');
+  });
+
+  it('does not coalesce across different fields', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Gantt two fields', { dueAt: D2 });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ dueAt: D1, coalesceHistory: true });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ startAt: D0, coalesceHistory: true });
+
+    const entries = await history(tok, t.id);
+    assert.equal(entries.filter((e) => e.field === 'dueAt').length, 1);
+    assert.equal(entries.filter((e) => e.field === 'startAt').length, 1);
+  });
+
+  it('starts a fresh entry once the prior one is older than 60s', async () => {
+    const tok = await adminToken();
+    const t = await makeTask(tok, 'Gantt stale', { dueAt: D0 });
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ dueAt: D1, coalesceHistory: true });
+
+    // Backdate the existing dueAt entry beyond the 60s window.
+    await prisma.taskHistory.updateMany({
+      where: { taskId: t.id, field: 'dueAt' },
+      data: { changedAt: new Date(Date.now() - 120_000) },
+    });
+
+    await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(tok))
+      .send({ dueAt: D2, coalesceHistory: true });
+    const dueEntries = (await history(tok, t.id)).filter((e) => e.field === 'dueAt');
+    assert.equal(dueEntries.length, 2, 'a drag past the window starts a new entry');
   });
 });

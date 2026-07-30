@@ -50,6 +50,40 @@ export async function recordHistory(
   });
 }
 
+/** Window (ms) within which a repeated date change coalesces into one entry. */
+export const DATE_COALESCE_WINDOW_MS = 60_000;
+
+/**
+ * Record a Start/Due date change with coalescing (Phase 10, Gantt drag). A drag
+ * fires many intermediate updates, so instead of one entry per movement we merge
+ * into the most recent entry for the same task+user+field when it was created
+ * within the last 60s: keep its original `previousValue` (the true "before"),
+ * refresh `newValue` to the latest and bump `changedAt`. Older than that — or no
+ * such entry — starts a fresh one. Only ever used for `updated` date fields.
+ */
+export async function recordCoalescedDateChange(db: Db, entry: HistoryEntryInput): Promise<void> {
+  const cutoff = new Date(Date.now() - DATE_COALESCE_WINDOW_MS);
+  const recent = await db.taskHistory.findFirst({
+    where: {
+      taskId: entry.taskId,
+      userId: entry.userId,
+      field: entry.field,
+      changeType: 'updated',
+      changedAt: { gt: cutoff },
+    },
+    orderBy: [{ changedAt: 'desc' }, { id: 'desc' }],
+  });
+  if (recent) {
+    // Keep the original previousValue; update only the latest value + timestamp.
+    await db.taskHistory.update({
+      where: { id: recent.id },
+      data: { newValue: entry.newValue ?? null, changedAt: new Date() },
+    });
+    return;
+  }
+  await recordHistory(db, entry);
+}
+
 // --- Task scalar-field diffing --------------------------------------------
 
 /** The set of scalar task values a history diff compares. */
@@ -91,13 +125,23 @@ export function buildTaskFieldEntries(params: {
   before: TaskFieldValues;
   after: TaskFieldValues;
   descriptionChanged: boolean;
+  /**
+   * Optional note attached to the Status entry (Phase 10): "Reviewed" or
+   * "Recalled from review", distinguishing the two ways a task leaves Review.
+   */
+  statusDetail?: string | null;
 }): HistoryEntryInput[] {
-  const { actorId, taskId, before, after, descriptionChanged } = params;
+  const { actorId, taskId, before, after, descriptionChanged, statusDetail } = params;
   const F = TASK_HISTORY_FIELDS;
   const entries: HistoryEntryInput[] = [];
 
-  const updated = (field: string, previousValue: string | null, newValue: string | null): void => {
-    entries.push({ taskId, userId: actorId, field, changeType: 'updated', previousValue, newValue });
+  const updated = (
+    field: string,
+    previousValue: string | null,
+    newValue: string | null,
+    detail?: string | null,
+  ): void => {
+    entries.push({ taskId, userId: actorId, field, changeType: 'updated', previousValue, newValue, detail });
   };
 
   if (before.name !== after.name) updated(F.name, before.name, after.name);
@@ -107,7 +151,7 @@ export function buildTaskFieldEntries(params: {
   }
   if (before.assignee !== after.assignee) updated(F.assignee, before.assignee, after.assignee);
   if (before.priority !== after.priority) updated(F.priority, before.priority, after.priority);
-  if (before.status !== after.status) updated(F.status, before.status, after.status);
+  if (before.status !== after.status) updated(F.status, before.status, after.status, statusDetail);
   if (!sameTags(before.tags, after.tags)) updated(F.tags, tagsValue(before.tags), tagsValue(after.tags));
   if (dateValue(before.startAt) !== dateValue(after.startAt))
     updated(F.startAt, dateValue(before.startAt), dateValue(after.startAt));

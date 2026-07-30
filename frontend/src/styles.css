@@ -4308,3 +4308,548 @@ tr.just-completed > td {
     scroll-behavior: auto !important;
   }
 }
+
+/* ===========================================================================
+   Phase 10 — Kanban, Calendar & Gantt views + Review workflow
+   =========================================================================== */
+
+/* Segmented control selected = ink fill (design system + frames 3a–3d), not accent. */
+.seg-btn.active {
+  background: var(--ink);
+}
+
+/* Savebar "All changes saved" fades out shortly after a save, then goes blank. */
+.savebar-flag.saved {
+  transition: opacity var(--dur-slow) var(--ease);
+}
+.savebar-flag.saved.is-fading {
+  opacity: 0;
+}
+
+/* --- Review workflow: locked chips + banner + reviewer picker ------------- */
+.prop-chip.is-locked {
+  opacity: 0.85;
+  cursor: default;
+}
+/* Provenance card while a task is in Review — distinct from the editable
+   property chips above it (it's context/audit, not something to click). */
+.review-card {
+  margin-top: 0.6rem;
+  padding: 13px 15px;
+  background: #faf7ff;
+  border: 1px solid #e4d9f5;
+  border-radius: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.review-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 11.5px;
+}
+.review-card-row span {
+  color: var(--review);
+  font-weight: 500;
+}
+.review-card-row strong {
+  color: var(--review-deep);
+  font-weight: 600;
+}
+.reviewer-list {
+  margin-top: 0.75rem;
+  max-height: 44vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.reviewer-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 0.4rem 0.55rem;
+  cursor: pointer;
+  color: var(--text);
+  transition: background var(--dur-fast) var(--ease);
+}
+.reviewer-option:hover {
+  background: var(--surface-3);
+}
+.reviewer-option.selected {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.reviewer-name {
+  font-size: 0.86rem;
+  font-weight: 550;
+}
+.reviewer-email {
+  margin-left: auto;
+  font-size: 0.72rem;
+}
+/* Consequence preview: what confirming the review will do, in plain language. */
+.reviewer-preview {
+  margin-top: 0.75rem;
+  background: var(--canvas);
+  border-radius: 9px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.reviewer-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.reviewer-preview-row .muted {
+  color: var(--muted-2);
+}
+.reviewer-preview-row .strong-ok {
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+/* --- Kanban --------------------------------------------------------------- */
+/* Six fixed columns in status order, filling the width as an equal grid — a
+   display of the same data, never grouped/reordered or horizontally scrolled. */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  padding-bottom: 8px;
+  align-items: start;
+}
+.kanban-col {
+  min-width: 0;
+  background: var(--surface-sunk);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 260px);
+}
+.kanban-col.drag-over {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.kanban-col-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+.kanban-col-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+.kanban-col-title {
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.kanban-col-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--muted-2);
+}
+.kanban-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+}
+.kanban-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: grab;
+  box-shadow: var(--shadow-frame);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.kanban-card:hover {
+  border-color: var(--border-strong);
+}
+.kanban-card.dragging {
+  opacity: 0.5;
+}
+.kanban-card.locked {
+  cursor: default;
+  background: var(--surface-sunk);
+}
+.kanban-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.kanban-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  text-decoration: none;
+}
+.kanban-card-title:hover {
+  color: var(--accent);
+}
+.kanban-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+.kanban-lock {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.7rem;
+  opacity: 0.5;
+}
+.kanban-col-empty {
+  border: 1px dashed var(--border-dashed);
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--faint);
+}
+
+/* --- Calendar ------------------------------------------------------------- */
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  flex-wrap: wrap;
+}
+.calendar-nav {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+.calendar-label {
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.calendar-weekday {
+  padding: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+  text-align: center;
+}
+/* Each day is its own rounded white card on the paper canvas (gap 6px). */
+.calendar-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  min-height: 96px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calendar-grid.week .calendar-cell {
+  min-height: 420px;
+}
+.calendar-cell.outside .calendar-daynum {
+  color: var(--faint-2);
+}
+.calendar-cell.is-today {
+  background: var(--accent-tint);
+  border: 1.5px solid var(--accent);
+}
+.calendar-daynum {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-2);
+}
+.calendar-cell.is-today .calendar-daynum {
+  color: var(--accent-deep);
+  font-weight: 700;
+}
+.calendar-cell-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.calendar-more {
+  font-size: 0.68rem;
+  color: var(--muted);
+  padding-left: 0.2rem;
+}
+.calendar-day-view {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem;
+  background: var(--surface);
+}
+.calendar-empty {
+  padding: 1.4rem;
+  text-align: center;
+  color: var(--faint);
+  font-size: 0.85rem;
+}
+/* A task on a day reads as a mini status pill (soft fill + deep text). In Range
+   mode a multi-day task keeps square inner corners so it reads as one
+   continuous bar across cells; only the true start/end edges are rounded. */
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: none;
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  min-height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cal-chip.range-start {
+  border-radius: 5px 0 0 5px;
+}
+.cal-chip.range-mid {
+  border-radius: 0;
+}
+.cal-chip.range-end {
+  border-radius: 0 5px 5px 0;
+}
+.cal-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  flex: none;
+}
+.cal-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Gantt ---------------------------------------------------------------- */
+.gantt-scroll {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  max-height: calc(100vh - 240px);
+}
+.gantt-inner {
+  display: flex;
+  position: relative;
+}
+.gantt-labels {
+  flex: none;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.gantt-labels-head {
+  display: flex;
+  align-items: center;
+  padding: 0 0.7rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunk);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.gantt-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--row-line);
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  overflow: hidden;
+}
+.gantt-label:hover {
+  background: var(--surface-sunk);
+}
+.gantt-label-id {
+  font-size: 0.7rem;
+  color: var(--muted-2);
+  flex: none;
+}
+.gantt-label-name {
+  font-size: 0.82rem;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gantt-timeline {
+  flex: none;
+  position: relative;
+}
+.gantt-timeline-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--border);
+}
+.gantt-daytick {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-right: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 3px;
+}
+.gantt-daytick.weekend {
+  background: var(--surface-3);
+}
+.gantt-daytick.month-start {
+  border-right-color: var(--border-strong);
+}
+.gantt-daytick.today {
+  background: var(--accent-tint);
+}
+.gantt-month {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  font-size: 0.62rem;
+  color: var(--accent-deep);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gantt-daynum {
+  font-size: 0.66rem;
+  color: var(--muted-2);
+}
+.gantt-rows {
+  position: relative;
+}
+.gantt-col-bg {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+}
+.gantt-col-bg.weekend {
+  background: var(--surface-sunk);
+}
+.gantt-col-bg.today {
+  background: var(--accent-tint);
+}
+.gantt-arrows {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+.gantt-arrow {
+  fill: none;
+  stroke: var(--muted-2);
+  stroke-width: 1.5;
+}
+/* A vertical guide line at "today" across the timeline rows. */
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  width: 1.5px;
+  background: var(--accent);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Bars are tinted by status (soft fill + status border + deep text), set inline
+   from the shared pill palette, so a row confirms status at the same glance as
+   its date range. */
+.gantt-bar {
+  position: absolute;
+  height: 20px;
+  border-radius: var(--radius-chip);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  z-index: 2;
+  cursor: grab;
+  box-shadow: var(--shadow-frame);
+  touch-action: none;
+  user-select: none;
+}
+.gantt-bar.dragging {
+  opacity: 0.85;
+  cursor: grabbing;
+}
+.gantt-bar.done {
+  opacity: 0.6;
+}
+.gantt-bar-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.gantt-handle {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+}
+.gantt-handle.start {
+  left: -1px;
+  border-radius: var(--radius-chip) 0 0 var(--radius-chip);
+}
+.gantt-handle.end {
+  right: -1px;
+  border-radius: 0 var(--radius-chip) var(--radius-chip) 0;
+}
+.gantt-nobar {
+  position: absolute;
+  font-size: 0.68rem;
+  color: var(--faint);
+  font-style: italic;
+}

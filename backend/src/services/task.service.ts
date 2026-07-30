@@ -5,6 +5,7 @@ import { sanitizeAndValidate } from '../utils/rich-text.js';
 import {
   buildTaskFieldEntries,
   recordHistory,
+  recordCoalescedDateChange,
   type TaskFieldValues,
 } from './task-history.service.js';
 import { createAssignedNotification } from './notification.service.js';
@@ -19,6 +20,8 @@ import {
 } from './task.mapper.js';
 import {
   BLOCKED_RESTRICTED_STATUSES,
+  DEFAULT_TASK_STATUS,
+  TASK_HISTORY_FIELDS,
   TASK_STATUS_LABELS,
   TERMINAL_TASK_STATUSES,
   type Role,
@@ -150,15 +153,62 @@ export async function getTaskDetail(id: number): Promise<TaskDetailDto> {
   return toTaskDetailDto(task as unknown as TaskWithDetail);
 }
 
+/** Internal options for the two review-exit call sites; never set by HTTP callers. */
+interface UpdateTaskOptions {
+  /**
+   * Permits changing Status/Assignee on a task that is currently in Review. Only
+   * the Reviewed / Recall-from-Review actions (via `exitReview`) set this — every
+   * ordinary PATCH is rejected while a task is in Review (the lock).
+   */
+  allowReviewExit?: boolean;
+  /** Note attached to the Status history entry: "Reviewed" / "Recalled from review". */
+  statusDetail?: string | null;
+}
+
 export async function updateTask(
   actorId: string,
   id: number,
   input: UpdateTaskInput,
+  opts: UpdateTaskOptions = {},
 ): Promise<TaskDto> {
   const existing = await prisma.task.findUnique({ where: { id } });
   if (!existing) throw HttpError.notFound('Task not found');
 
-  if (input.assigneeId) {
+  const inReview = existing.status === 'Review';
+  const enteringReview = input.status === 'Review' && existing.status !== 'Review';
+
+  // Review lock (Phase 10): while a task is in Review, its Status and Assignee
+  // are frozen. The only sanctioned exits are the Reviewed / Recall-from-Review
+  // actions, which call through with allowReviewExit set.
+  if (inReview && !opts.allowReviewExit) {
+    if (input.status !== undefined && input.status !== existing.status) {
+      throw HttpError.badRequest(
+        'Task is in Review; use the Reviewed or Recall from Review action to change its status',
+      );
+    }
+    if (input.assigneeId !== undefined && input.assigneeId !== existing.assigneeId) {
+      throw HttpError.badRequest('Assignee is locked while a task is in Review');
+    }
+  }
+
+  // Blocked-status rule first: a blocked task dragged/set to Review or Completed
+  // is rejected with the "blocked by #X" message — this takes priority over the
+  // reviewer requirement so the reason is the real blocker, not a missing reviewer.
+  if (input.status !== undefined) {
+    await assertStatusAllowedByPredecessors(id, input.status);
+  }
+
+  // Entering Review requires choosing a reviewer, who becomes the temporary
+  // assignee. The assignee-change notifications and the status + assignee history
+  // then flow through the normal diff below — no separate path.
+  if (enteringReview) {
+    if (!input.reviewerId) {
+      throw HttpError.badRequest('A reviewer is required to send a task to Review');
+    }
+    await assertValidAssignee(input.reviewerId);
+  } else if (input.assigneeId && !opts.allowReviewExit) {
+    // On a review-exit restore we deliberately skip the active check so a task
+    // can still return to a since-deactivated prior assignee.
     await assertValidAssignee(input.assigneeId);
   }
 
@@ -168,13 +218,17 @@ export async function updateTask(
   const effectiveDue = input.dueAt !== undefined ? input.dueAt : existing.dueAt;
   assertStartBeforeDue(effectiveStart, effectiveDue);
 
-  // Blocked-status rule: gate Review/Completed on predecessors being terminal.
-  if (input.status !== undefined) {
-    await assertStatusAllowedByPredecessors(id, input.status);
-  }
-
   // Bump statusChangedAt only when the status actually changes.
   const statusChanged = input.status !== undefined && input.status !== existing.status;
+
+  // Effective assignee after this patch. Entering Review forces it to the chosen
+  // reviewer; otherwise it's the incoming value, or the unchanged existing one.
+  const assigneeProvided = enteringReview || input.assigneeId !== undefined;
+  const afterAssigneeId = enteringReview
+    ? input.reviewerId!
+    : input.assigneeId !== undefined
+      ? input.assigneeId
+      : existing.assigneeId;
 
   // Resolve assignee emails (before + after) for readable history snapshots.
   const cleanedDescription =
@@ -182,10 +236,7 @@ export async function updateTask(
   const descriptionChanged =
     cleanedDescription !== undefined && (cleanedDescription ?? null) !== existing.description;
 
-  const assigneeEmails = await resolveAssigneeEmails([
-    existing.assigneeId,
-    input.assigneeId !== undefined ? input.assigneeId : null,
-  ]);
+  const assigneeEmails = await resolveAssigneeEmails([existing.assigneeId, afterAssigneeId]);
   const before: TaskFieldValues = {
     name: existing.name,
     assignee: existing.assigneeId ? (assigneeEmails.get(existing.assigneeId) ?? null) : null,
@@ -195,7 +246,6 @@ export async function updateTask(
     startAt: existing.startAt,
     dueAt: existing.dueAt,
   };
-  const afterAssigneeId = input.assigneeId !== undefined ? input.assigneeId : existing.assigneeId;
   const after: TaskFieldValues = {
     name: input.name ?? existing.name,
     assignee: afterAssigneeId ? (assigneeEmails.get(afterAssigneeId) ?? null) : null,
@@ -206,30 +256,66 @@ export async function updateTask(
     dueAt: input.dueAt !== undefined ? input.dueAt : existing.dueAt,
   };
 
+  // Review bookkeeping: capture prior state on the way IN, clear it on the way OUT.
+  const reviewData: {
+    reviewInitiatorId?: string | null;
+    priorAssigneeId?: string | null;
+    priorStatus?: TaskStatus | null;
+  } = enteringReview
+    ? {
+        reviewInitiatorId: actorId,
+        priorAssigneeId: existing.assigneeId,
+        priorStatus: existing.status,
+      }
+    : opts.allowReviewExit && inReview
+      ? { reviewInitiatorId: null, priorAssigneeId: null, priorStatus: null }
+      : {};
+
   const task = await prisma.$transaction(async (tx) => {
     const updated = await tx.task.update({
       where: { id },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(cleanedDescription !== undefined ? { description: cleanedDescription } : {}),
-        ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId } : {}),
+        ...(assigneeProvided ? { assigneeId: afterAssigneeId } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.tags !== undefined ? { tags: input.tags } : {}),
         ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
         ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
         ...(statusChanged ? { statusChangedAt: new Date() } : {}),
+        ...reviewData,
         // creatorId, createdAt, and id are never updatable.
       },
       include: taskInclude,
     });
-    await recordHistory(tx, buildTaskFieldEntries({ actorId, taskId: id, before, after, descriptionChanged }));
+    const entries = buildTaskFieldEntries({
+      actorId,
+      taskId: id,
+      before,
+      after,
+      descriptionChanged,
+      statusDetail: opts.statusDetail,
+    });
+    if (input.coalesceHistory) {
+      // Gantt drag: coalesce Start/Due entries with a recent one; log the rest normally.
+      const dateFields: string[] = [TASK_HISTORY_FIELDS.startAt, TASK_HISTORY_FIELDS.dueAt];
+      await recordHistory(
+        tx,
+        entries.filter((e) => !dateFields.includes(e.field)),
+      );
+      for (const entry of entries.filter((e) => dateFields.includes(e.field))) {
+        await recordCoalescedDateChange(tx, entry);
+      }
+    } else {
+      await recordHistory(tx, entries);
+    }
     return updated;
   });
 
   // Assigned notifications for an assignee change (post-commit side effect).
   // Self-changes are skipped inside createAssignedNotification.
-  if (input.assigneeId !== undefined && afterAssigneeId !== existing.assigneeId) {
+  if (assigneeProvided && afterAssigneeId !== existing.assigneeId) {
     if (existing.assigneeId) {
       await createAssignedNotification({
         recipientId: existing.assigneeId,
@@ -249,6 +335,83 @@ export async function updateTask(
   }
 
   return toTaskDto(task as TaskWithRefs);
+}
+
+/**
+ * Walk the supervisor chain upward from `subordinateId`; true if `actorId`
+ * appears at any level above them. Cycle-guarded with a visited set.
+ */
+async function isSupervisorAtAnyLevel(
+  actorId: string,
+  subordinateId: string | null,
+): Promise<boolean> {
+  const visited = new Set<string>();
+  let currentId = subordinateId;
+  while (currentId) {
+    if (visited.has(currentId)) break;
+    visited.add(currentId);
+    const current = await prisma.user.findUnique({
+      where: { id: currentId },
+      select: { supervisorId: true },
+    });
+    const supId = current?.supervisorId ?? null;
+    if (!supId) break;
+    if (supId === actorId) return true;
+    currentId = supId;
+  }
+  return false;
+}
+
+/**
+ * Leave the Review state (Phase 10). Both exits restore the stored Prior
+ * Assignee + Prior Status and clear the review bookkeeping, reusing the normal
+ * update/notification/history paths; they differ only in who may trigger them
+ * and the note left in History:
+ *  - `reviewed`: Admin, the current assignee (the reviewer), or a supervisor at
+ *    any level above the current assignee.
+ *  - `recall`: the Review Initiator or the Prior Assignee.
+ */
+export async function exitReview(
+  actor: { id: string; role: Role },
+  id: number,
+  via: 'reviewed' | 'recall',
+): Promise<TaskDetailDto> {
+  const task = await prisma.task.findUnique({ where: { id } });
+  if (!task) throw HttpError.notFound('Task not found');
+  if (task.status !== 'Review') {
+    throw HttpError.badRequest('Task is not in Review');
+  }
+
+  if (via === 'reviewed') {
+    const allowed =
+      actor.role === 'Admin' ||
+      actor.id === task.assigneeId ||
+      (await isSupervisorAtAnyLevel(actor.id, task.assigneeId));
+    if (!allowed) {
+      throw HttpError.forbidden(
+        'Only an admin, the current assignee, or a supervisor above them can mark this reviewed',
+      );
+    }
+  } else {
+    const allowed = actor.id === task.reviewInitiatorId || actor.id === task.priorAssigneeId;
+    if (!allowed) {
+      throw HttpError.forbidden(
+        'Only the person who sent this to Review or its prior assignee can recall it from Review',
+      );
+    }
+  }
+
+  await updateTask(
+    actor.id,
+    id,
+    { status: task.priorStatus ?? DEFAULT_TASK_STATUS, assigneeId: task.priorAssigneeId },
+    {
+      allowReviewExit: true,
+      statusDetail: via === 'reviewed' ? 'Reviewed' : 'Recalled from review',
+    },
+  );
+
+  return getTaskDetail(id);
 }
 
 /** Look up emails for a set of (possibly null/duplicate) user ids. */

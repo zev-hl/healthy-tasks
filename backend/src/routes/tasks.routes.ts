@@ -20,6 +20,8 @@ import {
   listTagsController,
   updateTaskController,
   getTaskHistoryController,
+  reviewedController,
+  recallReviewController,
   searchTasksController,
   queryTasksController,
   dashboardController,
@@ -62,6 +64,9 @@ tasksRouter.post('/dashboard', validateBody(taskDashboardSchema), asyncHandler(d
 tasksRouter.get('/:id', asyncHandler(getTaskController));
 tasksRouter.get('/:id/history', asyncHandler(getTaskHistoryController));
 tasksRouter.patch('/:id', validateBody(updateTaskSchema), asyncHandler(updateTaskController));
+// Review workflow (Phase 10): leave Review via the Reviewed / Recall actions.
+tasksRouter.post('/:id/reviewed', asyncHandler(reviewedController));
+tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));
 // Deleting a task is Admin-only (also enforced in the service).
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
 

@@ -8,16 +8,27 @@ import {
 } from './attachment.mapper.js';
 import { commentInclude, toCommentDto, type CommentWithRefs } from './comment.mapper.js';
 
+type UserRefSelect = Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>;
+
 /** A Task row with its creator (and optional assignee) joined in. */
 export type TaskWithRefs = Task & {
-  creator: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>;
-  assignee: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'> | null;
+  creator: UserRefSelect;
+  assignee: UserRefSelect | null;
+  // Phase 10 review workflow refs (null unless the task is in Review).
+  reviewInitiator: UserRefSelect | null;
+  priorAssignee: UserRefSelect | null;
 };
+
+const userRefSelect = {
+  select: { id: true, email: true, firstName: true, lastName: true, title: true },
+} as const;
 
 /** The Prisma `include` used everywhere a TaskDto is returned. */
 export const taskInclude = {
-  creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
-  assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
+  creator: userRefSelect,
+  assignee: userRefSelect,
+  reviewInitiator: userRefSelect,
+  priorAssignee: userRefSelect,
 } as const;
 
 const taskRefSelect = { id: true, name: true, status: true } as const;
@@ -62,6 +73,11 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     dueAt: task.dueAt?.toISOString() ?? null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
+    reviewInitiatorId: task.reviewInitiatorId,
+    reviewInitiator: task.reviewInitiator ? toUserRef(task.reviewInitiator) : null,
+    priorAssigneeId: task.priorAssigneeId,
+    priorAssignee: task.priorAssignee ? toUserRef(task.priorAssignee) : null,
+    priorStatus: task.priorStatus,
   };
 }
 

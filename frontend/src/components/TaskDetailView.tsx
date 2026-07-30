@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   TASK_NAME_MIN_LENGTH,
@@ -20,6 +20,7 @@ import { AttachmentSection } from './AttachmentSection';
 import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
 import { TaskPickerModal } from './TaskPickerModal';
+import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
 import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
@@ -28,10 +29,11 @@ import { DueDate, AgoDate } from './ui/dates';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 
-type PickerKind = 'parent' | DependencyType;
+type PickerKind = 'parent' | 'child' | DependencyType;
 
 const PICKER_TITLES: Record<PickerKind, string> = {
   parent: 'Set parent task',
+  child: 'Add an existing task as a sub-task',
   blocks: 'Add a task this one blocks',
   blockedBy: 'Add a task this one is blocked by',
 };
@@ -62,12 +64,29 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [commentsDirty, setCommentsDirty] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Review workflow (Phase 10): reviewer-picker visibility + a busy flag for the
+  // Reviewed / Recall actions.
+  const [pendingReview, setPendingReview] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  // Savebar "All changes saved" label lifecycle: appears on a save, holds
+  // briefly, then fades out and goes blank. 'hidden' is the resting state, so a
+  // fresh/untouched task shows no flag.
+  const [savedState, setSavedState] = useState<'hidden' | 'shown' | 'fading'>('hidden');
+  const savedTimers = useRef<number[]>([]);
 
-  // A "Task saved." confirmation auto-clears so it reads as a transient flash.
+  // A "Task saved." confirmation auto-clears so it reads as a transient flash;
+  // the savebar's "All changes saved" label follows the same fade-then-blank arc.
   const flashSaved = useCallback(() => {
     setNotice('Task saved.');
     window.setTimeout(() => setNotice(null), 2500);
+    savedTimers.current.forEach((t) => window.clearTimeout(t));
+    savedTimers.current = [];
+    setSavedState('shown');
+    savedTimers.current.push(window.setTimeout(() => setSavedState('fading'), 1800));
+    savedTimers.current.push(window.setTimeout(() => setSavedState('hidden'), 2100));
   }, []);
+  // Cancel pending fade timers on unmount.
+  useEffect(() => () => savedTimers.current.forEach((t) => window.clearTimeout(t)), []);
 
   // Inline name edit.
   const [editingName, setEditingName] = useState(false);
@@ -79,11 +98,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [descDraft, setDescDraft] = useState(initialTask.description ?? '');
   const [savingDesc, setSavingDesc] = useState(false);
 
-  // Tags + sub-task quick-add.
+  // Tags quick-add.
   const [tagDraft, setTagDraft] = useState('');
   const [tagBusy, setTagBusy] = useState(false);
-  const [subtaskDraft, setSubtaskDraft] = useState('');
-  const [addingSub, setAddingSub] = useState(false);
 
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
@@ -105,17 +122,27 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [savingFields, setSavingFields] = useState(false);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
 
+  // ISO is built only where it's actually needed: the save payload, the Start<Due
+  // check, and the Due chip display.
   const stagedStartIso = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
   const stagedDueIso = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
 
-  // Dirty until every staged field matches what's persisted (dates compared as
-  // normalized ISO instants so a date-only edit round-trips cleanly).
+  // Dirtiness is compared in the EDITOR's own representation (date + HH:mm parts),
+  // never by round-tripping through ISO. The persisted value is projected into
+  // the same parts via isoToParts, so it's precision-safe by construction: a
+  // stored timestamp carrying seconds/ms matches cleanly until the user actually
+  // edits a field. (A reusable form-dirty hook would generalize this — see the
+  // Phase 11 note.)
+  const persistedStart = isoToParts(task.startAt);
+  const persistedDue = isoToParts(task.dueAt);
   const fieldsDirty =
     assigneeId !== (task.assigneeId ?? '') ||
     priority !== task.priority ||
     status !== task.status ||
-    stagedStartIso !== (task.startAt ?? null) ||
-    stagedDueIso !== (task.dueAt ?? null);
+    startDate !== persistedStart.date ||
+    startTime !== persistedStart.time ||
+    dueDate !== persistedDue.date ||
+    dueTime !== persistedDue.time;
 
   // Commit all staged fields at once. `statusOverride` lets the top-bar
   // "Mark complete" / "Reopen" buttons set the status and save in one click.
@@ -127,18 +154,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setFieldsError('Start must be earlier than Due');
       return;
     }
+    // Transitioning INTO Review requires choosing a reviewer first — the actual
+    // save happens in saveReview() once the reviewer-picker is confirmed.
+    if (nextStatus === 'Review' && task.status !== 'Review') {
+      setPendingReview(true);
+      return;
+    }
     const becameCompleted = nextStatus === 'Completed' && task.status !== 'Completed';
     setSavingFields(true);
     try {
-      applyTask(
-        await api.updateTask(task.id, {
-          assigneeId: assigneeId === '' ? null : assigneeId,
-          priority,
-          status: nextStatus,
-          startAt: stagedStartIso,
-          dueAt: stagedDueIso,
-        }),
-      );
+      const updated = await api.updateTask(task.id, {
+        assigneeId: assigneeId === '' ? null : assigneeId,
+        priority,
+        status: nextStatus,
+        startAt: stagedStartIso,
+        dueAt: stagedDueIso,
+      });
+      applyTask(updated);
+      syncStaged(updated);
       flashSaved();
       if (becameCompleted) {
         setJustCompleted(true);
@@ -151,18 +184,81 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
-  // Revert staged fields to the persisted task.
-  function discardFields() {
-    setFieldsError(null);
-    setAssigneeId(task.assigneeId ?? '');
-    setPriority(task.priority);
-    setStatus(task.status);
-    const s = isoToParts(task.startAt);
-    const d = isoToParts(task.dueAt);
+  // Sync the staged property fields to a task (the persisted truth). Used after
+  // every commit and by Discard, so the chips + savebar never show a phantom
+  // "unsaved" once the server has the change (e.g. the reviewer becoming assignee).
+  function syncStaged(t: TaskDetailDto) {
+    setAssigneeId(t.assigneeId ?? '');
+    setPriority(t.priority);
+    setStatus(t.status);
+    const s = isoToParts(t.startAt);
+    const d = isoToParts(t.dueAt);
     setStartDate(s.date);
     setStartTime(s.time);
     setDueDate(d.date);
     setDueTime(d.time);
+  }
+
+  // Revert staged fields to the persisted task.
+  function discardFields() {
+    setFieldsError(null);
+    syncStaged(task);
+  }
+
+  // --- Review workflow (Phase 10) ------------------------------------------
+  // Commit the staged fields with the chosen reviewer; the server makes the
+  // reviewer the temporary assignee and records the prior assignee/status.
+  async function saveReview(reviewerId: string) {
+    setPendingReview(false);
+    setFieldsError(null);
+    setSavingFields(true);
+    try {
+      const updated = await api.updateTask(task.id, {
+        priority,
+        status: 'Review',
+        reviewerId,
+        startAt: stagedStartIso,
+        dueAt: stagedDueIso,
+      });
+      applyTask(updated);
+      syncStaged(updated);
+      flashSaved();
+    } catch (err) {
+      setFieldsError(err instanceof ApiError ? err.message : 'Could not send to Review');
+    } finally {
+      setSavingFields(false);
+    }
+  }
+
+  async function exitReview(kind: 'reviewed' | 'recall') {
+    setError(null);
+    setReviewBusy(true);
+    try {
+      const updated =
+        kind === 'reviewed' ? await api.reviewed(task.id) : await api.recallReview(task.id);
+      applyTask(updated);
+      syncStaged(updated);
+      flashSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update review');
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  /** Is `actorId` a supervisor of `subId` at any level up the chain? (uses the users list) */
+  function isSupervisorAbove(actorId: string, subId: string | null): boolean {
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const seen = new Set<string>();
+    let cur = subId;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const sup = byId.get(cur)?.supervisorId ?? null;
+      if (!sup) break;
+      if (sup === actorId) return true;
+      cur = sup;
+    }
+    return false;
   }
 
   // --- Relationships / picker ----------------------------------------------
@@ -177,8 +273,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   async function handlePick(picked: TaskRef) {
     const kind = picker;
     setPicker(null);
-    if (kind === 'parent') await runRel(() => api.setParent(task.id, picked.id));
-    else if (kind) await runRel(() => api.addDependency(task.id, kind, picked.id));
+    if (kind === 'parent') {
+      await runRel(() => api.setParent(task.id, picked.id));
+    } else if (kind === 'child') {
+      // Re-parent the chosen existing task under this one, then refresh to show it.
+      setError(null);
+      try {
+        await api.setParent(picked.id, task.id);
+        applyTask(await api.getTask(task.id));
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Could not add the sub-task');
+      }
+    } else if (kind) {
+      await runRel(() => api.addDependency(task.id, kind, picked.id));
+    }
   }
 
   // --- Name / description ---------------------------------------------------
@@ -247,32 +355,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
-  // --- Sub-tasks ------------------------------------------------------------
-  async function completeChild(childId: number) {
-    setError(null);
-    try {
-      await api.updateTask(childId, { status: 'Completed' });
-      applyTask(await api.getTask(task.id));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not complete the sub-task');
-    }
-  }
-  async function addSubtask() {
-    const name = subtaskDraft.trim();
-    if (name.length < TASK_NAME_MIN_LENGTH) return;
-    setAddingSub(true);
-    try {
-      const created = await api.createTask({ name });
-      await api.setParent(created.id, task.id);
-      applyTask(await api.getTask(task.id));
-      setSubtaskDraft('');
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not add the sub-task');
-    } finally {
-      setAddingSub(false);
-    }
-  }
-
   async function handleDeleteTask() {
     setDeleting(true);
     try {
@@ -299,6 +381,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
   const isCompleted = task.status === 'Completed';
+  // Review workflow: while in Review, Status + Assignee are locked; the two exits
+  // (Reviewed / Recall) carry their own permissions.
+  const isInReview = task.status === 'Review';
+  const canReview =
+    currentUser.role === 'Admin' ||
+    currentUser.id === task.assigneeId ||
+    isSupervisorAbove(currentUser.id, task.assigneeId);
+  const canRecall =
+    currentUser.id === task.reviewInitiatorId || currentUser.id === task.priorAssigneeId;
 
   // Staged assignee resolved to a user object for the chip display.
   const assigneeUser =
@@ -326,7 +417,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             Delete
           </button>
         )}
-        {isCompleted ? (
+        {isInReview ? (
+          <>
+            {canRecall && (
+              <button type="button" className="secondary btn-sm" disabled={reviewBusy} onClick={() => void exitReview('recall')}>
+                Recall from Review
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn-sm"
+              disabled={reviewBusy || !canReview}
+              title={canReview ? undefined : 'Only an admin, the assignee, or a supervisor above them can finish this review'}
+              onClick={() => void exitReview('reviewed')}
+            >
+              {reviewBusy ? 'Saving…' : 'Reviewed'}
+            </button>
+          </>
+        ) : isCompleted ? (
           <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={() => void saveFields('Open')}>
             Reopen
           </button>
@@ -365,15 +473,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
         {/* Property chip row — staged; committed together via "Save changes" */}
         <div className="detail-props">
-          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}`}>
-            <StatusPill status={status} caret />
-            <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
-              {TASK_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {TASK_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
+          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
+            <StatusPill status={status} caret={!isInReview} />
+            {!isInReview && (
+              <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
+                {TASK_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {TASK_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            )}
           </span>
 
           <span className={`prop-chip${priority !== task.priority ? ' is-dirty' : ''}`}>
@@ -388,24 +498,31 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </select>
           </span>
 
-          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}`}>
+          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
             {assigneeUser ? (
-              <UserChip user={assigneeUser} />
+              <UserChip
+                user={assigneeUser}
+                label={isInReview ? `${userLabel(assigneeUser)} · reviewing` : undefined}
+              />
             ) : (
               <span className="user-chip muted">
                 <UnassignedAvatar px={20} />
                 <span className="user-name">Unassigned</span>
               </span>
             )}
-            <span className="prop-caret" aria-hidden="true">▾</span>
-            <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
-              <option value="">Unassigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {userLabel(u)}
-                </option>
-              ))}
-            </select>
+            {!isInReview && (
+              <>
+                <span className="prop-caret" aria-hidden="true">▾</span>
+                <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
+                  <option value="">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {userLabel(u)}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </span>
 
           <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
@@ -444,6 +561,23 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </span>
         </div>
 
+        {isInReview && (
+          <div className="review-card" role="status">
+            <div className="review-card-row">
+              <span>Review initiated by</span>
+              <strong>{task.reviewInitiator ? userLabel(task.reviewInitiator) : '—'}</strong>
+            </div>
+            <div className="review-card-row">
+              <span>Will restore assignee</span>
+              <strong>{task.priorAssignee ? userLabel(task.priorAssignee) : 'Unassigned'}</strong>
+            </div>
+            <div className="review-card-row">
+              <span>Will restore status to</span>
+              <strong>{task.priorStatus ? TASK_STATUS_LABELS[task.priorStatus] : '—'}</strong>
+            </div>
+          </div>
+        )}
+
         {/* Save bar for the staged Status / Priority / Assignee / Due chips */}
         <div className={`detail-savebar${fieldsDirty ? ' is-dirty' : ''}`} role="status">
           {fieldsDirty ? (
@@ -451,9 +585,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <span className="savebar-dot" aria-hidden="true" />
               Unsaved changes
             </span>
-          ) : (
-            <span className="savebar-flag saved">All changes saved</span>
-          )}
+          ) : savedState !== 'hidden' ? (
+            <span className={`savebar-flag saved${savedState === 'fading' ? ' is-fading' : ''}`}>
+              All changes saved
+            </span>
+          ) : null}
           {fieldsError && <span className="savebar-error">{fieldsError}</span>}
           <div className="spacer" />
           {fieldsDirty && (
@@ -525,55 +661,35 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                       {doneChildren} of {task.children.length} done
                     </span>
                   )}
+                  <div className="spacer" />
+                  <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
+                    + Link
+                  </button>
                 </div>
                 {task.children.length > 0 && (
                   <div className="subtask-progress" aria-hidden="true">
                     <span style={{ width: `${(doneChildren / task.children.length) * 100}%` }} />
                   </div>
                 )}
-                <ul className="subtask-list">
-                  {task.children.map((c) => {
-                    const done = c.status === 'Completed';
-                    return (
-                      <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
-                        <button
-                          type="button"
-                          className="mday-check"
-                          aria-label={done ? 'Completed' : 'Mark sub-task complete'}
-                          disabled={done}
-                          onClick={() => completeChild(c.id)}
-                        >
-                          {done && (
-                            <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-                              <path d="M2 6.5 L5 9 L10 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </button>
-                        <Link to={`/tasks/${c.id}`} className="subtask-name">
-                          {c.name}
-                        </Link>
-                        <StatusPill status={c.status} />
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="subtask-add">
-                  <input
-                    value={subtaskDraft}
-                    onChange={(e) => setSubtaskDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void addSubtask();
-                      }
-                    }}
-                    placeholder="Add a sub-task…"
-                    aria-label="Add a sub-task"
-                  />
-                  <button type="button" className="secondary btn-sm" disabled={addingSub || subtaskDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={addSubtask}>
-                    {addingSub ? 'Adding…' : '+ Add'}
-                  </button>
-                </div>
+                {task.children.length === 0 ? (
+                  <p className="muted rel-empty">
+                    No sub-tasks. Use “+ Link” to add an existing task to this one.
+                  </p>
+                ) : (
+                  <ul className="subtask-list">
+                    {task.children.map((c) => {
+                      const done = c.status === 'Completed';
+                      return (
+                        <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
+                          <Link to={`/tasks/${c.id}`} className="subtask-name">
+                            {c.name}
+                          </Link>
+                          <StatusPill status={c.status} />
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </section>
 
               {/* Attachments */}
@@ -736,6 +852,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {picker && (
         <TaskPickerModal title={PICKER_TITLES[picker]} excludeId={task.id} onPick={handlePick} onClose={() => setPicker(null)} />
+      )}
+
+      {pendingReview && (
+        <ReviewerPickerModal
+          taskRef={`#${task.id}`}
+          taskName={task.name}
+          currentAssignee={task.assignee ? userLabel(task.assignee) : null}
+          returnStatus={TASK_STATUS_LABELS[task.status]}
+          onClose={() => setPendingReview(false)}
+          onPick={(reviewerId) => saveReview(reviewerId)}
+        />
       )}
 
       {confirmDelete && (

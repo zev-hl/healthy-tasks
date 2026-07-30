@@ -26,6 +26,8 @@ const rowInclude = {
   creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
   assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
   _count: { select: { children: true } },
+  // Phase 10: the predecessor ids that feed the Gantt view's dependency arrows.
+  blockedBy: { select: { blockerId: true } },
 } as const;
 
 type TaskRow = Prisma.TaskGetPayload<{ include: typeof rowInclude }>;
@@ -49,6 +51,7 @@ function toTaskRowDto(t: TaskRow): TaskRowDto {
     parentId: t.parentId,
     childrenCount: t._count.children,
     tags: t.tags,
+    blockedByIds: t.blockedBy.map((b) => b.blockerId),
   };
 }
 

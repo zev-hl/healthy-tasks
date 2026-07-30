@@ -195,6 +195,10 @@ export const api = {
     request<TaskDto>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
   updateTask: (id: number, body: UpdateTaskRequest) =>
     request<TaskDetailDto>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  // Review workflow (Phase 10): leave Review, restoring prior assignee + status.
+  reviewed: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}/reviewed`, { method: 'POST' }),
+  recallReview: (id: number) =>
+    request<TaskDetailDto>(`/api/tasks/${id}/recall-review`, { method: 'POST' }),
 
   // --- Task relationships ---
   searchTasks: (q: string, excludeId?: number) =>

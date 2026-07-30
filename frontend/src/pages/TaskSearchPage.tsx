@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_TASK_COLUMN_ORDER,
+  MAX_PAGE_SIZE,
   TASK_COLUMN_KEYS,
   TASK_COLUMN_LABELS,
   TASK_PRIORITIES,
@@ -39,11 +40,23 @@ import { StatusPill, PriorityRamp } from '../components/ui/indicators';
 import { AnimatedCount } from '../components/ui/AnimatedCount';
 import { TableEmptyRow } from '../components/ui/EmptyState';
 import { DueDate, AgoDate } from '../components/ui/dates';
+import { TaskKanban } from '../components/TaskKanban';
+import { TaskCalendar, type CalendarMode, type CalendarScale } from '../components/TaskCalendar';
+import { TaskGantt } from '../components/TaskGantt';
 
 interface ColumnState {
   key: TaskColumnKey;
   visible: boolean;
 }
+
+/** The four ways to view the same result set (Phase 10). "list" is the table. */
+type TaskView = 'list' | 'kanban' | 'calendar' | 'gantt';
+const TASK_VIEWS: { key: TaskView; label: string }[] = [
+  { key: 'list', label: 'List' },
+  { key: 'kanban', label: 'Kanban' },
+  { key: 'calendar', label: 'Calendar' },
+  { key: 'gantt', label: 'Gantt' },
+];
 
 interface PersistedState {
   searchText: string;
@@ -53,6 +66,9 @@ interface PersistedState {
   page: number;
   pageSize: number;
   nestGlobal: boolean;
+  view: TaskView;
+  calendarScale: CalendarScale;
+  calendarMode: CalendarMode;
 }
 
 const UNASSIGNED = '__unassigned__';
@@ -109,6 +125,9 @@ export function TaskSearchPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [nestGlobal, setNestGlobal] = useState(false);
+  const [view, setView] = useState<TaskView>('list');
+  const [calendarScale, setCalendarScale] = useState<CalendarScale>('month');
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>('range');
 
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
@@ -150,6 +169,10 @@ export function TaskSearchPage() {
           if (typeof s.page === 'number' && s.page >= 1) setPage(s.page);
           if (typeof s.pageSize === 'number') setPageSize(s.pageSize);
           if (typeof s.nestGlobal === 'boolean') setNestGlobal(s.nestGlobal);
+          if (s.view && TASK_VIEWS.some((v) => v.key === s.view)) setView(s.view);
+          if (s.calendarScale === 'month' || s.calendarScale === 'week' || s.calendarScale === 'day')
+            setCalendarScale(s.calendarScale);
+          if (s.calendarMode === 'range' || s.calendarMode === 'marker') setCalendarMode(s.calendarMode);
         }
       })
       .catch(() => {})
@@ -178,8 +201,8 @@ export function TaskSearchPage() {
 
   // --- Persist state (debounced) after hydration ---------------------------
   const snapshot = useMemo<PersistedState>(
-    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal }),
-    [searchText, filters, sort, columns, page, pageSize, nestGlobal],
+    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode }),
+    [searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -189,13 +212,17 @@ export function TaskSearchPage() {
   // --- Run the query -------------------------------------------------------
   const runQuery = useCallback(async () => {
     setLoading(true);
+    // The board/calendar/gantt views place every matching task at once, so they
+    // fetch the whole result set (a single max-size page) rather than paginating.
+    // (Capped at MAX_PAGE_SIZE; the List view keeps its own pagination.)
+    const listView = view === 'list';
     const req: TaskSearchRequest = {
       text: debouncedText.trim() || undefined,
       filters: effectiveFilters(filters),
       sort,
-      page,
-      pageSize,
-      nest: nestGlobal,
+      page: listView ? page : 1,
+      pageSize: listView ? pageSize : MAX_PAGE_SIZE,
+      nest: listView ? nestGlobal : false,
       ...nowContext(),
     };
     try {
@@ -208,7 +235,7 @@ export function TaskSearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedText, filters, sort, page, pageSize, nestGlobal]);
+  }, [debouncedText, filters, sort, page, pageSize, nestGlobal, view]);
 
   useEffect(() => {
     if (hydrated) void runQuery();
@@ -523,9 +550,11 @@ export function TaskSearchPage() {
           aria-label="Search tasks"
         />
         <div className="spacer" />
-        <button className="secondary" onClick={() => setShowColumns((v) => !v)}>
-          Columns
-        </button>
+        {view === 'list' && (
+          <button className="secondary" onClick={() => setShowColumns((v) => !v)}>
+            Columns
+          </button>
+        )}
         <button className="secondary" onClick={handleExport} disabled={exporting}>
           {exporting ? 'Exporting…' : 'Export'}
         </button>
@@ -555,15 +584,17 @@ export function TaskSearchPage() {
       {/* Chip row: view segmented + active filters + sort/nest */}
       <div className="tasks-chiprow">
         <div className="seg">
-          <button type="button" className="seg-btn active">
-            List
-          </button>
-          <button type="button" className="seg-btn" disabled title="Coming later">
-            Board
-          </button>
-          <button type="button" className="seg-btn" disabled title="Coming later">
-            Calendar
-          </button>
+          {TASK_VIEWS.map((v) => (
+            <button
+              key={v.key}
+              type="button"
+              className={`seg-btn${view === v.key ? ' active' : ''}`}
+              aria-pressed={view === v.key}
+              onClick={() => setView(v.key)}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
         <span className="chip-divider" />
         {chips.map((c) => (
@@ -583,19 +614,23 @@ export function TaskSearchPage() {
           </button>
         )}
         <div className="spacer" />
-        {sortSummary && <span className="mono tasks-sort">Sort: {sortSummary}</span>}
-        <label className="nest-toggle">
-          <input
-            type="checkbox"
-            checked={nestGlobal}
-            onChange={(e) => {
-              setNestGlobal(e.target.checked);
-              setCollapsed(new Set());
-              setPage(1);
-            }}
-          />
-          Nest
-        </label>
+        {view === 'list' && (
+          <>
+            {sortSummary && <span className="mono tasks-sort">Sort: {sortSummary}</span>}
+            <label className="nest-toggle">
+              <input
+                type="checkbox"
+                checked={nestGlobal}
+                onChange={(e) => {
+                  setNestGlobal(e.target.checked);
+                  setCollapsed(new Set());
+                  setPage(1);
+                }}
+              />
+              Nest
+            </label>
+          </>
+        )}
       </div>
 
       {/* + Filter panel */}
@@ -639,7 +674,9 @@ export function TaskSearchPage() {
         </div>
       )}
 
-      {/* Results */}
+      {/* Results — List view */}
+      {view === 'list' && (
+      <>
       <div className="table-scroll tasks-table-wrap">
         <table className="results-table tasks-table">
           <thead>
@@ -737,6 +774,26 @@ export function TaskSearchPage() {
           Next →
         </button>
       </div>
+      </>
+      )}
+
+      {/* Kanban / Calendar / Gantt views (Phase 10) share the same rows/filters. */}
+      {view === 'kanban' && (
+        <TaskKanban rows={rows} loading={loading} onChanged={() => void runQuery()} />
+      )}
+      {view === 'calendar' && (
+        <TaskCalendar
+          rows={rows}
+          loading={loading}
+          scale={calendarScale}
+          mode={calendarMode}
+          onScaleChange={setCalendarScale}
+          onModeChange={setCalendarMode}
+        />
+      )}
+      {view === 'gantt' && (
+        <TaskGantt rows={rows} loading={loading} onChanged={() => void runQuery()} />
+      )}
     </div>
   );
 }
