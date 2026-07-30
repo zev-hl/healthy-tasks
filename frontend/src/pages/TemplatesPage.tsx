@@ -452,9 +452,18 @@ function TemplateEditor({
               )}
             </div>
             <div className="tpl-node-grid">
-              <div className="field">
+              <div className="field tpl-node-wide">
                 <label>Name</label>
                 <input value={n.name} onChange={(e) => patchNode(n.key, { name: e.target.value })} />
+              </div>
+              <div className="field tpl-node-wide">
+                <label>Description</label>
+                <textarea
+                  value={n.description}
+                  rows={2}
+                  placeholder="Default description for the generated task…"
+                  onChange={(e) => patchNode(n.key, { description: e.target.value })}
+                />
               </div>
               <div className="field">
                 <label>Parent</label>

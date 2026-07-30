@@ -351,6 +351,12 @@ textarea:focus-visible {
 .tpl-node-grid .field {
   margin: 0;
 }
+.tpl-node-grid .tpl-node-wide {
+  grid-column: 1 / -1;
+}
+.tpl-node-grid textarea {
+  resize: vertical;
+}
 .tpl-dep {
   display: flex;
   align-items: center;
@@ -1398,12 +1404,15 @@ textarea:focus-visible {
   padding: 5px 7px;
   font-size: 12px;
 }
-/* The date needs a touch more room than the time so neither clips its icon. */
+/* Give each a real minimum so a narrow rail wraps them onto two lines instead
+   of shrinking the time field until it clips its digits. */
 .rail-dates input[type='date'] {
-  flex: 1.3 1 0;
+  flex: 1.3 1 118px;
+  min-width: 116px;
 }
 .rail-dates input[type='time'] {
-  flex: 1 1 0;
+  flex: 1 1 92px;
+  min-width: 92px;
 }
 .rail-reminders-hint {
   font-size: 11px;
