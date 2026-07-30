@@ -1,0 +1,262 @@
+# =============================================================================
+# Healthy Tasks — Render Blueprint (Infrastructure-as-Code)
+# =============================================================================
+# This describes how the app deploys on Render. It defines TWO environments —
+# Production and Staging — inside a single Blueprint, using Render's
+# `projects` / `environments` fields (GA October 2025). This is the current
+# recommended way to model multiple environments from ONE render.yaml, and it
+# replaces the older workaround of maintaining a separate branch that carried a
+# separate render.yaml per environment.
+#
+# WHAT THIS DOES NOT DO:
+#   * It does not contain any real secret values. Every secret is marked
+#     `sync: false`, meaning Render keeps the variable but you enter its value
+#     yourself in the dashboard, per environment. See DEPLOY_RENDER.md for the
+#     full checklist of what to enter.
+#   * It does not create the Neon database. DATABASE_URL points at Neon via a
+#     standard Postgres connection string you provide (a Neon *branch* for
+#     Staging, the real Neon database for Production). There is intentionally no
+#     Render-managed `databases:` block — see the note at the bottom.
+#   * It does not mark Production as "protected" — that is a dashboard setting
+#     you apply yourself after the environment exists.
+#
+# HOW THE TWO ENVIRONMENTS TRACK CODE (the tradeoff to know about):
+#   The Blueprint itself is synced from ONE branch (whichever branch you connect
+#   the Blueprint to in the dashboard — use `main`). Each *service* then sets its
+#   own `branch:` for which code it deploys:
+#       Production services  -> branch: main
+#       Staging services     -> branch: staging
+#   So: push to `staging` and only the Staging services redeploy; merge to `main`
+#   and the Production services redeploy (and the Blueprint re-syncs). The
+#   tradeoff: structural changes to THIS FILE only take effect from the branch
+#   the Blueprint tracks (main), so infra changes must reach `main` even if you
+#   are testing them via Staging first. Create a `staging` branch before applying
+#   this Blueprint, or change the staging `branch:` values below to match your
+#   pre-production branch name.
+# =============================================================================
+
+projects:
+  - name: healthy-tasks
+    environments:
+      # =======================================================================
+      # PRODUCTION  —  the app your team actually uses.
+      # Mark this environment as "protected" in the Render dashboard after it
+      # exists, so destructive changes require admin access.
+      # =======================================================================
+      - name: production
+        services:
+          # -------------------------------------------------------------------
+          # Backend — Node/Express API (also runs the recurrence scheduler).
+          # -------------------------------------------------------------------
+          - name: healthy-tasks-api-prod
+            type: web
+            runtime: node
+            plan: standard
+            region: oregon # keep this close to your Neon region to cut DB latency
+            branch: main
+            autoDeployTrigger: commit
+            # NOTE: `npm ci` omits devDependencies whenever NODE_ENV=production is
+            # set (and we DO set it below) — but tsc, prisma, and the shared
+            # package's build all live in devDependencies. `--include=dev` forces
+            # them in so the build can compile. Do not drop this flag.
+            buildCommand: >-
+              npm ci --include=dev &&
+              npm run build:shared &&
+              npm run prisma:generate --workspace backend &&
+              npm run build --workspace backend
+            # Runs after build, before the new version goes live: apply any
+            # pending Prisma migrations so the app never boots against a DB that
+            # is missing tables. Uses `migrate deploy` (non-interactive, prod-safe
+            # — never `migrate dev`).
+            preDeployCommand: npm run prisma:deploy --workspace backend
+            # backend/package.json "start" = `node dist/server.js` (the compiled
+            # build, not the TS source). Render binds to the PORT it injects; the
+            # app already reads process.env.PORT.
+            startCommand: npm start --workspace backend
+            healthCheckPath: /health
+            envVars:
+              # ----- Differs per environment (secret) --------------------------
+              - key: DATABASE_URL # Neon PRODUCTION connection string
+                sync: false
+              # ----- Differs per environment (not secret, but URL not known
+              #       until the frontend exists / may be a custom domain) --------
+              - key: FRONTEND_URL # used to build password-reset links in emails
+                sync: false
+              - key: CORS_ORIGIN # MUST equal the production frontend origin
+                sync: false
+              # ----- Secrets: keep Staging and Production values DIFFERENT ------
+              - key: JWT_SECRET
+                sync: false
+              # ----- Same value in both environments (safe, non-secret) --------
+              - key: NODE_ENV
+                value: production
+              - key: JWT_EXPIRES_IN
+                value: 8h
+              - key: PASSWORD_RESET_EXPIRES_IN
+                value: 60m
+              # ----- Email -----------------------------------------------------
+              # Production: decide whether to send real email. To send real mail,
+              # set EMAIL_PROVIDER=smtp and fill the SMTP_* secrets below.
+              # Leaving it "console" keeps reset links in the server logs only
+              # (users will NOT receive reset emails). See DEPLOY_RENDER.md.
+              - key: EMAIL_PROVIDER
+                value: console # change to "smtp" once a provider is wired up
+              - key: EMAIL_FROM
+                value: Healthy Tasks <no-reply@healthy-tasks.local>
+              - key: SMTP_HOST # only used when EMAIL_PROVIDER=smtp
+                sync: false
+              - key: SMTP_PORT
+                sync: false
+              - key: SMTP_USER
+                sync: false
+              - key: SMTP_PASS
+                sync: false
+              # ----- Object storage for attachments (Phase 4) ------------------
+              # Use a real S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze
+              # B2, etc.) — NOT the local MinIO container. For a real cloud bucket
+              # the server endpoint and the browser (public) endpoint are the same
+              # https URL, and path-style is usually false (AWS S3) — verify per
+              # provider. Use a SEPARATE bucket from Staging.
+              - key: STORAGE_DRIVER
+                value: s3
+              - key: S3_BUCKET # e.g. healthy-tasks-prod
+                sync: false
+              - key: S3_REGION
+                sync: false
+              - key: S3_ENDPOINT # server-side ops (e.g. https://s3.us-east-1.amazonaws.com)
+                sync: false
+              - key: S3_PUBLIC_ENDPOINT # URL the browser is signed against (same as above for cloud S3)
+                sync: false
+              - key: S3_ACCESS_KEY
+                sync: false
+              - key: S3_SECRET_KEY
+                sync: false
+              - key: S3_FORCE_PATH_STYLE # "false" for AWS S3; "true" for MinIO/R2/B2-style
+                sync: false
+              # ----- One-time admin seed (only needed to bootstrap the first
+              #       admin via a manual `db:seed` run — see DEPLOY_RENDER.md) ----
+              - key: SEED_ADMIN_EMAIL
+                sync: false
+              - key: SEED_ADMIN_PASSWORD
+                sync: false
+
+          # -------------------------------------------------------------------
+          # Frontend — Vite React SPA, served as static files.
+          # VITE_API_URL is baked in at BUILD time, so it must be set before the
+          # build runs and points at THIS environment's backend.
+          # -------------------------------------------------------------------
+          - name: healthy-tasks-web-prod
+            type: web
+            runtime: static
+            branch: main
+            autoDeployTrigger: commit
+            buildCommand: >-
+              npm ci --include=dev &&
+              npm run build:shared &&
+              npm run build --workspace frontend
+            staticPublishPath: ./frontend/dist
+            # SPA fallback: every unmatched path serves index.html so client-side
+            # routes (/tasks, /goals, /admin/...) work on refresh / deep links.
+            routes:
+              - type: rewrite
+                source: /*
+                destination: /index.html
+            envVars:
+              - key: VITE_API_URL # https URL of healthy-tasks-api-prod
+                sync: false
+
+      # =======================================================================
+      # STAGING  —  cheap, disposable, safe to break. Points at a SEPARATE Neon
+      # branch database. Never shares credentials with Production.
+      # =======================================================================
+      - name: staging
+        services:
+          - name: healthy-tasks-api-staging
+            type: web
+            runtime: node
+            plan: starter # cheaper than prod; free tier also works but cold-starts
+            region: oregon
+            branch: staging
+            autoDeployTrigger: commit
+            buildCommand: >-
+              npm ci --include=dev &&
+              npm run build:shared &&
+              npm run prisma:generate --workspace backend &&
+              npm run build --workspace backend
+            preDeployCommand: npm run prisma:deploy --workspace backend
+            startCommand: npm start --workspace backend
+            healthCheckPath: /health
+            envVars:
+              - key: DATABASE_URL # Neon STAGING BRANCH connection string (NOT prod)
+                sync: false
+              - key: FRONTEND_URL
+                sync: false
+              - key: CORS_ORIGIN # MUST equal the staging frontend origin
+                sync: false
+              - key: JWT_SECRET # different from prod
+                sync: false
+              - key: NODE_ENV
+                value: production # controls app behavior (no dev stack traces), not which data it touches
+              - key: JWT_EXPIRES_IN
+                value: 8h
+              - key: PASSWORD_RESET_EXPIRES_IN
+                value: 60m
+              # Recommended: keep Staging email STUBBED (console) even after
+              # Production goes live, so test resets never email real people.
+              - key: EMAIL_PROVIDER
+                value: console
+              - key: EMAIL_FROM
+                value: Healthy Tasks (staging) <no-reply@healthy-tasks.local>
+              - key: STORAGE_DRIVER
+                value: s3
+              - key: S3_BUCKET # SEPARATE bucket from prod, e.g. healthy-tasks-staging
+                sync: false
+              - key: S3_REGION
+                sync: false
+              - key: S3_ENDPOINT
+                sync: false
+              - key: S3_PUBLIC_ENDPOINT
+                sync: false
+              - key: S3_ACCESS_KEY
+                sync: false
+              - key: S3_SECRET_KEY
+                sync: false
+              - key: S3_FORCE_PATH_STYLE
+                sync: false
+              - key: SEED_ADMIN_EMAIL
+                sync: false
+              - key: SEED_ADMIN_PASSWORD
+                sync: false
+
+          - name: healthy-tasks-web-staging
+            type: web
+            runtime: static
+            branch: staging
+            autoDeployTrigger: commit
+            buildCommand: >-
+              npm ci --include=dev &&
+              npm run build:shared &&
+              npm run build --workspace frontend
+            staticPublishPath: ./frontend/dist
+            routes:
+              - type: rewrite
+                source: /*
+                destination: /index.html
+            envVars:
+              - key: VITE_API_URL # https URL of healthy-tasks-api-staging
+                sync: false
+
+# =============================================================================
+# Why Neon (external) instead of a Render-managed `databases:` block
+# -----------------------------------------------------------------------------
+# The app has run on Neon since Phase 1, and Neon's database *branching* is
+# exactly what makes a cheap, disposable Staging DB trivial (branch prod, point
+# Staging at the branch, reset it whenever). Keeping Neon also means zero data
+# migration. The tradeoff vs. a Render-managed Postgres: we can't auto-wire
+# DATABASE_URL with `fromDatabase:` — instead each environment gets its own
+# DATABASE_URL as a `sync: false` secret you paste from Neon. That is the
+# intended pattern for an external database and it keeps Staging and Production
+# connection strings fully separated. If you ever want Render to manage the DB
+# instead, add a `databases:` entry inside each environment and swap the
+# DATABASE_URL entries to `fromDatabase: { name: <db>, property: connectionString }`.
+# =============================================================================
