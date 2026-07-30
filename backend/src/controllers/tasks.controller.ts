@@ -12,6 +12,7 @@ import { HttpError } from '../utils/http-error.js';
 import {
   createTask,
   deleteTask,
+  exitReview,
   getTaskDetail,
   listAllTags,
   listTasks,
@@ -104,6 +105,28 @@ export async function updateTaskController(req: Request, res: Response): Promise
 export async function getTaskHistoryController(req: Request, res: Response): Promise<void> {
   const history = await getTaskHistory(parseTaskId(req));
   res.json(history satisfies TaskHistoryEntryDto[]);
+}
+
+/** Phase 10: finish a review — restore Prior Assignee + Prior Status ("Reviewed"). */
+export async function reviewedController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  const task = await exitReview(
+    { id: req.user.id, role: req.user.role },
+    parseTaskId(req),
+    'reviewed',
+  );
+  res.json(task satisfies TaskDetailDto);
+}
+
+/** Phase 10: recall from review — same restore, but for the initiator / prior assignee. */
+export async function recallReviewController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  const task = await exitReview(
+    { id: req.user.id, role: req.user.role },
+    parseTaskId(req),
+    'recall',
+  );
+  res.json(task satisfies TaskDetailDto);
 }
 
 // --- Relationship endpoints ------------------------------------------------

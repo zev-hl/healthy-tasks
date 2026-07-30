@@ -227,6 +227,14 @@ export interface TaskDto {
   dueAt: string | null; // ISO-8601
   createdAt: string; // ISO-8601
   updatedAt: string; // ISO-8601
+  // Phase 10 review workflow. All null unless the task is currently in Review.
+  // reviewInitiator = who sent it to Review (audit/context only).
+  // priorAssignee / priorStatus = what to restore when it leaves Review.
+  reviewInitiatorId: string | null;
+  reviewInitiator: TaskUserRef | null;
+  priorAssigneeId: string | null;
+  priorAssignee: TaskUserRef | null;
+  priorStatus: TaskStatus | null;
 }
 
 /** Compact task reference for relationship display (id + name + status). */
@@ -285,6 +293,13 @@ export interface UpdateTaskRequest {
   tags?: string[];
   startAt?: string | null;
   dueAt?: string | null;
+  // Phase 10: required by the server only on a transition INTO Review — the
+  // chosen reviewer becomes the temporary assignee.
+  reviewerId?: string | null;
+  // Phase 10: Gantt-drag date edits set this so the server coalesces the
+  // History entry with a recent one (same user+task+field within 60s) instead
+  // of logging every intermediate drag position.
+  coalesceHistory?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +684,8 @@ export interface TaskRowDto {
   tags: string[];
   /** Nesting depth in nested (tree) mode; 0 in flat mode. */
   depth?: number;
+  /** Phase 10: ids of the tasks this one is blocked by, for Gantt dependency arrows. */
+  blockedByIds: number[];
 }
 
 // --- Users screen filtering/sorting ----------------------------------------

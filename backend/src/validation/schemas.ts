@@ -144,6 +144,12 @@ export const updateTaskSchema = z.object({
   tags: tags.optional(),
   startAt: optionalDateTime,
   dueAt: optionalDateTime,
+  // Phase 10: reviewer chosen when sending a task to Review (required by the
+  // service only on a transition into Review).
+  reviewerId: optionalUserId,
+  // Phase 10: set by Gantt-drag date edits so the server coalesces the History
+  // entry with a recent one instead of logging every intermediate position.
+  coalesceHistory: z.boolean().optional(),
 });
 
 // --- Task relationships (Phase 3) ------------------------------------------
