@@ -6,6 +6,7 @@ import {
   createTaskSchema,
   updateTaskSchema,
   duplicateTaskSchema,
+  setTaskPrivateSchema,
   setParentSchema,
   dependencySchema,
   presignAttachmentSchema,
@@ -33,6 +34,9 @@ import {
   removeDependencyController,
   deleteTaskController,
   duplicateTaskController,
+  setTaskPrivateController,
+  mentionCandidatesController,
+  reviewerCandidatesController,
 } from '../controllers/tasks.controller.js';
 import {
   presignTaskAttachmentController,
@@ -74,6 +78,14 @@ tasksRouter.post('/dashboard', validateBody(taskDashboardSchema), asyncHandler(d
 tasksRouter.get('/:id', asyncHandler(getTaskController));
 tasksRouter.get('/:id/history', asyncHandler(getTaskHistoryController));
 tasksRouter.patch('/:id', validateBody(updateTaskSchema), asyncHandler(updateTaskController));
+// Phase 13 access control: toggle Private, and the Private-aware candidate pools.
+tasksRouter.patch(
+  '/:id/private',
+  validateBody(setTaskPrivateSchema),
+  asyncHandler(setTaskPrivateController),
+);
+tasksRouter.get('/:id/mention-candidates', asyncHandler(mentionCandidatesController));
+tasksRouter.get('/:id/reviewer-candidates', asyncHandler(reviewerCandidatesController));
 // Review workflow (Phase 10): leave Review via the Reviewed / Recall actions.
 tasksRouter.post('/:id/reviewed', asyncHandler(reviewedController));
 tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));

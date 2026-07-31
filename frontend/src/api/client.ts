@@ -54,6 +54,9 @@ import type {
   RejectGoalRequest,
   ResolveGoalRequest,
   GoalTeamRequest,
+  OrgHierarchyNode,
+  DueDateReportRequest,
+  DueDateReportResult,
 } from '@healthy-tasks/shared';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
@@ -185,6 +188,15 @@ export const api = {
 
   // --- Active users (any authenticated user) — richer directory (Phase 10) ---
   listActiveUsers: () => request<ActiveUserDto[]>('/api/users/active'),
+  // Phase 13: the caller's scoped org hierarchy (own downline; Admin = all).
+  getUserHierarchy: () => request<OrgHierarchyNode[]>('/api/users/hierarchy'),
+
+  // --- Due Date Performance Report (Phase 13) ---
+  getDueDateReport: (body: DueDateReportRequest) =>
+    request<DueDateReportResult>('/api/reports/due-date', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   // --- Per-user screen preferences (Phase 6) ---
   getPreference: (screen: ScreenKey) => request<{ state: unknown }>(`/api/preferences/${screen}`),
@@ -217,6 +229,20 @@ export const api = {
   reviewed: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}/reviewed`, { method: 'POST' }),
   recallReview: (id: number) =>
     request<TaskDetailDto>(`/api/tasks/${id}/recall-review`, { method: 'POST' }),
+
+  // --- Access control (Phase 13) ---
+  setTaskPrivate: (id: number, isPrivate: boolean) =>
+    request<TaskDetailDto>(`/api/tasks/${id}/private`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isPrivate }),
+    }),
+  // Users who may be @mentioned on this task (all active users, or — on a Private
+  // task — only its visibility set).
+  getMentionCandidates: (taskId: number) =>
+    request<ActiveUserDto[]>(`/api/tasks/${taskId}/mention-candidates`),
+  // The reviewer-selection pool: Admin(s) + the assignee's supervisor chain.
+  getReviewerCandidates: (taskId: number) =>
+    request<ActiveUserDto[]>(`/api/tasks/${taskId}/reviewer-candidates`),
 
   // --- Task relationships ---
   searchTasks: (q: string, excludeId?: number) =>
@@ -385,13 +411,13 @@ export const api = {
 };
 
 /**
- * Export the current filtered/sorted task result set to an .xlsx download. Uses
- * a raw fetch (not request()) because the response is a binary blob, then
- * triggers a browser download.
+ * POST a JSON body and download the binary (.xlsx) response as `filename`. Uses
+ * a raw fetch (not request()) because the response is a blob, then triggers a
+ * browser download.
  */
-export async function exportTasksToExcel(body: TaskSearchRequest): Promise<void> {
+async function downloadXlsx(path: string, body: unknown, filename: string): Promise<void> {
   const token = getToken();
-  const res = await fetch(`${API_URL}/api/tasks/export`, {
+  const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -406,11 +432,21 @@ export async function exportTasksToExcel(body: TaskSearchRequest): Promise<void>
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'tasks.xlsx';
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Export the current filtered/sorted task result set to an .xlsx download. */
+export function exportTasksToExcel(body: TaskSearchRequest): Promise<void> {
+  return downloadXlsx('/api/tasks/export', body, 'tasks.xlsx');
+}
+
+/** Export the Due Date Performance Report to an .xlsx download (Phase 13). */
+export function exportDueDateReportToExcel(body: DueDateReportRequest): Promise<void> {
+  return downloadXlsx('/api/reports/due-date/export', body, 'due-date-performance.xlsx');
 }
 
 /**

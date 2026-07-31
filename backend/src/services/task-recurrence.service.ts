@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { getTaskDetail } from './task.service.js';
 import { createAssignedNotification } from './notification.service.js';
+import { type Actor, assertCanEditTask } from './access-control.service.js';
 import {
   addInterval,
   dueFixedSeqs,
@@ -65,10 +66,11 @@ export function earliestDate(startAt: Date | null, dueAt: Date | null): Date | n
 // --- Set / clear -----------------------------------------------------------
 
 export async function setTaskRecurrence(
-  _actorId: string,
+  actor: Actor,
   taskId: number,
   input: SetTaskRecurrenceInput,
 ): Promise<TaskDetailDto> {
+  await assertCanEditTask(actor, taskId);
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: { id: true, startAt: true, dueAt: true, recurrenceSourceId: true },
@@ -100,14 +102,13 @@ export async function setTaskRecurrence(
     create: { taskId, ...data },
     update: data,
   });
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
-export async function clearTaskRecurrence(taskId: number): Promise<TaskDetailDto> {
-  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { id: true } });
-  if (!task) throw HttpError.notFound('Task not found');
+export async function clearTaskRecurrence(actor: Actor, taskId: number): Promise<TaskDetailDto> {
+  await assertCanEditTask(actor, taskId);
   await prisma.taskRecurrence.deleteMany({ where: { taskId } });
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 // --- Generation ------------------------------------------------------------
@@ -254,10 +255,14 @@ export async function getTaskGhosts(now: Date): Promise<GhostOccurrenceDto[]> {
 // --- Click-through materialization -----------------------------------------
 
 export async function materializeTaskOccurrence(
-  actorId: string,
+  actor: Actor,
   sourceId: number,
   seq: number,
 ): Promise<TaskDetailDto> {
+  const actorId = actor.id;
+  // Turning a ghost into a real occurrence acts on the recurring series → the
+  // caller needs full (edit) access to the source task.
+  await assertCanEditTask(actor, sourceId);
   const source = await prisma.task.findUnique({
     where: { id: sourceId },
     select: { ...ghostSourceSelect },
@@ -288,7 +293,7 @@ export async function materializeTaskOccurrence(
     actorId,
   });
   if (newId === null) throw HttpError.conflict('That occurrence has already been materialized');
-  return getTaskDetail(newId);
+  return getTaskDetail(newId, actor);
 }
 
 // --- Scheduler pass --------------------------------------------------------

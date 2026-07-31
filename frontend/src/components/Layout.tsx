@@ -79,6 +79,13 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       </nav>
 
       <div className="side-group">
+        <div className="side-group-label">Reports</div>
+        <NavLink to="/reports/due-date" className={navItemClass}>
+          Due Date Performance
+        </NavLink>
+      </div>
+
+      <div className="side-group">
         <div className="side-group-label">Goals</div>
         <NavLink to="/goals" className={navItemClass}>
           My Goals

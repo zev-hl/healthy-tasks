@@ -10,6 +10,7 @@ import {
 } from '../utils/rich-text.js';
 import { recordHistory } from './task-history.service.js';
 import { createMentionNotifications } from './notification.service.js';
+import { getMentionCandidateIds, requireTaskAccess } from './access-control.service.js';
 import {
   MENTION_EVENT_DEBOUNCE_MINUTES,
   TASK_HISTORY_FIELDS,
@@ -22,9 +23,18 @@ export interface Actor {
   role: Role;
 }
 
-async function assertTaskExists(taskId: number): Promise<void> {
-  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { id: true } });
-  if (!task) throw HttpError.notFound('Task not found');
+/**
+ * On a Private task, drop any @mention that targets a user outside its
+ * visibility set {Admin(s), Assignee, Assignee's chain}. A non-private task is
+ * unrestricted (all active mentions kept).
+ */
+async function restrictMentionsForTask(
+  ids: string[],
+  task: { assigneeId: string | null; isPrivate: boolean },
+): Promise<string[]> {
+  const allowed = await getMentionCandidateIds(task);
+  if (allowed === null) return ids;
+  return ids.filter((id) => allowed.has(id));
 }
 
 /** Clean the body, enforce the length limit, and reject empty content. */
@@ -103,9 +113,14 @@ export async function createComment(
   taskId: number,
   body: string,
 ): Promise<TaskDetailDto> {
-  await assertTaskExists(taskId);
+  // Commenting requires at least view access (full or mention-only); a user with
+  // no access gets a 404 here, so they can neither see nor comment on the task.
+  const access = await requireTaskAccess(actor, taskId);
   const clean = prepareBody(body);
-  const mentionIds = await activeUserIds(extractMentionUserIds(clean));
+  const mentionIds = await restrictMentionsForTask(
+    await activeUserIds(extractMentionUserIds(clean)),
+    access,
+  );
 
   let commentId = '';
   let fired: string[] = [];
@@ -127,7 +142,7 @@ export async function createComment(
 
   // Notifications (+ any "also email me" emails) are a post-commit side effect.
   await createMentionNotifications(taskId, commentId, fired, actor.id);
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 export async function updateComment(
@@ -143,9 +158,15 @@ export async function updateComment(
   if (comment.authorId !== actor.id) {
     throw HttpError.forbidden('Only the comment author can edit this comment');
   }
+  // The author must still be able to see the task — e.g. an outside author whose
+  // only access was a mention loses it the moment the task goes Private.
+  const access = await requireTaskAccess(actor, comment.taskId);
 
   const clean = prepareBody(body);
-  const mentionIds = await activeUserIds(extractMentionUserIds(clean));
+  const mentionIds = await restrictMentionsForTask(
+    await activeUserIds(extractMentionUserIds(clean)),
+    access,
+  );
 
   let fired: string[] = [];
   await prisma.$transaction(async (tx) => {
@@ -175,7 +196,7 @@ export async function updateComment(
   });
 
   await createMentionNotifications(comment.taskId, commentId, fired, actor.id);
-  return getTaskDetail(comment.taskId);
+  return getTaskDetail(comment.taskId, actor);
 }
 
 export async function deleteComment(actor: Actor, commentId: string): Promise<TaskDetailDto> {
@@ -192,6 +213,7 @@ export async function deleteComment(actor: Actor, commentId: string): Promise<Ta
   if (comment.authorId !== actor.id) {
     throw HttpError.forbidden('Only the comment author can delete this comment');
   }
+  await requireTaskAccess(actor, comment.taskId);
 
   // Remove the comment's attachment objects, then delete the row (cascades the
   // attachment/mention/event rows). TaskHistory keys off the task, not the
@@ -214,5 +236,5 @@ export async function deleteComment(actor: Actor, commentId: string): Promise<Ta
       changeType: 'removed',
     });
   });
-  return getTaskDetail(comment.taskId);
+  return getTaskDetail(comment.taskId, actor);
 }

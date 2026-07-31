@@ -28,15 +28,36 @@ export function TeamGoalsPage() {
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
 
-  // The people whose goals this supervisor can manage: their direct reports, or
-  // (for Admin) everyone. Drives both the employee filter and the New-goal owner.
+  // Phase 13: the employee filter shows the supervisor's ENTIRE downline (Admin:
+  // everyone), matching the broadened Team Goals visibility. Creating a goal
+  // "on behalf" is still limited to DIRECT reports (the backend enforces this),
+  // so those are tracked separately. Both come from the scoped org hierarchy.
+  const [directReports, setDirectReports] = useState<ActiveUserDto[]>([]);
   useEffect(() => {
     void api
-      .listActiveUsers()
-      .then((all) =>
-        setReports(user?.role === 'Admin' ? all : all.filter((u) => u.supervisorId === user?.id)),
-      )
-      .catch(() => setReports([]));
+      .getUserHierarchy()
+      .then((tree) => {
+        const all: ActiveUserDto[] = [];
+        const walk = (nodes: typeof tree): void => {
+          for (const n of nodes) {
+            all.push(n.user);
+            walk(n.children);
+          }
+        };
+        walk(tree);
+        if (user?.role === 'Admin') {
+          setReports(all);
+          setDirectReports(all);
+        } else {
+          setReports(all.filter((u) => u.id !== user?.id));
+          const self = tree.find((n) => n.user.id === user?.id);
+          setDirectReports(self ? self.children.map((c) => c.user) : []);
+        }
+      })
+      .catch(() => {
+        setReports([]);
+        setDirectReports([]);
+      });
   }, [user?.id, user?.role]);
 
   const load = useCallback(async () => {
@@ -79,7 +100,9 @@ export function TeamGoalsPage() {
 
   const hasFilters = chips.length > 0;
   const open = goals.find((g) => g.id === openId) ?? null;
+  // Filter dropdown spans the whole downline; creating a goal is limited to direct reports.
   const ownerOptions = reports.map((r) => ({ id: r.id, label: userLabel(r) }));
+  const createOwnerOptions = directReports.map((r) => ({ id: r.id, label: userLabel(r) }));
 
   return (
     <div className="tasks-page goals-page">
@@ -87,7 +110,7 @@ export function TeamGoalsPage() {
         <h1>Team Goals</h1>
         <span className="tasks-total">{goals.length}</span>
         <span className="spacer" />
-        {ownerOptions.length > 0 && (
+        {createOwnerOptions.length > 0 && (
           <button type="button" onClick={() => setCreating(true)}>
             + New goal
           </button>
@@ -192,7 +215,7 @@ export function TeamGoalsPage() {
 
       {creating && (
         <GoalEditorModal
-          ownerOptions={ownerOptions}
+          ownerOptions={createOwnerOptions}
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false);

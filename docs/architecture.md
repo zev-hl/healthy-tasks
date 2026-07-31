@@ -243,8 +243,10 @@ Enforced in `goal.service.ts` (route guards are a coarse first gate):
   Only the supervisor (or an Admin) may **approve / reject / resolve**. A Manager who
   is not this owner's supervisor is rejected.
 - **Admin** has full visibility and supervisor authority across all goals.
-- **Team Goals** scopes to the supervisor's own direct reports only (Admin: all
-  users), and a supervisor can never widen the `ownerIds` filter past their reports.
+- **Team Goals** scopes to the supervisor's **entire downline** (any depth; Admin:
+  all users) as of Phase 13 — see §10. A supervisor can never widen the `ownerIds`
+  filter past that downline. **Approve / reject / resolve stay restricted to the
+  owner's DIRECT supervisor** — broadened visibility does not broaden that authority.
 
 ### Endpoints (`/api/goals`, all require auth)
 
@@ -314,3 +316,104 @@ drives a global "contact an admin" banner for every user.
   enums + the `Goal` table) and reconciles a small pre-existing index drift on
   `Task` (two Phase 10 FK indexes that existed in every database but were not
   declared in `schema.prisma`) — no runtime change.
+- Phase 13 ships one additive migration (`..._phase13_access_control`: the
+  `Task.isPrivate` boolean, default `false`).
+
+## 10. Task-Level Access Control (Phase 13)
+
+The single, shared authority for **who can see / edit / assign / mention / review**
+which task. It lives in `backend/src/services/access-control.service.ts` and is
+consumed by every task surface (Search, Kanban, Gantt, Calendar, Task Detail,
+Comments, the Review workflow, Goals, and the Due Date Performance Report). Nothing
+is cached: every decision is recomputed live from the **current** Assignee, the
+**current** org chart (`User.supervisorId`), the task's **current** comment mentions,
+and the Private flag — so access follows reorganisations and edits immediately.
+
+### Access levels for one task
+
+- **Full (see + edit)** — Admin, the current Assignee, or **any** supervisor above
+  the Assignee in the chain (`isInSupervisorChain`). Equivalently: the Assignee is
+  in the actor's *downline-or-self* set.
+- **Comment-only (see + comment)** — a user currently `@mentioned` in a non-private
+  comment. They may add comments and edit their own, but cannot change any other
+  field. Live: dropping the mention (editing it out of the only comment granting it)
+  removes access with no reload.
+- **None** — everyone else. The API returns **404** (never 403) for a hidden task,
+  so its existence isn't leaked.
+
+`computeTaskAccess(actor, {id, assigneeId, isPrivate})` returns `'full' | 'comment' |
+null`. `TaskDetailDto` carries the caller's `access` level and a `canTogglePrivate`
+flag; `TaskRowDto` carries a `mentionOnly` flag (the row is visible only via a
+mention) which drives the read-only cue + disabled drag in the multi-task views.
+
+### List scoping
+
+Multi-task queries AND an access predicate into the WHERE (`buildTaskAccessWhere`):
+`assigneeId IN (actor + downline)` OR (when the `includeMentioned` toggle is on)
+a non-private mention EXISTS clause. Admins are unrestricted. The same predicate
+scopes Search, the dashboard tallies, the Excel export, and the report.
+
+### Assignment restriction (who may be set as Assignee)
+
+Enforced at creation and every reassignment (`assertAssigneeAllowed`):
+
+- **Member** → self + immediate team (own supervisor + that supervisor's other
+  direct reports / peers).
+- **Manager** → the above + their entire downline (any depth).
+- **Admin** → anyone.
+
+Assignee is always required; a creator who names none defaults to themselves.
+
+### Assignee locking
+
+While a task's Status is `Completed` or `Canceled`, its Assignee is **frozen for
+everyone, including Admin** (`updateTask`). Reopening (moving Status away from
+terminal, no assignee change in the same PATCH) unlocks it. This guarantees the Due
+Date report can trust "current Assignee" for terminal tasks (§11).
+
+### Private tasks
+
+`Task.isPrivate` may be toggled only by an Admin or someone in the Assignee's
+supervisor chain — **never the Assignee themselves** (`canTogglePrivate`, dedicated
+`PATCH /:id/private`). While private, visibility shrinks to {Admin, Assignee,
+Assignee's chain}: mention-only access is suspended, and new `@mentions` are
+restricted to that set both in the autocomplete
+(`GET /:id/mention-candidates`) and server-side on comment write.
+
+### Review workflow (two distinct checks)
+
+- **Reviewer-selection pool** (`GET /:id/reviewer-candidates`, validated on entry to
+  Review): Admin + anyone in the current Assignee's supervisor chain.
+- **"Reviewed" button** (`exitReview`): Admin, the current Assignee (the reviewer),
+  or a supervisor above them. These coexist and are deliberately different — the
+  pool never includes the Assignee, but the button does.
+
+### Scoped org hierarchy
+
+`GET /api/users/hierarchy` returns the tree the caller may see/select — their own
+subtree (self + downline); Admin sees everyone. Drives the report's Team Hierarchy
+filter and the Team Goals downline filter.
+
+## 11. Due Date Performance Report (Phase 13)
+
+`POST /api/reports/due-date` (+ `/export`) — an access-scoped report that buckets
+each task by comparing its Due Date to its actual completion, using **only** the
+task's current Status + Status-Change Timestamp + Due Date (never past history).
+Reuses the full Task Search filter set plus a **Team Hierarchy** filter (assignee
+ids selected from the scoped tree, intersected with the access scope). Bucketing
+(`bucketFor` in `due-date-report.service.ts`), each task in exactly one:
+
+| Bucket | Rule |
+| --- | --- |
+| **On Time** | Completed, and the completion timestamp is **on or before** the Due Date (equality counts as On Time). |
+| **Late** | Completed, and the completion timestamp is after the Due Date. |
+| **Overdue** | Not Completed/Cancelled, has a Due Date that has already passed. |
+| **Not Completed** | Not Completed/Cancelled, has a Due Date that has not yet passed. |
+| **Cancelled** | Status is `Canceled` (decided by status alone). |
+| **No Due Date** | No Due Date set (covers Completed-without-due and active-without-due). |
+
+On Time / Late rows also carry a whole-day gap (`daysDelta`, positive = early). The
+frontend (`DueDatePerformancePage`) reuses the Search table conventions, adds a
+**Result** column and a bucket summary bar, a **Group by Assignee** toggle
+(collapsible groups with per-assignee subtotal bars), and Excel export that mirrors
+whichever mode is active (flat, or grouped with subtotal rows).

@@ -72,6 +72,7 @@ interface PersistedState {
   view: TaskView;
   calendarScale: CalendarScale;
   calendarMode: CalendarMode;
+  includeMentioned: boolean;
 }
 
 const UNASSIGNED = '__unassigned__';
@@ -131,6 +132,8 @@ export function TaskSearchPage() {
   const [view, setView] = useState<TaskView>('list');
   const [calendarScale, setCalendarScale] = useState<CalendarScale>('month');
   const [calendarMode, setCalendarMode] = useState<CalendarMode>('range');
+  // Phase 13: include tasks the user can see only via an @mention (read-only).
+  const [includeMentioned, setIncludeMentioned] = useState(true);
 
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
@@ -193,6 +196,7 @@ export function TaskSearchPage() {
           if (s.calendarScale === 'month' || s.calendarScale === 'week' || s.calendarScale === 'day')
             setCalendarScale(s.calendarScale);
           if (s.calendarMode === 'range' || s.calendarMode === 'marker') setCalendarMode(s.calendarMode);
+          if (typeof s.includeMentioned === 'boolean') setIncludeMentioned(s.includeMentioned);
         }
       })
       .catch(() => {})
@@ -221,8 +225,8 @@ export function TaskSearchPage() {
 
   // --- Persist state (debounced) after hydration ---------------------------
   const snapshot = useMemo<PersistedState>(
-    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode }),
-    [searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode],
+    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode, includeMentioned }),
+    [searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode, includeMentioned],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -243,6 +247,7 @@ export function TaskSearchPage() {
       page: listView ? page : 1,
       pageSize: listView ? pageSize : MAX_PAGE_SIZE,
       nest: listView ? nestGlobal : false,
+      includeMentioned,
       ...nowContext(),
     };
     try {
@@ -255,7 +260,7 @@ export function TaskSearchPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedText, filters, sort, page, pageSize, nestGlobal, view]);
+  }, [debouncedText, filters, sort, page, pageSize, nestGlobal, view, includeMentioned]);
 
   useEffect(() => {
     if (hydrated) void runQuery();
@@ -277,7 +282,7 @@ export function TaskSearchPage() {
     if (!hydrated) return;
     let cancelled = false;
     void api
-      .getTaskDashboard({ text: debouncedText.trim() || undefined, filters: effectiveFilters(filters), ...nowContext() })
+      .getTaskDashboard({ text: debouncedText.trim() || undefined, filters: effectiveFilters(filters), includeMentioned, ...nowContext() })
       .then((d) => {
         if (!cancelled) setDash(d);
       })
@@ -285,7 +290,7 @@ export function TaskSearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, debouncedText, filters]);
+  }, [hydrated, debouncedText, filters, includeMentioned]);
 
   // --- Change handlers -----------------------------------------------------
   const patchFilters = (patch: Partial<TaskSearchFilters>) => {
@@ -393,6 +398,7 @@ export function TaskSearchPage() {
         text: debouncedText.trim() || undefined,
         filters: effectiveFilters(filters),
         sort,
+        includeMentioned,
         ...nowContext(),
       });
     } catch (err) {
@@ -502,9 +508,20 @@ export function TaskSearchPage() {
     switch (key) {
       case 'id':
         return (
-          <Link to={`/tasks/${row.id}`} className="mono task-id-link" onClick={(e) => e.stopPropagation()}>
-            #{row.id}
-          </Link>
+          <span className="task-id-cell">
+            {row.mentionOnly && (
+              <span
+                className="mention-only-cue"
+                title="Read-only — you can see this because you're @mentioned"
+                aria-label="Read-only (mention)"
+              >
+                👁
+              </span>
+            )}
+            <Link to={`/tasks/${row.id}`} className="mono task-id-link" onClick={(e) => e.stopPropagation()}>
+              #{row.id}
+            </Link>
+          </span>
         );
       case 'name':
         return (
@@ -646,6 +663,20 @@ export function TaskSearchPage() {
           </button>
         )}
         <div className="spacer" />
+        <label
+          className="nest-toggle mention-toggle"
+          title="Show tasks you can see only because you're @mentioned in them (read-only)"
+        >
+          <input
+            type="checkbox"
+            checked={includeMentioned}
+            onChange={(e) => {
+              setIncludeMentioned(e.target.checked);
+              setPage(1);
+            }}
+          />
+          👁 Mention-only
+        </label>
         {view === 'list' && (
           <>
             {sortSummary && <span className="mono tasks-sort">Sort: {sortSummary}</span>}

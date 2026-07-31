@@ -210,6 +210,34 @@ export interface ActiveUserDto extends TaskUserRef {
   role: Role;
 }
 
+// ---------------------------------------------------------------------------
+// Task-level access control (Phase 13)
+// ---------------------------------------------------------------------------
+
+/**
+ * A user's access to a single task, live-computed on every request from the
+ * current Assignee, org chart, comment mentions, and the Private flag:
+ *  - `full`    — see + edit everything (Admin, the Assignee, or any supervisor
+ *                above the Assignee in the org chart).
+ *  - `comment` — see the task and add/edit their own comments, but NOT edit any
+ *                other field (a user currently @mentioned in a non-private task).
+ * A user with neither never receives the task at all (404 / absent from lists),
+ * so `none` is not a value the API returns. See docs/architecture.md.
+ */
+export const TASK_ACCESS_LEVELS = ['full', 'comment'] as const;
+export type TaskAccessLevel = (typeof TASK_ACCESS_LEVELS)[number];
+
+/**
+ * A node in the scoped org hierarchy returned by GET /api/users/hierarchy —
+ * built by walking the Supervisor field recursively. Each caller sees only the
+ * subtree(s) they may access (their own downline; Admin sees everyone). Drives
+ * the Due Date Performance Report's Team Hierarchy filter.
+ */
+export interface OrgHierarchyNode {
+  user: ActiveUserDto;
+  children: OrgHierarchyNode[];
+}
+
 export interface TaskDto {
   id: number;
   name: string;
@@ -227,6 +255,9 @@ export interface TaskDto {
   dueAt: string | null; // ISO-8601
   createdAt: string; // ISO-8601
   updatedAt: string; // ISO-8601
+  // Phase 13: while true, mention-only access is suspended and the task is
+  // visible only to {Admin, Assignee, Assignee's supervisor chain}.
+  isPrivate: boolean;
   // Phase 10 review workflow. All null unless the task is currently in Review.
   // reviewInitiator = who sent it to Review (audit/context only).
   // priorAssignee / priorStatus = what to restore when it leaves Review.
@@ -268,6 +299,13 @@ export interface TaskDetailDto extends TaskDto {
   recurrenceSourceId: number | null;
   /** 1-based occurrence index if this task is a generated recurrence instance. */
   recurrenceSeq: number | null;
+  // Phase 13: the requesting user's live access to this task.
+  access: TaskAccessLevel;
+  /**
+   * Whether the requesting user may flip the Private toggle: Admin, or someone
+   * in the Assignee's supervisor chain, but never the Assignee themselves.
+   */
+  canTogglePrivate: boolean;
 }
 
 // --- Relationship request shapes (Phase 3) ---------------------------------
@@ -513,7 +551,7 @@ export interface PaginatedResult<T> {
 }
 
 /** Per-user persisted screen state lives under one of these keys. */
-export const SCREEN_KEYS = ['task-search', 'users'] as const;
+export const SCREEN_KEYS = ['task-search', 'users', 'due-date-report'] as const;
 export type ScreenKey = (typeof SCREEN_KEYS)[number];
 
 // --- Task Search columns ---------------------------------------------------
@@ -651,6 +689,12 @@ export interface TaskSearchRequest {
   now?: string; // ISO instant
   todayStart?: string; // ISO instant — local midnight today
   todayEnd?: string; // ISO instant — local midnight tomorrow
+  /**
+   * Phase 13: include tasks the caller can see only via an @mention (default
+   * true). When false, only full-access tasks are returned. Ignored for Admins,
+   * who have full access to everything. Drives the "show mention-only" toggle.
+   */
+  includeMentioned?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -669,6 +713,8 @@ export interface TaskDashboardRequest {
   now: string; // ISO instant
   todayStart: string; // ISO instant — local midnight today
   todayEnd: string; // ISO instant — local midnight tomorrow
+  // Phase 13: match the grid's mention-only toggle so the tallies agree with it.
+  includeMentioned?: boolean;
 }
 
 /**
@@ -709,6 +755,107 @@ export interface TaskRowDto {
   instanceLabel: string | null;
   /** Phase 11: source template id for a generated task (null otherwise). */
   templateId: number | null;
+  /**
+   * Phase 13: true when this row is visible to the requesting user ONLY because
+   * they are @mentioned in it (not in the full-access group). Such rows are
+   * read-only for Status/dates and get the read-only cue in the multi-task views.
+   */
+  mentionOnly: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Due Date Performance Report (Phase 13)
+// ---------------------------------------------------------------------------
+
+/**
+ * The six mutually-exclusive buckets a task falls into, based on its CURRENT
+ * Status + Status-Change Timestamp + Due Date only (never past history):
+ *  - OnTime       — Completed, completion timestamp on or before the Due Date.
+ *  - Late         — Completed, completion timestamp after the Due Date.
+ *  - Overdue      — not Completed/Cancelled, has a Due Date that has passed.
+ *  - NotCompleted — not Completed/Cancelled, has a Due Date that has not passed.
+ *  - Cancelled    — Cancelled (Prisma enum value `Canceled`).
+ *  - NoDueDate    — no Due Date set at all.
+ * A Due Date exactly equal to the completion timestamp counts as OnTime.
+ */
+export const DUE_DATE_BUCKETS = [
+  'OnTime',
+  'Late',
+  'Overdue',
+  'NotCompleted',
+  'Cancelled',
+  'NoDueDate',
+] as const;
+export type DueDateBucket = (typeof DUE_DATE_BUCKETS)[number];
+
+export const DUE_DATE_BUCKET_LABELS: Record<DueDateBucket, string> = {
+  OnTime: 'On Time',
+  Late: 'Late',
+  Overdue: 'Overdue',
+  NotCompleted: 'Not Completed',
+  Cancelled: 'Cancelled',
+  NoDueDate: 'No Due Date',
+};
+
+/** A per-bucket count map (assignee subtotal, or overall report total). */
+export type DueDateBucketTotals = Record<DueDateBucket, number>;
+
+/**
+ * Human-readable Result cell for a report row — the bucket label, with the day
+ * gap appended for On Time / Late. Shared by the on-screen table and the Excel
+ * export so they always agree. `daysDelta`: positive = early, negative = late.
+ */
+export function formatDueDateResult(bucket: DueDateBucket, daysDelta: number | null): string {
+  const label = DUE_DATE_BUCKET_LABELS[bucket];
+  const plural = (n: number): string => (n === 1 ? '' : 's');
+  if (bucket === 'OnTime' && daysDelta !== null) {
+    return daysDelta > 0 ? `${label} (${daysDelta} day${plural(daysDelta)} early)` : `${label} (same day)`;
+  }
+  if (bucket === 'Late' && daysDelta !== null) {
+    const late = Math.abs(daysDelta);
+    return late > 0 ? `${label} (${late} day${plural(late)} late)` : `${label} (same day)`;
+  }
+  return label;
+}
+
+/** One report row: a task row plus its bucket and (for On Time / Late) the day gap. */
+export interface DueDateReportRow extends TaskRowDto {
+  bucket: DueDateBucket;
+  /**
+   * Whole days between completion and the Due Date, for OnTime/Late only (null
+   * otherwise). Positive = completed early / on time; negative = completed late.
+   */
+  daysDelta: number | null;
+}
+
+/**
+ * Request for the report. Reuses the full Task Search filter set (text/filters/
+ * sort + clock context) and adds the report-only Team Hierarchy selection and
+ * the Group-by-Assignee toggle. `page`/`nest` are unused (the report is a full,
+ * access-scoped list like the export).
+ */
+export interface DueDateReportRequest {
+  text?: string;
+  filters?: TaskSearchFilters;
+  sort?: TaskSort[];
+  now?: string;
+  todayStart?: string;
+  todayEnd?: string;
+  includeMentioned?: boolean;
+  /**
+   * Assignee ids selected in the Team Hierarchy tree. When non-empty, results
+   * are further limited to these assignees (intersected with the caller's
+   * access scope, so it can never widen visibility).
+   */
+  hierarchyUserIds?: string[];
+  /** When true, the Excel export groups rows by assignee with subtotal rows. */
+  groupByAssignee?: boolean;
+}
+
+export interface DueDateReportResult {
+  rows: DueDateReportRow[];
+  total: number;
+  bucketTotals: DueDateBucketTotals;
 }
 
 // --- Users screen filtering/sorting ----------------------------------------

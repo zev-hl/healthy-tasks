@@ -165,6 +165,12 @@ export const duplicateTaskSchema = z.object({
 });
 export type DuplicateTaskInput = z.infer<typeof duplicateTaskSchema>;
 
+// Phase 13: toggle a task's Private flag.
+export const setTaskPrivateSchema = z.object({
+  isPrivate: z.boolean(),
+});
+export type SetTaskPrivateInput = z.infer<typeof setTaskPrivateSchema>;
+
 // --- Task relationships (Phase 3) ------------------------------------------
 
 const taskId = z.number().int().positive('A valid task id is required');
@@ -266,6 +272,8 @@ export const taskSearchSchema = z.object({
   now: dateBound,
   todayStart: dateBound,
   todayEnd: dateBound,
+  // Phase 13: include mention-only tasks in the access-scoped result (default true).
+  includeMentioned: z.boolean().optional(),
 });
 
 // Dashboard counts: same text + filters, with a required clock context so the
@@ -276,7 +284,23 @@ export const taskDashboardSchema = z.object({
   now: z.coerce.date(),
   todayStart: z.coerce.date(),
   todayEnd: z.coerce.date(),
+  includeMentioned: z.boolean().optional(),
 });
+
+// Due Date Performance Report (Phase 13): the full search filter set + clock
+// context, plus the report-only Team Hierarchy selection and group-by toggle.
+export const dueDateReportSchema = z.object({
+  text: z.string().trim().max(200).optional(),
+  filters: taskFiltersSchema.optional(),
+  sort: z.array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir })).max(12).optional(),
+  now: dateBound,
+  todayStart: dateBound,
+  todayEnd: dateBound,
+  includeMentioned: z.boolean().optional(),
+  hierarchyUserIds: z.array(z.string().uuid()).max(5000).optional(),
+  groupByAssignee: z.boolean().optional(),
+});
+export type DueDateReportInput = z.infer<typeof dueDateReportSchema>;
 
 export const userSearchSchema = z.object({
   filters: z

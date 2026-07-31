@@ -10,6 +10,7 @@ import type {
   UpdateGoalProgressInput,
 } from '../validation/schemas.js';
 import { goalInclude, toGoalDto, type GoalWithRefs } from './goal.mapper.js';
+import { getDownlineIds } from './access-control.service.js';
 
 /**
  * SMART Goals (Phase 12). A goal belongs to an employee and moves through a
@@ -95,16 +96,15 @@ export async function listMyGoals(actor: GoalActor): Promise<GoalDto[]> {
 export async function listTeamGoals(actor: GoalActor, input: GoalTeamInput): Promise<GoalDto[]> {
   const filters = input.filters ?? {};
 
-  // Establish the owner scope this actor is allowed to see.
+  // Establish the owner scope this actor is allowed to see. Phase 13 broadened
+  // Team Goals visibility from direct reports to the supervisor's ENTIRE downline
+  // (any depth). Note this only widens VISIBILITY — approve/reject/resolve remain
+  // gated on the owner's DIRECT supervisor (assertCanSupervise), unchanged.
   let ownerScope: string[] | null; // null ⇒ unrestricted (Admin, all users)
   if (actor.role === 'Admin') {
     ownerScope = null;
   } else {
-    const reports = await prisma.user.findMany({
-      where: { supervisorId: actor.id },
-      select: { id: true },
-    });
-    ownerScope = reports.map((r) => r.id);
+    ownerScope = await getDownlineIds(actor.id);
   }
 
   // Intersect the requested ownerIds filter with the allowed scope so a

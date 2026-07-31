@@ -2,12 +2,14 @@ import type { Request, Response } from 'express';
 import type {
   ActiveUserDto,
   AdminResetLinkResponse,
+  OrgHierarchyNode,
   PaginatedResult,
   TaskUserRef,
   UserCountsDto,
   UserDto,
   UserFilterOptions,
 } from '@healthy-tasks/shared';
+import { getScopedHierarchy } from '../services/access-control.service.js';
 import {
   listUsers,
   searchUsers,
@@ -70,6 +72,16 @@ export async function userFilterOptionsController(_req: Request, res: Response):
 export async function listActiveUsersController(_req: Request, res: Response): Promise<void> {
   const users = await listActiveUsers();
   res.json(users.map(toActiveUserDto) satisfies ActiveUserDto[]);
+}
+
+/**
+ * Phase 13: the org hierarchy the caller may see/select (their own downline;
+ * Admin sees everyone). Drives the Due Date report's Team Hierarchy filter.
+ */
+export async function userHierarchyController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  const tree = await getScopedHierarchy({ id: req.user.id, role: req.user.role });
+  res.json(tree satisfies OrgHierarchyNode[]);
 }
 
 /** Eligible supervisors (active Managers + Admins) for the create/edit UI. */

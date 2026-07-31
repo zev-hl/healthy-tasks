@@ -14,6 +14,7 @@ import {
   userCountsController,
   userFilterOptionsController,
   listActiveUsersController,
+  userHierarchyController,
   listSupervisorsController,
   createUserController,
   updateUserController,
@@ -30,6 +31,8 @@ usersRouter.use(requireAuth);
 // Available to any authenticated user (assignee picker). Declared before the
 // admin guard below so it is reached without the Admin role.
 usersRouter.get('/active', asyncHandler(listActiveUsersController));
+// Phase 13: the caller's scoped org hierarchy (also non-admin, self-scoped).
+usersRouter.get('/hierarchy', asyncHandler(userHierarchyController));
 
 // Everything below is admin-only.
 usersRouter.use(requireAdmin);

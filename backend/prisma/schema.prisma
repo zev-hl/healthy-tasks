@@ -159,6 +159,13 @@ model Task {
   startAt DateTime?
   dueAt   DateTime?
 
+  // --- Task-level access control (Phase 13) ---
+  // When true, mention-only access is suspended: the task is visible only to
+  // {Admin, Assignee, Assignee's supervisor chain}. Only an Admin or someone in
+  // the assignee's supervisor chain (never the assignee themselves) may toggle
+  // this. See docs/architecture.md "Task-Level Access Control".
+  isPrivate Boolean @default(false)
+
   // --- Review workflow (Phase 10) ---
   // Populated only while status == Review, cleared when the task leaves Review.
   // reviewInitiator = who sent it to Review (audit/context only). priorAssignee

@@ -8,10 +8,11 @@ import {
   materializeTaskOccurrence,
   setTaskRecurrence,
 } from '../services/task-recurrence.service.js';
+import type { Actor } from '../services/access-control.service.js';
 
-function currentUserId(req: Request): string {
+function currentActor(req: Request): Actor {
   if (!req.user) throw HttpError.unauthorized();
-  return req.user.id;
+  return { id: req.user.id, role: req.user.role };
 }
 
 function parseTaskId(req: Request): number {
@@ -29,7 +30,7 @@ export async function taskGhostsController(_req: Request, res: Response): Promis
 /** PUT /api/tasks/:id/recurrence — set/update this task's recurrence rule. */
 export async function setTaskRecurrenceController(req: Request, res: Response): Promise<void> {
   const result = await setTaskRecurrence(
-    currentUserId(req),
+    currentActor(req),
     parseTaskId(req),
     req.body as SetTaskRecurrenceInput,
   );
@@ -38,12 +39,12 @@ export async function setTaskRecurrenceController(req: Request, res: Response): 
 
 /** DELETE /api/tasks/:id/recurrence — stop this task recurring. */
 export async function clearTaskRecurrenceController(req: Request, res: Response): Promise<void> {
-  res.json((await clearTaskRecurrence(parseTaskId(req))) satisfies TaskDetailDto);
+  res.json((await clearTaskRecurrence(currentActor(req), parseTaskId(req))) satisfies TaskDetailDto);
 }
 
 /** POST /api/tasks/:id/recurrence/materialize — turn one ghost into a real task. */
 export async function materializeTaskOccurrenceController(req: Request, res: Response): Promise<void> {
   const { seq } = req.body as MaterializeGhostInput;
-  const result = await materializeTaskOccurrence(currentUserId(req), parseTaskId(req), seq);
+  const result = await materializeTaskOccurrence(currentActor(req), parseTaskId(req), seq);
   res.status(201).json(result satisfies TaskDetailDto);
 }

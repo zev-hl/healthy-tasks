@@ -114,7 +114,11 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
               </header>
               <div className="kanban-col-body">
                 {column.map((task) => {
-                  const locked = task.status === 'Review';
+                  const inReview = task.status === 'Review';
+                  // Phase 13: mention-only tasks are read-only for Status/dates —
+                  // not draggable — but commenting still works via Task Detail.
+                  const readOnly = task.mentionOnly;
+                  const locked = inReview || readOnly;
                   return (
                     <article
                       key={task.id}
@@ -152,9 +156,17 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                           <UnassignedAvatar size="xs" />
                         )}
                       </div>
-                      {locked && (
+                      {inReview && (
                         <span className="kanban-lock" title="Locked while in Review">
                           🔒
+                        </span>
+                      )}
+                      {readOnly && !inReview && (
+                        <span
+                          className="kanban-lock mention-only-cue"
+                          title="Read-only — you can see this because you're mentioned"
+                        >
+                          👁
                         </span>
                       )}
                     </article>
@@ -171,6 +183,7 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
 
       {pendingReview && (
         <ReviewerPickerModal
+          taskId={pendingReview.id}
           taskRef={`#${pendingReview.id}`}
           taskName={pendingReview.name}
           currentAssignee={pendingReview.assignee ? userLabel(pendingReview.assignee) : null}

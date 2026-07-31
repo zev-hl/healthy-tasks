@@ -4,6 +4,7 @@ import { HttpError } from '../utils/http-error.js';
 import { getStorage } from '../storage/index.js';
 import { getTaskDetail } from './task.service.js';
 import { recordHistory } from './task-history.service.js';
+import { assertCanEditTask, requireTaskAccess } from './access-control.service.js';
 import {
   ATTACHMENT_MAX_BYTES,
   isAllowedAttachmentType,
@@ -51,11 +52,6 @@ function assertValidUpload(contentType: string, size: number): void {
 function safeName(filename: string): string {
   const base = filename.split(/[\\/]/).pop() ?? 'file';
   return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file';
-}
-
-async function assertTaskExists(taskId: number): Promise<void> {
-  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { id: true } });
-  if (!task) throw HttpError.notFound('Task not found');
 }
 
 async function loadComment(commentId: string) {
@@ -107,10 +103,12 @@ async function resolveMetadata(
 // --- Pre-sign (step 1) -----------------------------------------------------
 
 export async function presignTaskUpload(
+  actor: Actor,
   taskId: number,
   input: UploadInput,
 ): Promise<PresignAttachmentResponse> {
-  await assertTaskExists(taskId);
+  // Uploading a task-level attachment is editing the task → full access.
+  await assertCanEditTask(actor, taskId);
   assertValidUpload(input.contentType, input.size);
   const storageKey = `tasks/${taskId}/${randomUUID()}/${safeName(input.filename)}`;
   const uploadUrl = await getStorage().presignUpload(storageKey, input.contentType, input.size);
@@ -140,7 +138,7 @@ export async function createTaskAttachment(
   taskId: number,
   input: ConfirmInput,
 ): Promise<TaskDetailDto> {
-  await assertTaskExists(taskId);
+  await assertCanEditTask(actor, taskId);
   // Guard: the key must be one we minted for THIS task.
   if (!input.storageKey.startsWith(`tasks/${taskId}/`)) {
     throw HttpError.badRequest('storageKey does not belong to this task');
@@ -161,7 +159,7 @@ export async function createTaskAttachment(
       detail: filename,
     });
   });
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 export async function createCommentAttachment(
@@ -192,7 +190,7 @@ export async function createCommentAttachment(
       detail: filename,
     });
   });
-  return getTaskDetail(comment.taskId);
+  return getTaskDetail(comment.taskId, actor);
 }
 
 // --- Delete & download -----------------------------------------------------
@@ -234,17 +232,27 @@ export async function deleteAttachment(
       detail: attachment.filename,
     });
   });
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 export async function getAttachmentDownloadUrl(
+  actor: Actor,
   attachmentId: string,
 ): Promise<AttachmentDownloadResponse> {
   const attachment = await prisma.attachment.findUnique({
     where: { id: attachmentId },
-    select: { storageKey: true, filename: true },
+    select: {
+      storageKey: true,
+      filename: true,
+      taskId: true,
+      comment: { select: { taskId: true } },
+    },
   });
   if (!attachment) throw HttpError.notFound('Attachment not found');
+  // Phase 13: gate download by access to the owning task so a hidden task's
+  // files cannot be fetched by URL.
+  const taskId = attachment.taskId ?? attachment.comment?.taskId ?? null;
+  if (taskId != null) await requireTaskAccess(actor, taskId);
   const url = await getStorage().presignDownload(attachment.storageKey, attachment.filename);
   return { url, filename: attachment.filename };
 }

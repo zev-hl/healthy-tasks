@@ -38,7 +38,7 @@ function idParam(req: Request): string {
 // --- Task attachments ------------------------------------------------------
 
 export async function presignTaskAttachmentController(req: Request, res: Response): Promise<void> {
-  const result = await presignTaskUpload(taskIdParam(req), req.body as PresignAttachmentInput);
+  const result = await presignTaskUpload(actor(req), taskIdParam(req), req.body as PresignAttachmentInput);
   res.status(201).json(result satisfies PresignAttachmentResponse);
 }
 
@@ -85,6 +85,6 @@ export async function deleteAttachmentController(req: Request, res: Response): P
 }
 
 export async function downloadAttachmentController(req: Request, res: Response): Promise<void> {
-  const result = await getAttachmentDownloadUrl(idParam(req));
+  const result = await getAttachmentDownloadUrl(actor(req), idParam(req));
   res.json(result satisfies AttachmentDownloadResponse);
 }

@@ -27,24 +27,30 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   const [editBody, setEditBody] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
-  // Active-user source for @mention autocomplete: fetched once, then filtered
-  // locally. Stable identity so the editor isn't rebuilt on each keystroke.
+  // @mention autocomplete source (Phase 13): the task's mention-candidate pool —
+  // all active users for a normal task, or only its visibility set for a Private
+  // task. Fetched once per task, then filtered locally. Stable identity so the
+  // editor isn't rebuilt on each keystroke.
   const usersRef = useRef<TaskUserRef[] | null>(null);
-  const mentionFetch = useCallback(async (query: string): Promise<TaskUserRef[]> => {
-    if (!usersRef.current) {
-      try {
-        usersRef.current = await api.listActiveUsers();
-      } catch {
-        usersRef.current = [];
+  const taskId = task.id;
+  const mentionFetch = useCallback(
+    async (query: string): Promise<TaskUserRef[]> => {
+      if (!usersRef.current) {
+        try {
+          usersRef.current = await api.getMentionCandidates(taskId);
+        } catch {
+          usersRef.current = [];
+        }
       }
-    }
-    const list = usersRef.current ?? [];
-    const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(
-      (u) => u.email.toLowerCase().includes(q) || (u.title ?? '').toLowerCase().includes(q),
-    );
-  }, []);
+      const list = usersRef.current ?? [];
+      const q = query.trim().toLowerCase();
+      if (!q) return list;
+      return list.filter(
+        (u) => u.email.toLowerCase().includes(q) || (u.title ?? '').toLowerCase().includes(q),
+      );
+    },
+    [taskId],
+  );
 
   const isAuthor = (c: CommentDto) => c.author.id === currentUser.id;
 

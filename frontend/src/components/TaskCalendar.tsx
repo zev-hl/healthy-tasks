@@ -97,14 +97,19 @@ function CalTaskChip({
   return (
     <button
       type="button"
-      className={`cal-chip${posClass}`}
+      className={`cal-chip${posClass}${task.mentionOnly ? ' mention-only' : ''}`}
       style={{ background: pill.bg, color: pill.fg }}
-      title={`#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]}`}
+      title={
+        task.mentionOnly
+          ? `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]} (read-only — you're mentioned)`
+          : `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]}`
+      }
       onClick={() => onOpen(task.id)}
     >
       {mode === 'marker' && <span className="cal-chip-dot" style={{ background: pill.dot }} />}
       <span className="cal-chip-name">
         {mode === 'range' && !single && !isStart ? '▸ ' : ''}
+        {task.mentionOnly ? '👁 ' : ''}
         {task.name}
       </span>
     </button>

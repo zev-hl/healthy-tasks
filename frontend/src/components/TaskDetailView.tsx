@@ -415,6 +415,21 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     });
   }
 
+  // Phase 13: toggle the task's Private flag (Admin / supervisor-chain only).
+  const [privacyBusy, setPrivacyBusy] = useState(false);
+  async function togglePrivate() {
+    if (privacyBusy) return;
+    setPrivacyBusy(true);
+    setError(null);
+    try {
+      applyTask(await api.setTaskPrivate(task.id, !task.isPrivate));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not change privacy');
+    } finally {
+      setPrivacyBusy(false);
+    }
+  }
+
   const nameUnsaved = editingName && nameDraft.trim() !== task.name;
   const descUnsaved = editingDesc && descDraft !== (task.description ?? '');
   useUnsavedChangesWarning(fieldsDirty || nameUnsaved || descUnsaved || commentsDirty);
@@ -431,6 +446,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     isSupervisorAbove(currentUser.id, task.assigneeId);
   const canRecall =
     currentUser.id === task.reviewInitiatorId || currentUser.id === task.priorAssigneeId;
+
+  // Phase 13 access control: full access means editable; comment-only (mention)
+  // access is read-only for every task field — commenting still works.
+  const canEdit = task.access === 'full';
 
   // Staged assignee resolved to a user object for the chip display.
   const assigneeUser =
@@ -456,12 +475,27 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <button type="button" className="secondary btn-sm" disabled={duplicating} onClick={onDuplicateClick}>
           {duplicating ? 'Duplicating…' : 'Duplicate'}
         </button>
+        {task.canTogglePrivate && (
+          <button
+            type="button"
+            className={`secondary btn-sm${task.isPrivate ? ' is-private-on' : ''}`}
+            disabled={privacyBusy}
+            title={
+              task.isPrivate
+                ? 'Private — visible only to the assignee and their supervisor chain. Click to make it visible again.'
+                : 'Make this task private (suspends mention-only access)'
+            }
+            onClick={() => void togglePrivate()}
+          >
+            {task.isPrivate ? '🔒 Private' : 'Make private'}
+          </button>
+        )}
         {currentUser.role === 'Admin' && (
           <button type="button" className="secondary btn-sm" onClick={() => setConfirmDelete(true)}>
             Delete
           </button>
         )}
-        {isInReview ? (
+        {!canEdit ? null : isInReview ? (
           <>
             {canRecall && (
               <button type="button" className="secondary btn-sm" disabled={reviewBusy} onClick={() => void exitReview('recall')}>
@@ -491,6 +525,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {notice && <div className="alert success">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
+      {!canEdit && (
+        <div className="alert info read-only-banner" role="status">
+          👁 You can see this task because you’re mentioned in it. It’s read-only —
+          you can add comments, but not change its fields.
+        </div>
+      )}
 
       {/* Header */}
       <div className={`detail-headerblock${justCompleted ? ' just-completed' : ''}`}>
@@ -509,17 +549,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         ) : (
           <div className="detail-title-row">
             <h1 className="detail-title">{task.name}</h1>
-            <button type="button" className="edit-chip" onClick={() => { setNameDraft(task.name); setEditingName(true); }}>
-              Edit
-            </button>
+            {task.isPrivate && (
+              <span className="badge private-badge" title="Private task">
+                🔒 Private
+              </span>
+            )}
+            {canEdit && (
+              <button type="button" className="edit-chip" onClick={() => { setNameDraft(task.name); setEditingName(true); }}>
+                Edit
+              </button>
+            )}
           </div>
         )}
 
         {/* Property chip row — staged; committed together via "Save changes" */}
         <div className="detail-props">
           <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
-            <StatusPill status={status} caret={!isInReview} />
-            {!isInReview && (
+            <StatusPill status={status} caret={!isInReview && canEdit} />
+            {!isInReview && canEdit && (
               <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
                 {TASK_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -532,14 +579,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
           <span className={`prop-chip${priority !== task.priority ? ' is-dirty' : ''}`}>
             <PriorityRamp priority={priority} label />
-            <span className="prop-caret" aria-hidden="true">▾</span>
-            <select className="prop-overlay-select" value={priority} aria-label="Priority" onChange={(e) => setPriority(e.target.value as TaskPriority)}>
-              {TASK_PRIORITIES.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+            {canEdit && (
+              <>
+                <span className="prop-caret" aria-hidden="true">▾</span>
+                <select className="prop-overlay-select" value={priority} aria-label="Priority" onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+                  {TASK_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </span>
 
           <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
@@ -554,7 +605,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <span className="user-name">Unassigned</span>
               </span>
             )}
-            {!isInReview && (
+            {!isInReview && canEdit && (
               <>
                 <span className="prop-caret" aria-hidden="true">▾</span>
                 <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
@@ -577,33 +628,37 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           {task.tags.map((t) => (
             <span key={t} className="badge tag">
               {t}
-              <button type="button" className="tag-x" onClick={() => removeTag(t)} disabled={tagBusy} aria-label={`Remove tag ${t}`}>
-                ×
-              </button>
+              {canEdit && (
+                <button type="button" className="tag-x" onClick={() => removeTag(t)} disabled={tagBusy} aria-label={`Remove tag ${t}`}>
+                  ×
+                </button>
+              )}
             </span>
           ))}
-          <span className="prop-chip add-tag-chip">
-            + Tag
-            <input
-              className="tag-inline-input"
-              value={tagDraft}
-              onChange={(e) => setTagDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void addTagFromDraft();
-                }
-              }}
-              placeholder="tag…"
-              aria-label="Add a tag"
-              list="detail-tag-list"
-            />
-            <datalist id="detail-tag-list">
-              {availableTags.map((t) => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
-          </span>
+          {canEdit && (
+            <span className="prop-chip add-tag-chip">
+              + Tag
+              <input
+                className="tag-inline-input"
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void addTagFromDraft();
+                  }
+                }}
+                placeholder="tag…"
+                aria-label="Add a tag"
+                list="detail-tag-list"
+              />
+              <datalist id="detail-tag-list">
+                {availableTags.map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            </span>
+          )}
         </div>
 
         {isInReview && (
@@ -624,6 +679,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         )}
 
         {/* Save bar for the staged Status / Priority / Assignee / Due chips */}
+        {canEdit && (
         <div className={`detail-savebar${fieldsDirty ? ' is-dirty' : ''}`} role="status">
           {fieldsDirty ? (
             <span className="savebar-flag unsaved">
@@ -646,6 +702,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             {savingFields ? 'Saving…' : 'Save changes'}
           </button>
         </div>
+        )}
       </div>
 
       {/* Two-pane body */}
@@ -670,7 +727,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <section className="card">
                 <div className="section-head">
                   <h3>Description</h3>
-                  {!editingDesc && (
+                  {!editingDesc && canEdit && (
                     <button type="button" className="edit-chip" onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}>
                       Edit
                     </button>
@@ -707,9 +764,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     </span>
                   )}
                   <div className="spacer" />
-                  <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
-                    + Link
-                  </button>
+                  {canEdit && (
+                    <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
+                      + Link
+                    </button>
+                  )}
                 </div>
                 {task.children.length > 0 && (
                   <div className="subtask-progress" aria-hidden="true">
@@ -770,13 +829,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   value={startDate}
                   onChange={(e) => handleStartDate(e.target.value)}
                   aria-label="Start date"
+                  disabled={!canEdit}
                 />
                 <input
                   type="time"
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
                   aria-label="Start time"
-                  disabled={!startDate}
+                  disabled={!startDate || !canEdit}
                 />
                 {startTime && (
                   <button
@@ -798,13 +858,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   value={dueDate}
                   onChange={(e) => handleDueDate(e.target.value)}
                   aria-label="Due date"
+                  disabled={!canEdit}
                 />
                 <input
                   type="time"
                   value={dueTime}
                   onChange={(e) => setDueTime(e.target.value)}
                   aria-label="Due time"
-                  disabled={!dueDate}
+                  disabled={!dueDate || !canEdit}
                 />
                 {dueTime && (
                   <button
@@ -847,7 +908,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <div className="rel-section">
               <div className="rel-heading">
                 <span>Parent</span>
-                {!task.parent && (
+                {!task.parent && canEdit && (
                   <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('parent')}>
                     + Link
                   </button>
@@ -856,9 +917,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               {task.parent ? (
                 <div className="rel-row">
                   <TaskRefLink task={task.parent} />
-                  <button type="button" className="rel-x" aria-label="Remove parent" onClick={() => runRel(() => api.clearParent(task.id))}>
-                    ×
-                  </button>
+                  {canEdit && (
+                    <button type="button" className="rel-x" aria-label="Remove parent" onClick={() => runRel(() => api.clearParent(task.id))}>
+                      ×
+                    </button>
+                  )}
                 </div>
               ) : (
                 <p className="muted rel-empty">None</p>
@@ -868,9 +931,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <div className="rel-section">
               <div className="rel-heading">
                 <span>Blocked by</span>
-                <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blockedBy')}>
-                  + Link
-                </button>
+                {canEdit && (
+                  <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blockedBy')}>
+                    + Link
+                  </button>
+                )}
               </div>
               {task.isBlockedBy.length === 0 ? (
                 <p className="muted rel-empty">Nothing</p>
@@ -878,9 +943,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 task.isBlockedBy.map((t) => (
                   <div key={t.id} className="rel-row rel-blocked">
                     <TaskRefLink task={t} />
-                    <button type="button" className="rel-x" aria-label={`Remove is-blocked-by #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blockedBy', t.id))}>
-                      ×
-                    </button>
+                    {canEdit && (
+                      <button type="button" className="rel-x" aria-label={`Remove is-blocked-by #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blockedBy', t.id))}>
+                        ×
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -889,9 +956,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <div className="rel-section">
               <div className="rel-heading">
                 <span>Blocks</span>
-                <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blocks')}>
-                  + Link
-                </button>
+                {canEdit && (
+                  <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blocks')}>
+                    + Link
+                  </button>
+                )}
               </div>
               {task.blocks.length === 0 ? (
                 <p className="muted rel-empty">Nothing</p>
@@ -899,9 +968,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 task.blocks.map((t) => (
                   <div key={t.id} className="rel-row">
                     <TaskRefLink task={t} />
-                    <button type="button" className="rel-x" aria-label={`Remove blocks #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blocks', t.id))}>
-                      ×
-                    </button>
+                    {canEdit && (
+                      <button type="button" className="rel-x" aria-label={`Remove blocks #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blocks', t.id))}>
+                        ×
+                      </button>
+                    )}
                   </div>
                 ))
               )}
@@ -923,6 +994,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {pendingReview && (
         <ReviewerPickerModal
+          taskId={task.id}
           taskRef={`#${task.id}`}
           taskName={task.name}
           currentAssignee={task.assignee ? userLabel(task.assignee) : null}

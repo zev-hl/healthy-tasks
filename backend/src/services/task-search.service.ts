@@ -13,7 +13,18 @@ import {
   type TaskSortField,
   type TaskStatus,
 } from '@healthy-tasks/shared';
-import type { TaskDashboardInput, TaskSearchInput } from '../validation/schemas.js';
+import type {
+  DueDateReportInput,
+  TaskDashboardInput,
+  TaskSearchInput,
+} from '../validation/schemas.js';
+import {
+  type Actor,
+  type TaskAccessScope,
+  buildTaskAccessWhere,
+  getTaskAccessScope,
+  isMentionOnly,
+} from './access-control.service.js';
 
 // Hard cap on export size to bound memory (well above realistic result sets).
 const EXPORT_MAX_ROWS = 10000;
@@ -22,7 +33,7 @@ const NEST_MAX_ROWS = 5000;
 
 // --- Row shape & mapping ---------------------------------------------------
 
-const rowInclude = {
+export const rowInclude = {
   creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
   assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
   _count: { select: { children: true } },
@@ -30,13 +41,13 @@ const rowInclude = {
   blockedBy: { select: { blockerId: true } },
 } as const;
 
-type TaskRow = Prisma.TaskGetPayload<{ include: typeof rowInclude }>;
+export type TaskRow = Prisma.TaskGetPayload<{ include: typeof rowInclude }>;
 
 function iso(d: Date | null): string | null {
   return d ? d.toISOString() : null;
 }
 
-function toTaskRowDto(t: TaskRow): TaskRowDto {
+export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
   return {
     id: t.id,
     name: t.name,
@@ -54,6 +65,9 @@ function toTaskRowDto(t: TaskRow): TaskRowDto {
     blockedByIds: t.blockedBy.map((b) => b.blockerId),
     instanceLabel: t.instanceLabel,
     templateId: t.templateId,
+    // Phase 13: this row is visible only via a mention when its assignee is not
+    // in the caller's full-access set (self + downline). Always false for Admin.
+    mentionOnly: isMentionOnly(scope, t.assigneeId),
   };
 }
 
@@ -127,7 +141,9 @@ function relationWhere(rel: 'parent' | 'child' | 'standalone'): Prisma.TaskWhere
   }
 }
 
-async function buildWhere(input: TaskSearchInput | TaskDashboardInput): Promise<Prisma.TaskWhereInput> {
+export async function buildWhere(
+  input: TaskSearchInput | TaskDashboardInput | DueDateReportInput,
+): Promise<Prisma.TaskWhereInput> {
   const and: Prisma.TaskWhereInput[] = [];
   const f = input.filters ?? {};
 
@@ -219,7 +235,9 @@ function mapSort(field: TaskSortField, dir: SortDirection): Prisma.TaskOrderByWi
   }
 }
 
-function buildOrderBy(sort: { field: TaskSortField; dir: SortDirection }[]): Prisma.TaskOrderByWithRelationInput[] {
+export function buildOrderBy(
+  sort: { field: TaskSortField; dir: SortDirection }[],
+): Prisma.TaskOrderByWithRelationInput[] {
   const orderBy = sort.map((s) => mapSort(s.field, s.dir));
   // Default: Due ascending with no-due tasks pinned to the top.
   if (orderBy.length === 0) orderBy.push({ dueAt: { sort: 'asc', nulls: 'first' } });
@@ -230,13 +248,31 @@ function buildOrderBy(sort: { field: TaskSortField; dir: SortDirection }[]): Pri
 
 // --- Public API ------------------------------------------------------------
 
-export async function searchTasks(input: TaskSearchInput): Promise<PaginatedResult<TaskRowDto>> {
-  const where = await buildWhere(input);
+/**
+ * Build the effective WHERE for a multi-task query: the user-supplied filters
+ * (buildWhere) ANDed with the caller's Phase 13 access predicate. Returns the
+ * where plus the scope (needed to flag mention-only rows).
+ */
+export async function scopedTaskWhere(
+  input: TaskSearchInput | TaskDashboardInput,
+  actor: Actor,
+): Promise<{ where: Prisma.TaskWhereInput; scope: TaskAccessScope }> {
+  const scope = await getTaskAccessScope(actor);
+  const base = await buildWhere(input);
+  const accessWhere = buildTaskAccessWhere(scope, actor.id, input.includeMentioned ?? true);
+  return { where: accessWhere ? { AND: [base, accessWhere] } : base, scope };
+}
+
+export async function searchTasks(
+  input: TaskSearchInput,
+  actor: Actor,
+): Promise<PaginatedResult<TaskRowDto>> {
+  const { where, scope } = await scopedTaskWhere(input, actor);
   const orderBy = buildOrderBy(input.sort ?? []);
   const page = input.page ?? 1;
   const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE;
 
-  if (input.nest) return nestedPage(where, orderBy, page, pageSize);
+  if (input.nest) return nestedPage(where, orderBy, page, pageSize, scope);
 
   const [rows, total] = await prisma.$transaction([
     prisma.task.findMany({
@@ -249,7 +285,7 @@ export async function searchTasks(input: TaskSearchInput): Promise<PaginatedResu
     prisma.task.count({ where }),
   ]);
 
-  return { rows: rows.map(toTaskRowDto), total, page, pageSize };
+  return { rows: rows.map((r) => toTaskRowDto(r, scope)), total, page, pageSize };
 }
 
 /**
@@ -264,9 +300,10 @@ async function nestedPage(
   orderBy: Prisma.TaskOrderByWithRelationInput[],
   page: number,
   pageSize: number,
+  scope: TaskAccessScope,
 ): Promise<PaginatedResult<TaskRowDto>> {
   const all = await prisma.task.findMany({ where, orderBy, take: NEST_MAX_ROWS, include: rowInclude });
-  const nested = buildNestedOrder(all.map(toTaskRowDto));
+  const nested = buildNestedOrder(all.map((r) => toTaskRowDto(r, scope)));
   const start = (page - 1) * pageSize;
   return { rows: nested.slice(start, start + pageSize), total: nested.length, page, pageSize };
 }
@@ -305,8 +342,11 @@ function buildNestedOrder(dtos: TaskRowDto[]): TaskRowDto[] {
  * the set (child ∪ parent ∪ standalone = all), and the per-status counts also
  * sum to the total. Overdue and Completed-Today use the caller's clock context.
  */
-export async function getTaskDashboard(input: TaskDashboardInput): Promise<TaskDashboardDto> {
-  const where = await buildWhere(input);
+export async function getTaskDashboard(
+  input: TaskDashboardInput,
+  actor: Actor,
+): Promise<TaskDashboardDto> {
+  const { where } = await scopedTaskWhere(input, actor);
   const and = (extra: Prisma.TaskWhereInput): Prisma.TaskWhereInput => ({ AND: [where, extra] });
 
   // One consistent snapshot so the Parent/Child buckets and status tallies sum
@@ -337,8 +377,11 @@ export async function getTaskDashboard(input: TaskDashboardInput): Promise<TaskD
 }
 
 /** Same query as searchTasks but unpaginated (capped) — for Excel export. */
-export async function searchTasksForExport(input: TaskSearchInput): Promise<TaskRowDto[]> {
-  const where = await buildWhere(input);
+export async function searchTasksForExport(
+  input: TaskSearchInput,
+  actor: Actor,
+): Promise<TaskRowDto[]> {
+  const { where, scope } = await scopedTaskWhere(input, actor);
   const orderBy = buildOrderBy(input.sort ?? []);
   const rows = await prisma.task.findMany({
     where,
@@ -346,5 +389,8 @@ export async function searchTasksForExport(input: TaskSearchInput): Promise<Task
     take: EXPORT_MAX_ROWS,
     include: rowInclude,
   });
-  return rows.map(toTaskRowDto);
+  return rows.map((r) => toTaskRowDto(r, scope));
 }
+
+/** The export row cap, reused by the report service. */
+export const REPORT_MAX_ROWS = EXPORT_MAX_ROWS;

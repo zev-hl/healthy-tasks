@@ -19,16 +19,30 @@ import {
   type TaskWithDetail,
 } from './task.mapper.js';
 import {
+  type Actor,
+  assertAssigneeAllowed,
+  assertCanEditTask,
+  buildTaskAccessWhere,
+  canTogglePrivate,
+  computeTaskAccess,
+  getMentionCandidateIds,
+  getReviewerCandidateIds,
+  getTaskAccessScope,
+  isInSupervisorChain,
+} from './access-control.service.js';
+import {
   BLOCKED_RESTRICTED_STATUSES,
   DEFAULT_TASK_STATUS,
   TASK_HISTORY_FIELDS,
   TASK_STATUS_LABELS,
   TERMINAL_TASK_STATUSES,
+  type ActiveUserDto,
   type Role,
   type TaskDetailDto,
   type TaskDto,
   type TaskStatus,
 } from '@healthy-tasks/shared';
+import { toActiveUserDto } from './user.mapper.js';
 
 /**
  * Normalize a Description value: `undefined` = leave unchanged (PATCH), `null` =
@@ -83,18 +97,21 @@ async function assertStatusAllowedByPredecessors(
   }
 }
 
-export async function createTask(creatorId: string, input: CreateTaskInput): Promise<TaskDto> {
-  if (input.assigneeId) {
-    await assertValidAssignee(input.assigneeId);
-  }
+export async function createTask(actor: Actor, input: CreateTaskInput): Promise<TaskDto> {
+  // Assignee is always required (Phase 13). A creator who names none defaults to
+  // being their own assignee — the natural case for a Member self-assigning.
+  const assigneeId = input.assigneeId ?? actor.id;
+  await assertValidAssignee(assigneeId);
+  // Enforce who this actor may assign to (Member/Manager/Admin scopes).
+  await assertAssigneeAllowed(actor, assigneeId);
   assertStartBeforeDue(input.startAt ?? null, input.dueAt ?? null);
 
   const task = await prisma.task.create({
     data: {
       name: input.name,
       description: cleanDescription(input.description) ?? null,
-      creatorId,
-      assigneeId: input.assigneeId ?? null,
+      creatorId: actor.id,
+      assigneeId,
       // priority/status fall back to the schema defaults (Medium / Open) when omitted.
       ...(input.priority ? { priority: input.priority } : {}),
       ...(input.status ? { status: input.status } : {}),
@@ -112,7 +129,7 @@ export async function createTask(creatorId: string, input: CreateTaskInput): Pro
   if (task.assigneeId) {
     await createAssignedNotification({
       recipientId: task.assigneeId,
-      actorId: creatorId,
+      actorId: actor.id,
       taskId: task.id,
       action: 'added',
     });
@@ -133,10 +150,16 @@ export async function listAllTags(): Promise<string[]> {
   return rows.map((r) => r.tag).filter((t) => t.length > 0);
 }
 
-export async function listTasks(): Promise<TaskDto[]> {
-  // Phase 2 scaffolding: return everything, newest first. Replaced by the real
-  // Search screen (filters/sort/pagination) in Phase 6.
-  const tasks = await prisma.task.findMany({ include: taskInclude, orderBy: { id: 'desc' } });
+export async function listTasks(actor: Actor): Promise<TaskDto[]> {
+  // Phase 2 scaffolding: newest first, scoped to the caller's access (Phase 13).
+  // The real Search screen (Phase 6) is the primary list surface.
+  const scope = await getTaskAccessScope(actor);
+  const accessWhere = buildTaskAccessWhere(scope, actor.id, true);
+  const tasks = await prisma.task.findMany({
+    where: accessWhere ?? {},
+    include: taskInclude,
+    orderBy: { id: 'desc' },
+  });
   return tasks.map((t) => toTaskDto(t as TaskWithRefs));
 }
 
@@ -146,11 +169,26 @@ export async function getTask(id: number): Promise<TaskDto> {
   return toTaskDto(task as TaskWithRefs);
 }
 
-/** Full task view with relationships (parent, children, blocks, isBlockedBy). */
-export async function getTaskDetail(id: number): Promise<TaskDetailDto> {
+/**
+ * Full task view with relationships (parent, children, blocks, isBlockedBy),
+ * scoped to the requesting user (Phase 13). Throws 404 if `actor` has no access
+ * — a hidden task is indistinguishable from a missing one. The returned DTO
+ * carries the actor's live access level and whether they may toggle Private.
+ */
+export async function getTaskDetail(id: number, actor: Actor): Promise<TaskDetailDto> {
   const task = await prisma.task.findUnique({ where: { id }, include: taskDetailInclude });
   if (!task) throw HttpError.notFound('Task not found');
-  return toTaskDetailDto(task as unknown as TaskWithDetail);
+  const level = await computeTaskAccess(actor, {
+    id: task.id,
+    assigneeId: task.assigneeId,
+    isPrivate: task.isPrivate,
+  });
+  if (!level) throw HttpError.notFound('Task not found');
+  const toggle = await canTogglePrivate(actor, task.assigneeId);
+  return toTaskDetailDto(task as unknown as TaskWithDetail, {
+    level,
+    canTogglePrivate: toggle,
+  });
 }
 
 /** Internal options for the two review-exit call sites; never set by HTTP callers. */
@@ -166,16 +204,48 @@ interface UpdateTaskOptions {
 }
 
 export async function updateTask(
-  actorId: string,
+  actor: Actor,
   id: number,
   input: UpdateTaskInput,
   opts: UpdateTaskOptions = {},
 ): Promise<TaskDto> {
+  const actorId = actor.id;
   const existing = await prisma.task.findUnique({ where: { id } });
   if (!existing) throw HttpError.notFound('Task not found');
 
+  // Access gate (Phase 13): editing a task requires FULL access. A user with no
+  // access gets 404 (existence hidden); a mention-only user gets 403 (read-only).
+  // Skipped for the sanctioned review-exit calls, which are permission-checked in
+  // exitReview and only restore prior state.
+  if (!opts.allowReviewExit) {
+    const level = await computeTaskAccess(actor, {
+      id: existing.id,
+      assigneeId: existing.assigneeId,
+      isPrivate: existing.isPrivate,
+    });
+    if (!level) throw HttpError.notFound('Task not found');
+    if (level !== 'full') {
+      throw HttpError.forbidden('You have read-only (comment-only) access to this task');
+    }
+  }
+
   const inReview = existing.status === 'Review';
   const enteringReview = input.status === 'Review' && existing.status !== 'Review';
+
+  // Assignee locking (Phase 13): while a task is Completed or Cancelled its
+  // Assignee is frozen for EVERYONE, including Admin — so the Due Date report can
+  // trust "current Assignee" for terminal tasks. Reopening (moving Status away
+  // from terminal, no assignee change in the same PATCH) unlocks it again.
+  const assigneeChanging = input.assigneeId !== undefined && input.assigneeId !== existing.assigneeId;
+  if (
+    !opts.allowReviewExit &&
+    TERMINAL_TASK_STATUSES.includes(existing.status) &&
+    (assigneeChanging || enteringReview)
+  ) {
+    throw HttpError.badRequest(
+      'Assignee cannot be changed while a task is Completed or Cancelled; reopen it first',
+    );
+  }
 
   // Review lock (Phase 10): while a task is in Review, its Status and Assignee
   // are frozen. The only sanctioned exits are the Reviewed / Recall-from-Review
@@ -206,10 +276,21 @@ export async function updateTask(
       throw HttpError.badRequest('A reviewer is required to send a task to Review');
     }
     await assertValidAssignee(input.reviewerId);
+    // Phase 13: the reviewer-selection pool is Admin(s) + anyone in the current
+    // assignee's supervisor chain — narrower than, and separate from, the
+    // "who can click Reviewed" permission enforced in exitReview.
+    const reviewerPool = await getReviewerCandidateIds(existing.assigneeId);
+    if (!reviewerPool.has(input.reviewerId)) {
+      throw HttpError.forbidden(
+        'A reviewer must be an administrator or a supervisor above the current assignee',
+      );
+    }
   } else if (input.assigneeId && !opts.allowReviewExit) {
     // On a review-exit restore we deliberately skip the active check so a task
     // can still return to a since-deactivated prior assignee.
     await assertValidAssignee(input.assigneeId);
+    // Phase 13: enforce the assignment restriction on any reassignment.
+    if (assigneeChanging) await assertAssigneeAllowed(actor, input.assigneeId);
   }
 
   // Validate Start < Due using the values that WILL be in effect after this
@@ -338,28 +419,67 @@ export async function updateTask(
 }
 
 /**
- * Walk the supervisor chain upward from `subordinateId`; true if `actorId`
- * appears at any level above them. Cycle-guarded with a visited set.
+ * Toggle a task's Private flag (Phase 13). Permission is DIFFERENT from ordinary
+ * editing: only an Admin or someone in the Assignee's supervisor chain may flip
+ * it — never the Assignee themselves. Turning Private on immediately suspends any
+ * mention-only access; turning it off restores it (both are live-computed, so no
+ * extra work is needed here beyond flipping the flag).
  */
-async function isSupervisorAtAnyLevel(
-  actorId: string,
-  subordinateId: string | null,
-): Promise<boolean> {
-  const visited = new Set<string>();
-  let currentId = subordinateId;
-  while (currentId) {
-    if (visited.has(currentId)) break;
-    visited.add(currentId);
-    const current = await prisma.user.findUnique({
-      where: { id: currentId },
-      select: { supervisorId: true },
-    });
-    const supId = current?.supervisorId ?? null;
-    if (!supId) break;
-    if (supId === actorId) return true;
-    currentId = supId;
+export async function setTaskPrivate(
+  actor: Actor,
+  id: number,
+  isPrivate: boolean,
+): Promise<TaskDetailDto> {
+  const task = await prisma.task.findUnique({
+    where: { id },
+    select: { id: true, assigneeId: true },
+  });
+  if (!task) throw HttpError.notFound('Task not found');
+  if (!(await canTogglePrivate(actor, task.assigneeId))) {
+    throw HttpError.forbidden(
+      'Only an administrator or a supervisor above the assignee can change privacy',
+    );
   }
-  return false;
+  await prisma.task.update({ where: { id }, data: { isPrivate } });
+  return getTaskDetail(id, actor);
+}
+
+/**
+ * The users who may be @mentioned on this task (Phase 13). A non-private task
+ * offers all active users; a Private task restricts to its visibility set
+ * {Admin(s), Assignee, Assignee's supervisor chain} so mentions cannot reach
+ * outside it. The caller must already have view access to the task.
+ */
+export async function listMentionCandidates(taskId: number): Promise<ActiveUserDto[]> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { assigneeId: true, isPrivate: true },
+  });
+  if (!task) throw HttpError.notFound('Task not found');
+  const allowed = await getMentionCandidateIds(task);
+  const where =
+    allowed === null ? { isActive: true } : { isActive: true, id: { in: [...allowed] } };
+  const users = await prisma.user.findMany({ where, orderBy: { email: 'asc' } });
+  return users.map(toActiveUserDto);
+}
+
+/**
+ * The reviewer-selection pool for this task (Phase 13): Admin(s) plus anyone in
+ * the current Assignee's supervisor chain. Narrower than, and separate from, the
+ * "who can click Reviewed" permission.
+ */
+export async function listReviewerCandidates(taskId: number): Promise<ActiveUserDto[]> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { assigneeId: true },
+  });
+  if (!task) throw HttpError.notFound('Task not found');
+  const allowed = await getReviewerCandidateIds(task.assigneeId);
+  const users = await prisma.user.findMany({
+    where: { isActive: true, id: { in: [...allowed] } },
+    orderBy: { email: 'asc' },
+  });
+  return users.map(toActiveUserDto);
 }
 
 /**
@@ -386,7 +506,7 @@ export async function exitReview(
     const allowed =
       actor.role === 'Admin' ||
       actor.id === task.assigneeId ||
-      (await isSupervisorAtAnyLevel(actor.id, task.assigneeId));
+      (await isInSupervisorChain(actor.id, task.assigneeId));
     if (!allowed) {
       throw HttpError.forbidden(
         'Only an admin, the current assignee, or a supervisor above them can mark this reviewed',
@@ -402,7 +522,7 @@ export async function exitReview(
   }
 
   await updateTask(
-    actor.id,
+    actor,
     id,
     { status: task.priorStatus ?? DEFAULT_TASK_STATUS, assigneeId: task.priorAssigneeId },
     {
@@ -411,7 +531,7 @@ export async function exitReview(
     },
   );
 
-  return getTaskDetail(id);
+  return getTaskDetail(id, actor);
 }
 
 /** Look up emails for a set of (possibly null/duplicate) user ids. */
@@ -491,10 +611,13 @@ async function collectSubtreeIds(rootId: number): Promise<number[]> {
  * of the original (same parent). Returns the new root task.
  */
 export async function duplicateTask(
-  actorId: string,
+  actor: Actor,
   rootId: number,
   includeDescendants: boolean,
 ): Promise<TaskDetailDto> {
+  const actorId = actor.id;
+  // Cloning requires full (edit) access to the source task.
+  await assertCanEditTask(actor, rootId);
   const root = await prisma.task.findUnique({ where: { id: rootId }, select: { id: true, parentId: true } });
   if (!root) throw HttpError.notFound('Task not found');
 
@@ -557,5 +680,5 @@ export async function duplicateTask(
     }
   }
 
-  return getTaskDetail(idMap.get(rootId)!);
+  return getTaskDetail(idMap.get(rootId)!, actor);
 }

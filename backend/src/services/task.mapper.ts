@@ -1,6 +1,7 @@
 import type { Task, TaskRecurrence, User } from '@prisma/client';
 import type {
   RecurrenceType,
+  TaskAccessLevel,
   TaskDto,
   TaskDetailDto,
   TaskRecurrenceDto,
@@ -98,6 +99,7 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     status: task.status,
     statusChangedAt: task.statusChangedAt?.toISOString() ?? null,
     tags: task.tags,
+    isPrivate: task.isPrivate,
     startAt: task.startAt?.toISOString() ?? null,
     dueAt: task.dueAt?.toISOString() ?? null,
     createdAt: task.createdAt.toISOString(),
@@ -116,9 +118,17 @@ export function toTaskRef(task: Pick<Task, 'id' | 'name' | 'status'>): TaskRef {
   return { id: task.id, name: task.name, status: task.status };
 }
 
-export function toTaskDetailDto(task: TaskWithDetail): TaskDetailDto {
+/** The requesting user's live access to the task, attached to the detail DTO. */
+export interface TaskAccessContext {
+  level: TaskAccessLevel;
+  canTogglePrivate: boolean;
+}
+
+export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext): TaskDetailDto {
   return {
     ...toTaskDto(task),
+    access: access.level,
+    canTogglePrivate: access.canTogglePrivate,
     parent: task.parent ? toTaskRef(task.parent) : null,
     children: task.children.map(toTaskRef),
     // `blocking` edges → the tasks this one blocks; `blockedBy` edges → predecessors.

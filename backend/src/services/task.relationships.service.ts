@@ -5,6 +5,7 @@ import { TASK_HISTORY_FIELDS, type DependencyType, type TaskDetailDto, type Task
 import { getTaskDetail } from './task.service.js';
 import { toTaskRef } from './task.mapper.js';
 import { recordHistory, type HistoryEntryInput } from './task-history.service.js';
+import { type Actor, assertCanEditTask } from './access-control.service.js';
 
 // Phase 5: each relationship add/remove is a discrete auditable event, recorded
 // via the central recordHistory helper inside the same transaction as the write.
@@ -66,11 +67,12 @@ async function wouldCreateAncestryCycle(
 }
 
 export async function setParent(
-  actorId: string,
+  actor: Actor,
   taskId: number,
   parentId: number,
 ): Promise<TaskDetailDto> {
-  await assertTaskExists(taskId, 'Task');
+  const actorId = actor.id;
+  await assertCanEditTask(actor, taskId);
   if (parentId === taskId) {
     throw HttpError.badRequest('A task cannot be its own parent');
   }
@@ -111,11 +113,12 @@ export async function setParent(
     await recordHistory(tx, entries);
   });
 
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
-export async function clearParent(actorId: string, taskId: number): Promise<TaskDetailDto> {
-  await assertTaskExists(taskId, 'Task');
+export async function clearParent(actor: Actor, taskId: number): Promise<TaskDetailDto> {
+  const actorId = actor.id;
+  await assertCanEditTask(actor, taskId);
   await prisma.$transaction(async (tx) => {
     const current = await tx.task.findUnique({ where: { id: taskId }, select: { parentId: true } });
     if (current?.parentId == null) return; // nothing to clear → no history
@@ -128,7 +131,7 @@ export async function clearParent(actorId: string, taskId: number): Promise<Task
       detail: await taskLabel(tx, current.parentId),
     });
   });
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 // --- Dependencies (Blocks / Is Blocked By) ---------------------------------
@@ -207,12 +210,13 @@ async function dependencyEntries(
 }
 
 export async function addDependency(
-  actorId: string,
+  actor: Actor,
   taskId: number,
   type: DependencyType,
   otherTaskId: number,
 ): Promise<TaskDetailDto> {
-  await assertTaskExists(taskId, 'Task');
+  const actorId = actor.id;
+  await assertCanEditTask(actor, taskId);
   await assertTaskExists(otherTaskId, 'Task');
 
   const { blockerId, blockedId } = resolveEdge(taskId, type, otherTaskId);
@@ -238,16 +242,17 @@ export async function addDependency(
     }
   });
 
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 export async function removeDependency(
-  actorId: string,
+  actor: Actor,
   taskId: number,
   type: DependencyType,
   otherTaskId: number,
 ): Promise<TaskDetailDto> {
-  await assertTaskExists(taskId, 'Task');
+  const actorId = actor.id;
+  await assertCanEditTask(actor, taskId);
   const { blockerId, blockedId } = resolveEdge(taskId, type, otherTaskId);
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.taskDependency.deleteMany({ where: { blockerId, blockedId } });
@@ -255,7 +260,7 @@ export async function removeDependency(
       await recordHistory(tx, await dependencyEntries(tx, actorId, blockerId, blockedId, 'removed'));
     }
   });
-  return getTaskDetail(taskId);
+  return getTaskDetail(taskId, actor);
 }
 
 // --- Search (for the add-relationship popup) -------------------------------

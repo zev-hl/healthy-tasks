@@ -4,6 +4,8 @@ import { api } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
 
 interface Props {
+  /** Task whose reviewer pool to load (Admin + the assignee's supervisor chain). */
+  taskId: number;
   /** Task ref for the subtitle, e.g. "#482". */
   taskRef?: string;
   /** Context for the subtitle, e.g. the task name. */
@@ -18,13 +20,15 @@ interface Props {
 }
 
 /**
- * Reviewer selection popup (Phase 10). Shown whenever a task's Status is set to
- * Review — from the Task Detail Status field or a Kanban drop into Review. Lists
- * every user (no restriction for now); the chosen reviewer becomes the task's
- * temporary assignee, and a preview spells out what will be restored later.
- * Reused by both entry points.
+ * Reviewer selection popup (Phase 10, scoped in Phase 13). Shown whenever a
+ * task's Status is set to Review — from the Task Detail Status field or a Kanban
+ * drop into Review. Lists only the eligible reviewer pool for THIS task (Admin +
+ * the current assignee's supervisor chain); the chosen reviewer becomes the
+ * task's temporary assignee, and a preview spells out what will be restored
+ * later. Reused by both entry points.
  */
 export function ReviewerPickerModal({
+  taskId,
   taskRef,
   taskName,
   currentAssignee,
@@ -41,7 +45,7 @@ export function ReviewerPickerModal({
   useEffect(() => {
     let cancelled = false;
     void api
-      .listActiveUsers()
+      .getReviewerCandidates(taskId)
       .then((u) => {
         if (!cancelled) setUsers(u);
       })
@@ -52,7 +56,7 @@ export function ReviewerPickerModal({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [taskId]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

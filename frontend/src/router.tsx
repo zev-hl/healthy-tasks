@@ -38,6 +38,9 @@ const MyGoalsPage = lazy(() => import('./pages/MyGoalsPage').then((m) => ({ defa
 const TeamGoalsPage = lazy(() =>
   import('./pages/TeamGoalsPage').then((m) => ({ default: m.TeamGoalsPage })),
 );
+const DueDatePerformancePage = lazy(() =>
+  import('./pages/DueDatePerformancePage').then((m) => ({ default: m.DueDatePerformancePage })),
+);
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
@@ -81,6 +84,7 @@ export const router = createBrowserRouter([
           { path: '/tasks/:id', element: <TaskDetailPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
           { path: '/profile', element: <ProfilePage /> },
+          { path: '/reports/due-date', element: <DueDatePerformancePage /> },
           { path: '/goals', element: <MyGoalsPage /> },
           {
             path: '/goals/team',

@@ -886,7 +886,9 @@ describe('blocked-status rule', () => {
 
   it('allows Review/Completed once every predecessor is terminal', async () => {
     const tok = await adminToken();
-    const reviewer = await seedUser({ email: 'rev-blocked@test.local', role: 'Member' });
+    // Reviewer must be in the task's reviewer pool (Phase 13): the task is admin-
+    // assigned, so an Admin reviewer qualifies.
+    const reviewer = await seedUser({ email: 'rev-blocked@test.local', role: 'Admin' });
     const { pred, task } = await taskBlockedBy(tok);
 
     const done = await request(app)
@@ -901,6 +903,10 @@ describe('blocked-status rule', () => {
       .set(auth(tok))
       .send({ status: 'Completed' });
     assert.equal(completed.status, 200);
+
+    // Reopen first: Phase 13 assignee-locking freezes the assignee while a task
+    // is Completed, and entering Review reassigns to the reviewer.
+    await request(app).patch(`/api/tasks/${task.id}`).set(auth(tok)).send({ status: 'Open' });
 
     // Review is allowed too — entering Review now requires a reviewer (Phase 10).
     const review = await request(app)
@@ -1035,7 +1041,7 @@ describe('task attachments (Phase 4)', () => {
       role: 'Manager',
       password: MEMBER_PASSWORD,
     });
-    await seedUser({
+    const memB = await seedUser({
       email: 'memB@test.local',
       role: 'Member',
       password: MEMBER_PASSWORD,
@@ -1045,7 +1051,9 @@ describe('task attachments (Phase 4)', () => {
     const memberTok = await login('memB@test.local', MEMBER_PASSWORD);
     const outsiderTok = await login('memC@test.local', MEMBER_PASSWORD);
     const managerTok = await login('mgrA@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'Perm');
+    // Phase 13: assign to memB so the uploader (and their supervisor) have full
+    // access to upload/delete; memC stays an outsider with no access.
+    const t = await makeTask(admin, 'Perm', { assigneeId: memB.id });
 
     const makeAtt = async (): Promise<string> => {
       const c = await attachToTask(memberTok, t.id, { filename: 'm.png' });
@@ -1074,11 +1082,13 @@ describe('task attachments (Phase 4)', () => {
 describe('task comments (Phase 4)', () => {
   it('adds, edits (sets edited), and blocks non-author edit/delete', async () => {
     const admin = await adminToken();
-    await seedUser({ email: 'author@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const author = await seedUser({ email: 'author@test.local', role: 'Member', password: MEMBER_PASSWORD });
     await seedUser({ email: 'other@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const authorTok = await login('author@test.local', MEMBER_PASSWORD);
     const otherTok = await login('other@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'Commented');
+    // Phase 13: the author is the assignee, so they have access to comment; the
+    // "non-author" (other) is blocked by the author-only check regardless.
+    const t = await makeTask(admin, 'Commented', { assigneeId: author.id });
 
     const add = await request(app)
       .post(`/api/tasks/${t.id}/comments`)
@@ -1118,11 +1128,11 @@ describe('task comments (Phase 4)', () => {
 
   it('restricts comment attachments to the comment author', async () => {
     const admin = await adminToken();
-    await seedUser({ email: 'ca@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const ca = await seedUser({ email: 'ca@test.local', role: 'Member', password: MEMBER_PASSWORD });
     await seedUser({ email: 'cb@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const aTok = await login('ca@test.local', MEMBER_PASSWORD);
     const bTok = await login('cb@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'CommentAtt');
+    const t = await makeTask(admin, 'CommentAtt', { assigneeId: ca.id });
     const add = await request(app)
       .post(`/api/tasks/${t.id}/comments`)
       .set(auth(aTok))
@@ -1163,9 +1173,9 @@ describe('comment @mentions and mention events (Phase 4)', () => {
       role: 'Member',
       password: MEMBER_PASSWORD,
     });
-    await seedUser({ email: 'mauthor@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const mauthor = await seedUser({ email: 'mauthor@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const authorTok = await login('mauthor@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'Mentions');
+    const t = await makeTask(admin, 'Mentions', { assigneeId: mauthor.id });
     const span = mention(mentioned.id, 'mentioned');
 
     // New mention → one event and one CommentMention row.
@@ -1222,9 +1232,9 @@ describe('comment @mentions and mention events (Phase 4)', () => {
       role: 'Member',
       password: MEMBER_PASSWORD,
     });
-    await seedUser({ email: 'm3@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const m3 = await seedUser({ email: 'm3@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const authorTok = await login('m3@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'MentionsAdd');
+    const t = await makeTask(admin, 'MentionsAdd', { assigneeId: m3.id });
 
     const add = await request(app)
       .post(`/api/tasks/${t.id}/comments`)
@@ -1438,9 +1448,9 @@ describe('task change history (Phase 5)', () => {
 
   it('logs comment add/edit/delete (by the author) without storing the text', async () => {
     const admin = await adminToken();
-    await seedUser({ email: 'cauth@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const cauth = await seedUser({ email: 'cauth@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const authorTok = await login('cauth@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'Cmt hist');
+    const t = await makeTask(admin, 'Cmt hist', { assigneeId: cauth.id });
 
     const add = await request(app)
       .post(`/api/tasks/${t.id}/comments`)
@@ -1463,9 +1473,10 @@ describe('task change history (Phase 5)', () => {
 
   it('is visible to any authenticated user with access to the task', async () => {
     const admin = await adminToken();
-    await seedUser({ email: 'viewer@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const viewer = await seedUser({ email: 'viewer@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const viewerTok = await login('viewer@test.local', MEMBER_PASSWORD);
-    const t = await makeTask(admin, 'Shared');
+    // Phase 13: the viewer needs access — make them the assignee (Admin still edits).
+    const t = await makeTask(admin, 'Shared', { assigneeId: viewer.id });
     await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'InProgress' });
     const res = await request(app).get(`/api/tasks/${t.id}/history`).set(auth(viewerTok));
     assert.equal(res.status, 200);
@@ -2363,8 +2374,13 @@ describe('review workflow (Phase 10)', () => {
   it('sends a task to Review: reviewer becomes assignee; prior values stored', async () => {
     const tok = await adminToken();
     const admin = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
-    const assignee = await seedUser({ email: 'rw-assignee@test.local', role: 'Member' });
-    const reviewer = await seedUser({ email: 'rw-reviewer@test.local', role: 'Member' });
+    // Phase 13: the reviewer must be in the assignee's supervisor chain (or Admin).
+    const reviewer = await seedUser({ email: 'rw-reviewer@test.local', role: 'Manager' });
+    const assignee = await seedUser({
+      email: 'rw-assignee@test.local',
+      role: 'Member',
+      supervisorId: reviewer.id,
+    });
     const t = await makeTask(tok, 'Needs review', {
       assigneeId: assignee.id,
       status: 'InProgress',
@@ -2404,7 +2420,8 @@ describe('review workflow (Phase 10)', () => {
 
   it('locks Status and Assignee while in Review (other fields still editable)', async () => {
     const tok = await adminToken();
-    const reviewer = await seedUser({ email: 'lock-reviewer@test.local', role: 'Member' });
+    // Admin-assigned task → reviewer pool is the admins; use an Admin reviewer.
+    const reviewer = await seedUser({ email: 'lock-reviewer@test.local', role: 'Admin' });
     const other = await seedUser({ email: 'lock-other@test.local', role: 'Member' });
     const t = await makeTask(tok, 'Locked task');
     await request(app)
@@ -2434,8 +2451,12 @@ describe('review workflow (Phase 10)', () => {
 
   it('Reviewed restores prior assignee + status and clears review fields (detail "Reviewed")', async () => {
     const tok = await adminToken();
-    const assignee = await seedUser({ email: 'rev-restore@test.local', role: 'Member' });
-    const reviewer = await seedUser({ email: 'rev-who@test.local', role: 'Member' });
+    const reviewer = await seedUser({ email: 'rev-who@test.local', role: 'Manager' });
+    const assignee = await seedUser({
+      email: 'rev-restore@test.local',
+      role: 'Member',
+      supervisorId: reviewer.id,
+    });
     const t = await makeTask(tok, 'To review', { assigneeId: assignee.id, status: 'OnHold' });
     await request(app)
       .patch(`/api/tasks/${t.id}`)
@@ -2460,17 +2481,25 @@ describe('review workflow (Phase 10)', () => {
 
   it('Reviewed permission: reviewer (current assignee) ok; unrelated member 403', async () => {
     const tok = await adminToken();
+    // Reviewer is the assignee's supervisor (so they're in the reviewer pool);
+    // once in Review they become the current assignee and may click Reviewed.
     const reviewer = await seedUser({
       email: 'perm-reviewer@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
+    const worker = await seedUser({
+      email: 'perm-worker@test.local',
       role: 'Member',
       password: MEMBER_PASSWORD,
+      supervisorId: reviewer.id,
     });
     const outsider = await seedUser({
       email: 'perm-out@test.local',
       role: 'Member',
       password: MEMBER_PASSWORD,
     });
-    const t = await makeTask(tok, 'Perm task');
+    const t = await makeTask(tok, 'Perm task', { assigneeId: worker.id });
     await request(app)
       .patch(`/api/tasks/${t.id}`)
       .set(auth(tok))
@@ -2497,13 +2526,20 @@ describe('review workflow (Phase 10)', () => {
       role: 'Manager',
       supervisorId: top.id,
     });
-    // The reviewer (current assignee during review) reports to mid → top.
+    // The reviewer (current assignee during review) reports to mid → top, and in
+    // turn supervises the worker who holds the task, so the reviewer is a valid
+    // pick (in the worker's supervisor chain).
     const reviewer = await seedUser({
       email: 'sup-reviewer@test.local',
-      role: 'Member',
+      role: 'Manager',
       supervisorId: mid.id,
     });
-    const t = await makeTask(tok, 'Chain task');
+    const worker = await seedUser({
+      email: 'sup-worker@test.local',
+      role: 'Member',
+      supervisorId: reviewer.id,
+    });
+    const t = await makeTask(tok, 'Chain task', { assigneeId: worker.id });
     await request(app)
       .patch(`/api/tasks/${t.id}`)
       .set(auth(tok))
@@ -2525,7 +2561,9 @@ describe('review workflow (Phase 10)', () => {
       role: 'Member',
       password: MEMBER_PASSWORD,
     });
-    const reviewer = await seedUser({ email: 'rec-reviewer@test.local', role: 'Member' });
+    // Admin-assigned pool → Admin reviewer; recall permission is about the
+    // initiator / prior assignee, not the reviewer's role.
+    const reviewer = await seedUser({ email: 'rec-reviewer@test.local', role: 'Admin' });
     const outsider = await seedUser({
       email: 'rec-out@test.local',
       role: 'Member',
@@ -2558,7 +2596,7 @@ describe('review workflow (Phase 10)', () => {
 
   it('the Review initiator can also recall', async () => {
     const tok = await adminToken();
-    const reviewer = await seedUser({ email: 'rec2-reviewer@test.local', role: 'Member' });
+    const reviewer = await seedUser({ email: 'rec2-reviewer@test.local', role: 'Admin' });
     const t = await makeTask(tok, 'Initiator recall', { status: 'InProgress' });
     await request(app)
       .patch(`/api/tasks/${t.id}`)
@@ -3924,5 +3962,294 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
       .set(auth(admin))
       .send({ seq: 2 });
     assert.equal(dupClick.status, 409, 'click-through after the scheduler is rejected');
+  });
+});
+
+// --- Phase 13: Task-Level Access Control + Due Date Performance Report ------
+
+describe('Phase 13: task-level access control', () => {
+  const PW = 'AccessPass123!';
+
+  function mentionSpan(userId: string, label = 'u'): string {
+    return `<span data-type="mention" data-id="${userId}">@${label}</span>`;
+  }
+  const getTask = (token: string, id: number) =>
+    request(app).get(`/api/tasks/${id}`).set(auth(token));
+  const addComment = (token: string, id: number, body: string) =>
+    request(app).post(`/api/tasks/${id}/comments`).set(auth(token)).send({ body });
+
+  it('full access = Admin, current Assignee, or a supervisor above them; others 404', async () => {
+    const admin = await adminToken();
+    const mgr = await seedUser({ email: 'fa-mgr@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 'fa-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    await seedUser({ email: 'fa-out@test.local', role: 'Member', password: PW });
+    const empTok = await login('fa-emp@test.local', PW);
+    const mgrTok = await login('fa-mgr@test.local', PW);
+    const outTok = await login('fa-out@test.local', PW);
+    const t = await makeTask(admin, 'Access task', { assigneeId: emp.id });
+
+    assert.equal((await getTask(empTok, t.id)).status, 200, 'assignee sees it');
+    assert.equal((await getTask(mgrTok, t.id)).status, 200, 'supervisor sees it');
+    assert.equal((await getTask(admin, t.id)).status, 200, 'admin sees it');
+    assert.equal((await getTask(outTok, t.id)).status, 404, 'unrelated member cannot');
+  });
+
+  it('recomputes access LIVE when the assignee supervisor changes', async () => {
+    const admin = await adminToken();
+    const mgrA = await seedUser({ email: 'lv-a@test.local', role: 'Manager', password: PW });
+    const mgrB = await seedUser({ email: 'lv-b@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 'lv-emp@test.local', role: 'Member', password: PW, supervisorId: mgrA.id });
+    const aTok = await login('lv-a@test.local', PW);
+    const bTok = await login('lv-b@test.local', PW);
+    const t = await makeTask(admin, 'Live task', { assigneeId: emp.id });
+
+    assert.equal((await getTask(aTok, t.id)).status, 200, 'original supervisor sees it');
+    assert.equal((await getTask(bTok, t.id)).status, 404, 'the other manager does not');
+
+    // Re-parent the employee under mgrB - nothing else changes.
+    const moved = await request(app).patch(`/api/users/${emp.id}`).set(auth(admin)).send({ supervisorId: mgrB.id });
+    assert.equal(moved.status, 200);
+
+    assert.equal((await getTask(aTok, t.id)).status, 404, 'former supervisor lost access');
+    assert.equal((await getTask(bTok, t.id)).status, 200, 'new supervisor gained access');
+  });
+
+  it('mention-only access is live: added on mention, removed when the mention is edited out', async () => {
+    const admin = await adminToken();
+    const emp = await seedUser({ email: 'mo-emp@test.local', role: 'Member', password: PW });
+    const out = await seedUser({ email: 'mo-out@test.local', role: 'Member', password: PW });
+    const empTok = await login('mo-emp@test.local', PW);
+    const outTok = await login('mo-out@test.local', PW);
+    const t = await makeTask(admin, 'Mention task', { assigneeId: emp.id });
+
+    // Before any mention, the outsider cannot see it.
+    assert.equal((await getTask(outTok, t.id)).status, 404);
+
+    // The assignee mentions the outsider -> comment-level access.
+    const added = await addComment(empTok, t.id, `<p>hi ${mentionSpan(out.id, 'out')}</p>`);
+    assert.equal(added.status, 201);
+    const seen = await getTask(outTok, t.id);
+    assert.equal(seen.status, 200, 'mentioned user can now see it');
+    assert.equal(seen.body.access, 'comment', 'access is comment-only');
+    // The outsider CANNOT edit task fields, but CAN comment.
+    assert.equal((await request(app).patch(`/api/tasks/${t.id}`).set(auth(outTok)).send({ priority: 'High' })).status, 403);
+    assert.equal((await addComment(outTok, t.id, '<p>replying</p>')).status, 201);
+
+    // Edit the mention out of the only comment -> access removed immediately.
+    const commentId = added.body.comments[0].id as string;
+    const edited = await request(app).patch(`/api/comments/${commentId}`).set(auth(empTok)).send({ body: '<p>no more mention</p>' });
+    assert.equal(edited.status, 200);
+    assert.equal((await getTask(outTok, t.id)).status, 404, 'access removed when mention edited out');
+  });
+
+  it('multi-task search flags mention-only rows and honours the includeMentioned toggle', async () => {
+    const admin = await adminToken();
+    const emp = await seedUser({ email: 'ms-emp@test.local', role: 'Member', password: PW });
+    const out = await seedUser({ email: 'ms-out@test.local', role: 'Member', password: PW });
+    const empTok = await login('ms-emp@test.local', PW);
+    const outTok = await login('ms-out@test.local', PW);
+    const own = await makeTask(admin, 'Own task', { assigneeId: out.id }); // out is assignee -> full
+    const other = await makeTask(admin, 'Other task', { assigneeId: emp.id });
+    await addComment(empTok, other.id, `<p>${mentionSpan(out.id, 'out')}</p>`);
+
+    const withMentions = await queryTasks(outTok, { includeMentioned: true });
+    const ids = new Set(withMentions.rows.map((r) => r.id));
+    assert.ok(ids.has(own.id) && ids.has(other.id), 'both full and mention-only tasks appear');
+    const ownRow = withMentions.rows.find((r) => r.id === own.id)!;
+    const otherRow = withMentions.rows.find((r) => r.id === other.id)!;
+    assert.equal(ownRow.mentionOnly, false, 'own task is full access');
+    assert.equal(otherRow.mentionOnly, true, 'mentioned task is flagged read-only');
+
+    const withoutMentions = await queryTasks(outTok, { includeMentioned: false });
+    const ids2 = new Set(withoutMentions.rows.map((r) => r.id));
+    assert.ok(ids2.has(own.id) && !ids2.has(other.id), 'toggle hides mention-only tasks');
+  });
+
+  it('assignment restriction: Member (immediate team) vs Manager (+ downline) vs Admin', async () => {
+    const admin = await adminToken();
+    // mgr -> {a, b, subMgr}; subMgr -> c. (Members can't be supervisors, so the
+    // deep report c hangs off a Manager, not off Member a.)
+    const mgr = await seedUser({ email: 'ar-mgr@test.local', role: 'Manager', password: PW });
+    const subMgr = await seedUser({ email: 'ar-sub@test.local', role: 'Manager', password: PW, supervisorId: mgr.id });
+    const a = await seedUser({ email: 'ar-a@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const b = await seedUser({ email: 'ar-b@test.local', role: 'Member', password: PW, supervisorId: mgr.id }); // peer of a
+    const c = await seedUser({ email: 'ar-c@test.local', role: 'Member', password: PW, supervisorId: subMgr.id }); // deep downline of mgr
+    const outsider = await seedUser({ email: 'ar-out@test.local', role: 'Member', password: PW });
+    const aTok = await login('ar-a@test.local', PW);
+    const mgrTok = await login('ar-mgr@test.local', PW);
+
+    const create = (tok: string, assigneeId: string) =>
+      request(app).post('/api/tasks').set(auth(tok)).send({ name: 'Assign', assigneeId });
+
+    // Member A: self, supervisor, and peers OK; anyone deeper or outside rejected.
+    assert.equal((await create(aTok, a.id)).status, 201, 'member -> self ok');
+    assert.equal((await create(aTok, mgr.id)).status, 201, 'member -> supervisor ok');
+    assert.equal((await create(aTok, b.id)).status, 201, 'member -> peer ok');
+    assert.equal((await create(aTok, c.id)).status, 403, 'member -> outside immediate team rejected');
+    assert.equal((await create(aTok, outsider.id)).status, 403, 'member -> outsider rejected');
+
+    // Manager: entire downline (a, b, subMgr, c) OK.
+    assert.equal((await create(mgrTok, c.id)).status, 201, 'manager -> deep downline ok');
+    assert.equal((await create(mgrTok, outsider.id)).status, 403, 'manager -> outsider rejected');
+
+    // Admin: anyone.
+    assert.equal((await create(admin, outsider.id)).status, 201, 'admin -> anyone ok');
+  });
+
+  it('Private task: suspends mention-only access and restricts @mention candidates', async () => {
+    const admin = await adminToken();
+    const mgr = await seedUser({ email: 'pv-mgr@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 'pv-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const out = await seedUser({ email: 'pv-out@test.local', role: 'Member', password: PW });
+    const empTok = await login('pv-emp@test.local', PW);
+    const mgrTok = await login('pv-mgr@test.local', PW);
+    const outTok = await login('pv-out@test.local', PW);
+    const t = await makeTask(admin, 'Private-ish', { assigneeId: emp.id });
+    await addComment(empTok, t.id, `<p>${mentionSpan(out.id, 'out')}</p>`);
+    assert.equal((await getTask(outTok, t.id)).status, 200, 'outsider sees it via mention first');
+
+    // The assignee cannot toggle privacy; their supervisor can.
+    assert.equal((await request(app).patch(`/api/tasks/${t.id}/private`).set(auth(empTok)).send({ isPrivate: true })).status, 403);
+    const made = await request(app).patch(`/api/tasks/${t.id}/private`).set(auth(mgrTok)).send({ isPrivate: true });
+    assert.equal(made.status, 200);
+    assert.equal(made.body.isPrivate, true);
+
+    // Mention-only access is suspended the moment it goes private.
+    assert.equal((await getTask(outTok, t.id)).status, 404, 'mention-only access suspended while private');
+    assert.equal((await getTask(empTok, t.id)).status, 200, 'assignee still sees it');
+
+    // The mention-candidate pool excludes the outsider now.
+    const cands = await request(app).get(`/api/tasks/${t.id}/mention-candidates`).set(auth(mgrTok));
+    assert.equal(cands.status, 200);
+    const candIds = new Set((cands.body as { id: string }[]).map((u) => u.id));
+    assert.ok(candIds.has(emp.id) && candIds.has(mgr.id), 'assignee + supervisor are candidates');
+    assert.equal(candIds.has(out.id), false, 'the outsider is not a candidate on a private task');
+
+    // A new comment mentioning the outsider does not grant them access (mention dropped).
+    await addComment(mgrTok, t.id, `<p>${mentionSpan(out.id, 'out')}</p>`);
+    assert.equal((await getTask(outTok, t.id)).status, 404, 'restricted mention cannot reach outside the private set');
+  });
+
+  it('reviewer-selection pool and Reviewed-button permission are two distinct checks', async () => {
+    const admin = await adminToken();
+    const top = await seedUser({ email: 'rv-top@test.local', role: 'Manager', password: PW });
+    const reviewer = await seedUser({ email: 'rv-rev@test.local', role: 'Manager', password: PW, supervisorId: top.id });
+    const worker = await seedUser({ email: 'rv-wrk@test.local', role: 'Member', password: PW, supervisorId: reviewer.id });
+    const stranger = await seedUser({ email: 'rv-str@test.local', role: 'Member', password: PW });
+    const revTok = await login('rv-rev@test.local', PW);
+    const t = await makeTask(admin, 'Review pool', { assigneeId: worker.id, status: 'InProgress' });
+
+    // The reviewer-selection POOL: only Admin or the assignee's supervisor chain.
+    const pool = await request(app).get(`/api/tasks/${t.id}/reviewer-candidates`).set(auth(admin));
+    const poolIds = new Set((pool.body as { id: string }[]).map((u) => u.id));
+    assert.ok(poolIds.has(reviewer.id) && poolIds.has(top.id), 'chain supervisors are in the pool');
+    assert.equal(poolIds.has(stranger.id), false, 'a stranger is not in the pool');
+    assert.equal(poolIds.has(worker.id), false, 'the assignee is not their own reviewer');
+
+    // Picking a stranger as reviewer is rejected (pool check).
+    const bad = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Review', reviewerId: stranger.id });
+    assert.equal(bad.status, 403, 'reviewer outside the pool is rejected');
+
+    // Picking a chain supervisor works; they become the current assignee.
+    const ok = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Review', reviewerId: reviewer.id });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+
+    // The Reviewed-BUTTON check is DIFFERENT: the current assignee (the reviewer)
+    // may click Reviewed - a permission the pool check never granted them.
+    const done = await request(app).post(`/api/tasks/${t.id}/reviewed`).set(auth(revTok));
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+  });
+
+  it('Assignee is locked while Completed or Cancelled - for every role, incl. Admin', async () => {
+    const admin = await adminToken();
+    const a = await seedUser({ email: 'al-a@test.local', role: 'Member', password: PW });
+    const b = await seedUser({ email: 'al-b@test.local', role: 'Member', password: PW });
+    for (const terminal of ['Completed', 'Canceled'] as const) {
+      const t = await makeTask(admin, `Lock ${terminal}`, { assigneeId: a.id });
+      await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: terminal });
+      // Even Admin cannot reassign a terminal task.
+      const blocked = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: b.id });
+      assert.equal(blocked.status, 400, `${terminal}: assignee change rejected`);
+      assert.match(blocked.body.error, /Completed or Cancelled/);
+      // Reopen -> assignee editable again.
+      await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Open' });
+      const reassigned = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: b.id });
+      assert.equal(reassigned.status, 200, `${terminal}: assignee editable after reopen`);
+    }
+  });
+});
+
+describe('Phase 13: Goals downline visibility vs direct-supervisor authority', () => {
+  const PW = 'GoalAccess123!';
+
+  it('Team Goals shows the full downline, but only the DIRECT supervisor may approve', async () => {
+    await adminToken();
+    const top = await seedUser({ email: 'g-top@test.local', role: 'Manager', password: PW });
+    const mid = await seedUser({ email: 'g-mid@test.local', role: 'Manager', password: PW, supervisorId: top.id });
+    const emp = await seedUser({ email: 'g-emp@test.local', role: 'Member', password: PW, supervisorId: mid.id });
+    const topTok = await login('g-top@test.local', PW);
+    const midTok = await login('g-mid@test.local', PW);
+    const empTok = await login('g-emp@test.local', PW);
+
+    const created = await request(app).post('/api/goals').set(auth(empTok)).send({
+      specific: 'Reduce cycle time',
+      metricType: 'Percentage',
+      targetValue: 10,
+      deadline: '2026-12-31T00:00:00.000Z',
+    });
+    assert.equal(created.status, 201);
+    const goalId = created.body.id as number;
+    await request(app).post(`/api/goals/${goalId}/submit`).set(auth(empTok)).send({});
+
+    // Top (two levels up) SEES the goal via broadened downline visibility.
+    const team = await request(app).post('/api/goals/team').set(auth(topTok)).send({});
+    assert.equal(team.status, 200);
+    assert.ok((team.body as { id: number }[]).some((g) => g.id === goalId), 'top sees the deep report goal');
+
+    // ...but Top may NOT approve it - only the DIRECT supervisor (mid) can.
+    const topApprove = await request(app).post(`/api/goals/${goalId}/approve`).set(auth(topTok)).send({});
+    assert.equal(topApprove.status, 403, 'non-direct supervisor cannot approve');
+    const midApprove = await request(app).post(`/api/goals/${goalId}/approve`).set(auth(midTok)).send({});
+    assert.equal(midApprove.status, 200, 'direct supervisor approves');
+  });
+});
+
+describe('Phase 13: Due Date Performance Report bucketing', () => {
+  const NOW = new Date('2026-08-15T12:00:00.000Z');
+  const runReport = (token: string, body: Record<string, unknown> = {}) =>
+    request(app).post('/api/reports/due-date').set(auth(token)).send({ now: NOW.toISOString(), ...body });
+
+  it('places each task in exactly one of the six buckets (due==completion = On Time)', async () => {
+    const admin = await adminToken();
+    // Build tasks with precisely-controlled current fields via Prisma.
+    const mk = async (name: string, data: Record<string, unknown>) => {
+      const t = await makeTask(admin, name);
+      await prisma.task.update({ where: { id: t.id }, data });
+      return t.id;
+    };
+    const day = 24 * 60 * 60 * 1000;
+    const onTime = await mk('onTime', { status: 'Completed', dueAt: new Date(NOW.getTime() + 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
+    const boundary = await mk('boundary', { status: 'Completed', dueAt: NOW, statusChangedAt: NOW }); // equal -> On Time
+    const late = await mk('late', { status: 'Completed', dueAt: new Date(NOW.getTime() - 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
+    const overdue = await mk('overdue', { status: 'InProgress', dueAt: new Date(NOW.getTime() - day) });
+    const notCompleted = await mk('notCompleted', { status: 'Open', dueAt: new Date(NOW.getTime() + day) });
+    const cancelled = await mk('cancelled', { status: 'Canceled', dueAt: new Date(NOW.getTime() - day) });
+    const noDue = await mk('noDue', { status: 'Completed', dueAt: null, statusChangedAt: new Date(NOW.getTime() - day) });
+
+    const res = await runReport(admin);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const bucketById = new Map((res.body.rows as { id: number; bucket: string }[]).map((r) => [r.id, r.bucket]));
+    assert.equal(bucketById.get(onTime), 'OnTime');
+    assert.equal(bucketById.get(boundary), 'OnTime', 'due exactly equal to completion counts as On Time');
+    assert.equal(bucketById.get(late), 'Late');
+    assert.equal(bucketById.get(overdue), 'Overdue');
+    assert.equal(bucketById.get(notCompleted), 'NotCompleted');
+    assert.equal(bucketById.get(cancelled), 'Cancelled');
+    assert.equal(bucketById.get(noDue), 'NoDueDate');
+
+    // Totals sum to the row count (each task in exactly one bucket).
+    const totals = res.body.bucketTotals as Record<string, number>;
+    const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+    assert.equal(sum, res.body.rows.length);
   });
 });
