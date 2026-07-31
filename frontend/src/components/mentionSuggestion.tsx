@@ -8,6 +8,7 @@ import {
 import { ReactRenderer } from '@tiptap/react';
 import type { SuggestionOptions, SuggestionProps } from '@tiptap/suggestion';
 import type { TaskUserRef } from '@healthy-tasks/shared';
+import { userLabel } from './ui/Avatar';
 
 // @mention autocomplete for the comment editor. Renders a small popup of active
 // users; selecting one inserts a mention node that serializes to
@@ -30,7 +31,9 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(function Mentio
 
   const choose = (index: number) => {
     const item = props.items[index];
-    if (item) props.command({ id: item.id, label: item.title || item.email });
+    // Display the person's full name in the saved mention (falls back to email),
+    // NOT their job title/role.
+    if (item) props.command({ id: item.id, label: userLabel(item) });
   };
 
   useImperativeHandle(ref, () => ({
@@ -71,8 +74,10 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(function Mentio
             choose(i);
           }}
         >
-          <span className="mention-item-email">{user.email}</span>
-          {user.title ? <span className="mention-item-title"> · {user.title}</span> : null}
+          <span className="mention-item-email">{userLabel(user)}</span>
+          {userLabel(user) !== user.email ? (
+            <span className="mention-item-title"> · {user.email}</span>
+          ) : null}
         </button>
       ))}
     </div>

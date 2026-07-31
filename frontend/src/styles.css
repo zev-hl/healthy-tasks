@@ -1297,11 +1297,39 @@ textarea:focus-visible {
   font-size: 9px;
   color: var(--muted-2);
 }
+/* The due date on the property row is display-only (edited in the rail), so it
+   deliberately drops the bordered "chip" look of the editable Status/Priority/
+   Assignee controls next to it — no border, no fill — to read as information. */
 .due-chip {
   cursor: default;
+  border: none;
+  background: transparent;
+  gap: 5px;
 }
 .due-chip.is-empty {
   color: var(--muted);
+}
+.due-chip.is-dirty {
+  box-shadow: none;
+  border-color: transparent;
+}
+.due-chip-label {
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.rail-clear-time {
+  border: none;
+  background: transparent;
+  color: var(--link);
+  font-size: 11px;
+  padding: 2px 4px;
+  cursor: pointer;
+  flex: none;
+}
+.rail-clear-time:hover {
+  text-decoration: underline;
 }
 .add-tag-chip {
   border-style: dashed;

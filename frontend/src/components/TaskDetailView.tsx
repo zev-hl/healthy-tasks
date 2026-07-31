@@ -151,6 +151,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // "Mark complete" / "Reopen" buttons set the status and save in one click.
   async function saveFields(statusOverride?: TaskStatus) {
     setFieldsError(null);
+    // A time with no date is ambiguous — reject it. (A date with no time is fine:
+    // partsToIso fills in the default hour, i.e. auto-defaults on save.)
+    if (startTime && !startDate) {
+      setFieldsError('Start time needs a start date (or clear the time).');
+      return;
+    }
+    if (dueTime && !dueDate) {
+      setFieldsError('Due time needs a due date (or clear the time).');
+      return;
+    }
     const nextStatus = statusOverride ?? status;
     if (statusOverride) setStatus(statusOverride);
     if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
@@ -206,6 +216,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   function discardFields() {
     setFieldsError(null);
     syncStaged(task);
+  }
+
+  // Clearing a date clears its time too, so a time is never left orphaned.
+  function handleStartDate(value: string) {
+    setStartDate(value);
+    if (value === '') setStartTime('');
+  }
+  function handleDueDate(value: string) {
+    setDueDate(value);
+    if (value === '') setDueTime('');
   }
 
   // --- Review workflow (Phase 10) ------------------------------------------
@@ -550,7 +570,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </span>
 
           <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
-            {stagedDueIso ? <DueDate iso={stagedDueIso} inline /> : <span className="muted">No due date</span>}
+            <span className="due-chip-label">Due</span>
+            {stagedDueIso ? <DueDate iso={stagedDueIso} inline /> : <span className="muted">—</span>}
           </span>
 
           {task.tags.map((t) => (
@@ -747,7 +768,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  onChange={(e) => handleStartDate(e.target.value)}
                   aria-label="Start date"
                 />
                 <input
@@ -757,6 +778,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   aria-label="Start time"
                   disabled={!startDate}
                 />
+                {startTime && (
+                  <button
+                    type="button"
+                    className="rail-clear-time"
+                    onClick={() => setStartTime('')}
+                    aria-label="Clear start time"
+                  >
+                    Clear
+                  </button>
+                )}
               </span>
             </div>
             <div className="rail-row">
@@ -765,7 +796,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <input
                   type="date"
                   value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  onChange={(e) => handleDueDate(e.target.value)}
                   aria-label="Due date"
                 />
                 <input
@@ -775,6 +806,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   aria-label="Due time"
                   disabled={!dueDate}
                 />
+                {dueTime && (
+                  <button
+                    type="button"
+                    className="rail-clear-time"
+                    onClick={() => setDueTime('')}
+                    aria-label="Clear due time"
+                  >
+                    Clear
+                  </button>
+                )}
               </span>
             </div>
             <div className="rail-row">

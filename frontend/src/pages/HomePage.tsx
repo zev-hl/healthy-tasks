@@ -82,25 +82,6 @@ function buildWaiting(n: NotificationsDto): WaitingItem[] {
     .slice(0, 5);
 }
 
-function Check({ onDone, busy }: { onDone: () => void; busy: boolean }) {
-  return (
-    <button
-      type="button"
-      className="mday-check"
-      aria-label="Mark complete"
-      disabled={busy}
-      onClick={(e) => {
-        e.stopPropagation();
-        onDone();
-      }}
-    >
-      <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
-        <path d="M2 6.5 L5 9 L10 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
-  );
-}
-
 export function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -116,7 +97,6 @@ export function HomePage() {
   const [reportStats, setReportStats] = useState<{ id: string; open: number; late: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [completing, setCompleting] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     const ctx = nowContext();
@@ -211,29 +191,6 @@ export function HomePage() {
     month: 'short',
     day: 'numeric',
   });
-
-  async function completeTask(id: number) {
-    setCompleting((prev) => new Set(prev).add(id));
-    try {
-      await api.updateTask(id, { status: 'Completed' });
-      window.setTimeout(() => {
-        setToday((rows) => rows.filter((r) => r.id !== id));
-        setCompleting((prev) => {
-          const n = new Set(prev);
-          n.delete(id);
-          return n;
-        });
-        void load();
-      }, 400);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not complete the task');
-      setCompleting((prev) => {
-        const n = new Set(prev);
-        n.delete(id);
-        return n;
-      });
-    }
-  }
 
   const goFilter = (filters: TaskSearchFilters, viewLabel: string) =>
     navigate('/tasks', { state: { filters, viewLabel } });
@@ -364,14 +321,12 @@ export function HomePage() {
             <ul className="mday-list">
               {today.map((r) => {
                 const overdue = !isToday(r.dueAt) && !!r.dueAt;
-                const busy = completing.has(r.id);
                 return (
                   <li
                     key={r.id}
-                    className={`mday-row${overdue ? ' is-overdue' : ''}${busy ? ' is-completing' : ''}`}
+                    className={`mday-row${overdue ? ' is-overdue' : ''}`}
                     onClick={() => navigate(`/tasks/${r.id}`)}
                   >
-                    <Check onDone={() => completeTask(r.id)} busy={busy} />
                     <PriorityRamp priority={r.priority} />
                     <span className="mday-row-title">{r.name}</span>
                     <div className="spacer" />

@@ -1,22 +1,43 @@
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import type { Role } from '@healthy-tasks/shared';
 import { useAuth } from './auth/AuthContext';
 import { Layout } from './components/Layout';
 import { SessionExpiryWarning } from './components/SessionExpiryWarning';
-import { LoginPage } from './pages/LoginPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { HomePage } from './pages/HomePage';
-import { UsersPage } from './pages/UsersPage';
-import { TemplatesPage } from './pages/TemplatesPage';
-import { TaskSearchPage } from './pages/TaskSearchPage';
-import { TaskCreatePage } from './pages/TaskCreatePage';
-import { TaskDetailPage } from './pages/TaskDetailPage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { ProfilePage } from './pages/ProfilePage';
-import { MyGoalsPage } from './pages/MyGoalsPage';
-import { TeamGoalsPage } from './pages/TeamGoalsPage';
+
+// Route components are code-split (React.lazy) so the first paint — login and
+// My Day — no longer downloads the whole app in one bundle. The heaviest
+// dependency, the TipTap rich-text editor, now only loads when a task
+// detail/create screen is actually opened.
+const LoginPage = lazy(() => import('./pages/LoginPage').then((m) => ({ default: m.LoginPage })));
+const ForgotPasswordPage = lazy(() =>
+  import('./pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })),
+);
+const ResetPasswordPage = lazy(() =>
+  import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })),
+);
+const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
+const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+const TemplatesPage = lazy(() =>
+  import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
+);
+const TaskSearchPage = lazy(() =>
+  import('./pages/TaskSearchPage').then((m) => ({ default: m.TaskSearchPage })),
+);
+const TaskCreatePage = lazy(() =>
+  import('./pages/TaskCreatePage').then((m) => ({ default: m.TaskCreatePage })),
+);
+const TaskDetailPage = lazy(() =>
+  import('./pages/TaskDetailPage').then((m) => ({ default: m.TaskDetailPage })),
+);
+const NotificationsPage = lazy(() =>
+  import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
+);
+const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const MyGoalsPage = lazy(() => import('./pages/MyGoalsPage').then((m) => ({ default: m.MyGoalsPage })));
+const TeamGoalsPage = lazy(() =>
+  import('./pages/TeamGoalsPage').then((m) => ({ default: m.TeamGoalsPage })),
+);
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
@@ -26,11 +47,13 @@ function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] 
   return <>{children}</>;
 }
 
-/** Root layout: renders the active route plus the global session-expiry overlay. */
+/** Root layout: renders the active (lazy) route plus the global session-expiry overlay. */
 function RootLayout() {
   return (
     <>
-      <Outlet />
+      <Suspense fallback={<div className="container">Loading…</div>}>
+        <Outlet />
+      </Suspense>
       <SessionExpiryWarning />
     </>
   );
