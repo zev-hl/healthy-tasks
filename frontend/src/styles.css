@@ -1565,15 +1565,6 @@ textarea:focus-visible {
   font-size: 11px;
   margin: 0 0 8px;
 }
-.rail-savebar {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border);
-}
-
 /* Staged-save bar under the property chips. */
 .detail-savebar {
   display: flex;

@@ -900,16 +900,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <span className="rail-label">Status set</span>
               <AgoDate iso={task.statusChangedAt} />
             </div>
-            {fieldsDirty && (
-              <div className="rail-savebar">
-                <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
-                  Discard
-                </button>
-                <button type="button" className="btn-sm" disabled={savingFields} onClick={() => void saveFields()}>
-                  {savingFields ? 'Saving…' : 'Save changes'}
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="rail-section">
