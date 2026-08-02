@@ -789,9 +789,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                       return (
                         <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
                           {c.accessible ? (
-                            <Link to={`/tasks/${c.id}`} className="subtask-name">
-                              {c.name}
-                            </Link>
+                            <>
+                              <span className="mono subtask-id">#{c.id}</span>
+                              <Link to={`/tasks/${c.id}`} className="subtask-name">
+                                {c.name}
+                              </Link>
+                            </>
                           ) : (
                             <span className="subtask-name task-ref-locked" title="You do not have access to this task">
                               #{c.id} <span className="task-ref-lock" aria-label="No access">🔒</span>

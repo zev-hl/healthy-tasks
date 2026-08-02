@@ -31,19 +31,21 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface BucketSubject {
   status: TaskRow['status'];
   statusChangedAt: Date | null;
+  startAt: Date | null;
   dueAt: Date | null;
 }
 
 /**
- * Classify one task into exactly one of the six buckets, plus the whole-day gap
- * for the On Time / Late buckets (positive = early / on time, negative = late).
- * A Due Date exactly equal to the completion timestamp counts as On Time.
+ * Classify one task into exactly one of the seven buckets, plus the whole-day
+ * gap for the On Time / Late buckets (positive = early / on time, negative =
+ * late). A Due Date exactly equal to the completion timestamp counts as On Time.
  */
 export function bucketFor(
   task: BucketSubject,
   now: Date,
 ): { bucket: DueDateBucket; daysDelta: number | null } {
-  // Cancelled is decided by status alone (even without a due date).
+  // Cancelled is decided by status alone, and wins over No Due Date when a task
+  // is both Cancelled and has no due date.
   if (task.status === 'Canceled') return { bucket: 'Cancelled', daysDelta: null };
 
   // Any remaining task with no Due Date lands in its own bucket rather than
@@ -61,9 +63,21 @@ export function bucketFor(
       : { bucket: 'Late', daysDelta: delta };
   }
 
-  // Non-terminal (Open / In Progress / On Hold / Review) with a Due Date.
-  return task.dueAt.getTime() < now.getTime()
-    ? { bucket: 'Overdue', daysDelta: null }
+  // Non-terminal (Open / In Progress / On Hold / Review) with a Due Date that
+  // has already passed.
+  if (task.dueAt.getTime() < now.getTime()) return { bucket: 'Overdue', daysDelta: null };
+
+  // Due date still in the future. Not Started is reserved for tasks that are
+  // specifically Open and whose work has not begun — no Start Date, or a Start
+  // Date still in the future. Every other non-terminal status (In Progress / On
+  // Hold / Review) always lands in Not Completed regardless of Start Date, as
+  // does an Open task whose Start Date has already passed. (Start Date must be
+  // earlier than Due Date, so a future Start Date can never coexist with a
+  // passed Due Date — no extra tiebreaker is needed.)
+  const notStarted =
+    task.status === 'Open' && (!task.startAt || task.startAt.getTime() > now.getTime());
+  return notStarted
+    ? { bucket: 'NotStarted', daysDelta: null }
     : { bucket: 'NotCompleted', daysDelta: null };
 }
 

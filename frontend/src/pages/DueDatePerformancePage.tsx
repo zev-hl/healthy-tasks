@@ -51,6 +51,7 @@ const BUCKET_CLASS: Record<DueDateBucket, string> = {
   OnTime: 'ontime',
   Late: 'late',
   Overdue: 'overdue',
+  NotStarted: 'notstarted',
   NotCompleted: 'notcompleted',
   Cancelled: 'cancelled',
   NoDueDate: 'nodue',
