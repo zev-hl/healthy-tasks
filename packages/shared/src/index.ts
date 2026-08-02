@@ -221,10 +221,13 @@ export interface ActiveUserDto extends TaskUserRef {
  *                above the Assignee in the org chart).
  *  - `comment` — see the task and add/edit their own comments, but NOT edit any
  *                other field (a user currently @mentioned in a non-private task).
- * A user with neither never receives the task at all (404 / absent from lists),
- * so `none` is not a value the API returns. See docs/architecture.md.
+ *  - `tree`    — read-only visibility inherited via Parent/Child tree position
+ *                (down from a full-access ancestor, or up from any accessible
+ *                descendant). Suspended when the task is Private.
+ * A user with none of these never receives the task at all (404 / absent from
+ * lists), so `none` is not a value the API returns. See docs/architecture.md.
  */
-export const TASK_ACCESS_LEVELS = ['full', 'comment'] as const;
+export const TASK_ACCESS_LEVELS = ['full', 'comment', 'tree'] as const;
 export type TaskAccessLevel = (typeof TASK_ACCESS_LEVELS)[number];
 
 /**
@@ -272,11 +275,18 @@ export interface TaskDto {
   templateId: number | null;
 }
 
-/** Compact task reference for relationship display (id + name + status). */
+/**
+ * Compact task reference for relationship display (id + name + status).
+ * `accessible` is false when the current user cannot see the referenced task at
+ * all — in that case `name` is blanked server-side (never leaked) and the UI
+ * degrades to Id + lock icon + Status only (no name, not hyperlinked). Reflects
+ * LIVE access, so it updates as the user's visibility into the task changes.
+ */
 export interface TaskRef {
   id: number;
   name: string;
   status: TaskStatus;
+  accessible: boolean;
 }
 
 /**
@@ -690,11 +700,11 @@ export interface TaskSearchRequest {
   todayStart?: string; // ISO instant — local midnight today
   todayEnd?: string; // ISO instant — local midnight tomorrow
   /**
-   * Phase 13: include tasks the caller can see only via an @mention (default
-   * true). When false, only full-access tasks are returned. Ignored for Admins,
-   * who have full access to everything. Drives the "show mention-only" toggle.
+   * Include tasks the caller can only see read-only — via an @mention OR via
+   * Parent/Child tree inheritance (default true). When false, only full-access
+   * tasks are returned. Ignored for Admins. Drives the "show read-only" toggle.
    */
-  includeMentioned?: boolean;
+  includeReadOnly?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -713,8 +723,8 @@ export interface TaskDashboardRequest {
   now: string; // ISO instant
   todayStart: string; // ISO instant — local midnight today
   todayEnd: string; // ISO instant — local midnight tomorrow
-  // Phase 13: match the grid's mention-only toggle so the tallies agree with it.
-  includeMentioned?: boolean;
+  // Match the grid's "show read-only" toggle so the tallies agree with it.
+  includeReadOnly?: boolean;
 }
 
 /**
@@ -756,11 +766,17 @@ export interface TaskRowDto {
   /** Phase 11: source template id for a generated task (null otherwise). */
   templateId: number | null;
   /**
-   * Phase 13: true when this row is visible to the requesting user ONLY because
-   * they are @mentioned in it (not in the full-access group). Such rows are
-   * read-only for Status/dates and get the read-only cue in the multi-task views.
+   * Phase 13: true when this row is read-only for the requesting user because
+   * they are only @mentioned in it (not in the full-access group). Drives the
+   * mention read-only cue + disabled drag in the multi-task views.
    */
   mentionOnly: boolean;
+  /**
+   * Follow-up: true when this row is read-only because the user reaches it ONLY
+   * via Parent/Child tree inheritance. Distinct cue from `mentionOnly`; a row can
+   * be both (mentioned AND tree-inherited).
+   */
+  treeOnly: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -841,7 +857,7 @@ export interface DueDateReportRequest {
   now?: string;
   todayStart?: string;
   todayEnd?: string;
-  includeMentioned?: boolean;
+  includeReadOnly?: boolean;
   /**
    * Assignee ids selected in the Team Hierarchy tree. When non-empty, results
    * are further limited to these assignees (intersected with the caller's

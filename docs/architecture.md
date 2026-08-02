@@ -338,20 +338,60 @@ and the Private flag — so access follows reorganisations and edits immediately
   comment. They may add comments and edit their own, but cannot change any other
   field. Live: dropping the mention (editing it out of the only comment granting it)
   removes access with no reload.
+- **Tree (see, read-only)** — visibility inherited via Parent/Child tree position
+  (see *Tree inheritance* below). Read-only: no field edits, no commenting.
 - **None** — everyone else. The API returns **404** (never 403) for a hidden task,
   so its existence isn't leaked.
 
 `computeTaskAccess(actor, {id, assigneeId, isPrivate})` returns `'full' | 'comment' |
-null`. `TaskDetailDto` carries the caller's `access` level and a `canTogglePrivate`
-flag; `TaskRowDto` carries a `mentionOnly` flag (the row is visible only via a
-mention) which drives the read-only cue + disabled drag in the multi-task views.
+'tree' | null`. `TaskDetailDto` carries the caller's `access` level and a
+`canTogglePrivate` flag; `TaskRowDto` carries `mentionOnly` and `treeOnly` flags
+(distinct read-only cues + disabled drag in the multi-task views).
+
+### Tree inheritance (Parent/Child, read-only)
+
+Bidirectional, read-only visibility across the Parent/Child hierarchy, on top of the
+per-task model above:
+
+- **Downward** — full access to a task grants read-only visibility into all of its
+  descendants (any depth).
+- **Upward** — access to a task (from *any* source, including inherited) grants
+  read-only visibility into its ancestors.
+- **Private overrides inheritance** — a Private task is never exposed via tree
+  inheritance; only {Admin, Assignee, Assignee's chain} ever see it. (A Private node
+  is omitted individually but does not hide its own non-private descendants.)
+
+Inheritance never affects who can be *assigned*, and does not apply to the separate
+Dependency (Blocks/Is-Blocked-By) graph. It has no effect on **blocked-status
+enforcement**: `assertStatusAllowedByPredecessors` always evaluates a predecessor's
+real, current status regardless of whether the actor can see it — only the *message*
+hides an unseen blocker's name.
 
 ### List scoping
 
-Multi-task queries AND an access predicate into the WHERE (`buildTaskAccessWhere`):
-`assigneeId IN (actor + downline)` OR (when the `includeMentioned` toggle is on)
-a non-private mention EXISTS clause. Admins are unrestricted. The same predicate
-scopes Search, the dashboard tallies, the Excel export, and the report.
+`getTaskAccessScope(actor)` computes, in a few tree walks (recursive CTEs), the
+actor's `fullTaskIds` (F), `mentionIds` (M, non-private), and `treeIds`
+(descendants of F ∪ ancestors of F∪M∪descendants, all non-private). Multi-task
+queries AND `buildTaskAccessWhere` into the WHERE: `assigneeId IN (actor + downline)`
+OR (when the `includeReadOnly` toggle is on) `id IN (mentionIds ∪ treeIds)`. Admins
+are unrestricted. The same scope classifies each row (`classifyRow` → mentionOnly /
+treeOnly) and drives the report + relationship-picker search.
+
+### Referencing tasks with limited visibility
+
+- **Degraded references** — wherever a task reference appears (Parent/Child,
+  Blocks/Is-Blocked-By, History entries), a reference to a task the user cannot
+  currently see shows as **Id + lock + Status only** — no name (blanked
+  server-side, never leaked), not hyperlinked. `TaskRef.accessible` carries this;
+  it reflects **live** access, so it updates as visibility changes. This is a
+  deliberate tradeoff: a Private/inaccessible task's Id and Status leak through
+  cross-references, its Name/Description/Comments do not. One treatment regardless
+  of *why* the task is inaccessible.
+- **Linking** — you may create a Parent/Child/Dependency link to any task you can
+  currently *see* (full, mention, or tree). The relationship-picker search is
+  access-scoped, so it never offers an invisible task; `assertCanLinkTo` backstops
+  a hand-crafted request. **Removing** a link never requires access to the other
+  side (it edits your own task).
 
 ### Assignment restriction (who may be set as Assignee)
 

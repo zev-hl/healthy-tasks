@@ -36,7 +36,7 @@ interface PersistedState {
   searchText: string;
   filters: TaskSearchFilters;
   sort: TaskSort[];
-  includeMentioned: boolean;
+  includeReadOnly: boolean;
   groupByAssignee: boolean;
   hierarchyUserIds: string[];
 }
@@ -60,7 +60,7 @@ export function DueDatePerformancePage() {
   const [searchText, setSearchText] = useState('');
   const [filters, setFilters] = useState<TaskSearchFilters>(defaultFilters);
   const [sort, setSort] = useState<TaskSort[]>([]);
-  const [includeMentioned, setIncludeMentioned] = useState(true);
+  const [includeReadOnly, setIncludeReadOnly] = useState(true);
   const [groupByAssignee, setGroupByAssignee] = useState(false);
   const [selectedHierarchy, setSelectedHierarchy] = useState<Set<string>>(new Set());
 
@@ -96,7 +96,7 @@ export function DueDatePerformancePage() {
           if (typeof s.searchText === 'string') setSearchText(s.searchText);
           if (s.filters && typeof s.filters === 'object') setFilters({ ...defaultFilters, ...s.filters });
           if (Array.isArray(s.sort)) setSort(s.sort);
-          if (typeof s.includeMentioned === 'boolean') setIncludeMentioned(s.includeMentioned);
+          if (typeof s.includeReadOnly === 'boolean') setIncludeReadOnly(s.includeReadOnly);
           if (typeof s.groupByAssignee === 'boolean') setGroupByAssignee(s.groupByAssignee);
           if (Array.isArray(s.hierarchyUserIds)) setSelectedHierarchy(new Set(s.hierarchyUserIds));
         }
@@ -111,11 +111,11 @@ export function DueDatePerformancePage() {
       searchText,
       filters,
       sort,
-      includeMentioned,
+      includeReadOnly,
       groupByAssignee,
       hierarchyUserIds: [...selectedHierarchy],
     }),
-    [searchText, filters, sort, includeMentioned, groupByAssignee, selectedHierarchy],
+    [searchText, filters, sort, includeReadOnly, groupByAssignee, selectedHierarchy],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -130,7 +130,7 @@ export function DueDatePerformancePage() {
         text: debouncedText.trim() || undefined,
         filters: effectiveFilters(filters),
         sort,
-        includeMentioned,
+        includeReadOnly,
         hierarchyUserIds: selectedHierarchy.size > 0 ? [...selectedHierarchy] : undefined,
         ...nowContext(),
       });
@@ -142,7 +142,7 @@ export function DueDatePerformancePage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedText, filters, sort, includeMentioned, selectedHierarchy]);
+  }, [debouncedText, filters, sort, includeReadOnly, selectedHierarchy]);
 
   useEffect(() => {
     if (hydrated) void runReport();
@@ -176,7 +176,7 @@ export function DueDatePerformancePage() {
         text: debouncedText.trim() || undefined,
         filters: effectiveFilters(filters),
         sort,
-        includeMentioned,
+        includeReadOnly,
         groupByAssignee,
         hierarchyUserIds: selectedHierarchy.size > 0 ? [...selectedHierarchy] : undefined,
         ...nowContext(),
@@ -264,9 +264,9 @@ export function DueDatePerformancePage() {
           </button>
         )}
         <div className="spacer" />
-        <label className="nest-toggle" title="Show tasks you can see only via an @mention (read-only)">
-          <input type="checkbox" checked={includeMentioned} onChange={(e) => setIncludeMentioned(e.target.checked)} />
-          👁 Mention-only
+        <label className="nest-toggle" title="Show tasks you can only see read-only — via an @mention or parent/child tree position">
+          <input type="checkbox" checked={includeReadOnly} onChange={(e) => setIncludeReadOnly(e.target.checked)} />
+          Read-only
         </label>
         <label className="nest-toggle" title="Group results under each assignee with per-bucket subtotals">
           <input type="checkbox" checked={groupByAssignee} onChange={(e) => setGroupByAssignee(e.target.checked)} />
@@ -403,6 +403,7 @@ function ReportRow({ row }: { row: DueDateReportRow }) {
       <td>
         <span className="task-id-cell">
           {row.mentionOnly && <span className="mention-only-cue" title="Read-only (mention)">👁</span>}
+          {row.treeOnly && <span className="tree-only-cue" title="Read-only (parent/child tree position)">🌳</span>}
           <Link to={`/tasks/${row.id}`} className="mono task-id-link">#{row.id}</Link>
         </span>
       </td>

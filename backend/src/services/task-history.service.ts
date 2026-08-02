@@ -6,6 +6,7 @@ import {
   type TaskHistoryEntryDto,
 } from '@healthy-tasks/shared';
 import { taskHistoryInclude, toTaskHistoryDto, type TaskHistoryWithUser } from './task-history.mapper.js';
+import { type Actor, getTaskAccessScope, isTaskVisible } from './access-control.service.js';
 
 /**
  * Central change-history capture (Phase 5). Every task-mutating endpoint funnels
@@ -163,12 +164,28 @@ export function buildTaskFieldEntries(params: {
 
 // --- Read -----------------------------------------------------------------
 
-/** All history entries for a task, most recent first. */
-export async function getTaskHistory(taskId: number): Promise<TaskHistoryEntryDto[]> {
+/**
+ * All history entries for a task, most recent first. Relationship entries store a
+ * `detail` of the form "#<id> <name>"; when the requesting user cannot currently
+ * see the referenced task, the NAME is stripped (leaving "#<id>") so a task's name
+ * never leaks through History — consistent with the Id-only degradation elsewhere.
+ * Reflects LIVE access.
+ */
+export async function getTaskHistory(taskId: number, actor: Actor): Promise<TaskHistoryEntryDto[]> {
   const rows = await prisma.taskHistory.findMany({
     where: { taskId },
     include: taskHistoryInclude,
     orderBy: [{ changedAt: 'desc' }, { id: 'desc' }],
   });
-  return (rows as TaskHistoryWithUser[]).map(toTaskHistoryDto);
+  const dtos = (rows as TaskHistoryWithUser[]).map(toTaskHistoryDto);
+
+  const scope = await getTaskAccessScope(actor);
+  if (scope.isAdmin) return dtos;
+  return dtos.map((d) => {
+    if (!d.detail) return d;
+    const m = /^#(\d+)\b/.exec(d.detail);
+    if (!m) return d;
+    const refId = Number(m[1]);
+    return isTaskVisible(scope, refId) ? d : { ...d, detail: `#${refId}` };
+  });
 }

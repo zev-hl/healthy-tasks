@@ -5,7 +5,13 @@ import { TASK_HISTORY_FIELDS, type DependencyType, type TaskDetailDto, type Task
 import { getTaskDetail } from './task.service.js';
 import { toTaskRef } from './task.mapper.js';
 import { recordHistory, type HistoryEntryInput } from './task-history.service.js';
-import { type Actor, assertCanEditTask } from './access-control.service.js';
+import {
+  type Actor,
+  assertCanEditTask,
+  buildTaskAccessWhere,
+  computeTaskAccess,
+  getTaskAccessScope,
+} from './access-control.service.js';
 
 // Phase 5: each relationship add/remove is a discrete auditable event, recorded
 // via the central recordHistory helper inside the same transaction as the write.
@@ -35,9 +41,21 @@ async function lockRelationships(tx: Prisma.TransactionClient): Promise<void> {
   await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${RELATIONSHIP_LOCK_KEY})`);
 }
 
-async function assertTaskExists(id: number, label: string): Promise<void> {
-  const task = await prisma.task.findUnique({ where: { id }, select: { id: true } });
-  if (!task) throw HttpError.badRequest(`${label} #${id} does not exist`);
+/**
+ * Adding a Parent/Child/Dependency link requires the OTHER task to be visible to
+ * the actor (any access — full, mention, or tree-inherited). Removing a link never
+ * calls this. The relationship picker is already access-scoped, so this only
+ * backstops a hand-crafted request naming an invisible task.
+ */
+async function assertCanLinkTo(actor: Actor, otherId: number, label: string): Promise<void> {
+  const task = await prisma.task.findUnique({
+    where: { id: otherId },
+    select: { id: true, assigneeId: true, isPrivate: true },
+  });
+  if (!task) throw HttpError.badRequest(`${label} #${otherId} does not exist`);
+  if (!(await computeTaskAccess(actor, task))) {
+    throw HttpError.forbidden(`You do not have access to ${label.toLowerCase()} #${otherId}`);
+  }
 }
 
 // --- Parent / Child --------------------------------------------------------
@@ -76,7 +94,7 @@ export async function setParent(
   if (parentId === taskId) {
     throw HttpError.badRequest('A task cannot be its own parent');
   }
-  await assertTaskExists(parentId, 'Parent task');
+  await assertCanLinkTo(actor, parentId, 'Parent task');
 
   // Lock + check + write in one transaction so a concurrent assignment cannot
   // slip a cycle past the check between our read and our write.
@@ -217,7 +235,7 @@ export async function addDependency(
 ): Promise<TaskDetailDto> {
   const actorId = actor.id;
   await assertCanEditTask(actor, taskId);
-  await assertTaskExists(otherTaskId, 'Task');
+  await assertCanLinkTo(actor, otherTaskId, 'Task');
 
   const { blockerId, blockedId } = resolveEdge(taskId, type, otherTaskId);
   if (blockerId === blockedId) {
@@ -268,18 +286,28 @@ export async function removeDependency(
 /**
  * Search tasks by partial id or name for the relationship picker. Matches a
  * numeric query against id and any query against name (case-insensitive).
- * Excludes `excludeId` (the task doing the picking).
+ * Excludes `excludeId` (the task doing the picking). Follow-up: results are
+ * scoped to what the actor can currently SEE (full, mention, or tree-inherited),
+ * so the picker never offers a task the requester can't see — which makes "you
+ * can link to any task you can see" fall out naturally at save time.
  */
-export async function searchTasks(query: string, excludeId?: number): Promise<TaskRef[]> {
+export async function searchTasks(
+  actor: Actor,
+  query: string,
+  excludeId?: number,
+): Promise<TaskRef[]> {
   const q = query.trim();
   if (q === '') return [];
 
   const idMatch = /^\d+$/.test(q) ? Number(q) : undefined;
+  const scope = await getTaskAccessScope(actor);
+  const accessWhere = buildTaskAccessWhere(scope, true);
 
   const tasks = await prisma.task.findMany({
     where: {
       AND: [
         excludeId !== undefined ? { id: { not: excludeId } } : {},
+        ...(accessWhere ? [accessWhere] : []),
         {
           OR: [
             { name: { contains: q, mode: 'insensitive' } },
@@ -292,5 +320,6 @@ export async function searchTasks(query: string, excludeId?: number): Promise<Ta
     orderBy: { id: 'asc' },
     take: 20,
   });
-  return tasks.map(toTaskRef);
+  // Every returned task is visible to the actor, so these refs are all accessible.
+  return tasks.map((t) => toTaskRef(t, true));
 }

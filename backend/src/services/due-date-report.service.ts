@@ -89,7 +89,7 @@ export async function runDueDateReport(
 ): Promise<DueDateReportResult> {
   const scope = await getTaskAccessScope(actor);
   const base = await buildWhere(input);
-  const accessWhere = buildTaskAccessWhere(scope, actor.id, input.includeMentioned ?? true);
+  const accessWhere = buildTaskAccessWhere(scope, input.includeReadOnly ?? true);
   const hierWhere = hierarchyWhere(input.hierarchyUserIds);
   const where: Prisma.TaskWhereInput = {
     AND: [base, ...(accessWhere ? [accessWhere] : []), ...(hierWhere ? [hierWhere] : [])],

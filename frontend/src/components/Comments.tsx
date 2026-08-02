@@ -122,6 +122,12 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
     <div className="comments">
       {error && <div className="alert error">{error}</div>}
 
+      {/* Tree-inherited (read-only) viewers can read comments but not add them. */}
+      {task.access === 'tree' ? (
+        <p className="muted" style={{ margin: '0 0 0.75rem' }}>
+          You have read-only access to this task, so you can’t add comments.
+        </p>
+      ) : (
       <div className="comment-composer">
         {composerOpen ? (
           <>
@@ -153,6 +159,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
           </button>
         )}
       </div>
+      )}
 
       {task.comments.length === 0 ? (
         <EmptyState compact title="No comments yet">

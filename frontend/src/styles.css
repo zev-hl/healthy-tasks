@@ -5529,3 +5529,23 @@ tr.just-completed > td {
   font-size: 0.8rem;
   color: var(--muted-2);
 }
+
+/* --- Follow-up: tree-inherited read-only cue + inaccessible task references --- */
+.tree-only-cue {
+  font-size: 0.85em;
+  margin-right: 0.25rem;
+  cursor: help;
+}
+.kanban-lock.read-only-cue {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+}
+/* A task reference the current user cannot see: Id + lock + Status, no name/link. */
+.task-ref-locked {
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+.task-ref-lock {
+  font-size: 0.9em;
+}

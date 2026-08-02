@@ -114,26 +114,45 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
   };
 }
 
-export function toTaskRef(task: Pick<Task, 'id' | 'name' | 'status'>): TaskRef {
-  return { id: task.id, name: task.name, status: task.status };
+/**
+ * Map a task reference for display. `accessible` = whether the requesting user
+ * can see the referenced task at all; when false the NAME is blanked (never
+ * leaked) and the UI degrades to Id + lock + Status. Defaults to accessible for
+ * internal callers that don't scope (none currently ship a ref to an end user
+ * without a `canSee`).
+ */
+export function toTaskRef(
+  task: Pick<Task, 'id' | 'name' | 'status'>,
+  accessible = true,
+): TaskRef {
+  return {
+    id: task.id,
+    name: accessible ? task.name : '',
+    status: task.status,
+    accessible,
+  };
 }
 
 /** The requesting user's live access to the task, attached to the detail DTO. */
 export interface TaskAccessContext {
   level: TaskAccessLevel;
   canTogglePrivate: boolean;
+  /** Live visibility test for referenced tasks (parent/children/blocks/blockedBy). */
+  canSee: (taskId: number) => boolean;
 }
 
 export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext): TaskDetailDto {
+  const ref = (t: Pick<Task, 'id' | 'name' | 'status'>): TaskRef =>
+    toTaskRef(t, access.canSee(t.id));
   return {
     ...toTaskDto(task),
     access: access.level,
     canTogglePrivate: access.canTogglePrivate,
-    parent: task.parent ? toTaskRef(task.parent) : null,
-    children: task.children.map(toTaskRef),
+    parent: task.parent ? ref(task.parent) : null,
+    children: task.children.map(ref),
     // `blocking` edges → the tasks this one blocks; `blockedBy` edges → predecessors.
-    blocks: task.blocking.map((d) => toTaskRef(d.blocked)),
-    isBlockedBy: task.blockedBy.map((d) => toTaskRef(d.blocker)),
+    blocks: task.blocking.map((d) => ref(d.blocked)),
+    isBlockedBy: task.blockedBy.map((d) => ref(d.blocker)),
     attachments: task.attachments.map(toAttachmentDto),
     comments: task.comments.map(toCommentDto),
     recurrence: task.recurrence

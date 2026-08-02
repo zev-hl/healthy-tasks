@@ -29,6 +29,8 @@ import {
   getReviewerCandidateIds,
   getTaskAccessScope,
   isInSupervisorChain,
+  isTaskVisible,
+  scopeTaskLevel,
 } from './access-control.service.js';
 import {
   BLOCKED_RESTRICTED_STATUSES,
@@ -72,8 +74,15 @@ function assertStartBeforeDue(startAt: Date | null, dueAt: Date | null): void {
  * Blocked-status rule (Phase 3): a task may not move to Review/Completed while
  * any of its predecessors (its "Is Blocked By" list) is not yet terminal
  * (Completed/Canceled). Rejects with a message naming the blocking task(s).
+ *
+ * IMPORTANT (follow-up): this enforcement evaluates the predecessors' REAL,
+ * current status regardless of whether `actor` can see them — restricted
+ * visibility must never let a task slip past the rule. Only the message is
+ * visibility-aware: a blocker the actor cannot see is named "#id" without its
+ * name, so the rule still fires but no name leaks.
  */
 async function assertStatusAllowedByPredecessors(
+  actor: Actor,
   taskId: number,
   newStatus: TaskStatus,
 ): Promise<void> {
@@ -88,8 +97,12 @@ async function assertStatusAllowedByPredecessors(
     .filter((p) => !TERMINAL_TASK_STATUSES.includes(p.status));
 
   if (blocking.length > 0) {
+    const scope = await getTaskAccessScope(actor);
     const list = blocking
-      .map((p) => `#${p.id} ${p.name} (${TASK_STATUS_LABELS[p.status]})`)
+      .map((p) => {
+        const name = isTaskVisible(scope, p.id) ? ` ${p.name}` : '';
+        return `#${p.id}${name} (${TASK_STATUS_LABELS[p.status]})`;
+      })
       .join(', ');
     throw HttpError.badRequest(
       `Cannot set status to ${TASK_STATUS_LABELS[newStatus]} while blocked by incomplete task(s): ${list}`,
@@ -154,7 +167,7 @@ export async function listTasks(actor: Actor): Promise<TaskDto[]> {
   // Phase 2 scaffolding: newest first, scoped to the caller's access (Phase 13).
   // The real Search screen (Phase 6) is the primary list surface.
   const scope = await getTaskAccessScope(actor);
-  const accessWhere = buildTaskAccessWhere(scope, actor.id, true);
+  const accessWhere = buildTaskAccessWhere(scope, true);
   const tasks = await prisma.task.findMany({
     where: accessWhere ?? {},
     include: taskInclude,
@@ -178,16 +191,17 @@ export async function getTask(id: number): Promise<TaskDto> {
 export async function getTaskDetail(id: number, actor: Actor): Promise<TaskDetailDto> {
   const task = await prisma.task.findUnique({ where: { id }, include: taskDetailInclude });
   if (!task) throw HttpError.notFound('Task not found');
-  const level = await computeTaskAccess(actor, {
-    id: task.id,
-    assigneeId: task.assigneeId,
-    isPrivate: task.isPrivate,
-  });
+  // Compute the actor's access scope once, then derive both the main task's level
+  // and the LIVE visibility of every referenced task (parent/children/blocks/
+  // blockedBy) — inaccessible refs degrade to Id + lock + Status (no name/link).
+  const scope = await getTaskAccessScope(actor);
+  const level = scopeTaskLevel(scope, task.id);
   if (!level) throw HttpError.notFound('Task not found');
   const toggle = await canTogglePrivate(actor, task.assigneeId);
   return toTaskDetailDto(task as unknown as TaskWithDetail, {
     level,
     canTogglePrivate: toggle,
+    canSee: (refId) => isTaskVisible(scope, refId),
   });
 }
 
@@ -265,7 +279,7 @@ export async function updateTask(
   // is rejected with the "blocked by #X" message — this takes priority over the
   // reviewer requirement so the reason is the real blocker, not a missing reviewer.
   if (input.status !== undefined) {
-    await assertStatusAllowedByPredecessors(id, input.status);
+    await assertStatusAllowedByPredecessors(actor, id, input.status);
   }
 
   // Entering Review requires choosing a reviewer, who becomes the temporary

@@ -94,14 +94,17 @@ function CalTaskChip({
           ? ' range-end'
           : ' range-mid';
   const pill = statusPill(task.status);
+  const readOnly = task.mentionOnly || task.treeOnly;
+  const treeCue = task.treeOnly && !task.mentionOnly;
+  const readOnlyReason = treeCue ? 'via parent/child tree position' : "you're mentioned";
   return (
     <button
       type="button"
-      className={`cal-chip${posClass}${task.mentionOnly ? ' mention-only' : ''}`}
+      className={`cal-chip${posClass}${readOnly ? ' mention-only' : ''}`}
       style={{ background: pill.bg, color: pill.fg }}
       title={
-        task.mentionOnly
-          ? `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]} (read-only — you're mentioned)`
+        readOnly
+          ? `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]} (read-only — ${readOnlyReason})`
           : `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]}`
       }
       onClick={() => onOpen(task.id)}
@@ -109,7 +112,7 @@ function CalTaskChip({
       {mode === 'marker' && <span className="cal-chip-dot" style={{ background: pill.dot }} />}
       <span className="cal-chip-name">
         {mode === 'range' && !single && !isStart ? '▸ ' : ''}
-        {task.mentionOnly ? '👁 ' : ''}
+        {readOnly ? (treeCue ? '🌳 ' : '👁 ') : ''}
         {task.name}
       </span>
     </button>

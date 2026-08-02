@@ -180,8 +180,8 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
   // --- Drag handling (pointer capture; commit on release) ------------------
   function onPointerDown(e: React.PointerEvent, task: TaskRowDto, mode: DragMode) {
     e.stopPropagation();
-    // Phase 13: mention-only tasks are read-only for dates — no drag-to-reschedule.
-    if (task.mentionOnly) return;
+    // Read-only tasks (mention-only OR tree-inherited) can't be dragged to reschedule.
+    if (task.mentionOnly || task.treeOnly) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDrag({
       id: task.id,
@@ -399,10 +399,13 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
                 const bothDates = !!task.startAt && !!task.dueAt;
                 const isDragging = drag?.id === task.id;
                 const pill = statusPill(task.status);
+                // Read-only bars (mention-only OR tree-inherited) can't be dragged.
+                const readOnly = task.mentionOnly || task.treeOnly;
+                const treeCue = task.treeOnly && !task.mentionOnly;
                 return (
                   <div
                     key={task.id}
-                    className={`gantt-bar${isDragging ? ' dragging' : ''}${task.status === 'Completed' ? ' done' : ''}${task.mentionOnly ? ' mention-only' : ''}`}
+                    className={`gantt-bar${isDragging ? ' dragging' : ''}${task.status === 'Completed' ? ' done' : ''}${readOnly ? ' mention-only' : ''}`}
                     style={{
                       top,
                       left: geom.x,
@@ -416,13 +419,13 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
                     onPointerUp={onPointerUp}
                     onDoubleClick={() => navigate(`/tasks/${task.id}`)}
                     title={
-                      task.mentionOnly
-                        ? `${task.name} (read-only — you're mentioned)`
+                      readOnly
+                        ? `${task.name} (read-only — ${treeCue ? 'via parent/child tree position' : "you're mentioned"})`
                         : `${task.name}${bothDates ? '' : ' (drag to move)'}`
                     }
                   >
-                    {task.mentionOnly && <span className="gantt-bar-cue" aria-hidden="true">👁</span>}
-                    {bothDates && !task.mentionOnly && (
+                    {readOnly && <span className="gantt-bar-cue" aria-hidden="true">{treeCue ? '🌳' : '👁'}</span>}
+                    {bothDates && !readOnly && (
                       <span
                         className="gantt-handle start"
                         onPointerDown={(e) => onPointerDown(e, task, 'start')}
@@ -431,7 +434,7 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
                       />
                     )}
                     <span className="gantt-bar-label">{task.name}</span>
-                    {bothDates && !task.mentionOnly && (
+                    {bothDates && !readOnly && (
                       <span
                         className="gantt-handle end"
                         onPointerDown={(e) => onPointerDown(e, task, 'end')}

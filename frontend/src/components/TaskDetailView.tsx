@@ -527,8 +527,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {error && <div className="alert error">{error}</div>}
       {!canEdit && (
         <div className="alert info read-only-banner" role="status">
-          👁 You can see this task because you’re mentioned in it. It’s read-only —
-          you can add comments, but not change its fields.
+          {task.access === 'tree' ? (
+            <>🌳 You can see this task because it sits in the parent/child tree of a task you have access to. It’s read-only — you can view it, but not change its fields.</>
+          ) : (
+            <>👁 You can see this task because you’re mentioned in it. It’s read-only — you can add comments, but not change its fields.</>
+          )}
         </div>
       )}
 
@@ -785,9 +788,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                       const done = c.status === 'Completed';
                       return (
                         <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
-                          <Link to={`/tasks/${c.id}`} className="subtask-name">
-                            {c.name}
-                          </Link>
+                          {c.accessible ? (
+                            <Link to={`/tasks/${c.id}`} className="subtask-name">
+                              {c.name}
+                            </Link>
+                          ) : (
+                            <span className="subtask-name task-ref-locked" title="You do not have access to this task">
+                              #{c.id} <span className="task-ref-lock" aria-label="No access">🔒</span>
+                            </span>
+                          )}
                           <StatusPill status={c.status} />
                         </li>
                       );

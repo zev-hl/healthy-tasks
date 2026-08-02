@@ -137,8 +137,9 @@ export async function reviewerCandidatesController(req: Request, res: Response):
 
 export async function getTaskHistoryController(req: Request, res: Response): Promise<void> {
   const id = parseTaskId(req);
-  await requireTaskAccess(actorOf(req), id); // Phase 13: 404 if the caller can't see the task
-  const history = await getTaskHistory(id);
+  const actor = actorOf(req);
+  await requireTaskAccess(actor, id); // 404 if the caller can't see the task
+  const history = await getTaskHistory(id, actor);
   res.json(history satisfies TaskHistoryEntryDto[]);
 }
 
@@ -171,7 +172,7 @@ export async function searchTasksController(req: Request, res: Response): Promis
   const excludeRaw = req.query.exclude;
   const exclude =
     typeof excludeRaw === 'string' && /^\d+$/.test(excludeRaw) ? Number(excludeRaw) : undefined;
-  res.json((await searchTasks(q, exclude)) satisfies TaskRef[]);
+  res.json((await searchTasks(actorOf(req), q, exclude)) satisfies TaskRef[]);
 }
 
 export async function setParentController(req: Request, res: Response): Promise<void> {

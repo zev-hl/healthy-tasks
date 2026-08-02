@@ -105,6 +105,96 @@ export async function getImmediateTeamIds(userId: string): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Parent/Child tree walks (for read-only access inheritance — follow-up phase)
+// ---------------------------------------------------------------------------
+
+/**
+ * All task ids strictly BELOW the given seed tasks in the Parent/Child tree
+ * (descendants at any depth), excluding tasks that are themselves Private. A
+ * Private task does not stop the walk — its own non-private descendants stay
+ * reachable — it is simply omitted from the result. Recursive CTE (the tree is
+ * asserted acyclic in task.service).
+ */
+async function descendantTaskIds(seedIds: number[]): Promise<number[]> {
+  if (seedIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<{ id: number }[]>`
+    WITH RECURSIVE d AS (
+      SELECT id, "isPrivate" FROM "Task" WHERE "parentId" = ANY(${seedIds}::int[])
+      UNION
+      SELECT t.id, t."isPrivate" FROM "Task" t JOIN d ON t."parentId" = d.id
+    )
+    SELECT id FROM d WHERE "isPrivate" = false`;
+  return rows.map((r) => r.id);
+}
+
+/** All task ids strictly ABOVE the seed tasks (ancestors at any depth), Private excluded. */
+async function ancestorTaskIds(seedIds: number[]): Promise<number[]> {
+  if (seedIds.length === 0) return [];
+  const rows = await prisma.$queryRaw<{ id: number }[]>`
+    WITH RECURSIVE a AS (
+      SELECT "parentId" AS id FROM "Task" WHERE id = ANY(${seedIds}::int[]) AND "parentId" IS NOT NULL
+      UNION
+      SELECT t."parentId" FROM "Task" t JOIN a ON t.id = a.id WHERE t."parentId" IS NOT NULL
+    )
+    SELECT a.id FROM a JOIN "Task" t ON t.id = a.id WHERE t."isPrivate" = false`;
+  return rows.map((r) => r.id);
+}
+
+/** Task ids where `actorId` is @mentioned in a non-private comment (mention access). */
+async function mentionedTaskIds(actorId: string): Promise<number[]> {
+  const rows = await prisma.$queryRaw<{ taskId: number }[]>`
+    SELECT DISTINCT c."taskId" FROM "CommentMention" cm
+      JOIN "Comment" c ON cm."commentId" = c.id
+      JOIN "Task" t ON t.id = c."taskId"
+     WHERE cm."userId" = ${actorId} AND t."isPrivate" = false`;
+  return rows.map((r) => r.taskId);
+}
+
+/**
+ * Does `actor` reach `taskId` DOWNWARD — i.e. some ancestor of it is a task they
+ * have full access to (its assignee is in the actor's downline-or-self)? The
+ * ancestor may itself be Private; full access to a private ancestor still lets
+ * the actor see its (non-private) descendants.
+ */
+async function hasDownwardTreeAccess(fullIds: string[], taskId: number): Promise<boolean> {
+  if (fullIds.length === 0) return false;
+  const rows = await prisma.$queryRaw<{ one: number }[]>`
+    WITH RECURSIVE a AS (
+      SELECT "parentId" AS id FROM "Task" WHERE id = ${taskId} AND "parentId" IS NOT NULL
+      UNION
+      SELECT t."parentId" FROM "Task" t JOIN a ON t.id = a.id WHERE t."parentId" IS NOT NULL
+    )
+    SELECT 1 AS one FROM a JOIN "Task" t ON t.id = a.id
+     WHERE t."assigneeId" = ANY(${fullIds}::text[]) LIMIT 1`;
+  return rows.length > 0;
+}
+
+/**
+ * Does `actor` reach `taskId` UPWARD — i.e. some descendant of it is a task they
+ * can access via full access or a mention? (Access to a descendant grants
+ * read-only visibility into its ancestors.)
+ */
+async function hasUpwardTreeAccess(
+  actorId: string,
+  fullIds: string[],
+  taskId: number,
+): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ one: number }[]>`
+    WITH RECURSIVE d AS (
+      SELECT id FROM "Task" WHERE "parentId" = ${taskId}
+      UNION
+      SELECT t.id FROM "Task" t JOIN d ON t."parentId" = d.id
+    )
+    SELECT 1 AS one FROM d JOIN "Task" t ON t.id = d.id
+     WHERE t."assigneeId" = ANY(${fullIds}::text[])
+        OR (t."isPrivate" = false AND EXISTS (
+              SELECT 1 FROM "Comment" c JOIN "CommentMention" cm ON cm."commentId" = c.id
+               WHERE c."taskId" = t.id AND cm."userId" = ${actorId}))
+     LIMIT 1`;
+  return rows.length > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Per-task access
 // ---------------------------------------------------------------------------
 
@@ -117,9 +207,14 @@ export interface TaskAccessSubject {
 
 /**
  * The actor's live access to one task, or null if they cannot see it at all:
- *  - `full`    — Admin, the current Assignee, or a supervisor above the Assignee.
- *  - `comment` — currently @mentioned in a non-private comment (mention-only).
+ *  - `full`    — Admin, the current Assignee, or a supervisor above the Assignee
+ *                (editable).
+ *  - `comment` — currently @mentioned in a non-private comment (read-only + comment).
+ *  - `tree`    — read-only visibility inherited via Parent/Child tree position
+ *                (down from a full-access ancestor, or up from any accessible
+ *                descendant); suspended when the task is Private.
  *  - null      — no access (caller turns this into a 404, never leaking existence).
+ * Private tasks expose NO mention or tree access — only {Admin, Assignee, chain}.
  */
 export async function computeTaskAccess(
   actor: Actor,
@@ -128,14 +223,18 @@ export async function computeTaskAccess(
   if (actor.role === 'Admin') return 'full';
   if (task.assigneeId && task.assigneeId === actor.id) return 'full';
   if (await isInSupervisorChain(actor.id, task.assigneeId)) return 'full';
-  // Mention-only access is suspended while the task is Private.
-  if (!task.isPrivate) {
-    const mention = await prisma.commentMention.findFirst({
-      where: { userId: actor.id, comment: { taskId: task.id } },
-      select: { userId: true },
-    });
-    if (mention) return 'comment';
-  }
+  // A Private task grants no mention or tree access — it overrides inheritance.
+  if (task.isPrivate) return null;
+  const mention = await prisma.commentMention.findFirst({
+    where: { userId: actor.id, comment: { taskId: task.id } },
+    select: { userId: true },
+  });
+  if (mention) return 'comment';
+  // Tree inheritance (read-only): reachable down from a full-access ancestor, or
+  // up from an accessible descendant.
+  const fullIds = [actor.id, ...(await getDownlineIds(actor.id))];
+  if (await hasDownwardTreeAccess(fullIds, task.id)) return 'tree';
+  if (await hasUpwardTreeAccess(actor.id, fullIds, task.id)) return 'tree';
   return null;
 }
 
@@ -165,7 +264,7 @@ export async function requireTaskAccess(
 export async function assertCanEditTask(actor: Actor, taskId: number): Promise<void> {
   const { level } = await requireTaskAccess(actor, taskId);
   if (level !== 'full') {
-    throw HttpError.forbidden('You have read-only (comment-only) access to this task');
+    throw HttpError.forbidden('You have read-only access to this task');
   }
 }
 
@@ -257,51 +356,116 @@ async function activeAdminIds(): Promise<string[]> {
 // ---------------------------------------------------------------------------
 
 /**
- * A precomputed access scope for one actor, reused across a whole list query.
- * `fullIds` = the assignee ids that grant full access (the actor + their entire
- * downline); `null` for Admin (unrestricted).
+ * A precomputed access scope for one actor, reused across a whole list query
+ * AND across a Task Detail's referenced tasks. Computed once (a few tree walks):
+ *  - `fullIds`     — assignee ids that grant full access (actor + downline); null for Admin.
+ *  - `fullTaskIds` — task ids the actor has FULL (edit) access to.
+ *  - `mentionIds`  — task ids visible via a mention (non-private).
+ *  - `treeIds`     — task ids visible read-only via Parent/Child inheritance (non-private).
+ * A task is VISIBLE iff Admin, or its id is in fullTaskIds ∪ mentionIds ∪ treeIds.
  */
 export interface TaskAccessScope {
   isAdmin: boolean;
   fullIds: Set<string> | null;
+  fullTaskIds: Set<number>;
+  mentionIds: Set<number>;
+  treeIds: Set<number>;
 }
 
+const EMPTY_NUM_SET = (): Set<number> => new Set<number>();
+
 export async function getTaskAccessScope(actor: Actor): Promise<TaskAccessScope> {
-  if (actor.role === 'Admin') return { isAdmin: true, fullIds: null };
+  if (actor.role === 'Admin') {
+    return {
+      isAdmin: true,
+      fullIds: null,
+      fullTaskIds: EMPTY_NUM_SET(),
+      mentionIds: EMPTY_NUM_SET(),
+      treeIds: EMPTY_NUM_SET(),
+    };
+  }
   const downline = await getDownlineIds(actor.id);
-  return { isAdmin: false, fullIds: new Set<string>([actor.id, ...downline]) };
+  const fullIds = new Set<string>([actor.id, ...downline]);
+
+  // F: tasks the actor has full access to (assignee in fullIds).
+  const fullTasks = await prisma.task.findMany({
+    where: { assigneeId: { in: [...fullIds] } },
+    select: { id: true },
+  });
+  const fullTaskIds = fullTasks.map((t) => t.id);
+  // M: non-private tasks the actor is mentioned in.
+  const mentionList = await mentionedTaskIds(actor.id);
+  // D: non-private descendants of the full-access tasks (downward inheritance).
+  const down = await descendantTaskIds(fullTaskIds);
+  // U: non-private ancestors of every accessible task (upward inheritance).
+  const upSeed = [...new Set([...fullTaskIds, ...mentionList, ...down])];
+  const up = await ancestorTaskIds(upSeed);
+
+  return {
+    isAdmin: false,
+    fullIds,
+    fullTaskIds: new Set(fullTaskIds),
+    mentionIds: new Set(mentionList),
+    treeIds: new Set<number>([...down, ...up]),
+  };
 }
 
 /**
  * The Prisma predicate that limits a multi-task query to what `actor` may see.
- * `null` = no restriction (Admin). The first clause is full-access (assignee in
- * the actor's downline-or-self); the second, added only when `includeMentioned`,
- * is the non-private mention-only clause.
+ * `null` = no restriction (Admin). Full-access tasks stay a cheap `assigneeId IN`
+ * predicate; read-only tasks (mention + tree inheritance) are added as an id-set
+ * clause, included only when `includeReadOnly` (the "show read-only" toggle).
  */
 export function buildTaskAccessWhere(
   scope: TaskAccessScope,
-  actorId: string,
-  includeMentioned: boolean,
+  includeReadOnly: boolean,
 ): Prisma.TaskWhereInput | null {
   if (scope.isAdmin || scope.fullIds === null) return null;
   const clauses: Prisma.TaskWhereInput[] = [{ assigneeId: { in: [...scope.fullIds] } }];
-  if (includeMentioned) {
-    clauses.push({
-      isPrivate: false,
-      comments: { some: { mentions: { some: { userId: actorId } } } },
-    });
+  if (includeReadOnly) {
+    const readOnly = [...scope.mentionIds, ...scope.treeIds];
+    if (readOnly.length > 0) clauses.push({ id: { in: readOnly } });
   }
   return { OR: clauses };
 }
 
+/** True when `actor` can see this task at all (any access source). */
+export function isTaskVisible(scope: TaskAccessScope, taskId: number): boolean {
+  return (
+    scope.isAdmin ||
+    scope.fullTaskIds.has(taskId) ||
+    scope.mentionIds.has(taskId) ||
+    scope.treeIds.has(taskId)
+  );
+}
+
 /**
- * Whether a returned row is visible ONLY via a mention (not full access) — the
- * flag that drives the read-only cue and disabled drag in the views. Always
- * false for Admin (who has full access to everything).
+ * The actor's access level for one task, derived from a precomputed scope (no
+ * extra queries) — matches `computeTaskAccess` but reuses the batch sets. `null`
+ * means no access. Full access wins over mention, which wins over tree.
  */
-export function isMentionOnly(scope: TaskAccessScope, assigneeId: string | null): boolean {
-  if (scope.isAdmin || scope.fullIds === null) return false;
-  return assigneeId === null || !scope.fullIds.has(assigneeId);
+export function scopeTaskLevel(scope: TaskAccessScope, taskId: number): TaskAccessLevel | null {
+  if (scope.isAdmin || scope.fullTaskIds.has(taskId)) return 'full';
+  if (scope.mentionIds.has(taskId)) return 'comment';
+  if (scope.treeIds.has(taskId)) return 'tree';
+  return null;
+}
+
+/** How a returned row is visible, for the read-only cues in the multi-task views. */
+export interface RowAccessFlags {
+  /** Read-only because the actor is only @mentioned (not full access). */
+  mentionOnly: boolean;
+  /** Read-only because the actor only reaches it via Parent/Child tree position. */
+  treeOnly: boolean;
+}
+
+export function classifyRow(scope: TaskAccessScope, taskId: number): RowAccessFlags {
+  const full = scope.isAdmin || scope.fullTaskIds.has(taskId);
+  if (full) return { mentionOnly: false, treeOnly: false };
+  return {
+    mentionOnly: scope.mentionIds.has(taskId),
+    treeOnly: scope.treeIds.has(taskId),
+  };
 }
 
 // ---------------------------------------------------------------------------

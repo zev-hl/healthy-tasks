@@ -115,9 +115,9 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
               <div className="kanban-col-body">
                 {column.map((task) => {
                   const inReview = task.status === 'Review';
-                  // Phase 13: mention-only tasks are read-only for Status/dates —
-                  // not draggable — but commenting still works via Task Detail.
-                  const readOnly = task.mentionOnly;
+                  // Read-only tasks (mention-only OR tree-inherited) can't change
+                  // Status/dates — not draggable — but commenting still works.
+                  const readOnly = task.mentionOnly || task.treeOnly;
                   const locked = inReview || readOnly;
                   return (
                     <article
@@ -161,12 +161,16 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                           🔒
                         </span>
                       )}
-                      {readOnly && !inReview && (
+                      {!inReview && (task.mentionOnly || task.treeOnly) && (
                         <span
-                          className="kanban-lock mention-only-cue"
-                          title="Read-only — you can see this because you're mentioned"
+                          className="kanban-lock read-only-cue"
+                          title={
+                            task.treeOnly && !task.mentionOnly
+                              ? 'Read-only — visible via its parent/child tree position'
+                              : "Read-only — you can see this because you're mentioned"
+                          }
                         >
-                          👁
+                          {task.treeOnly && !task.mentionOnly ? '🌳' : '👁'}
                         </span>
                       )}
                     </article>

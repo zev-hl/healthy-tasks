@@ -113,9 +113,13 @@ export async function createComment(
   taskId: number,
   body: string,
 ): Promise<TaskDetailDto> {
-  // Commenting requires at least view access (full or mention-only); a user with
-  // no access gets a 404 here, so they can neither see nor comment on the task.
+  // Commenting requires FULL or mention (comment) access. A user with no access
+  // gets 404 (existence hidden); a purely tree-inherited (read-only) viewer gets
+  // 403 — tree visibility is read-only and does not grant commenting.
   const access = await requireTaskAccess(actor, taskId);
+  if (access.level === 'tree') {
+    throw HttpError.forbidden('You have read-only access to this task and cannot comment on it');
+  }
   const clean = prepareBody(body);
   const mentionIds = await restrictMentionsForTask(
     await activeUserIds(extractMentionUserIds(clean)),

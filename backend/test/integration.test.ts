@@ -4042,7 +4042,7 @@ describe('Phase 13: task-level access control', () => {
     assert.equal((await getTask(outTok, t.id)).status, 404, 'access removed when mention edited out');
   });
 
-  it('multi-task search flags mention-only rows and honours the includeMentioned toggle', async () => {
+  it('multi-task search flags mention-only rows and honours the includeReadOnly toggle', async () => {
     const admin = await adminToken();
     const emp = await seedUser({ email: 'ms-emp@test.local', role: 'Member', password: PW });
     const out = await seedUser({ email: 'ms-out@test.local', role: 'Member', password: PW });
@@ -4052,17 +4052,17 @@ describe('Phase 13: task-level access control', () => {
     const other = await makeTask(admin, 'Other task', { assigneeId: emp.id });
     await addComment(empTok, other.id, `<p>${mentionSpan(out.id, 'out')}</p>`);
 
-    const withMentions = await queryTasks(outTok, { includeMentioned: true });
-    const ids = new Set(withMentions.rows.map((r) => r.id));
+    const withReadOnly = await queryTasks(outTok, { includeReadOnly: true });
+    const ids = new Set(withReadOnly.rows.map((r) => r.id));
     assert.ok(ids.has(own.id) && ids.has(other.id), 'both full and mention-only tasks appear');
-    const ownRow = withMentions.rows.find((r) => r.id === own.id)!;
-    const otherRow = withMentions.rows.find((r) => r.id === other.id)!;
+    const ownRow = withReadOnly.rows.find((r) => r.id === own.id)!;
+    const otherRow = withReadOnly.rows.find((r) => r.id === other.id)!;
     assert.equal(ownRow.mentionOnly, false, 'own task is full access');
     assert.equal(otherRow.mentionOnly, true, 'mentioned task is flagged read-only');
 
-    const withoutMentions = await queryTasks(outTok, { includeMentioned: false });
-    const ids2 = new Set(withoutMentions.rows.map((r) => r.id));
-    assert.ok(ids2.has(own.id) && !ids2.has(other.id), 'toggle hides mention-only tasks');
+    const withoutReadOnly = await queryTasks(outTok, { includeReadOnly: false });
+    const ids2 = new Set(withoutReadOnly.rows.map((r) => r.id));
+    assert.ok(ids2.has(own.id) && !ids2.has(other.id), 'toggle hides read-only tasks');
   });
 
   it('assignment restriction: Member (immediate team) vs Manager (+ downline) vs Admin', async () => {
@@ -4251,5 +4251,159 @@ describe('Phase 13: Due Date Performance Report bucketing', () => {
     const totals = res.body.bucketTotals as Record<string, number>;
     const sum = Object.values(totals).reduce((a, b) => a + b, 0);
     assert.equal(sum, res.body.rows.length);
+  });
+});
+
+// --- Follow-up: Parent/Child tree access inheritance -----------------------
+
+describe('Parent/Child tree access inheritance', () => {
+  const PW = 'TreePass123!';
+  const getTask = (token: string, id: number) =>
+    request(app).get(`/api/tasks/${id}`).set(auth(token));
+  const patch = (token: string, id: number, body: Record<string, unknown>) =>
+    request(app).patch(`/api/tasks/${id}`).set(auth(token)).send(body);
+  const setParent = (token: string, id: number, parentId: number) =>
+    request(app).put(`/api/tasks/${id}/parent`).set(auth(token)).send({ parentId });
+
+  /** admin + a manager, their direct member, and an unrelated outsider. */
+  async function team() {
+    const admin = await adminToken();
+    const mgr = await seedUser({ email: 't-mgr@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 't-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const out = await seedUser({ email: 't-out@test.local', role: 'Member', password: PW });
+    return {
+      admin,
+      mgr,
+      emp,
+      out,
+      mgrTok: await login('t-mgr@test.local', PW),
+      empTok: await login('t-emp@test.local', PW),
+      outTok: await login('t-out@test.local', PW),
+    };
+  }
+
+  it('downward: full access to a parent grants READ-ONLY visibility to descendants at any depth', async () => {
+    const t = await team();
+    // P (emp → mgr full) → C1 (outsider) → C2 (outsider), a 3-deep chain.
+    const p = await makeTask(t.admin, 'Par', { assigneeId: t.emp.id });
+    const c1 = await makeTask(t.admin, 'C1', { assigneeId: t.out.id });
+    const c2 = await makeTask(t.admin, 'C2', { assigneeId: t.out.id });
+    await setParent(t.admin, c1.id, p.id);
+    await setParent(t.admin, c2.id, c1.id);
+
+    // mgr has full access to P (supervises the assignee) and read-only to C1/C2.
+    assert.equal((await getTask(t.mgrTok, p.id)).body.access, 'full');
+    const d1 = await getTask(t.mgrTok, c1.id);
+    assert.equal(d1.status, 200);
+    assert.equal(d1.body.access, 'tree', 'descendant is read-only tree access');
+    assert.equal((await getTask(t.mgrTok, c2.id)).body.access, 'tree', 'grand-descendant too');
+    // Read-only means edits are rejected on the inherited descendants.
+    assert.equal((await patch(t.mgrTok, c1.id, { priority: 'High' })).status, 403);
+    // …but the assignee (outsider) keeps full edit rights on their own task.
+    assert.equal((await patch(t.outTok, c1.id, { priority: 'High' })).status, 200);
+  });
+
+  it('upward: access to a child grants READ-ONLY visibility to its ancestors', async () => {
+    const t = await team();
+    // P (outsider) → C (emp). emp accesses C (assignee) and inherits read-only P.
+    const p = await makeTask(t.admin, 'UP', { assigneeId: t.out.id });
+    const c = await makeTask(t.admin, 'UC', { assigneeId: t.emp.id });
+    await setParent(t.admin, c.id, p.id);
+
+    assert.equal((await getTask(t.empTok, c.id)).body.access, 'full');
+    const up = await getTask(t.empTok, p.id);
+    assert.equal(up.status, 200);
+    assert.equal(up.body.access, 'tree', 'ancestor is read-only');
+    assert.equal((await patch(t.empTok, p.id, { priority: 'High' })).status, 403);
+  });
+
+  it('a user with INDEPENDENT full access to a descendant keeps full edit there (not downgraded)', async () => {
+    const t = await team();
+    // P (emp) → C1 (emp, also full) → C2 (outsider, tree-only for mgr).
+    const p = await makeTask(t.admin, 'IP', { assigneeId: t.emp.id });
+    const c1 = await makeTask(t.admin, 'IC1', { assigneeId: t.emp.id });
+    const c2 = await makeTask(t.admin, 'IC2', { assigneeId: t.out.id });
+    await setParent(t.admin, c1.id, p.id);
+    await setParent(t.admin, c2.id, c1.id);
+
+    assert.equal((await getTask(t.mgrTok, c1.id)).body.access, 'full', 'independent full access wins over tree');
+    assert.equal((await patch(t.mgrTok, c1.id, { priority: 'High' })).status, 200);
+    assert.equal((await getTask(t.mgrTok, c2.id)).body.access, 'tree');
+    assert.equal((await patch(t.mgrTok, c2.id, { priority: 'High' })).status, 403);
+  });
+
+  it('Private overrides inheritance in BOTH directions', async () => {
+    const t = await team();
+    // Downward: P (emp → mgr full) → C-private (outsider, Private). mgr must NOT see C.
+    const p = await makeTask(t.admin, 'PP', { assigneeId: t.emp.id });
+    const cPriv = await makeTask(t.admin, 'PC', { assigneeId: t.out.id });
+    await setParent(t.admin, cPriv.id, p.id);
+    await request(app).patch(`/api/tasks/${cPriv.id}/private`).set(auth(t.admin)).send({ isPrivate: true });
+    assert.equal((await getTask(t.mgrTok, cPriv.id)).status, 404, 'Private descendant not inherited downward');
+
+    // Upward: P-private (outsider) → C (emp). emp accesses C but must NOT see P.
+    const pPriv = await makeTask(t.admin, 'UPP', { assigneeId: t.out.id });
+    const c = await makeTask(t.admin, 'UPC', { assigneeId: t.emp.id });
+    await setParent(t.admin, c.id, pPriv.id);
+    await request(app).patch(`/api/tasks/${pPriv.id}/private`).set(auth(t.admin)).send({ isPrivate: true });
+    assert.equal((await getTask(t.empTok, pPriv.id)).status, 404, 'Private ancestor not inherited upward');
+  });
+
+  it('degrades an inaccessible task reference to Id + lock + Status (no name), and updates live', async () => {
+    const t = await team();
+    // T (emp → mgr full) is blocked by X (outsider) — a DEPENDENCY, which does NOT
+    // inherit — so mgr cannot see X and the reference degrades.
+    const task = await makeTask(t.admin, 'DEP-T', { assigneeId: t.emp.id });
+    const x = await makeTask(t.admin, 'SecretBlocker', { assigneeId: t.out.id });
+    await request(app).post(`/api/tasks/${task.id}/dependencies`).set(auth(t.admin)).send({ type: 'blockedBy', otherTaskId: x.id });
+
+    const before = await getTask(t.mgrTok, task.id);
+    const ref = (before.body.isBlockedBy as { id: number; name: string; status: string; accessible: boolean }[])[0];
+    assert.equal(ref.id, x.id);
+    assert.equal(ref.accessible, false, 'invisible blocker is not accessible');
+    assert.equal(ref.name, '', 'name is blanked, never leaked');
+    assert.ok(ref.status, 'status is still shown');
+
+    // Grant mgr access by moving X into their downline → the ref updates live.
+    await patch(t.admin, x.id, { assigneeId: t.emp.id });
+    const after = await getTask(t.mgrTok, task.id);
+    const ref2 = (after.body.isBlockedBy as { id: number; name: string; accessible: boolean }[])[0];
+    assert.equal(ref2.accessible, true, 'access change reflected on next view');
+    assert.equal(ref2.name, 'SecretBlocker', 'name now visible');
+  });
+
+  it('blocked-status enforcement evaluates the real predecessor even when the actor cannot see it', async () => {
+    const t = await team();
+    const task = await makeTask(t.admin, 'BLK-T', { assigneeId: t.emp.id });
+    const x = await makeTask(t.admin, 'HiddenPred', { assigneeId: t.out.id, status: 'InProgress' });
+    await request(app).post(`/api/tasks/${task.id}/dependencies`).set(auth(t.admin)).send({ type: 'blockedBy', otherTaskId: x.id });
+
+    // mgr (full on task, cannot see the outsider's blocker) still cannot complete it.
+    const res = await patch(t.mgrTok, task.id, { status: 'Completed' });
+    assert.equal(res.status, 400, 'blocked rule fires regardless of visibility');
+    assert.match(res.body.error, new RegExp(`#${x.id}`));
+    assert.equal(res.body.error.includes('HiddenPred'), false, 'the unseen blocker name is not leaked');
+  });
+
+  it('relationship picker only returns visible tasks; removing a link never needs access to the other side', async () => {
+    const t = await team();
+    const mine = await makeTask(t.admin, 'PickMine', { assigneeId: t.emp.id });
+    const secret = await makeTask(t.admin, 'PickSecret', { assigneeId: t.out.id });
+
+    const pick = await request(app).get('/api/tasks/search?q=Pick').set(auth(t.empTok));
+    const ids = (pick.body as { id: number }[]).map((r) => r.id);
+    assert.ok(ids.includes(mine.id), 'own task offered');
+    assert.equal(ids.includes(secret.id), false, 'invisible task never offered by the picker');
+
+    // Create a dependency to a currently-visible task, then make it invisible, then remove the link.
+    const dep = await makeTask(t.admin, 'DepVisible', { assigneeId: t.emp.id });
+    await request(app).post(`/api/tasks/${mine.id}/dependencies`).set(auth(t.empTok)).send({ type: 'blockedBy', otherTaskId: dep.id });
+    await patch(t.admin, dep.id, { assigneeId: t.out.id }); // now invisible to emp
+    assert.equal((await getTask(t.empTok, dep.id)).status, 404, 'the linked task is now invisible');
+    const removed = await request(app)
+      .delete(`/api/tasks/${mine.id}/dependencies`)
+      .set(auth(t.empTok))
+      .send({ type: 'blockedBy', otherTaskId: dep.id });
+    assert.equal(removed.status, 200, 'removing a link to an inaccessible task is allowed');
   });
 });

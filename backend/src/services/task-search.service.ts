@@ -22,8 +22,8 @@ import {
   type Actor,
   type TaskAccessScope,
   buildTaskAccessWhere,
+  classifyRow,
   getTaskAccessScope,
-  isMentionOnly,
 } from './access-control.service.js';
 
 // Hard cap on export size to bound memory (well above realistic result sets).
@@ -65,9 +65,8 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     blockedByIds: t.blockedBy.map((b) => b.blockerId),
     instanceLabel: t.instanceLabel,
     templateId: t.templateId,
-    // Phase 13: this row is visible only via a mention when its assignee is not
-    // in the caller's full-access set (self + downline). Always false for Admin.
-    mentionOnly: isMentionOnly(scope, t.assigneeId),
+    // Read-only cues: mention-only and/or tree-inherited (both false for full access / Admin).
+    ...classifyRow(scope, t.id),
   };
 }
 
@@ -259,7 +258,7 @@ export async function scopedTaskWhere(
 ): Promise<{ where: Prisma.TaskWhereInput; scope: TaskAccessScope }> {
   const scope = await getTaskAccessScope(actor);
   const base = await buildWhere(input);
-  const accessWhere = buildTaskAccessWhere(scope, actor.id, input.includeMentioned ?? true);
+  const accessWhere = buildTaskAccessWhere(scope, input.includeReadOnly ?? true);
   return { where: accessWhere ? { AND: [base, accessWhere] } : base, scope };
 }
 
