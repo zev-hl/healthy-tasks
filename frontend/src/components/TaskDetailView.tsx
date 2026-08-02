@@ -625,7 +625,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
           <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
             <span className="due-chip-label">Due</span>
-            {stagedDueIso ? <DueDate iso={stagedDueIso} inline /> : <span className="muted">—</span>}
+            {stagedDueIso ? <DueDate iso={stagedDueIso} status={task.status} completedAt={task.statusChangedAt} isDue inline /> : <span className="muted">—</span>}
           </span>
 
           {task.tags.map((t) => (

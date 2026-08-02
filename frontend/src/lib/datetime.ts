@@ -1,6 +1,7 @@
 // Local date/time <-> ISO helpers shared by the task create form and the task
 // detail editor. Conversions happen in the browser so "local" is the user's
 // actual timezone.
+import type { TaskStatus } from '@healthy-tasks/shared';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -85,31 +86,63 @@ export function absoluteShort(iso: string | null | undefined): string {
   return `${date}, ${timeStr(d)}`;
 }
 
-export type DateTone = 'overdue' | 'due-today' | 'normal';
+export type DateTone = 'overdue' | 'due-today' | 'late' | 'normal';
 export interface DueParts {
   primary: string;
   secondary: string;
   tone: DateTone;
 }
 
-/** Relative-first treatment for a Start/Due date. `long` expands "17d" → "17
- * days" (detail view); `done` renders "done Mon" for completed tasks. */
+export interface FormatDueOptions {
+  /** Expand "17d" → "17 days" (detail view). */
+  long?: boolean;
+  /** The task's current status, so terminal tasks aren't shown as "Overdue". */
+  status?: TaskStatus;
+  /** The Status-Change Timestamp (completion time for a Completed task). */
+  completedAt?: string | null;
+  /** True when this value is the Due date, so a late completion reads "Late". */
+  isDue?: boolean;
+}
+
+/**
+ * Relative-first treatment for a Start/Due date. Status-aware so wording stays
+ * consistent with the rest of the app:
+ *  - a **Completed** task is never "Overdue" — if it finished after its Due date
+ *    it reads "Late Nd" (matching the Due Date report), otherwise just the date;
+ *  - a **Canceled** task is neither Overdue nor Late — the date is shown plainly;
+ *  - any other status keeps the live Overdue / due-today / upcoming treatment.
+ */
 export function formatDue(
   iso: string | null | undefined,
-  opts: { long?: boolean; done?: boolean } = {},
+  opts: FormatDueOptions = {},
 ): DueParts | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   const now = new Date();
   const secondary = absoluteShort(iso);
+  const plainDate = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-  if (opts.done) {
-    return {
-      primary: `done ${d.toLocaleDateString(undefined, { weekday: 'short' })}`,
-      secondary,
-      tone: 'normal',
-    };
+  // Canceled: show the date, but it is neither overdue nor late.
+  if (opts.status === 'Canceled') {
+    return { primary: plainDate, secondary, tone: 'normal' };
+  }
+  // Completed: "Late Nd" only if it finished after the Due date; else just the date.
+  if (opts.status === 'Completed') {
+    if (opts.isDue && opts.completedAt) {
+      const doneMs = new Date(opts.completedAt).getTime();
+      if (!Number.isNaN(doneMs) && doneMs > d.getTime()) {
+        const days = Math.abs(Math.trunc((d.getTime() - doneMs) / DAY_MS));
+        const primary =
+          days >= 1
+            ? opts.long
+              ? `Late ${days} ${days === 1 ? 'day' : 'days'}`
+              : `Late ${days}d`
+            : 'Late';
+        return { primary, secondary, tone: 'late' };
+      }
+    }
+    return { primary: plainDate, secondary, tone: 'normal' };
   }
 
   const dayDiff = Math.round((startOfDay(d) - startOfDay(now)) / DAY_MS);

@@ -4407,3 +4407,32 @@ describe('Parent/Child tree access inheritance', () => {
     assert.equal(removed.status, 200, 'removing a link to an inaccessible task is allowed');
   });
 });
+
+// --- Excel export timezone rendering ---------------------------------------
+
+describe('Excel export renders dates in the requester timezone', () => {
+  let toExcelLocalDate: (iso: string | null | undefined, tz: string | undefined) => Date | string;
+  before(async () => {
+    ({ toExcelLocalDate } = await import('../src/utils/excel-date.js'));
+  });
+
+  it('shifts a UTC instant to the local wall-clock (7pm EDT stored as 23:00Z -> 19:00)', () => {
+    const d = toExcelLocalDate('2026-07-28T23:00:00.000Z', 'America/New_York');
+    assert.ok(d instanceof Date);
+    assert.equal((d as Date).getUTCHours(), 19, '7:00 PM local, not 23:00 UTC');
+    assert.equal((d as Date).getUTCDate(), 28);
+  });
+
+  it('honours the winter (EST) offset too (DST-correct per instant)', () => {
+    const d = toExcelLocalDate('2026-01-15T00:00:00.000Z', 'America/New_York') as Date;
+    // 00:00Z on Jan 15 is 7:00 PM EST on Jan 14.
+    assert.equal(d.getUTCHours(), 19);
+    assert.equal(d.getUTCDate(), 14);
+  });
+
+  it('leaves the instant unchanged when no timezone is given, and blanks null', () => {
+    const same = toExcelLocalDate('2026-07-28T23:00:00.000Z', undefined) as Date;
+    assert.equal(same.getUTCHours(), 23);
+    assert.equal(toExcelLocalDate(null, 'America/New_York'), '');
+  });
+});

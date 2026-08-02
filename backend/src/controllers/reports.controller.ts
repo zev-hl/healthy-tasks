@@ -21,7 +21,11 @@ export async function dueDateReportController(req: Request, res: Response): Prom
 export async function dueDateReportExportController(req: Request, res: Response): Promise<void> {
   const input = req.body as DueDateReportInput;
   const result = await runDueDateReport(input, actorOf(req));
-  const workbook = await buildDueDateReportWorkbook(result.rows, input.groupByAssignee ?? false);
+  const workbook = await buildDueDateReportWorkbook(
+    result.rows,
+    input.groupByAssignee ?? false,
+    input.timeZone,
+  );
   res.setHeader(
     'Content-Type',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

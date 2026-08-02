@@ -149,7 +149,7 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                       </Link>
                       <TagChips tags={task.tags} />
                       <div className="kanban-card-foot">
-                        <DueDate iso={task.dueAt} inline />
+                        <DueDate iso={task.dueAt} status={task.status} completedAt={task.statusChangedAt} isDue inline />
                         {task.assignee ? (
                           <Avatar user={task.assignee} size="xs" />
                         ) : (

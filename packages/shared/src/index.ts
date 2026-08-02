@@ -705,6 +705,8 @@ export interface TaskSearchRequest {
    * tasks are returned. Ignored for Admins. Drives the "show read-only" toggle.
    */
   includeReadOnly?: boolean;
+  /** IANA timezone (Excel export only) — dates render in this zone, not UTC. */
+  timeZone?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -866,6 +868,8 @@ export interface DueDateReportRequest {
   hierarchyUserIds?: string[];
   /** When true, the Excel export groups rows by assignee with subtotal rows. */
   groupByAssignee?: boolean;
+  /** IANA timezone (Excel export only) — dates render in this zone, not UTC. */
+  timeZone?: string;
 }
 
 export interface DueDateReportResult {

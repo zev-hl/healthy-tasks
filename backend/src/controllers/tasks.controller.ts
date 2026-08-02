@@ -86,8 +86,9 @@ export async function dashboardController(req: Request, res: Response): Promise<
 
 /** Export the current filtered/sorted result set to .xlsx (all columns). */
 export async function exportTasksController(req: Request, res: Response): Promise<void> {
-  const rows = await searchTasksForExport(req.body as TaskSearchInput, actorOf(req));
-  const workbook = await buildTasksWorkbook(rows);
+  const input = req.body as TaskSearchInput;
+  const rows = await searchTasksForExport(input, actorOf(req));
+  const workbook = await buildTasksWorkbook(rows, input.timeZone);
   res.setHeader(
     'Content-Type',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

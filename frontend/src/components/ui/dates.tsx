@@ -5,23 +5,30 @@
  * overdue / amber when due today. `AgoDate` is the single-line past form
  * ("22m ago") for created/activity timestamps. Both keep the exact time on hover.
  */
+import type { TaskStatus } from '@healthy-tasks/shared';
 import { absoluteShort, formatAgo, formatDue } from '../../lib/datetime';
 
 export function DueDate({
   iso,
   long = false,
-  done = false,
   inline = false,
+  status,
+  completedAt,
+  isDue = false,
 }: {
   iso: string | null | undefined;
   /** Expand "17d" → "17 days" (detail view). */
   long?: boolean;
-  /** Render "done Mon" for completed tasks. */
-  done?: boolean;
   /** Single-line: just the relative primary, no mono secondary. */
   inline?: boolean;
+  /** Task status, so a Completed/Canceled task isn't shown as "Overdue". */
+  status?: TaskStatus;
+  /** Status-Change Timestamp (completion time) — drives the "Late" label. */
+  completedAt?: string | null;
+  /** True when this is the Due date (a late completion then reads "Late"). */
+  isDue?: boolean;
 }) {
-  const p = formatDue(iso, { long, done });
+  const p = formatDue(iso, { long, status, completedAt, isDue });
   if (!p) return <span className="muted">—</span>;
   if (inline) {
     return (

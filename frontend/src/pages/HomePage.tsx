@@ -330,7 +330,7 @@ export function HomePage() {
                     <PriorityRamp priority={r.priority} />
                     <span className="mday-row-title">{r.name}</span>
                     <div className="spacer" />
-                    <DueDate iso={r.dueAt} inline />
+                    <DueDate iso={r.dueAt} status={r.status} completedAt={r.statusChangedAt} isDue inline />
                     {r.assignee ? (
                       <Avatar user={r.assignee} px={22} decorative />
                     ) : (

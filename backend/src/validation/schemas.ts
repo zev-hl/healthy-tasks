@@ -274,6 +274,8 @@ export const taskSearchSchema = z.object({
   todayEnd: dateBound,
   // Phase 13: include mention-only tasks in the access-scoped result (default true).
   includeReadOnly: z.boolean().optional(),
+  // The requester's IANA timezone, so the Excel export renders dates in local time.
+  timeZone: z.string().trim().max(64).optional(),
 });
 
 // Dashboard counts: same text + filters, with a required clock context so the
@@ -299,6 +301,7 @@ export const dueDateReportSchema = z.object({
   includeReadOnly: z.boolean().optional(),
   hierarchyUserIds: z.array(z.string().uuid()).max(5000).optional(),
   groupByAssignee: z.boolean().optional(),
+  timeZone: z.string().trim().max(64).optional(),
 });
 export type DueDateReportInput = z.infer<typeof dueDateReportSchema>;
 

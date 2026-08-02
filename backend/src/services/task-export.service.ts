@@ -1,12 +1,18 @@
 import ExcelJS from 'exceljs';
 import { TASK_STATUS_LABELS, type TaskRowDto } from '@healthy-tasks/shared';
+import { toExcelLocalDate } from '../utils/excel-date.js';
 
 /**
  * Build an .xlsx workbook of the given task rows. Includes ALL columns
  * regardless of what the client currently shows/hides (per the export spec).
- * Tags are comma-joined (full list, not the on-screen chip truncation).
+ * Tags are comma-joined (full list, not the on-screen chip truncation). Dates
+ * are rendered in `timeZone` (the requester's local zone) so the spreadsheet
+ * matches the app; UTC is used when no timezone is supplied.
  */
-export async function buildTasksWorkbook(rows: TaskRowDto[]): Promise<ExcelJS.Workbook> {
+export async function buildTasksWorkbook(
+  rows: TaskRowDto[],
+  timeZone?: string,
+): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Tasks');
 
@@ -31,13 +37,13 @@ export async function buildTasksWorkbook(rows: TaskRowDto[]): Promise<ExcelJS.Wo
       id: r.id,
       name: r.name,
       status: TASK_STATUS_LABELS[r.status],
-      statusChangedAt: r.statusChangedAt ? new Date(r.statusChangedAt) : '',
+      statusChangedAt: toExcelLocalDate(r.statusChangedAt, timeZone),
       priority: r.priority,
       assignee: r.assignee?.email ?? '',
       creator: r.creator.email,
-      createdAt: new Date(r.createdAt),
-      startAt: r.startAt ? new Date(r.startAt) : '',
-      dueAt: r.dueAt ? new Date(r.dueAt) : '',
+      createdAt: toExcelLocalDate(r.createdAt, timeZone),
+      startAt: toExcelLocalDate(r.startAt, timeZone),
+      dueAt: toExcelLocalDate(r.dueAt, timeZone),
       parentChild: r.parentId
         ? `Sub-task of #${r.parentId}`
         : r.childrenCount > 0

@@ -399,6 +399,7 @@ export function TaskSearchPage() {
         filters: effectiveFilters(filters),
         sort,
         includeReadOnly,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         ...nowContext(),
       });
     } catch (err) {
@@ -558,9 +559,9 @@ export function TaskSearchPage() {
       case 'createdAt':
         return <AgoDate iso={row.createdAt} />;
       case 'startAt':
-        return <DueDate iso={row.startAt} />;
+        return <DueDate iso={row.startAt} status={row.status} completedAt={row.statusChangedAt} />;
       case 'dueAt':
-        return <DueDate iso={row.dueAt} />;
+        return <DueDate iso={row.dueAt} status={row.status} completedAt={row.statusChangedAt} isDue />;
       case 'parentChild':
         if (row.parentId != null)
           return (

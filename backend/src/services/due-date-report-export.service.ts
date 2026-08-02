@@ -7,6 +7,7 @@ import {
   type DueDateBucketTotals,
   type DueDateReportRow,
 } from '@healthy-tasks/shared';
+import { toExcelLocalDate } from '../utils/excel-date.js';
 
 /**
  * Build the Due Date Performance Report workbook. Mirrors the Task export column
@@ -17,6 +18,7 @@ import {
 export async function buildDueDateReportWorkbook(
   rows: DueDateReportRow[],
   groupByAssignee: boolean,
+  timeZone?: string,
 ): Promise<ExcelJS.Workbook> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Due Date Performance');
@@ -40,12 +42,12 @@ export async function buildDueDateReportWorkbook(
       id: r.id,
       name: r.name,
       status: TASK_STATUS_LABELS[r.status],
-      statusChangedAt: r.statusChangedAt ? new Date(r.statusChangedAt) : '',
+      statusChangedAt: toExcelLocalDate(r.statusChangedAt, timeZone),
       priority: r.priority,
       assignee: r.assignee?.email ?? '',
       creator: r.creator.email,
-      startAt: r.startAt ? new Date(r.startAt) : '',
-      dueAt: r.dueAt ? new Date(r.dueAt) : '',
+      startAt: toExcelLocalDate(r.startAt, timeZone),
+      dueAt: toExcelLocalDate(r.dueAt, timeZone),
       result: formatDueDateResult(r.bucket, r.daysDelta),
     });
   };

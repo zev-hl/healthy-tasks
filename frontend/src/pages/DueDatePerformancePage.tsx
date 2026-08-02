@@ -179,6 +179,7 @@ export function DueDatePerformancePage() {
         includeReadOnly,
         groupByAssignee,
         hierarchyUserIds: selectedHierarchy.size > 0 ? [...selectedHierarchy] : undefined,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         ...nowContext(),
       });
     } catch (err) {
@@ -416,8 +417,8 @@ function ReportRow({ row }: { row: DueDateReportRow }) {
           <span className="user-chip muted"><UnassignedAvatar px={22} /><span className="user-name">Unassigned</span></span>
         )}
       </td>
-      <td><DueDate iso={row.startAt} /></td>
-      <td><DueDate iso={row.dueAt} /></td>
+      <td><DueDate iso={row.startAt} status={row.status} completedAt={row.statusChangedAt} /></td>
+      <td><DueDate iso={row.dueAt} status={row.status} completedAt={row.statusChangedAt} isDue /></td>
       <td><AgoDate iso={row.statusChangedAt} /></td>
       <td>
         <span className={`result-pill bucket-${BUCKET_CLASS[row.bucket]}`}>

@@ -2423,6 +2423,10 @@ button.btn-sm {
 .due-primary.tone-due-today {
   color: var(--warn-deep);
 }
+/* A Completed-but-late task: distinct from active "overdue" (it needs no action). */
+.due-primary.tone-late {
+  color: var(--warn-deep);
+}
 .due-secondary {
   font-size: 10.5px;
   color: var(--faint);
