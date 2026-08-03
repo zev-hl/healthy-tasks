@@ -347,7 +347,7 @@ export function HomePage() {
         <aside className="mday-side">
           <section className="card">
             <div className="mday-card-head">
-              <h3>Waiting on you</h3>
+              <h3>Latest mentioned/assigned/reminders</h3>
             </div>
             {waiting.length === 0 ? (
               <p className="muted" style={{ fontSize: '12.5px', margin: '4px 0' }}>
