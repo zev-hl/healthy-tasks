@@ -4198,7 +4198,7 @@ describe('Phase 13: task-level access control', () => {
     assert.equal(done.status, 200, JSON.stringify(done.body));
   });
 
-  it('Assignee is locked while Completed or Cancelled - for every role, incl. Admin', async () => {
+  it('Assignee is locked while Completed or Canceled - for every role, incl. Admin', async () => {
     const admin = await adminToken();
     const a = await seedUser({ email: 'al-a@test.local', role: 'Member', password: PW });
     const b = await seedUser({ email: 'al-b@test.local', role: 'Member', password: PW });
@@ -4208,7 +4208,7 @@ describe('Phase 13: task-level access control', () => {
       // Even Admin cannot reassign a terminal task.
       const blocked = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: b.id });
       assert.equal(blocked.status, 400, `${terminal}: assignee change rejected`);
-      assert.match(blocked.body.error, /Completed or Cancelled/);
+      assert.match(blocked.body.error, /Completed or Canceled/);
       // Reopen -> assignee editable again.
       await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Open' });
       const reassigned = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: b.id });

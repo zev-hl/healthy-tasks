@@ -247,7 +247,7 @@ export async function updateTask(
   const inReview = existing.status === 'Review';
   const enteringReview = input.status === 'Review' && existing.status !== 'Review';
 
-  // Assignee locking (Phase 13): while a task is Completed or Cancelled its
+  // Assignee locking (Phase 13): while a task is Completed or Canceled its
   // Assignee is frozen for EVERYONE, including Admin — so the Due Date report can
   // trust "current Assignee" for terminal tasks. Reopening (moving Status away
   // from terminal, no assignee change in the same PATCH) unlocks it again.
@@ -258,7 +258,7 @@ export async function updateTask(
     (assigneeChanging || enteringReview)
   ) {
     throw HttpError.badRequest(
-      'Assignee cannot be changed while a task is Completed or Cancelled; reopen it first',
+      'Assignee cannot be changed while a task is Completed or Canceled; reopen it first',
     );
   }
 
