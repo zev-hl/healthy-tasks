@@ -147,9 +147,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     dueDate !== persistedDue.date ||
     dueTime !== persistedDue.time;
 
-  // Commit all staged fields at once. `statusOverride` lets the top-bar
-  // "Mark complete" / "Reopen" buttons set the status and save in one click.
-  async function saveFields(statusOverride?: TaskStatus) {
+  // Commit all staged fields at once (status, priority, assignee, and dates),
+  // always via the explicit "Save changes" button.
+  async function saveFields() {
     setFieldsError(null);
     // A time with no date is ambiguous — reject it. (A date with no time is fine:
     // partsToIso fills in the default hour, i.e. auto-defaults on save.)
@@ -161,8 +161,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setFieldsError('Due time needs a due date (or clear the time).');
       return;
     }
-    const nextStatus = statusOverride ?? status;
-    if (statusOverride) setStatus(statusOverride);
+    const nextStatus = status;
     if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
       setFieldsError('Start must be earlier than Due');
       return;
@@ -436,7 +435,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
-  const isCompleted = task.status === 'Completed';
   // Review workflow: while in Review, Status + Assignee are locked; the two exits
   // (Reviewed / Recall) carry their own permissions.
   const isInReview = task.status === 'Review';
@@ -512,15 +510,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               {reviewBusy ? 'Saving…' : 'Reviewed'}
             </button>
           </>
-        ) : isCompleted ? (
-          <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={() => void saveFields('Open')}>
-            Reopen
-          </button>
-        ) : (
-          <button type="button" disabled={savingFields} onClick={() => void saveFields('Completed')}>
-            Mark complete
-          </button>
-        )}
+        ) : null}
       </div>
 
       {notice && <div className="alert success">{notice}</div>}
