@@ -64,7 +64,7 @@ const BUCKET_SUBLABEL: Record<DueDateBucket, string> = {
   Overdue: 'Past Due',
   NotStarted: 'Future Due',
   NotCompleted: 'Future Due',
-  Cancelled: '',
+  Cancelled: 'Due or not',
   NoDueDate: 'Not Completed',
 };
 
