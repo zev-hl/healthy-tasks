@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { getStorage } from '../storage/index.js';
@@ -616,18 +617,65 @@ async function collectSubtreeIds(rootId: number): Promise<number[]> {
   return ids;
 }
 
+/** Filesystem/URL-safe attachment filename (mirrors attachment.service). */
+function safeAttachmentName(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? 'file';
+  return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file';
+}
+
+/**
+ * Copy the TASK-level attachments of the duplicated originals onto their clones.
+ * `idMap` maps each original task id to its clone id. Each blob is copied to a
+ * fresh storage key so the copy is fully independent (deleting one task's
+ * attachment never touches the other's). Comment attachments are skipped —
+ * comments aren't duplicated. Best-effort per attachment: if the underlying blob
+ * can't be copied, that attachment is skipped rather than failing the duplicate.
+ */
+async function copyDuplicatedTaskAttachments(
+  idMap: Map<number, number>,
+  actorId: string,
+): Promise<void> {
+  const attachments = await prisma.attachment.findMany({
+    where: { taskId: { in: [...idMap.keys()] }, commentId: null },
+  });
+  if (attachments.length === 0) return;
+  const storage = getStorage();
+  for (const a of attachments) {
+    const newTaskId = a.taskId != null ? idMap.get(a.taskId) : undefined;
+    if (newTaskId == null) continue;
+    const destKey = `tasks/${newTaskId}/${randomUUID()}/${safeAttachmentName(a.filename)}`;
+    try {
+      await storage.copyObject(a.storageKey, destKey);
+    } catch {
+      continue; // best-effort: skip an attachment whose blob couldn't be copied
+    }
+    await prisma.attachment.create({
+      data: {
+        filename: a.filename,
+        contentType: a.contentType,
+        size: a.size,
+        storageKey: destKey,
+        uploadedById: actorId,
+        taskId: newTaskId,
+      },
+    });
+  }
+}
+
 /**
  * Duplicate a task (Phase 11 follow-on). `includeDescendants` clones the whole
  * sub-tree (parent/child structure preserved, internal dependencies remapped to
- * the copies); otherwise just the task itself. Copies name/description/priority/
- * tags/dates/assignee; each copy starts fresh (status Open, its own creator, no
- * history/comments/attachments/template links). The root copy becomes a sibling
- * of the original (same parent). Returns the new root task.
+ * the copies); otherwise just the task itself. `copyAttachments` also clones each
+ * duplicated task's attachments to independent blobs (off by default). Copies
+ * name/description/priority/tags/dates/assignee; each copy starts fresh (status
+ * Open, its own creator, no history/comments/template links). The root copy
+ * becomes a sibling of the original (same parent). Returns the new root task.
  */
 export async function duplicateTask(
   actor: Actor,
   rootId: number,
   includeDescendants: boolean,
+  copyAttachments = false,
 ): Promise<TaskDetailDto> {
   const actorId = actor.id;
   // Cloning requires full (edit) access to the source task.
@@ -686,6 +734,10 @@ export async function duplicateTask(
       }
     }
   });
+
+  // Copy attachments onto the clones (independent blobs) when requested. Done
+  // after the transaction since it performs external (S3) copies.
+  if (copyAttachments) await copyDuplicatedTaskAttachments(idMap, actorId);
 
   // Assignment notifications for the copies (self-assignments skipped inside).
   for (const c of created) {

@@ -268,10 +268,10 @@ export const api = {
       body: JSON.stringify({ type, otherTaskId }),
     }),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
-  duplicateTask: (id: number, includeDescendants: boolean) =>
+  duplicateTask: (id: number, includeDescendants: boolean, copyAttachments: boolean) =>
     request<TaskDetailDto>(`/api/tasks/${id}/duplicate`, {
       method: 'POST',
-      body: JSON.stringify({ includeDescendants }),
+      body: JSON.stringify({ includeDescendants, copyAttachments }),
     }),
 
   // --- Attachments (Phase 4) ---

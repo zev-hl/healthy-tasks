@@ -3411,6 +3411,44 @@ describe('task duplication (Phase 11 follow-on)', () => {
       .send({ includeDescendants: false });
     assert.equal(solo.body.children.length, 0);
   });
+
+  it('copies task attachments to independent blobs only when copyAttachments is set', async () => {
+    const tok = await adminToken();
+    const admin = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
+    const t = await makeTask(tok, 'WithFile');
+    const srcKey = `tasks/${t.id}/seed-uuid/report.pdf`;
+    memoryStorage.__put(srcKey, { size: 1234, contentType: 'application/pdf' });
+    await prisma.attachment.create({
+      data: {
+        filename: 'report.pdf',
+        contentType: 'application/pdf',
+        size: 1234,
+        storageKey: srcKey,
+        uploadedById: admin.id,
+        taskId: t.id,
+      },
+    });
+
+    // Default (flag omitted): attachments are NOT copied.
+    const noCopy = await request(app).post(`/api/tasks/${t.id}/duplicate`).set(auth(tok)).send({});
+    assert.equal(noCopy.status, 201, JSON.stringify(noCopy.body));
+    const noCopyAtt = await prisma.attachment.findMany({ where: { taskId: noCopy.body.id } });
+    assert.equal(noCopyAtt.length, 0, 'attachments not copied by default');
+
+    // With the flag: cloned to a fresh, independent storage key + blob.
+    const copy = await request(app)
+      .post(`/api/tasks/${t.id}/duplicate`)
+      .set(auth(tok))
+      .send({ copyAttachments: true });
+    assert.equal(copy.status, 201, JSON.stringify(copy.body));
+    const copied = await prisma.attachment.findMany({ where: { taskId: copy.body.id } });
+    assert.equal(copied.length, 1, 'attachment cloned');
+    assert.equal(copied[0].filename, 'report.pdf');
+    assert.notEqual(copied[0].storageKey, srcKey, 'the copy gets its own storage key');
+    assert.ok(copied[0].storageKey.startsWith(`tasks/${copy.body.id}/`), 'key namespaced to new task');
+    assert.ok(await memoryStorage.headObject(copied[0].storageKey), 'blob copied into storage');
+    assert.ok(await memoryStorage.headObject(srcKey), 'original blob untouched');
+  });
 });
 
 describe('SMART goals: lifecycle & authorization (Phase 12)', () => {

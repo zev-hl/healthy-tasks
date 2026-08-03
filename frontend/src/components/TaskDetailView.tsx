@@ -63,6 +63,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
+  const [copyAttachments, setCopyAttachments] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [commentsDirty, setCommentsDirty] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
@@ -382,7 +383,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setDuplicating(true);
     setError(null);
     try {
-      const dup = await api.duplicateTask(task.id, includeDescendants);
+      const dup = await api.duplicateTask(task.id, includeDescendants, copyAttachments);
       navigate(`/tasks/${dup.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not duplicate the task');
@@ -390,9 +391,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
   function onDuplicateClick() {
-    // With sub-tasks, ask whether to clone the whole tree; otherwise duplicate directly.
-    if (task.children.length > 0) setDupOpen(true);
-    else void doDuplicate(false);
+    // Always open the dialog so the copy options (whole tree, attachments) can be
+    // chosen — attachments default to OFF each time.
+    setCopyAttachments(false);
+    setDupOpen(true);
   }
 
   async function handleDeleteTask() {
@@ -1000,18 +1002,43 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <div className="modal-backdrop" onClick={() => setDupOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Duplicate task</h3>
-            <p>
-              “{task.name}” has {task.children.length} sub-task
-              {task.children.length === 1 ? '' : 's'}. Duplicate just this task, or the whole tree
-              beneath it?
-            </p>
+            {task.children.length > 0 ? (
+              <p>
+                “{task.name}” has {task.children.length} sub-task
+                {task.children.length === 1 ? '' : 's'}. Duplicate just this task, or the whole
+                tree beneath it?
+              </p>
+            ) : (
+              <p>Create a fresh copy of “{task.name}”.</p>
+            )}
+            <label className="dup-attachments-toggle">
+              <input
+                type="checkbox"
+                checked={copyAttachments}
+                onChange={(e) => setCopyAttachments(e.target.checked)}
+              />
+              Copy attachments
+            </label>
             <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" className="secondary" disabled={duplicating} onClick={() => void doDuplicate(false)}>
-                This task only
-              </button>
-              <button type="button" disabled={duplicating} onClick={() => void doDuplicate(true)}>
-                Task &amp; all sub-tasks
-              </button>
+              {task.children.length > 0 ? (
+                <>
+                  <button type="button" className="secondary" disabled={duplicating} onClick={() => void doDuplicate(false)}>
+                    This task only
+                  </button>
+                  <button type="button" disabled={duplicating} onClick={() => void doDuplicate(true)}>
+                    Task &amp; all sub-tasks
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="secondary" disabled={duplicating} onClick={() => setDupOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" disabled={duplicating} onClick={() => void doDuplicate(false)}>
+                    Duplicate
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

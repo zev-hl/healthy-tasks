@@ -19,4 +19,7 @@ export interface StorageService {
   deleteObject(key: string): Promise<void>;
   /** Object metadata if it exists, else null. Used to confirm an upload. */
   headObject(key: string): Promise<StorageObjectInfo | null>;
+  /** Server-side copy of a stored object to a new key (used when duplicating a
+   * task's attachments so each copy gets its own independent blob). */
+  copyObject(srcKey: string, destKey: string): Promise<void>;
 }

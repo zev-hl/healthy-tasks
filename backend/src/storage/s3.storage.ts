@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '../config/env.js';
@@ -72,5 +73,16 @@ export const s3Storage: StorageService = {
     } catch {
       return null;
     }
+  },
+
+  async copyObject(srcKey, destKey) {
+    await internal().send(
+      new CopyObjectCommand({
+        Bucket: env.storage.bucket,
+        // Encode each path segment but keep the slashes that structure the key.
+        CopySource: `${env.storage.bucket}/${srcKey.split('/').map(encodeURIComponent).join('/')}`,
+        Key: destKey,
+      }),
+    );
   },
 };

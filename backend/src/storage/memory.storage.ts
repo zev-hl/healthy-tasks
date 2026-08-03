@@ -29,6 +29,10 @@ export const memoryStorage: StorageService & {
   async headObject(key) {
     return objects.get(key) ?? null;
   },
+  async copyObject(srcKey, destKey) {
+    const info = objects.get(srcKey);
+    if (info) objects.set(destKey, { ...info });
+  },
   __deleted: deletedKeys,
   __put(key, info) {
     objects.set(key, info);

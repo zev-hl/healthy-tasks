@@ -162,6 +162,7 @@ export const updateTaskSchema = z.object({
 // Duplicate a task: optionally clone its whole sub-tree.
 export const duplicateTaskSchema = z.object({
   includeDescendants: z.boolean().optional(),
+  copyAttachments: z.boolean().optional(),
 });
 export type DuplicateTaskInput = z.infer<typeof duplicateTaskSchema>;
 

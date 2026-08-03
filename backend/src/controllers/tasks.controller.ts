@@ -206,7 +206,12 @@ export async function deleteTaskController(req: Request, res: Response): Promise
 }
 
 export async function duplicateTaskController(req: Request, res: Response): Promise<void> {
-  const { includeDescendants } = req.body as DuplicateTaskInput;
-  const task = await duplicateTask(actorOf(req), parseTaskId(req), includeDescendants ?? false);
+  const { includeDescendants, copyAttachments } = req.body as DuplicateTaskInput;
+  const task = await duplicateTask(
+    actorOf(req),
+    parseTaskId(req),
+    includeDescendants ?? false,
+    copyAttachments ?? false,
+  );
   res.status(201).json(task satisfies TaskDetailDto);
 }
