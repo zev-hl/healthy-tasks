@@ -473,6 +473,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <button type="button" className="secondary btn-sm" disabled={duplicating} onClick={onDuplicateClick}>
           {duplicating ? 'Duplicating…' : 'Duplicate'}
         </button>
+        <button type="button" className="secondary btn-sm" onClick={() => navigate('/tasks/new')}>
+          New task
+        </button>
         {task.canTogglePrivate && (
           <button
             type="button"
