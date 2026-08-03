@@ -48,7 +48,7 @@ projects:
           # -------------------------------------------------------------------
           # Backend — Node/Express API (also runs the recurrence scheduler).
           # -------------------------------------------------------------------
-          - name: healthy-tasks-api-prod
+          - name: hlcentral-api
             type: web
             runtime: node
             plan: standard
@@ -145,7 +145,7 @@ projects:
           # VITE_API_URL is baked in at BUILD time, so it must be set before the
           # build runs and points at THIS environment's backend.
           # -------------------------------------------------------------------
-          - name: healthy-tasks-web-prod
+          - name: hlcentral
             type: web
             runtime: static
             branch: main
@@ -162,7 +162,7 @@ projects:
                 source: /*
                 destination: /index.html
             envVars:
-              - key: VITE_API_URL # https URL of healthy-tasks-api-prod
+              - key: VITE_API_URL # https URL of hlcentral-api
                 sync: false
 
       # =======================================================================
@@ -171,7 +171,7 @@ projects:
       # =======================================================================
       - name: staging
         services:
-          - name: healthy-tasks-api-staging
+          - name: hlcentral-api-staging
             type: web
             runtime: node
             plan: starter # cheaper than prod; free tier also works but cold-starts
@@ -228,7 +228,7 @@ projects:
               - key: SEED_ADMIN_PASSWORD
                 sync: false
 
-          - name: healthy-tasks-web-staging
+          - name: hlcentral-staging
             type: web
             runtime: static
             branch: staging
@@ -243,7 +243,7 @@ projects:
                 source: /*
                 destination: /index.html
             envVars:
-              - key: VITE_API_URL # https URL of healthy-tasks-api-staging
+              - key: VITE_API_URL # https URL of hlcentral-api-staging
                 sync: false
 
 # =============================================================================
