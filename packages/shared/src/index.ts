@@ -786,20 +786,27 @@ export interface TaskRowDto {
 // ---------------------------------------------------------------------------
 
 /**
- * The six mutually-exclusive buckets a task falls into, based on its CURRENT
- * Status + Status-Change Timestamp + Due Date only (never past history):
+ * The seven mutually-exclusive buckets a task falls into, based on its CURRENT
+ * Status + Status-Change Timestamp + Start Date + Due Date only (never past
+ * history):
  *  - OnTime       — Completed, completion timestamp on or before the Due Date.
  *  - Late         — Completed, completion timestamp after the Due Date.
  *  - Overdue      — not Completed/Cancelled, has a Due Date that has passed.
- *  - NotCompleted — not Completed/Cancelled, has a Due Date that has not passed.
- *  - Cancelled    — Cancelled (Prisma enum value `Canceled`).
- *  - NoDueDate    — no Due Date set at all.
+ *  - NotStarted   — specifically Open, has a Due Date that has not passed, and
+ *                   either no Start Date or a Start Date still in the future.
+ *  - NotCompleted — a non-terminal, non-Open status (In Progress / On Hold /
+ *                   Review) with a Due Date that has not passed, OR Open with a
+ *                   Due Date that has not passed but whose Start Date has passed.
+ *  - Cancelled    — Cancelled (Prisma enum value `Canceled`); takes precedence
+ *                   over NoDueDate when a task is both Cancelled and has no due.
+ *  - NoDueDate    — no Due Date set at all (and not Cancelled).
  * A Due Date exactly equal to the completion timestamp counts as OnTime.
  */
 export const DUE_DATE_BUCKETS = [
   'OnTime',
   'Late',
   'Overdue',
+  'NotStarted',
   'NotCompleted',
   'Cancelled',
   'NoDueDate',
@@ -810,6 +817,7 @@ export const DUE_DATE_BUCKET_LABELS: Record<DueDateBucket, string> = {
   OnTime: 'On Time',
   Late: 'Late',
   Overdue: 'Overdue',
+  NotStarted: 'Not Started',
   NotCompleted: 'Not Completed',
   Cancelled: 'Cancelled',
   NoDueDate: 'No Due Date',

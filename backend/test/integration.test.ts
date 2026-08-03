@@ -4216,33 +4216,39 @@ describe('Phase 13: Goals downline visibility vs direct-supervisor authority', (
 
 describe('Phase 13: Due Date Performance Report bucketing', () => {
   const NOW = new Date('2026-08-15T12:00:00.000Z');
+  const day = 24 * 60 * 60 * 1000;
   const runReport = (token: string, body: Record<string, unknown> = {}) =>
     request(app).post('/api/reports/due-date').set(auth(token)).send({ now: NOW.toISOString(), ...body });
+  // Build a task with precisely-controlled current fields via Prisma.
+  const mk = async (token: string, name: string, data: Record<string, unknown>) => {
+    const t = await makeTask(token, name);
+    await prisma.task.update({ where: { id: t.id }, data });
+    return t.id;
+  };
+  const bucketsById = (res: { body: { rows: { id: number; bucket: string }[] } }) =>
+    new Map(res.body.rows.map((r) => [r.id, r.bucket]));
 
-  it('places each task in exactly one of the six buckets (due==completion = On Time)', async () => {
+  it('places each task in exactly one of the seven buckets (due==completion = On Time)', async () => {
     const admin = await adminToken();
-    // Build tasks with precisely-controlled current fields via Prisma.
-    const mk = async (name: string, data: Record<string, unknown>) => {
-      const t = await makeTask(admin, name);
-      await prisma.task.update({ where: { id: t.id }, data });
-      return t.id;
-    };
-    const day = 24 * 60 * 60 * 1000;
-    const onTime = await mk('onTime', { status: 'Completed', dueAt: new Date(NOW.getTime() + 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
-    const boundary = await mk('boundary', { status: 'Completed', dueAt: NOW, statusChangedAt: NOW }); // equal -> On Time
-    const late = await mk('late', { status: 'Completed', dueAt: new Date(NOW.getTime() - 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
-    const overdue = await mk('overdue', { status: 'InProgress', dueAt: new Date(NOW.getTime() - day) });
-    const notCompleted = await mk('notCompleted', { status: 'Open', dueAt: new Date(NOW.getTime() + day) });
-    const cancelled = await mk('cancelled', { status: 'Canceled', dueAt: new Date(NOW.getTime() - day) });
-    const noDue = await mk('noDue', { status: 'Completed', dueAt: null, statusChangedAt: new Date(NOW.getTime() - day) });
+    const onTime = await mk(admin, 'onTime', { status: 'Completed', dueAt: new Date(NOW.getTime() + 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
+    const boundary = await mk(admin, 'boundary', { status: 'Completed', dueAt: NOW, statusChangedAt: NOW }); // equal -> On Time
+    const late = await mk(admin, 'late', { status: 'Completed', dueAt: new Date(NOW.getTime() - 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
+    const overdue = await mk(admin, 'overdue', { status: 'InProgress', dueAt: new Date(NOW.getTime() - day) });
+    // Open, future due, no start date yet -> Not Started.
+    const notStarted = await mk(admin, 'notStarted', { status: 'Open', dueAt: new Date(NOW.getTime() + day), startAt: null });
+    // In Progress, future due -> Not Completed (work has begun).
+    const notCompleted = await mk(admin, 'notCompleted', { status: 'InProgress', dueAt: new Date(NOW.getTime() + day) });
+    const cancelled = await mk(admin, 'cancelled', { status: 'Canceled', dueAt: new Date(NOW.getTime() - day) });
+    const noDue = await mk(admin, 'noDue', { status: 'Completed', dueAt: null, statusChangedAt: new Date(NOW.getTime() - day) });
 
     const res = await runReport(admin);
     assert.equal(res.status, 200, JSON.stringify(res.body));
-    const bucketById = new Map((res.body.rows as { id: number; bucket: string }[]).map((r) => [r.id, r.bucket]));
+    const bucketById = bucketsById(res);
     assert.equal(bucketById.get(onTime), 'OnTime');
     assert.equal(bucketById.get(boundary), 'OnTime', 'due exactly equal to completion counts as On Time');
     assert.equal(bucketById.get(late), 'Late');
     assert.equal(bucketById.get(overdue), 'Overdue');
+    assert.equal(bucketById.get(notStarted), 'NotStarted');
     assert.equal(bucketById.get(notCompleted), 'NotCompleted');
     assert.equal(bucketById.get(cancelled), 'Cancelled');
     assert.equal(bucketById.get(noDue), 'NoDueDate');
@@ -4251,6 +4257,52 @@ describe('Phase 13: Due Date Performance Report bucketing', () => {
     const totals = res.body.bucketTotals as Record<string, number>;
     const sum = Object.values(totals).reduce((a, b) => a + b, 0);
     assert.equal(sum, res.body.rows.length);
+  });
+
+  it('a Cancelled task with no Due Date lands in Cancelled, not No Due Date', async () => {
+    const admin = await adminToken();
+    const id = await mk(admin, 'cancelledNoDue', { status: 'Canceled', dueAt: null });
+    const res = await runReport(admin);
+    assert.equal(bucketsById(res).get(id), 'Cancelled', 'Cancelled wins over No Due Date');
+  });
+
+  it('a Due Date range fully in the past yields zero Not Completed and zero Not Started', async () => {
+    const admin = await adminToken();
+    // Only a past-due task falls in range; the future-due Not Started / Not
+    // Completed candidates are filtered out — and both buckets require a future
+    // due date, so no task in the DB can populate them under this filter.
+    await mk(admin, 'overduePast', { status: 'InProgress', dueAt: new Date(NOW.getTime() - day) });
+    await mk(admin, 'notStartedFuture', { status: 'Open', dueAt: new Date(NOW.getTime() + day), startAt: null });
+    await mk(admin, 'notCompletedFuture', { status: 'InProgress', dueAt: new Date(NOW.getTime() + day) });
+
+    const res = await runReport(admin, {
+      filters: {
+        dueFrom: new Date(NOW.getTime() - 30 * day).toISOString(),
+        dueTo: new Date(NOW.getTime() - 1000).toISOString(),
+        includeNoDue: false,
+      },
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const totals = res.body.bucketTotals as Record<string, number>;
+    assert.equal(totals.NotStarted, 0, 'no Not Started when the due range is fully past');
+    assert.equal(totals.NotCompleted, 0, 'no Not Completed when the due range is fully past');
+  });
+
+  it('an In Progress task with a future or unset Start Date lands in Not Completed, not Not Started', async () => {
+    const admin = await adminToken();
+    // Not Started is reserved for the Open status; any other non-terminal status
+    // lands in Not Completed regardless of Start Date.
+    const unsetStart = await mk(admin, 'ipUnsetStart', { status: 'InProgress', dueAt: new Date(NOW.getTime() + day), startAt: null });
+    const futureStart = await mk(admin, 'ipFutureStart', { status: 'InProgress', dueAt: new Date(NOW.getTime() + 3 * day), startAt: new Date(NOW.getTime() + day) });
+    const bucketById = bucketsById(await runReport(admin));
+    assert.equal(bucketById.get(unsetStart), 'NotCompleted', 'In Progress is never Not Started (unset start)');
+    assert.equal(bucketById.get(futureStart), 'NotCompleted', 'In Progress is never Not Started (future start)');
+  });
+
+  it('an Open task whose Start Date has passed (Due has not) lands in Not Completed, not Not Started', async () => {
+    const admin = await adminToken();
+    const id = await mk(admin, 'openStarted', { status: 'Open', startAt: new Date(NOW.getTime() - day), dueAt: new Date(NOW.getTime() + day) });
+    assert.equal(bucketsById(await runReport(admin)).get(id), 'NotCompleted', 'a started Open task is Not Completed');
   });
 });
 

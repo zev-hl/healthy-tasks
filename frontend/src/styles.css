@@ -1482,6 +1482,11 @@ textarea:focus-visible {
 .subtask-row:last-child {
   border-bottom: none;
 }
+.subtask-id {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted-2);
+}
 .subtask-name {
   flex: 1;
   font-weight: 600;
@@ -5390,6 +5395,9 @@ tr.just-completed > td {
 .bucket-overdue {
   border-left: 3px solid var(--warn);
 }
+.bucket-notstarted {
+  border-left: 3px solid var(--muted-2);
+}
 .bucket-notcompleted {
   border-left: 3px solid var(--accent);
 }
@@ -5425,6 +5433,11 @@ tr.just-completed > td {
   background: var(--warn-soft);
   color: #7a4c08;
   border-color: transparent;
+}
+.result-pill.bucket-notstarted {
+  background: var(--surface-sunk);
+  color: var(--ink-2);
+  border-color: var(--border);
 }
 .result-pill.bucket-notcompleted {
   background: var(--accent-soft);
