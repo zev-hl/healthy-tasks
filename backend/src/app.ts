@@ -34,7 +34,7 @@ export function createApp() {
 
   // Health check — used by docker-compose and load balancers.
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'healthy-tasks-api' });
+    res.json({ status: 'ok', service: 'hlcentral-api' });
   });
 
   // API routes
