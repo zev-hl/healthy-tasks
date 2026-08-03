@@ -85,19 +85,16 @@ function dateRangeWhere(
   from: Date | null | undefined,
   to: Date | null | undefined,
   includeNull: boolean,
-  // Date-only filters (Start/Due) send a bare YYYY-MM-DD → UTC midnight; the
-  // "To" bound must cover the whole day, so treat it as exclusive of the NEXT
-  // midnight (i.e. through 23:59:59.999). statusChanged uses a datetime and
-  // keeps its exact upper bound.
-  toEndOfDay = false,
 ): Prisma.TaskWhereInput | null {
+  // Bounds arrive as precise instants: the browser converts bare Start/Due dates
+  // to LOCAL start-of-day / end-of-day instants before sending, and statusChanged
+  // is already a datetime. So compare directly — gte for "from", inclusive lte
+  // for "to". No end-of-day expansion here; doing it again (on top of the
+  // browser's) pushed the range a full day too far.
   const range: Prisma.DateTimeFilter = {};
   if (from) range.gte = from;
-  if (to) {
-    if (toEndOfDay) range.lt = new Date(to.getTime() + 24 * 60 * 60 * 1000);
-    else range.lte = to;
-  }
-  const hasRange = range.gte !== undefined || range.lt !== undefined || range.lte !== undefined;
+  if (to) range.lte = to;
+  const hasRange = range.gte !== undefined || range.lte !== undefined;
 
   if (!hasRange) {
     return includeNull ? null : { [field]: { not: null } };
@@ -170,10 +167,10 @@ export async function buildWhere(
   const statusRange = dateRangeWhere('statusChangedAt', f.statusChangedFrom, f.statusChangedTo, true);
   if (statusRange) and.push(statusRange);
 
-  const startRange = dateRangeWhere('startAt', f.startFrom, f.startTo, f.includeNoStart ?? true, true);
+  const startRange = dateRangeWhere('startAt', f.startFrom, f.startTo, f.includeNoStart ?? true);
   if (startRange) and.push(startRange);
 
-  const dueRange = dateRangeWhere('dueAt', f.dueFrom, f.dueTo, f.includeNoDue ?? true, true);
+  const dueRange = dateRangeWhere('dueAt', f.dueFrom, f.dueTo, f.includeNoDue ?? true);
   if (dueRange) and.push(dueRange);
 
   // Dashboard quick-filters. `overdue`/`completedToday` are time-relative and

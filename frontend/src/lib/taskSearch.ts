@@ -5,19 +5,45 @@
 
 import type { TaskRelationFilter, TaskSearchFilters, TaskStatus } from '@healthy-tasks/shared';
 
-/** Append end-of-day to a bare YYYY-MM-DD "to" bound so the range is inclusive. */
-export function endOfDay(v: string | null | undefined): string | null | undefined {
-  if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) return `${v}T23:59:59.999`;
+/**
+ * Convert a bare YYYY-MM-DD Start/Due filter bound to a precise UTC instant in
+ * the browser's LOCAL time zone, so the backend compares it directly (it does
+ * NOT re-expand). A "from" bound → local start of that day (00:00:00.000); a
+ * "to" bound → local end of that day (23:59:59.999) so it covers the whole local
+ * day. Anything that isn't a bare date (already an instant / null / empty)
+ * passes through unchanged.
+ */
+export function startOfLocalDay(v: string | null | undefined): string | null | undefined {
+  if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y, m, d] = v.split('-');
+    return new Date(Number(y), Number(m) - 1, Number(d), 0, 0, 0, 0).toISOString();
+  }
+  return v;
+}
+export function endOfLocalDay(v: string | null | undefined): string | null | undefined {
+  if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [y, m, d] = v.split('-');
+    return new Date(Number(y), Number(m) - 1, Number(d), 23, 59, 59, 999).toISOString();
+  }
   return v;
 }
 
 /**
- * The filters as actually sent to the API: the two bare-date upper bounds are
- * pushed to end-of-day so the ranges are inclusive. Used by the grid query, the
- * export, and the dashboard counts alike so all three agree.
+ * The filters as actually sent to the API: each bare-date Start/Due bound is
+ * converted to a precise local-time instant (from = start of day, to = end of
+ * day). Keeping the time-zone math in the browser means "local" is the user's
+ * actual zone, and the backend compares the instants as-is with NO further
+ * end-of-day expansion (doing it in both places pushed the range a day too far).
+ * Used by the grid query, the export, and the dashboard counts alike.
  */
 export function effectiveFilters(filters: TaskSearchFilters): TaskSearchFilters {
-  return { ...filters, startTo: endOfDay(filters.startTo), dueTo: endOfDay(filters.dueTo) };
+  return {
+    ...filters,
+    startFrom: startOfLocalDay(filters.startFrom),
+    startTo: endOfLocalDay(filters.startTo),
+    dueFrom: startOfLocalDay(filters.dueFrom),
+    dueTo: endOfLocalDay(filters.dueTo),
+  };
 }
 
 /** Browser clock context for the time-relative quick-filters (local time zone). */

@@ -1732,6 +1732,22 @@ describe('task search / query (Phase 6)', () => {
     assert.equal(excluded.rows[0]?.name, 'Has due');
   });
 
+  it('due "to" is an inclusive instant — a task due after it (e.g. the next day) is excluded', async () => {
+    const tok = await adminToken();
+    // The browser sends a precise local end-of-day instant as `dueTo`; the
+    // backend must NOT re-expand it (previously a stray +24h pulled in the next
+    // day, so a task due tomorrow leaked into a "due today" list).
+    const todayLate = await makeTask(tok, 'today 8pm', { dueAt: '2026-09-03T20:00:00Z' });
+    const nextDay = await makeTask(tok, 'tomorrow 7pm', { dueAt: '2026-09-04T19:00:00Z' });
+
+    const res = await queryTasks(tok, {
+      filters: { dueTo: '2026-09-03T23:59:59.999Z', includeNoDue: false },
+    });
+    const ids = res.rows.map((r) => r.id);
+    assert.ok(ids.includes(todayLate.id), 'due earlier that day is included');
+    assert.equal(ids.includes(nextDay.id), false, 'due the next day is NOT included (no +24h expansion)');
+  });
+
   it('defaults to Due ascending with no-due tasks pinned to the top', async () => {
     const tok = await adminToken();
     const noDue = await makeTask(tok, 'ZZ no due');

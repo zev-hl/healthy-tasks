@@ -837,6 +837,20 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.mday-row-assignee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 160px;
+}
+.mday-row-assignee-name {
+  font-size: 12px;
+  color: var(--muted-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .mday-row.is-completing {
   opacity: 0.4;
 }

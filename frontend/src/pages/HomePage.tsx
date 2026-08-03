@@ -242,7 +242,7 @@ export function HomePage() {
       {isManager && reports.length > 0 && (
         <section className="card mday-team">
           <div className="mday-card-head">
-            <h3>My team</h3>
+            <h3>My Directs</h3>
             <span className="mono mday-count">
               {reports.length} {reports.length === 1 ? 'person' : 'people'} ·{' '}
               {reportStats.reduce((s, x) => s + x.open, 0)} open
@@ -287,7 +287,7 @@ export function HomePage() {
         {/* Today list */}
         <section className="card mday-today">
           <div className="mday-card-head">
-            <h3>Today</h3>
+            <h3>Due Today/Overdue</h3>
             <span className="mono mday-count">{today.length}</span>
             <div className="spacer" />
             <button
@@ -305,7 +305,7 @@ export function HomePage() {
                 )
               }
             >
-              View all
+              View mine
             </button>
           </div>
           {loading && today.length === 0 ? (
@@ -331,11 +331,16 @@ export function HomePage() {
                     <span className="mday-row-title">{r.name}</span>
                     <div className="spacer" />
                     <DueDate iso={r.dueAt} status={r.status} completedAt={r.statusChangedAt} isDue inline />
-                    {r.assignee ? (
-                      <Avatar user={r.assignee} px={22} decorative />
-                    ) : (
-                      <UnassignedAvatar px={22} />
-                    )}
+                    <span className="mday-row-assignee" title={r.assignee ? userLabel(r.assignee) : 'Unassigned'}>
+                      {r.assignee ? (
+                        <Avatar user={r.assignee} px={22} decorative />
+                      ) : (
+                        <UnassignedAvatar px={22} />
+                      )}
+                      <span className="mday-row-assignee-name">
+                        {r.assignee ? userLabel(r.assignee) : 'Unassigned'}
+                      </span>
+                    </span>
                   </li>
                 );
               })}
@@ -347,7 +352,7 @@ export function HomePage() {
         <aside className="mday-side">
           <section className="card">
             <div className="mday-card-head">
-              <h3>Latest mentioned/assigned/reminders</h3>
+              <h3>Latest Notifications</h3>
             </div>
             {waiting.length === 0 ? (
               <p className="muted" style={{ fontSize: '12.5px', margin: '4px 0' }}>
