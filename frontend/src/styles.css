@@ -5369,7 +5369,7 @@ tr.just-completed > td {
 }
 .bucket-tile {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.4rem;
   padding: 0.4rem 0.7rem;
   border-radius: 9px;
@@ -5382,9 +5382,19 @@ tr.just-completed > td {
   font-size: 1.05rem;
   color: var(--ink);
 }
+.bucket-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+.bucket-sublabel {
+  font-size: 0.62rem;
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+}
 .bucket-label {
   font-size: 0.8rem;
-  color: var(--muted-2);
+  color: var(--ink);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }

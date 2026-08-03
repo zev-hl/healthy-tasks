@@ -57,6 +57,17 @@ const BUCKET_CLASS: Record<DueDateBucket, string> = {
   NoDueDate: 'nodue',
 };
 
+// Small descriptor shown in smaller text above each tile's title.
+const BUCKET_SUBLABEL: Record<DueDateBucket, string> = {
+  OnTime: 'Completed',
+  Late: 'Completed',
+  Overdue: 'Past Due',
+  NotStarted: 'Future Due',
+  NotCompleted: 'Future Due',
+  Cancelled: '',
+  NoDueDate: 'Not Completed',
+};
+
 export function DueDatePerformancePage() {
   const [searchText, setSearchText] = useState('');
   const [filters, setFilters] = useState<TaskSearchFilters>(defaultFilters);
@@ -240,7 +251,10 @@ export function DueDatePerformancePage() {
           {DUE_DATE_BUCKETS.map((b) => (
             <span key={b} className={`bucket-tile bucket-${BUCKET_CLASS[b]}`} role="listitem">
               <span className="bucket-count">{totals[b]}</span>
-              <span className="bucket-label">{DUE_DATE_BUCKET_LABELS[b]}</span>
+              <span className="bucket-text">
+                {BUCKET_SUBLABEL[b] && <span className="bucket-sublabel">{BUCKET_SUBLABEL[b]}</span>}
+                <span className="bucket-label">{DUE_DATE_BUCKET_LABELS[b]}</span>
+              </span>
             </span>
           ))}
         </div>

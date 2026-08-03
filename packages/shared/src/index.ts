@@ -819,7 +819,7 @@ export const DUE_DATE_BUCKET_LABELS: Record<DueDateBucket, string> = {
   Overdue: 'Overdue',
   NotStarted: 'Not Started',
   NotCompleted: 'Not Completed',
-  Cancelled: 'Cancelled',
+  Cancelled: 'Canceled',
   NoDueDate: 'No Due Date',
 };
 
