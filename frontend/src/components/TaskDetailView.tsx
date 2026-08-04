@@ -65,6 +65,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [dupOpen, setDupOpen] = useState(false);
   const [copyAttachments, setCopyAttachments] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  // Save-as-Template (task -> template conversion) modal state.
+  const [tplOpen, setTplOpen] = useState(false);
+  const [tplName, setTplName] = useState('');
+  const [tplScope, setTplScope] = useState<'single' | 'tree'>('single');
+  const [tplRole, setTplRole] = useState('');
+  const [tplAttachments, setTplAttachments] = useState(false);
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [savedTplId, setSavedTplId] = useState<number | null>(null);
   const [commentsDirty, setCommentsDirty] = useState(false);
   const [justCompleted, setJustCompleted] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -397,6 +405,45 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setDupOpen(true);
   }
 
+  // Only Admin/Manager with full edit access to this task may convert it into a
+  // template (mirrors the server-side permission check).
+  const canSaveAsTemplate =
+    (currentUser.role === 'Admin' || currentUser.role === 'Manager') && task.access === 'full';
+
+  function onSaveAsTemplateClick() {
+    setTplName('');
+    setTplScope('single');
+    setTplRole(task.assignee ? userLabel(task.assignee) : '');
+    setTplAttachments(false);
+    setSavedTplId(null);
+    setError(null);
+    setTplOpen(true);
+  }
+
+  async function doSaveAsTemplate() {
+    const name = tplName.trim();
+    if (!name) {
+      setError('A template name is required');
+      return;
+    }
+    setSavingTpl(true);
+    setError(null);
+    try {
+      const tpl = await api.saveTaskAsTemplate(task.id, {
+        name,
+        includeDescendants: tplScope === 'tree',
+        includeAttachments: tplAttachments,
+        rootRoleLabel: tplRole.trim() || null,
+      });
+      setSavedTplId(tpl.id);
+      setNotice(`Saved as template “${tpl.name}”.`);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save as template');
+    } finally {
+      setSavingTpl(false);
+    }
+  }
+
   async function handleDeleteTask() {
     setDeleting(true);
     try {
@@ -478,6 +525,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         <button type="button" className="secondary btn-sm" onClick={() => navigate('/tasks/new')}>
           New task
         </button>
+        {canSaveAsTemplate && (
+          <button type="button" className="secondary btn-sm" onClick={onSaveAsTemplateClick}>
+            Save as template
+          </button>
+        )}
         {task.canTogglePrivate && (
           <button
             type="button"
@@ -1040,6 +1092,97 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {tplOpen && (
+        <div className="modal-backdrop" onClick={() => setTplOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>Save as template</h3>
+            {savedTplId != null ? (
+              <>
+                <p>
+                  Created a reusable template from “{task.name}”. Your task is unchanged.
+                </p>
+                <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
+                  <button type="button" className="secondary" onClick={() => setTplOpen(false)}>
+                    Close
+                  </button>
+                  <button type="button" onClick={() => navigate('/admin/templates')}>
+                    Manage templates
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Creates a new, independent template. The source task is not changed. Assignees
+                  become editable role placeholders and dates become offsets from the root’s start.
+                </p>
+                <div className="field">
+                  <label htmlFor="tpl-name">Template name</label>
+                  <input
+                    id="tpl-name"
+                    value={tplName}
+                    autoFocus
+                    placeholder="e.g. Monthly inspection"
+                    onChange={(e) => setTplName(e.target.value)}
+                  />
+                </div>
+                {task.children.length > 0 && (
+                  <div className="field">
+                    <label>Scope</label>
+                    <div className="seg" role="group" aria-label="Conversion scope">
+                      <button
+                        type="button"
+                        className={`seg-btn${tplScope === 'single' ? ' active' : ''}`}
+                        aria-pressed={tplScope === 'single'}
+                        onClick={() => setTplScope('single')}
+                      >
+                        This task only
+                      </button>
+                      <button
+                        type="button"
+                        className={`seg-btn${tplScope === 'tree' ? ' active' : ''}`}
+                        aria-pressed={tplScope === 'tree'}
+                        onClick={() => setTplScope('tree')}
+                      >
+                        Task &amp; all sub-tasks
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="field">
+                  <label htmlFor="tpl-role">Role placeholder (root)</label>
+                  <input
+                    id="tpl-role"
+                    value={tplRole}
+                    placeholder="e.g. Inspector"
+                    onChange={(e) => setTplRole(e.target.value)}
+                  />
+                  <p className="muted" style={{ fontSize: '0.72rem', margin: '0.25rem 0 0' }}>
+                    Seeded from the current assignee’s name; edit any role later in the template editor.
+                  </p>
+                </div>
+                <label className="dup-attachments-toggle">
+                  <input
+                    type="checkbox"
+                    checked={tplAttachments}
+                    onChange={(e) => setTplAttachments(e.target.checked)}
+                  />
+                  Include attachments from these tasks in the template
+                </label>
+                <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
+                  <button type="button" className="secondary" disabled={savingTpl} onClick={() => setTplOpen(false)}>
+                    Cancel
+                  </button>
+                  <button type="button" disabled={savingTpl || !tplName.trim()} onClick={() => void doSaveAsTemplate()}>
+                    {savingTpl ? 'Saving…' : 'Save template'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

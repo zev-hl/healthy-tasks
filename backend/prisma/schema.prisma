@@ -85,6 +85,10 @@ model User {
   // Task templates authored by this user (Phase 11).
   createdTemplates TaskTemplate[] @relation("TemplateCreator")
 
+  // Default attachments this user added to a template node (via task→template
+  // conversion or template editing).
+  uploadedTemplateAttachments TaskTemplateNodeAttachment[] @relation("TemplateAttachmentUploader")
+
   // SMART goals (Phase 12): goals this user owns, drafted, approved, or resolved.
   ownedGoals    Goal[] @relation("GoalOwner")
   createdGoals  Goal[] @relation("GoalCreator")
@@ -631,6 +635,9 @@ model TaskTemplateNode {
   name            String
   description     String?
   defaultPriority TaskPriority @default(Medium)
+  // Default tags applied to the task generated from this node (Phase 11 follow-on:
+  // carried over when a live task is converted into a template).
+  tags            String[]     @default([])
   // Day offsets from the occurrence anchor; null ⇒ that date is left unset.
   startOffsetDays Int?
   dueOffsetDays   Int?
@@ -638,6 +645,10 @@ model TaskTemplateNode {
   assigneeRole    String?
   // Sibling ordering within a parent.
   orderIndex      Int @default(0)
+
+  // Default attachments copied onto the generated task at each instantiation
+  // (seeded when a live task with attachments is converted into a template).
+  attachments TaskTemplateNodeAttachment[]
 
   // Dependencies between nodes of the SAME template (carried through to the
   // generated task tree). Mirrors TaskDependency.
@@ -668,6 +679,29 @@ model TaskTemplateDependency {
   @@unique([blockerNodeId, blockedNodeId])
   @@index([blockerNodeId])
   @@index([blockedNodeId])
+}
+
+// A default attachment on a template node. The blob lives in TEMPLATE-scoped
+// storage (independent of any source task's file), and is COPIED onto the real
+// task generated from this node on every instantiation. Created when a live task
+// with attachments is converted into a template with "include attachments".
+model TaskTemplateNodeAttachment {
+  id             String           @id @default(uuid())
+  templateNodeId Int
+  templateNode   TaskTemplateNode @relation(fields: [templateNodeId], references: [id], onDelete: Cascade)
+
+  filename    String
+  contentType String
+  size        Int
+  storageKey  String @unique
+
+  uploadedById String
+  uploadedBy   User   @relation("TemplateAttachmentUploader", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([templateNodeId])
+  @@index([uploadedById])
 }
 
 // A materialized instantiation of a template into a real task tree. Recorded so

@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   RECURRENCE_TYPE_LABELS,
   RECURRENCE_UNIT_LABELS,
   RECURRENCE_UNITS,
   TASK_PRIORITIES,
+  moveTemplateNode,
+  templateSubtreeKeys,
   type ActiveUserDto,
   type CreateTemplateRequest,
   type FutureOccurrenceDto,
@@ -12,6 +14,7 @@ import {
   type RecurrenceType,
   type RecurrenceUnit,
   type TaskPriority,
+  type TemplateDropPosition,
   type TemplateDto,
   type TemplateNodeInput,
   type TemplateSummaryDto,
@@ -33,6 +36,8 @@ interface EditorNode {
   startOffsetDays: string;
   dueOffsetDays: string;
   assigneeRole: string;
+  tags: string; // comma-separated in the form; parsed to string[] on save
+  attachmentCount: number; // default attachments carried by this node (read-only)
 }
 interface EditorRecurrence {
   recurrenceType: RecurrenceType;
@@ -69,7 +74,7 @@ const emptyRecurrence = (): EditorRecurrence => ({
 });
 
 function blankNode(key: string, parentKey: string | null): EditorNode {
-  return { key, parentKey, name: '', description: '', defaultPriority: 'Medium', startOffsetDays: '', dueOffsetDays: '', assigneeRole: '' };
+  return { key, parentKey, name: '', description: '', defaultPriority: 'Medium', startOffsetDays: '', dueOffsetDays: '', assigneeRole: '', tags: '', attachmentCount: 0 };
 }
 
 /** Load an existing template into the editor model. */
@@ -89,6 +94,8 @@ function toEditor(t: TemplateDto): EditorState {
       startOffsetDays: n.startOffsetDays != null ? String(n.startOffsetDays) : '',
       dueOffsetDays: n.dueOffsetDays != null ? String(n.dueOffsetDays) : '',
       assigneeRole: n.assigneeRole ?? '',
+      tags: n.tags.join(', '),
+      attachmentCount: n.attachmentCount,
     })),
     dependencies: t.dependencies.map((d) => ({ blockerKey: keyOf(d.blockerNodeId), blockedKey: keyOf(d.blockedNodeId) })),
     recurrence: {
@@ -123,6 +130,10 @@ function toRequest(e: EditorState): CreateTemplateRequest {
     startOffsetDays: parseOffset(n.startOffsetDays),
     dueOffsetDays: parseOffset(n.dueOffsetDays),
     assigneeRole: n.assigneeRole.trim() || null,
+    tags: n.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean),
     orderIndex: i,
   }));
   const r = e.recurrence;
@@ -340,6 +351,14 @@ function TemplateEditor({
   const [pendingFuture, setPendingFuture] = useState<FutureOccurrenceDto[] | null>(null);
   const [savedId, setSavedId] = useState<number | null>(null);
   const [showRecurrence, setShowRecurrence] = useState(editor.recurrence.recurrenceType !== 'None');
+  // Collapsed node keys (display-only; never affects drag/order). Drag state for
+  // sibling reordering within the tree.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<{ key: string; pos: TemplateDropPosition } | null>(null);
+  // A node is only draggable while its handle is held (so the card's inputs stay
+  // fully usable). Collapsing never changes this — a collapsed node still drags.
+  const [armed, setArmed] = useState<string | null>(null);
 
   const r = editor.recurrence;
   const recurrenceSummary =
@@ -353,7 +372,8 @@ function TemplateEditor({
 
   function addNode() {
     const key = nextKey();
-    patch({ nodes: [...editor.nodes, blankNode(key, editor.nodes[0]?.key ?? null)] });
+    const root = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
+    patch({ nodes: [...editor.nodes, blankNode(key, root?.key ?? null)] });
   }
   function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
@@ -372,6 +392,233 @@ function TemplateEditor({
     const idx = editor.nodes.findIndex((n) => n.key === key);
     const n = editor.nodes[idx];
     return `Node ${idx + 1}${n?.name ? ` · ${n.name}` : ''}`;
+  };
+
+  // --- Tree structure (derived from parentKey, so a Parent change auto-nests) ---
+  const rootNode = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
+  const childrenOf = (key: string) => editor.nodes.filter((n) => n.parentKey === key);
+  const hasChildren = (key: string) => editor.nodes.some((n) => n.parentKey === key);
+
+  // Parent options for a node exclude itself and its own descendants (a cycle).
+  const parentOptions = (key: string) => {
+    const sub = templateSubtreeKeys(editor.nodes, key);
+    return editor.nodes.filter((o) => !sub.has(o.key));
+  };
+
+  // --- Collapse / expand ---
+  const isCollapsed = (key: string) => collapsed.has(key);
+  const toggleCollapse = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const collapseAll = () => setCollapsed(new Set(editor.nodes.filter((n) => hasChildren(n.key)).map((n) => n.key)));
+  const expandAll = () => setCollapsed(new Set());
+
+  // --- Sibling drag-and-drop reordering ---
+  // A drop is accepted only when the target is a sibling of the dragged node
+  // (same parent) — reparenting is done via the Parent dropdown. The dragged
+  // node's whole subtree moves with it (moveTemplateNode keeps it intact), so a
+  // collapsed node reorders exactly like an expanded one.
+  const onNodeDragStart = (e: DragEvent, key: string) => {
+    setDragKey(key);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', key);
+  };
+  const onNodeDragOver = (e: DragEvent, key: string) => {
+    if (!dragKey || dragKey === key) return;
+    const drag = editor.nodes.find((n) => n.key === dragKey);
+    const target = editor.nodes.find((n) => n.key === key);
+    if (!drag || !target || drag.parentKey !== target.parentKey) return; // siblings only
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const pos: TemplateDropPosition = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    setDropHint({ key, pos });
+  };
+  const onNodeDrop = (e: DragEvent, key: string) => {
+    e.preventDefault();
+    const hint = dropHint;
+    setDropHint(null);
+    if (!dragKey || dragKey === key || !hint || hint.key !== key) {
+      setDragKey(null);
+      return;
+    }
+    patch({ nodes: moveTemplateNode(editor.nodes, dragKey, key, hint.pos) });
+    setDragKey(null);
+  };
+  const onNodeDragEnd = () => {
+    setDragKey(null);
+    setDropHint(null);
+    setArmed(null);
+  };
+
+  // Recursive tree render: a node card, indented by depth, followed by its
+  // children (hidden when the node is collapsed). Rendering from the derived
+  // tree means a Parent change immediately nests the node under its new parent.
+  const renderNode = (n: EditorNode, depth: number) => {
+    const idx = editor.nodes.findIndex((x) => x.key === n.key);
+    const isRoot = n.parentKey === null;
+    const kids = childrenOf(n.key);
+    const nodeCollapsed = isCollapsed(n.key);
+    const hiddenCount = nodeCollapsed ? templateSubtreeKeys(editor.nodes, n.key).size - 1 : 0;
+    const hint = dropHint?.key === n.key ? dropHint.pos : null;
+    return (
+      <div key={n.key} className="tpl-tree-node" style={{ marginLeft: depth * 22 }}>
+        <div
+          className={`tpl-node${dragKey === n.key ? ' dragging' : ''}${hint ? ` drop-${hint}` : ''}`}
+          draggable={armed === n.key}
+          onDragStart={(e) => onNodeDragStart(e, n.key)}
+          onDragOver={(e) => onNodeDragOver(e, n.key)}
+          onDrop={(e) => onNodeDrop(e, n.key)}
+          onDragEnd={onNodeDragEnd}
+        >
+          <div className="tpl-node-head">
+            <span className="tpl-node-headleft">
+              {isRoot ? (
+                <span className="tpl-drag-handle placeholder" aria-hidden="true" />
+              ) : (
+                <span
+                  className="tpl-drag-handle"
+                  role="button"
+                  aria-label="Drag to reorder"
+                  title="Drag to reorder"
+                  onMouseDown={() => setArmed(n.key)}
+                  onMouseUp={() => setArmed(null)}
+                >
+                  ⠿
+                </span>
+              )}
+              {kids.length > 0 ? (
+                <button
+                  type="button"
+                  className="tpl-collapse"
+                  aria-expanded={!nodeCollapsed}
+                  title={nodeCollapsed ? 'Expand' : 'Collapse'}
+                  onClick={() => toggleCollapse(n.key)}
+                >
+                  {nodeCollapsed ? '▸' : '▾'}
+                </button>
+              ) : (
+                <span className="tpl-collapse placeholder" />
+              )}
+              <strong>
+                Node {idx + 1}
+                {isRoot && <span className="badge" style={{ marginLeft: 8 }}>Root</span>}
+                {n.name ? <span className="muted tpl-node-name"> · {n.name}</span> : null}
+                {hiddenCount > 0 && (
+                  <span className="muted tpl-collapsed-count"> ({hiddenCount} hidden)</span>
+                )}
+              </strong>
+            </span>
+            {!isRoot && (
+              <button className="secondary btn-sm" onClick={() => removeNode(n.key)}>
+                Remove
+              </button>
+            )}
+          </div>
+          <div className="tpl-node-grid">
+            <div className="field tpl-node-wide">
+              <label>Name</label>
+              <input value={n.name} onChange={(e) => patchNode(n.key, { name: e.target.value })} />
+            </div>
+            <div className="field tpl-node-wide">
+              <label>Description</label>
+              <textarea
+                value={n.description}
+                rows={2}
+                placeholder="Default description for the generated task…"
+                onChange={(e) => patchNode(n.key, { description: e.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label>Parent</label>
+              {isRoot ? (
+                <input value="— (root)" disabled />
+              ) : (
+                <select
+                  value={n.parentKey ?? ''}
+                  onChange={(e) => patchNode(n.key, { parentKey: e.target.value })}
+                >
+                  {parentOptions(n.key).map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {nodeDisplay(o.key)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="field">
+              <label>Priority</label>
+              <select value={n.defaultPriority} onChange={(e) => patchNode(n.key, { defaultPriority: e.target.value as TaskPriority })}>
+                {TASK_PRIORITIES.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Role placeholder</label>
+              <input value={n.assigneeRole} placeholder="e.g. Inspector" onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Start (+days)</label>
+              <input type="number" value={n.startOffsetDays} onChange={(e) => patchNode(n.key, { startOffsetDays: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Due (+days)</label>
+              <input type="number" value={n.dueOffsetDays} onChange={(e) => patchNode(n.key, { dueOffsetDays: e.target.value })} />
+            </div>
+            <div className="field tpl-node-wide">
+              <label>Tags</label>
+              <input
+                value={n.tags}
+                placeholder="Comma-separated, e.g. inspection, monthly"
+                onChange={(e) => patchNode(n.key, { tags: e.target.value })}
+              />
+            </div>
+            {n.attachmentCount > 0 && (
+              <div className="field tpl-node-wide">
+                <span className="muted tpl-attach-note">
+                  📎 {n.attachmentCount} default attachment{n.attachmentCount === 1 ? '' : 's'} copied onto each new task.
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Dependencies live on the node, mirroring a real task's relationships.
+              Each edge shows as "Blocks" on one node and "Blocked by" on the other. */}
+          {editor.nodes.length > 1 && (
+            <div className="tpl-node-rels">
+              <TplRel
+                label="Blocked by"
+                linked={editor.dependencies.filter((d) => d.blockedKey === n.key).map((d) => d.blockerKey)}
+                options={editor.nodes.filter((o) => o.key !== n.key)}
+                display={nodeDisplay}
+                onAdd={(other) => patch({ dependencies: [...editor.dependencies, { blockerKey: other, blockedKey: n.key }] })}
+                onRemove={(other) =>
+                  patch({ dependencies: editor.dependencies.filter((d) => !(d.blockerKey === other && d.blockedKey === n.key)) })
+                }
+              />
+              <TplRel
+                label="Blocks"
+                linked={editor.dependencies.filter((d) => d.blockerKey === n.key).map((d) => d.blockedKey)}
+                options={editor.nodes.filter((o) => o.key !== n.key)}
+                display={nodeDisplay}
+                onAdd={(other) => patch({ dependencies: [...editor.dependencies, { blockerKey: n.key, blockedKey: other }] })}
+                onRemove={(other) =>
+                  patch({ dependencies: editor.dependencies.filter((d) => !(d.blockerKey === n.key && d.blockedKey === other)) })
+                }
+              />
+            </div>
+          )}
+        </div>
+        {!nodeCollapsed && kids.map((c) => renderNode(c, depth + 1))}
+      </div>
+    );
   };
 
   async function doSave() {
@@ -549,109 +796,19 @@ function TemplateEditor({
       <section className="card panel">
         <div className="section-head">
           <h3>Task tree</h3>
+          <span className="muted tpl-tree-hint">Drag the ⠿ handle to reorder siblings; a Parent change nests a node.</span>
           <div className="spacer" />
+          <button className="tertiary btn-sm" onClick={collapseAll} disabled={!editor.nodes.some((n) => hasChildren(n.key))}>
+            Collapse all
+          </button>
+          <button className="tertiary btn-sm" onClick={expandAll} disabled={collapsed.size === 0}>
+            Expand all
+          </button>
           <button className="tertiary btn-sm" onClick={addNode}>
             + Add node
           </button>
         </div>
-        {editor.nodes.map((n, i) => (
-          <div key={n.key} className="tpl-node">
-            <div className="tpl-node-head">
-              <strong>
-                Node {i + 1}
-                {i === 0 && <span className="badge" style={{ marginLeft: 8 }}>Root</span>}
-              </strong>
-              {i !== 0 && (
-                <button className="secondary btn-sm" onClick={() => removeNode(n.key)}>
-                  Remove
-                </button>
-              )}
-            </div>
-            <div className="tpl-node-grid">
-              <div className="field tpl-node-wide">
-                <label>Name</label>
-                <input value={n.name} onChange={(e) => patchNode(n.key, { name: e.target.value })} />
-              </div>
-              <div className="field tpl-node-wide">
-                <label>Description</label>
-                <textarea
-                  value={n.description}
-                  rows={2}
-                  placeholder="Default description for the generated task…"
-                  onChange={(e) => patchNode(n.key, { description: e.target.value })}
-                />
-              </div>
-              <div className="field">
-                <label>Parent</label>
-                {i === 0 ? (
-                  <input value="— (root)" disabled />
-                ) : (
-                  <select
-                    value={n.parentKey ?? ''}
-                    onChange={(e) => patchNode(n.key, { parentKey: e.target.value })}
-                  >
-                    {editor.nodes
-                      .filter((o) => o.key !== n.key)
-                      .map((o) => (
-                        <option key={o.key} value={o.key}>
-                          {o.name || '(unnamed)'}
-                        </option>
-                      ))}
-                  </select>
-                )}
-              </div>
-              <div className="field">
-                <label>Priority</label>
-                <select value={n.defaultPriority} onChange={(e) => patchNode(n.key, { defaultPriority: e.target.value as TaskPriority })}>
-                  {TASK_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>Role placeholder</label>
-                <input value={n.assigneeRole} placeholder="e.g. Inspector" onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })} />
-              </div>
-              <div className="field">
-                <label>Start (+days)</label>
-                <input type="number" value={n.startOffsetDays} onChange={(e) => patchNode(n.key, { startOffsetDays: e.target.value })} />
-              </div>
-              <div className="field">
-                <label>Due (+days)</label>
-                <input type="number" value={n.dueOffsetDays} onChange={(e) => patchNode(n.key, { dueOffsetDays: e.target.value })} />
-              </div>
-            </div>
-
-            {/* Dependencies live on the node, mirroring a real task's relationships.
-                Each edge shows as "Blocks" on one node and "Blocked by" on the other. */}
-            {editor.nodes.length > 1 && (
-              <div className="tpl-node-rels">
-                <TplRel
-                  label="Blocked by"
-                  linked={editor.dependencies.filter((d) => d.blockedKey === n.key).map((d) => d.blockerKey)}
-                  options={editor.nodes.filter((o) => o.key !== n.key)}
-                  display={nodeDisplay}
-                  onAdd={(other) => patch({ dependencies: [...editor.dependencies, { blockerKey: other, blockedKey: n.key }] })}
-                  onRemove={(other) =>
-                    patch({ dependencies: editor.dependencies.filter((d) => !(d.blockerKey === other && d.blockedKey === n.key)) })
-                  }
-                />
-                <TplRel
-                  label="Blocks"
-                  linked={editor.dependencies.filter((d) => d.blockerKey === n.key).map((d) => d.blockedKey)}
-                  options={editor.nodes.filter((o) => o.key !== n.key)}
-                  display={nodeDisplay}
-                  onAdd={(other) => patch({ dependencies: [...editor.dependencies, { blockerKey: n.key, blockedKey: other }] })}
-                  onRemove={(other) =>
-                    patch({ dependencies: editor.dependencies.filter((d) => !(d.blockerKey === n.key && d.blockedKey === other)) })
-                  }
-                />
-              </div>
-            )}
-          </div>
-        ))}
+        <div className="tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
       </section>
 
       {pendingFuture && (

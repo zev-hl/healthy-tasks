@@ -5609,3 +5609,63 @@ tr.just-completed > td {
   color: var(--accent-strong, var(--accent));
   font-size: 0.85rem;
 }
+
+/* --- Template tree editor: nesting, drag handle, collapse ------------------ */
+.tpl-tree-hint {
+  font-size: 0.75rem;
+}
+.tpl-tree-node {
+  position: relative;
+}
+.tpl-node-headleft {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tpl-node-name {
+  font-weight: 400;
+}
+.tpl-collapsed-count {
+  font-weight: 400;
+  font-size: 0.8em;
+}
+.tpl-drag-handle {
+  cursor: grab;
+  color: var(--muted-2, var(--muted));
+  font-size: 1rem;
+  line-height: 1;
+  user-select: none;
+  padding: 0 0.15rem;
+}
+.tpl-drag-handle:active {
+  cursor: grabbing;
+}
+.tpl-drag-handle.placeholder {
+  visibility: hidden;
+}
+.tpl-collapse {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  border-radius: var(--radius-sm, 4px);
+}
+.tpl-collapse:hover {
+  background: var(--surface-2, var(--border-soft));
+}
+.tpl-collapse.placeholder {
+  visibility: hidden;
+  cursor: default;
+}
+.tpl-node.dragging {
+  opacity: 0.5;
+}
+.tpl-node.drop-before {
+  box-shadow: 0 -3px 0 -1px var(--accent);
+}
+.tpl-node.drop-after {
+  box-shadow: 0 3px 0 -1px var(--accent);
+}

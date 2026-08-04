@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
+import { getStorage } from '../storage/index.js';
+import { assertCanEditTask } from './access-control.service.js';
 import {
   TERMINAL_TASK_STATUSES,
   type ApplyToFutureResultDto,
@@ -15,6 +18,7 @@ import type {
   CreateTemplateInput,
   InstantiateTemplateInput,
   RecurrenceInputParsed,
+  SaveTaskAsTemplateInput,
   TemplateNodeInputParsed,
   UpdateTemplateInput,
 } from '../validation/schemas.js';
@@ -196,7 +200,7 @@ async function reconcileTree(
   templateId: number,
   nodesInput: TemplateNodeInputParsed[],
   dependencies: DependencyInput[],
-): Promise<void> {
+): Promise<Map<string, number>> {
   const ordered = validateAndOrderTree(nodesInput, dependencies);
 
   const existing = await tx.taskTemplateNode.findMany({
@@ -222,6 +226,7 @@ async function reconcileTree(
       startOffsetDays: n.startOffsetDays ?? null,
       dueOffsetDays: n.dueOffsetDays ?? null,
       assigneeRole: n.assigneeRole ?? null,
+      tags: n.tags ?? [],
       orderIndex: n.orderIndex ?? 0,
       parentNodeId,
     };
@@ -252,6 +257,7 @@ async function reconcileTree(
   if (uniq.size > 0) {
     await tx.taskTemplateDependency.createMany({ data: [...uniq.values()] });
   }
+  return keyToId;
 }
 
 // --- CRUD ------------------------------------------------------------------
@@ -289,6 +295,181 @@ export async function createTemplate(actor: Actor, input: CreateTemplateInput): 
     return template.id;
   });
   return getTemplate(id);
+}
+
+// --- Task -> Template conversion (Phase 11 follow-on) ----------------------
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Seed a node's role placeholder from a task's current assignee's name. */
+function assigneeRoleSeed(
+  a: { firstName: string; lastName: string; email: string } | null,
+): string | null {
+  if (!a) return null;
+  const name = `${a.firstName} ${a.lastName}`.trim();
+  return name || a.email || null;
+}
+
+/** URL/storage-safe attachment filename (mirrors attachment.service `safeName`). */
+function safeTemplateAttachmentName(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? 'file';
+  return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file';
+}
+
+/** All task ids in the subtree rooted at `rootId` (root first, BFS). */
+async function taskSubtreeIds(rootId: number): Promise<number[]> {
+  const ids: number[] = [rootId];
+  let frontier: number[] = [rootId];
+  while (frontier.length > 0) {
+    const children = await prisma.task.findMany({
+      where: { parentId: { in: frontier } },
+      select: { id: true },
+    });
+    const childIds = children.map((c) => c.id);
+    ids.push(...childIds);
+    frontier = childIds;
+  }
+  return ids;
+}
+
+/**
+ * Copy the TASK-level attachments of the converted tasks into TEMPLATE-scoped
+ * storage, as default attachments on the corresponding template node. Each blob
+ * is copied to a fresh key (`templates/{templateId}/nodes/{nodeId}/…`) so it is
+ * fully independent of the source task's file. Best-effort per attachment.
+ */
+async function copyTaskAttachmentsToTemplate(
+  templateId: number,
+  taskIds: number[],
+  keyOf: (taskId: number) => string,
+  keyToNodeId: Map<string, number>,
+  actorId: string,
+): Promise<void> {
+  const attachments = await prisma.attachment.findMany({
+    where: { taskId: { in: taskIds }, commentId: null },
+  });
+  if (attachments.length === 0) return;
+  const storage = getStorage();
+  for (const a of attachments) {
+    if (a.taskId == null) continue;
+    const nodeId = keyToNodeId.get(keyOf(a.taskId));
+    if (nodeId == null) continue;
+    const destKey = `templates/${templateId}/nodes/${nodeId}/${randomUUID()}/${safeTemplateAttachmentName(a.filename)}`;
+    try {
+      await storage.copyObject(a.storageKey, destKey);
+    } catch {
+      continue; // best-effort: skip an attachment whose blob couldn't be copied
+    }
+    await prisma.taskTemplateNodeAttachment.create({
+      data: {
+        templateNodeId: nodeId,
+        filename: a.filename,
+        contentType: a.contentType,
+        size: a.size,
+        storageKey: destKey,
+        uploadedById: actorId,
+      },
+    });
+  }
+}
+
+/**
+ * Convert a live task — optionally with its full descendant tree — into a new,
+ * independent, reusable Template. Non-destructive: the source task(s) are never
+ * modified. Only STRUCTURAL data carries over (name, description, priority, tags,
+ * and dependencies internal to the converted scope). Assignees become editable
+ * role placeholders (seeded from the current assignee's name); status, comments,
+ * history and instance labels are dropped. Dates become day offsets from the
+ * root's Day-0 anchor (its Start date, or Due date if no Start; blank if neither).
+ * With `includeAttachments`, task attachments are copied (not linked) into
+ * template-scoped storage as node defaults.
+ *
+ * Permission: Admin/Manager AND full edit access to the source task — a
+ * mention-only or tree read-only user cannot snapshot a structure they can't edit.
+ */
+export async function saveTaskAsTemplate(
+  actor: Actor,
+  rootTaskId: number,
+  input: SaveTaskAsTemplateInput,
+): Promise<TemplateDto> {
+  assertTemplateManager(actor);
+  await assertCanEditTask(actor, rootTaskId);
+
+  const ids = input.includeDescendants ? await taskSubtreeIds(rootTaskId) : [rootTaskId];
+  const idSet = new Set(ids);
+  const tasks = await prisma.task.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      parentId: true,
+      name: true,
+      description: true,
+      priority: true,
+      tags: true,
+      startAt: true,
+      dueAt: true,
+      assignee: { select: { firstName: true, lastName: true, email: true } },
+    },
+  });
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const root = byId.get(rootTaskId);
+  if (!root) throw HttpError.notFound('Task not found');
+
+  // Day 0 = the root's Start date, or its Due date if no Start. If the root has
+  // neither, every offset is left blank for manual entry later.
+  const anchor = root.startAt ?? root.dueAt ?? null;
+  const offset = (d: Date | null): number | null =>
+    anchor && d ? Math.round((d.getTime() - anchor.getTime()) / DAY_MS) : null;
+
+  const keyOf = (id: number) => `t${id}`;
+  const nodes: TemplateNodeInputParsed[] = ids.map((id, i) => {
+    const t = byId.get(id)!;
+    const isRoot = id === rootTaskId;
+    // The converting user may override the root's role label; else seed from the
+    // task's current assignee's name (each descendant seeds from its own assignee).
+    const role =
+      isRoot && input.rootRoleLabel !== undefined ? input.rootRoleLabel : assigneeRoleSeed(t.assignee);
+    return {
+      key: keyOf(id),
+      parentKey: isRoot ? null : t.parentId != null && idSet.has(t.parentId) ? keyOf(t.parentId) : null,
+      name: t.name,
+      description: t.description,
+      defaultPriority: t.priority,
+      startOffsetDays: offset(t.startAt),
+      dueOffsetDays: offset(t.dueAt),
+      assigneeRole: role,
+      tags: t.tags,
+      orderIndex: i,
+    };
+  });
+
+  // Only dependencies with BOTH endpoints inside the converted scope carry over.
+  const edges =
+    idSet.size > 1
+      ? await prisma.taskDependency.findMany({
+          where: { blockerId: { in: ids }, blockedId: { in: ids } },
+          select: { blockerId: true, blockedId: true },
+        })
+      : [];
+  const dependencies = edges.map((e) => ({ blockerKey: keyOf(e.blockerId), blockedKey: keyOf(e.blockedId) }));
+
+  // Structural validation (single root, resolvable parents/deps, no cycles).
+  validateAndOrderTree(nodes, dependencies);
+
+  const { templateId, keyToNodeId } = await prisma.$transaction(async (tx) => {
+    const template = await tx.taskTemplate.create({
+      data: { name: input.name, description: null, createdById: actor.id, ...recurrenceData(undefined) },
+      select: { id: true },
+    });
+    const map = await reconcileTree(tx, template.id, nodes, dependencies);
+    return { templateId: template.id, keyToNodeId: map };
+  });
+
+  if (input.includeAttachments) {
+    await copyTaskAttachmentsToTemplate(templateId, ids, keyOf, keyToNodeId, actor.id);
+  }
+
+  return getTemplate(templateId);
 }
 
 export async function updateTemplate(

@@ -45,6 +45,7 @@ import type {
   GhostOccurrenceDto,
   InstantiateResultDto,
   InstantiateTemplateRequest,
+  SaveTaskAsTemplateRequest,
   SetTaskRecurrenceRequest,
   TemplateDto,
   TemplateSummaryDto,
@@ -274,6 +275,11 @@ export const api = {
     request<TaskDetailDto>(`/api/tasks/${id}/duplicate`, {
       method: 'POST',
       body: JSON.stringify({ includeDescendants, copyAttachments }),
+    }),
+  saveTaskAsTemplate: (id: number, body: SaveTaskAsTemplateRequest) =>
+    request<TemplateDto>(`/api/tasks/${id}/save-as-template`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 
   // --- Attachments (Phase 4) ---

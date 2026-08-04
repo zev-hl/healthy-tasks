@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { sanitizeAndValidate } from '../utils/rich-text.js';
+import { getStorage } from '../storage/index.js';
 import { addDays } from './recurrence.js';
 import { recordHistory } from './task-history.service.js';
 import { createAssignedNotification } from './notification.service.js';
@@ -24,6 +26,7 @@ interface NodeForGen {
   name: string;
   description: string | null;
   defaultPriority: TaskPriority;
+  tags: string[];
   startOffsetDays: number | null;
   dueOffsetDays: number | null;
 }
@@ -107,7 +110,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
 
     const ordered = orderParentsFirst(nodes as NodeForGen[]);
     const nodeIdToTaskId = new Map<number, number>();
-    const created: { taskId: number; assigneeId: string | null }[] = [];
+    const created: { taskId: number; assigneeId: string | null; nodeId: number }[] = [];
     let rootTaskId: number | null = null;
 
     for (const node of ordered) {
@@ -123,7 +126,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           creatorId,
           assigneeId,
           priority: node.defaultPriority,
-          tags: [],
+          tags: node.tags,
           startAt,
           dueAt,
           parentId: parentTaskId,
@@ -135,7 +138,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
         select: { id: true },
       });
       nodeIdToTaskId.set(node.id, task.id);
-      created.push({ taskId: task.id, assigneeId });
+      created.push({ taskId: task.id, assigneeId, nodeId: node.id });
       if (node.parentNodeId === null && rootTaskId === null) rootTaskId = task.id;
     }
 
@@ -166,6 +169,13 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
     return { occurrenceId: occurrence.id, rootTaskId, created };
   });
 
+  // Copy each node's default attachments onto its generated task (independent
+  // blobs). Done post-commit since it performs external (S3) copies; best-effort.
+  await copyTemplateAttachmentsToTasks(
+    result.created.map((c) => ({ taskId: c.taskId, nodeId: c.nodeId })),
+    actorId,
+  );
+
   // Assignment notifications post-commit (self-assignments are skipped inside).
   for (const c of result.created) {
     if (c.assigneeId) {
@@ -183,6 +193,50 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
     rootTaskId: result.rootTaskId,
     taskIds: result.created.map((c) => c.taskId),
   };
+}
+
+/** URL/storage-safe attachment filename (mirrors attachment.service `safeName`). */
+function safeAttachmentName(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? 'file';
+  return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file';
+}
+
+/**
+ * Copy every template node's default attachments onto the real task generated
+ * from that node, as fresh independent task-level blobs. Best-effort per file
+ * (a blob that can't be copied is skipped, never failing the instantiation).
+ */
+async function copyTemplateAttachmentsToTasks(
+  pairs: { taskId: number; nodeId: number }[],
+  actorId: string,
+): Promise<void> {
+  const nodeIds = pairs.map((p) => p.nodeId);
+  const defaults = await prisma.taskTemplateNodeAttachment.findMany({
+    where: { templateNodeId: { in: nodeIds } },
+  });
+  if (defaults.length === 0) return;
+  const taskByNode = new Map(pairs.map((p) => [p.nodeId, p.taskId]));
+  const storage = getStorage();
+  for (const a of defaults) {
+    const taskId = taskByNode.get(a.templateNodeId);
+    if (taskId == null) continue;
+    const destKey = `tasks/${taskId}/${randomUUID()}/${safeAttachmentName(a.filename)}`;
+    try {
+      await storage.copyObject(a.storageKey, destKey);
+    } catch {
+      continue; // best-effort
+    }
+    await prisma.attachment.create({
+      data: {
+        filename: a.filename,
+        contentType: a.contentType,
+        size: a.size,
+        storageKey: destKey,
+        uploadedById: actorId,
+        taskId,
+      },
+    });
+  }
 }
 
 /**

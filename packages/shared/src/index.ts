@@ -1150,6 +1150,79 @@ export interface UpdateAppSettingsRequest {
  */
 export const GHOST_HORIZON_OCCURRENCES = 24;
 
+// --- Template tree editing (pure helpers, shared with the editor) -----------
+
+/** Minimal shape the template-tree editing helpers operate on. The template
+ * editor's node model and any test fixture both satisfy this. */
+export interface TemplateTreeNode {
+  key: string;
+  parentKey: string | null;
+}
+
+/** Where a dragged node lands relative to a drop target. `before`/`after` make
+ * it a sibling of the target; `inside` makes it the target's child. */
+export type TemplateDropPosition = 'before' | 'after' | 'inside';
+
+/** Every key in the subtree rooted at `key` (inclusive), following parentKey
+ * links. Used to move a whole subtree as one block and to guard against dropping
+ * a node into its own descendants. */
+export function templateSubtreeKeys<T extends TemplateTreeNode>(
+  nodes: readonly T[],
+  key: string,
+): Set<string> {
+  const childrenOf = new Map<string, string[]>();
+  for (const n of nodes) {
+    if (n.parentKey !== null) {
+      const arr = childrenOf.get(n.parentKey);
+      if (arr) arr.push(n.key);
+      else childrenOf.set(n.parentKey, [n.key]);
+    }
+  }
+  const out = new Set<string>();
+  const stack = [key];
+  while (stack.length > 0) {
+    const k = stack.pop() as string;
+    if (out.has(k)) continue;
+    out.add(k);
+    for (const c of childrenOf.get(k) ?? []) stack.push(c);
+  }
+  return out;
+}
+
+/**
+ * Move a node — together with its entire subtree, as one contiguous block — to a
+ * new position, updating the moved node's `parentKey`. Returns a NEW array. The
+ * move is a no-op (returns the input unchanged) when it is invalid: dropping a
+ * node onto itself, onto one of its own descendants, or moving the root (the
+ * single node whose parentKey is null). Descendants always follow their parent
+ * because their parentKey links are preserved and the whole block is relocated
+ * intact — collapsing a node never affects this (it is a display-only concern).
+ */
+export function moveTemplateNode<T extends TemplateTreeNode>(
+  nodes: readonly T[],
+  dragKey: string,
+  targetKey: string,
+  pos: TemplateDropPosition,
+): T[] {
+  if (dragKey === targetKey) return nodes.slice();
+  const drag = nodes.find((n) => n.key === dragKey);
+  const target = nodes.find((n) => n.key === targetKey);
+  if (!drag || !target) return nodes.slice();
+  // The root cannot be moved.
+  if (drag.parentKey === null) return nodes.slice();
+  const subtree = templateSubtreeKeys(nodes, dragKey);
+  // Never drop a node into its own subtree.
+  if (subtree.has(targetKey)) return nodes.slice();
+
+  const newParentKey = pos === 'inside' ? targetKey : target.parentKey;
+  const block = nodes.filter((n) => subtree.has(n.key)).map((n) => (n.key === dragKey ? { ...n, parentKey: newParentKey } : n));
+  const rest = nodes.filter((n) => !subtree.has(n.key));
+  const targetIdx = rest.findIndex((n) => n.key === targetKey);
+  if (targetIdx === -1) return nodes.slice();
+  const insertAt = pos === 'before' ? targetIdx : targetIdx + 1;
+  return [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)];
+}
+
 /** One definition node in a template tree (mirrors a real Task in the hierarchy). */
 export interface TemplateNodeDto {
   id: number;
@@ -1162,7 +1235,11 @@ export interface TemplateNodeDto {
   dueOffsetDays: number | null;
   /** Free-text job-role placeholder, resolved to a real user at instantiation. */
   assigneeRole: string | null;
+  /** Default tags applied to the task generated from this node. */
+  tags: string[];
   orderIndex: number;
+  /** How many default attachments this node carries (copied onto each new task). */
+  attachmentCount: number;
 }
 
 /** A dependency edge between two nodes of the same template (blocker → blocked). */
@@ -1265,6 +1342,7 @@ export interface TemplateNodeInput {
   startOffsetDays?: number | null;
   dueOffsetDays?: number | null;
   assigneeRole?: string | null;
+  tags?: string[];
   orderIndex?: number;
 }
 
@@ -1296,6 +1374,25 @@ export interface CreateTemplateRequest {
 }
 
 export type UpdateTemplateRequest = Partial<CreateTemplateRequest>;
+
+/**
+ * Convert a live task (optionally with its whole descendant tree) into a new,
+ * independent Template. Non-destructive: the source task(s) are untouched. Only
+ * structural data carries over — assignees become editable role placeholders,
+ * dates become offsets from the root's Day-0 anchor, and status/comments/history
+ * are dropped. See the Task→Template conversion flow in the architecture doc.
+ */
+export interface SaveTaskAsTemplateRequest {
+  /** Required, user-supplied template name (never auto-generated). */
+  name: string;
+  /** false ⇒ just the single task; true ⇒ the task plus its full descendant tree. */
+  includeDescendants: boolean;
+  /** Copy the source tasks' attachments into template-scoped storage as defaults. */
+  includeAttachments: boolean;
+  /** Optional override for the ROOT node's role placeholder (else seeded from the
+   * root task's current assignee's name). Descendants seed from their own assignee. */
+  rootRoleLabel?: string | null;
+}
 
 /** Maps a role placeholder label to the real user that fills it this instantiation. */
 export interface RoleAssignment {

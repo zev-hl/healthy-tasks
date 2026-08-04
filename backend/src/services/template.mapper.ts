@@ -18,7 +18,7 @@ const userRefSelect = {
  * can't live inside an `as const` include without becoming readonly). */
 export const templateInclude = {
   createdBy: userRefSelect,
-  nodes: { include: { blocking: true } },
+  nodes: { include: { blocking: true, _count: { select: { attachments: true } } } },
   occurrences: { orderBy: { id: 'asc' } },
 } as const;
 
@@ -48,7 +48,9 @@ function toNodeDto(n: TemplateWithGraph['nodes'][number]): TemplateNodeDto {
     startOffsetDays: n.startOffsetDays,
     dueOffsetDays: n.dueOffsetDays,
     assigneeRole: n.assigneeRole,
+    tags: n.tags,
     orderIndex: n.orderIndex,
+    attachmentCount: n._count.attachments,
   };
 }
 

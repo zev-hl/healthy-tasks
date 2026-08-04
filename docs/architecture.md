@@ -457,3 +457,75 @@ frontend (`DueDatePerformancePage`) reuses the Search table conventions, adds a
 **Result** column and a bucket summary bar, a **Group by Assignee** toggle
 (collapsible groups with per-assignee subtotal bars), and Excel export that mirrors
 whichever mode is active (flat, or grouped with subtotal rows).
+
+## 12. Follow-up: notifications, global settings, template editor & conversion
+
+### 12.1 Manual mark-as-unread
+
+Both `Notification` (Mentioned/Assigned) and `Reminder` rows carry a nullable
+`readAt`. In addition to the one-way mark-**read** endpoints, there are now
+mark-**unread** endpoints that set `readAt` back to `null`:
+`POST /api/notifications/:id/unread` (`markNotificationUnread`) and
+`POST /api/reminders/:id/unread` (`markReminderUnread`) — each scoped to the
+caller's own rows (404 otherwise). The unread bell count (`getUnreadCounts`,
+polled every 30s) counts `readAt: null` rows, so re-marking unread makes the row
+count toward the badge again. In the UI each notification row shows a **Mark
+read** or **Mark unread** control depending on its current state; the click
+optimistically flips the row and refreshes the bell. The Notifications screen's
+redundant **Settings** link (per-list preferences live on the profile) was
+removed. Task Detail comments are ordered **newest-first** (`task.mapper.ts`
+`orderBy: { createdAt: 'desc' }`).
+
+### 12.2 Global materialization lead time (`AppSetting`)
+
+The recurrence materialization lead time is a **single global, Admin-controlled
+value**, no longer stored per-template or per-task. It lives on the `AppSetting`
+singleton (`id = 1`, `materializeLeadDays` default 14), mirroring the
+`SchedulerState` pattern. The `leadTimeDays` columns were dropped from
+`TaskTemplate` and `TaskRecurrence`. Every scheduler/ghost path
+(`scheduler.service`, `task-recurrence.service`, `template.service` ghosts) reads
+the value once via `getMaterializeLeadDays()` and threads it into the pure
+`isWithinLeadTime` / `dueFixedSeqs` functions (which now take `leadTimeDays` as an
+explicit parameter rather than reading it off the recurrence config). API:
+`GET /api/settings` (any authenticated user) + `PUT /api/settings` (Admin only),
+surfaced on the Admin-only `/admin/settings` page.
+
+### 12.3 Template tree editor (drag/drop + collapse)
+
+The editor renders the node tree from each node's `parentKey` (not array order),
+so **assigning a Parent immediately nests** the node under it. Sibling reordering
+uses native HTML5 drag from a per-node handle; the pure helper
+`moveTemplateNode(nodes, dragKey, targetKey, pos)` (in `packages/shared`) relocates
+the dragged node **together with its entire subtree as one contiguous block** and
+updates its `parentKey`, refusing to drop a node into its own descendants or to
+move the root. Nodes can be collapsed/expanded individually plus **Collapse
+all/Expand all**; collapsing is display-only (a collapsed node stays fully
+draggable and moves its hidden subtree intact). Sibling order persists via each
+node's `orderIndex`. Template nodes also gained a `tags` array (round-tripped
+through the editor).
+
+### 12.4 Task → Template conversion
+
+`POST /api/tasks/:id/save-as-template` (`saveTaskAsTemplate` in `template.service`)
+converts a live task — optionally its whole descendant subtree — into a new,
+independent template. It is **non-destructive** (the source tasks are never
+modified). Permission: **Admin/Manager AND full edit access** to the source task
+(`assertTemplateManager` + `assertCanEditTask`), so a mention-only or
+tree-read-only user cannot snapshot a structure they can't edit.
+
+- **Carried over (structural only):** name, description, priority, tags, and
+  dependencies whose **both** endpoints are inside the converted scope.
+- **Dropped / transformed:** the assignee becomes an editable **role placeholder**
+  seeded from the current assignee's name (the converting user may override the
+  root's label); status, comments, history and instance labels are not carried.
+- **Relative-date anchor:** the root's **Start date is Day 0** (its Due date if no
+  Start; if it has neither, all template offsets are left blank). Every task's
+  Start/Due becomes a whole-day offset from that anchor (`Math.round` of the ms
+  delta); offsets may be negative when a descendant precedes the root anchor, so
+  the node offset bound allows `[-3650, 3650]`.
+- **Attachments (optional toggle):** when enabled, each source task's task-level
+  attachments are **copied (not referenced)** into template-scoped storage
+  (`templates/{templateId}/nodes/{nodeId}/{uuid}/{name}`) as
+  `TaskTemplateNodeAttachment` defaults on the matching node. At **every**
+  instantiation these defaults are copied again onto the generated real tasks
+  (`tasks/{taskId}/{uuid}/{name}`), so each instance gets its own independent blob.

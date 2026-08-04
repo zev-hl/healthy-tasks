@@ -369,9 +369,11 @@ export type ScreenStateInput = z.infer<typeof screenStateSchema>;
 
 const templateName = z.string().trim().min(1, 'Name is required').max(300, 'Name is too long');
 // A day offset from the instantiation anchor. Null clears the date; omitted on a
-// node input means "no date". Bounded to a decade to catch fat-finger entries.
+// node input means "no date". Bounded to a decade either side of the anchor —
+// negatives arise when converting a task tree whose descendant starts before the
+// root's Day-0 anchor. Catches fat-finger entries.
 const offsetDays = z
-  .union([z.null(), z.coerce.number().int().min(0).max(3650)])
+  .union([z.null(), z.coerce.number().int().min(-3650).max(3650)])
   .optional()
   .transform((v) => (v === undefined ? undefined : v));
 // A node key is a client-local identifier used to express parent/dependency
@@ -435,6 +437,7 @@ const templateNodeInputSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+  tags: tags.optional(),
   orderIndex: z.number().int().min(0).max(10000).optional(),
 });
 
@@ -459,6 +462,20 @@ export const updateTemplateSchema = z.object({
   nodes: z.array(templateNodeInputSchema).min(1).max(200).optional(),
   dependencies: z.array(templateDependencyInputSchema).max(400).optional(),
   recurrence: recurrenceInputSchema.optional(),
+});
+
+// Convert a live task (optionally its whole subtree) into a new template.
+export const saveTaskAsTemplateSchema = z.object({
+  name: templateName,
+  includeDescendants: z.boolean(),
+  includeAttachments: z.boolean(),
+  rootRoleLabel: z
+    .string()
+    .trim()
+    .max(100)
+    .optional()
+    .nullable()
+    .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
 });
 
 export const instantiateTemplateSchema = z.object({
@@ -620,6 +637,7 @@ export type UpdateAppSettingsInput = z.infer<typeof updateAppSettingsSchema>;
 
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
+export type SaveTaskAsTemplateInput = z.infer<typeof saveTaskAsTemplateSchema>;
 export type RecurrenceInputParsed = z.infer<typeof recurrenceInputSchema>;
 export type TemplateNodeInputParsed = z.infer<typeof templateNodeInputSchema>;
 export type InstantiateTemplateInput = z.infer<typeof instantiateTemplateSchema>;

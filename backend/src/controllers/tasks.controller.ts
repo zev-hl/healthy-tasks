@@ -8,6 +8,7 @@ import type {
   TaskHistoryEntryDto,
   TaskRef,
   TaskRowDto,
+  TemplateDto,
 } from '@healthy-tasks/shared';
 import { HttpError } from '../utils/http-error.js';
 import {
@@ -43,9 +44,11 @@ import type {
   CreateTaskInput,
   DependencyInput,
   DuplicateTaskInput,
+  SaveTaskAsTemplateInput,
   SetParentInput,
   UpdateTaskInput,
 } from '../validation/schemas.js';
+import { saveTaskAsTemplate } from '../services/template.service.js';
 
 /** Parse the :id route param into a positive integer or throw a 400. */
 function parseTaskId(req: Request): number {
@@ -214,4 +217,13 @@ export async function duplicateTaskController(req: Request, res: Response): Prom
     copyAttachments ?? false,
   );
   res.status(201).json(task satisfies TaskDetailDto);
+}
+
+export async function saveTaskAsTemplateController(req: Request, res: Response): Promise<void> {
+  const template = await saveTaskAsTemplate(
+    actorOf(req),
+    parseTaskId(req),
+    req.body as SaveTaskAsTemplateInput,
+  );
+  res.status(201).json(template satisfies TemplateDto);
 }

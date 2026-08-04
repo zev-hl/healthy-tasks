@@ -6,6 +6,7 @@ import {
   createTaskSchema,
   updateTaskSchema,
   duplicateTaskSchema,
+  saveTaskAsTemplateSchema,
   setTaskPrivateSchema,
   setParentSchema,
   dependencySchema,
@@ -34,6 +35,7 @@ import {
   removeDependencyController,
   deleteTaskController,
   duplicateTaskController,
+  saveTaskAsTemplateController,
   setTaskPrivateController,
   mentionCandidatesController,
   reviewerCandidatesController,
@@ -93,6 +95,11 @@ tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
 // Duplicate a task, optionally its whole sub-tree.
 tasksRouter.post('/:id/duplicate', validateBody(duplicateTaskSchema), asyncHandler(duplicateTaskController));
+tasksRouter.post(
+  '/:id/save-as-template',
+  validateBody(saveTaskAsTemplateSchema),
+  asyncHandler(saveTaskAsTemplateController),
+);
 
 // Parent / Child
 tasksRouter.put('/:id/parent', validateBody(setParentSchema), asyncHandler(setParentController));

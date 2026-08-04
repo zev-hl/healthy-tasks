@@ -5,6 +5,7 @@ import type { Express } from 'express';
 import type { PrismaClient, Role } from '@prisma/client';
 import { startTestDb, type TestDb } from './db.js';
 import { memoryStorage } from '../src/storage/memory.storage.js';
+import { moveTemplateNode, templateSubtreeKeys } from '@healthy-tasks/shared';
 
 let db: TestDb;
 let app: Express;
@@ -48,7 +49,7 @@ beforeEach(async () => {
   // Fresh state for every test. RESTART IDENTITY resets the Task id sequence so
   // sequential-id assertions are deterministic (first task id = 1).
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "Task", "PasswordResetToken", "User", "SchedulerState" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "Task", "PasswordResetToken", "User", "SchedulerState", "AppSetting" RESTART IDENTITY CASCADE',
   );
   // CASCADE also clears Comment/Attachment/CommentMention/MentionEvent and the
   // Phase 11 template tables (TaskTemplate cascades from User; occurrences +
@@ -109,6 +110,16 @@ async function makeTask(
 
 function tokenFromResetLink(link: string): string {
   return new URL(link).searchParams.get('token') ?? '';
+}
+
+/** Set the single global recurrence materialization lead time (AppSetting id=1).
+ * Lead is no longer per-template/per-task, so tests set it here. */
+async function setLeadDays(days: number): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { id: 1 },
+    create: { id: 1, materializeLeadDays: days },
+    update: { materializeLeadDays: days },
+  });
 }
 
 // --- tests -----------------------------------------------------------------
@@ -2883,6 +2894,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
 
   it('fixed "every 3 weeks", limit 3 → materializes exactly 3, spaced 3 weeks, then stops', async () => {
     const admin = await adminToken();
+    await setLeadDays(0);
     const tpl = await createTemplate(
       admin,
       twoLevelBody({
@@ -2893,7 +2905,6 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           anchorDate: '2026-08-01T00:00:00.000Z',
           endType: 'AfterOccurrences',
           maxOccurrences: 3,
-          leadTimeDays: 0,
         },
       }),
     );
@@ -2929,6 +2940,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
 
   it('relative-to-completion only schedules the next occurrence after the prior root completes', async () => {
     const admin = await adminToken();
+    await setLeadDays(0);
     const tpl = await createTemplate(
       admin,
       {
@@ -2940,7 +2952,6 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           intervalUnit: 'Day',
           anchorDate: '2026-08-01T00:00:00.000Z',
           endType: 'Never',
-          leadTimeDays: 0,
         },
       },
     );
@@ -2971,6 +2982,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
 
   it('scheduled occurrences auto-assign the same person(s) as the previous instance', async () => {
     const admin = await adminToken();
+    await setLeadDays(0);
     const owner = await seedUser({ email: 'owner@test.local', role: 'Member' });
     const tpl = await createTemplate(
       admin,
@@ -2986,7 +2998,6 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           anchorDate: '2026-08-01T00:00:00.000Z',
           endType: 'AfterOccurrences',
           maxOccurrences: 5,
-          leadTimeDays: 0,
         },
       },
     );
@@ -3018,7 +3029,6 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           anchorDate: '2026-08-01T00:00:00.000Z',
           endType: 'AfterOccurrences',
           maxOccurrences: 4,
-          leadTimeDays: 14,
         },
       }),
     );
@@ -3059,7 +3069,6 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           anchorDate: '2026-08-01T00:00:00.000Z',
           endType: 'AfterOccurrences',
           maxOccurrences: 3,
-          leadTimeDays: 7,
         },
       }),
     );
@@ -3096,7 +3105,6 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           anchorDate: '2026-08-01T00:00:00.000Z',
           endType: 'AfterOccurrences',
           maxOccurrences: 4,
-          leadTimeDays: 30,
         },
       }),
     );
@@ -3209,6 +3217,8 @@ describe('task-level recurrence (Phase 11)', () => {
   before(async () => {
     ({ runScheduler } = await import('../src/services/scheduler.service.js'));
   });
+  // Lead time is global now; these tests want immediate materialization.
+  beforeEach(() => setLeadDays(0));
 
   async function memberToken(email: string): Promise<string> {
     await seedUser({ email, role: 'Member', password: MEMBER_PASSWORD });
@@ -3231,7 +3241,6 @@ describe('task-level recurrence (Phase 11)', () => {
       intervalUnit: 'Week',
       endType: 'AfterOccurrences',
       maxOccurrences: 6,
-      leadTimeDays: 0,
     });
     assert.equal(set.status, 200, JSON.stringify(set.body));
     assert.ok(set.body.recurrence, 'the task now carries a recurrence rule');
@@ -3271,7 +3280,6 @@ describe('task-level recurrence (Phase 11)', () => {
       intervalUnit: 'Week',
       endType: 'AfterOccurrences',
       maxOccurrences: 4,
-      leadTimeDays: 0,
     });
 
     await runScheduler(new Date('2026-08-08T00:00:00.000Z')); // seq 2 is due (+1 week)
@@ -3293,7 +3301,6 @@ describe('task-level recurrence (Phase 11)', () => {
       recurrenceType: 'RelativeToCompletion',
       intervalCount: 3,
       intervalUnit: 'Day',
-      leadTimeDays: 0,
     });
 
     await runScheduler(new Date('2026-08-30T00:00:00.000Z')); // source still open
@@ -3321,7 +3328,6 @@ describe('task-level recurrence (Phase 11)', () => {
       intervalUnit: 'Month',
       endType: 'AfterOccurrences',
       maxOccurrences: 3,
-      leadTimeDays: 0,
     });
 
     const res = await request(app)
@@ -3360,7 +3366,6 @@ describe('task-level recurrence (Phase 11)', () => {
       weekdays: [1, 3], // Monday & Wednesday
       endType: 'AfterOccurrences',
       maxOccurrences: 6,
-      leadTimeDays: 0,
     });
 
     const ghosts = await request(app).get('/api/tasks/ghosts').set(auth(admin));
@@ -3937,8 +3942,9 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
 
   it('task recurrence: a ghost cannot be double-materialized by a click-through and the scheduler racing', async () => {
     const admin = await adminToken();
-    // leadTimeDays 30 so seq 2 (+1wk) and seq 3 (+2wk) are within the auto-
+    // Global lead 30 so seq 2 (+1wk) and seq 3 (+2wk) are within the auto-
     // materialization window at the Aug-1 tick.
+    await setLeadDays(30);
     const t = await makeTask(admin, 'Nightly sync', {
       startAt: '2026-08-01T00:00:00.000Z',
       dueAt: '2026-08-01T01:00:00.000Z',
@@ -3952,7 +3958,6 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
         intervalUnit: 'Week',
         endType: 'AfterOccurrences',
         maxOccurrences: 3,
-        leadTimeDays: 30,
       });
 
     // Trigger A: user clicks the seq-2 ghost to materialize it now.
@@ -3981,6 +3986,8 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
 
   it('template recurrence: a ghost cannot be double-materialized by a click-through and the scheduler racing', async () => {
     const admin = await adminToken();
+    // Global lead 40 so seq 1 (Aug 1) and seq 2 (Sep 1) are within the window at Aug 1.
+    await setLeadDays(40);
     const tpl = await createTemplate(admin, {
       name: 'Monthly audit',
       nodes: [{ key: 'root', parentKey: null, name: 'Audit', startOffsetDays: 0, dueOffsetDays: 1 }],
@@ -3991,7 +3998,6 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
         anchorDate: '2026-08-01T00:00:00.000Z',
         endType: 'AfterOccurrences',
         maxOccurrences: 3,
-        leadTimeDays: 40, // seq 1 (Aug 1) and seq 2 (Sep 1) are within the window at Aug 1
       },
     });
 
@@ -4540,5 +4546,335 @@ describe('Excel export renders dates in the requester timezone', () => {
     const same = toExcelLocalDate('2026-07-28T23:00:00.000Z', undefined) as Date;
     assert.equal(same.getUTCHours(), 23);
     assert.equal(toExcelLocalDate(null, 'America/New_York'), '');
+  });
+});
+
+// ===========================================================================
+// Follow-up round: small fixes, template editor DnD, task->template conversion
+// ===========================================================================
+
+describe('notifications: manual mark-as-unread (follow-up)', () => {
+  it('re-marks a read notification as unread and the bell count reflects it', async () => {
+    const admin = await adminToken();
+    const u = await seedUser({ email: 'unread-mem@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const uTok = await login('unread-mem@test.local', MEMBER_PASSWORD);
+
+    // An assignment to the member creates one unread "assigned" notification.
+    await makeTask(admin, 'Assigned to member', { assigneeId: u.id });
+    assert.equal((await unread(uTok)).assigned, 1);
+    assert.equal((await unread(uTok)).total, 1, 'bell shows one unread');
+
+    const list = await getNotifs(uTok);
+    const notifId = list.assigned[0]!.id;
+
+    // Mark read → the bell count drops to zero.
+    const read = await request(app).post(`/api/notifications/${notifId}/read`).set(auth(uTok));
+    assert.equal(read.status, 204);
+    assert.equal((await unread(uTok)).total, 0, 'bell clears after reading');
+    assert.equal((await getNotifs(uTok)).assigned[0]!.read, true);
+
+    // Manually re-mark unread → the bell count goes back up.
+    const back = await request(app).post(`/api/notifications/${notifId}/unread`).set(auth(uTok));
+    assert.equal(back.status, 204);
+    assert.equal((await unread(uTok)).assigned, 1);
+    assert.equal((await unread(uTok)).total, 1, 'bell shows the notification as unread again');
+    assert.equal((await getNotifs(uTok)).assigned[0]!.read, false);
+
+    // A different user cannot flip someone else's notification.
+    const other = await seedUser({ email: 'unread-other@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    void other;
+    const otherTok = await login('unread-other@test.local', MEMBER_PASSWORD);
+    const forbidden = await request(app).post(`/api/notifications/${notifId}/unread`).set(auth(otherTok));
+    assert.equal(forbidden.status, 404, "cannot touch another user's notification");
+  });
+
+  it('re-marks a due reminder as unread and it counts again', async () => {
+    const admin = await adminToken();
+    const startSoon = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // 5 min ago → due
+    const t = await makeTask(admin, 'Due reminder task', { startAt: startSoon });
+    const rem = await request(app).post(`/api/tasks/${t.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    assert.equal(rem.status, 201);
+    assert.equal((await unread(admin)).reminders, 1);
+
+    await request(app).post(`/api/reminders/${rem.body.id}/read`).set(auth(admin));
+    assert.equal((await unread(admin)).reminders, 0);
+
+    const back = await request(app).post(`/api/reminders/${rem.body.id}/unread`).set(auth(admin));
+    assert.equal(back.status, 204);
+    assert.equal((await unread(admin)).reminders, 1, 'the reminder counts as unread again');
+  });
+});
+
+describe('global materialization lead time (follow-up)', () => {
+  let runScheduler: (now: Date) => Promise<number>;
+  before(async () => {
+    ({ runScheduler } = await import('../src/services/scheduler.service.js'));
+  });
+
+  function weeklyTemplate(name: string) {
+    return {
+      name,
+      nodes: [{ key: 'root', parentKey: null, name: 'Do it', startOffsetDays: 0, dueOffsetDays: 1 }],
+      recurrence: {
+        recurrenceType: 'Fixed',
+        intervalCount: 1,
+        intervalUnit: 'Week',
+        anchorDate: '2026-08-01T00:00:00.000Z',
+        endType: 'AfterOccurrences',
+        maxOccurrences: 4,
+      },
+    };
+  }
+
+  it('every recurring template respects the ONE global setting (no per-template override)', async () => {
+    const admin = await adminToken();
+
+    async function create(name: string): Promise<number> {
+      const res = await request(app).post('/api/templates').set(auth(admin)).send(weeklyTemplate(name));
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      // The lead time is no longer part of the template payload/DTO.
+      assert.ok(!('leadTimeDays' in res.body), 'no per-template lead override remains');
+      return res.body.id as number;
+    }
+    const t1 = await create('Series one');
+    const t2 = await create('Series two');
+    const scheduled = (id: number) =>
+      prisma.templateOccurrence.count({ where: { templateId: id, origin: 'scheduled' } });
+
+    // Global lead 0: at the anchor only seq 1 (Aug 1) is within the window; seq 2
+    // (Aug 8) is a week out. Both templates behave identically.
+    await setLeadDays(0);
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+    assert.equal(await scheduled(t1), 1);
+    assert.equal(await scheduled(t2), 1);
+
+    // Raise the ONE global to 10 days: seq 2 (Aug 8) now falls in the window for
+    // BOTH templates; seq 3 (Aug 15) is still out. No per-template edit was made.
+    await setLeadDays(10);
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+    assert.equal(await scheduled(t1), 2, 'template 1 picked up the new global lead');
+    assert.equal(await scheduled(t2), 2, 'template 2 picked up the same global lead');
+  });
+
+  it('exposes the setting via GET /api/settings and gates PUT to Admin', async () => {
+    const admin = await adminToken();
+    const get = await request(app).get('/api/settings').set(auth(admin));
+    assert.equal(get.status, 200);
+    assert.equal(get.body.materializeLeadDays, 14, 'defaults to 14');
+
+    await seedUser({ email: 'settings-mgr@test.local', role: 'Manager', password: MEMBER_PASSWORD });
+    const mgr = await login('settings-mgr@test.local', MEMBER_PASSWORD);
+    const forbidden = await request(app).put('/api/settings').set(auth(mgr)).send({ materializeLeadDays: 7 });
+    assert.equal(forbidden.status, 403, 'only an admin may change global settings');
+
+    const put = await request(app).put('/api/settings').set(auth(admin)).send({ materializeLeadDays: 21 });
+    assert.equal(put.status, 200);
+    assert.equal(put.body.materializeLeadDays, 21);
+    assert.equal((await request(app).get('/api/settings').set(auth(mgr))).body.materializeLeadDays, 21);
+  });
+});
+
+describe('template tree editor: subtree drag helpers (follow-up)', () => {
+  // The editor renders from parentKey and reorders with moveTemplateNode; these
+  // pure-data tests mirror what the drag handlers do in the browser.
+  const tree = () => [
+    { key: 'root', parentKey: null },
+    { key: 'A', parentKey: 'root' },
+    { key: 'A1', parentKey: 'A' },
+    { key: 'A2', parentKey: 'A' },
+    { key: 'B', parentKey: 'root' },
+  ];
+
+  it('dragging a sibling with descendants moves its whole subtree together', () => {
+    const moved = moveTemplateNode(tree(), 'A', 'B', 'after');
+    // A is now ordered after B among root's children.
+    const rootKids = moved.filter((n) => n.parentKey === 'root').map((n) => n.key);
+    assert.deepEqual(rootKids, ['B', 'A'], 'A reordered after its sibling B');
+    // Its descendants came with it — still parented to A, still present.
+    assert.deepEqual([...templateSubtreeKeys(moved, 'A')].sort(), ['A', 'A1', 'A2']);
+    assert.equal(moved.find((n) => n.key === 'A1')!.parentKey, 'A');
+    assert.equal(moved.find((n) => n.key === 'A2')!.parentKey, 'A');
+    // The moved subtree is a contiguous block (A immediately followed by A1, A2).
+    const keys = moved.map((n) => n.key);
+    const ai = keys.indexOf('A');
+    assert.deepEqual(keys.slice(ai, ai + 3), ['A', 'A1', 'A2']);
+  });
+
+  it('a collapsed node reorders identically to an expanded one (subtree intact)', () => {
+    // Collapsing is display-only: the move operates on the full node array, so a
+    // collapsed A (its children hidden) still carries A1/A2 when reordered.
+    const moved = moveTemplateNode(tree(), 'A', 'B', 'after');
+    assert.equal(moved.length, tree().length, 'no node lost or duplicated');
+    for (const k of ['A1', 'A2']) {
+      assert.ok(templateSubtreeKeys(moved, 'A').has(k), `${k} still under A`);
+    }
+  });
+
+  it('never drops a node into its own descendant, and never moves the root', () => {
+    assert.deepEqual(moveTemplateNode(tree(), 'A', 'A1', 'inside'), tree(), 'no-op into own subtree');
+    assert.deepEqual(moveTemplateNode(tree(), 'root', 'A', 'after'), tree(), 'root cannot be moved');
+  });
+});
+
+describe('task -> template conversion (follow-up)', () => {
+  async function seedManagerWithMember() {
+    // A manager who supervises a member (so the manager has full access to the
+    // member's tasks), plus an unrelated member the manager cannot reach.
+    const mgr = await seedUser({ email: 'conv-mgr@test.local', role: 'Manager', password: MEMBER_PASSWORD });
+    const emp = await seedUser({ email: 'conv-emp@test.local', role: 'Member', password: MEMBER_PASSWORD, supervisorId: mgr.id });
+    return { mgr, emp };
+  }
+
+  it('rejects a converter without Admin/Manager role, or without full edit access', async () => {
+    const admin = await adminToken();
+    const { emp } = await seedManagerWithMember();
+    const empTok = await login('conv-emp@test.local', MEMBER_PASSWORD);
+
+    // Task assigned to the member: the member has FULL access but is a Member.
+    const own = await makeTask(admin, 'Member task', { assigneeId: emp.id });
+    const roleBlocked = await request(app)
+      .post(`/api/tasks/${own.id}/save-as-template`)
+      .set(auth(empTok))
+      .send({ name: 'Nope', includeDescendants: false, includeAttachments: false });
+    assert.equal(roleBlocked.status, 403, 'a Member cannot convert even with full access');
+
+    // A Manager with NO relationship to an admin-owned task has no access at all.
+    const strangerMgr = await seedUser({ email: 'conv-stranger@test.local', role: 'Manager', password: MEMBER_PASSWORD });
+    void strangerMgr;
+    const strangerTok = await login('conv-stranger@test.local', MEMBER_PASSWORD);
+    const adminTask = await makeTask(admin, 'Admin-only task');
+    const accessBlocked = await request(app)
+      .post(`/api/tasks/${adminTask.id}/save-as-template`)
+      .set(auth(strangerTok))
+      .send({ name: 'Nope', includeDescendants: false, includeAttachments: false });
+    assert.equal(accessBlocked.status, 404, 'no full edit access → cannot snapshot the task');
+
+    // The admin (full access + role) succeeds and does NOT alter the source task.
+    const ok = await request(app)
+      .post(`/api/tasks/${adminTask.id}/save-as-template`)
+      .set(auth(admin))
+      .send({ name: 'Admin template', includeDescendants: false, includeAttachments: false });
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    const src = await request(app).get(`/api/tasks/${adminTask.id}`).set(auth(admin));
+    assert.equal(src.status, 200, 'the source task is untouched (non-destructive)');
+    assert.equal(ok.body.recurrenceType, 'None', 'a converted template is manual-only');
+  });
+
+  it('converts a multi-level tree to anchor-relative offsets with mixed Start/Due', async () => {
+    const admin = await adminToken();
+    // Day 0 = the root's Start (Aug 1). Mixed dates across the tree.
+    const root = await makeTask(admin, 'Root', {
+      startAt: '2026-08-01T00:00:00.000Z',
+      dueAt: '2026-08-03T00:00:00.000Z',
+    });
+    const childA = await makeTask(admin, 'Child A', {
+      startAt: '2026-08-02T00:00:00.000Z',
+      dueAt: '2026-08-05T00:00:00.000Z',
+    });
+    await setParent(admin, childA.id, root.id);
+    const grandchild = await makeTask(admin, 'Grandchild', {
+      dueAt: '2026-08-04T00:00:00.000Z', // due only, no start
+    });
+    await setParent(admin, grandchild.id, childA.id);
+    const childB = await makeTask(admin, 'Child B', {
+      startAt: '2026-08-08T00:00:00.000Z', // start only, no due
+    });
+    await setParent(admin, childB.id, root.id);
+
+    const conv = await request(app)
+      .post(`/api/tasks/${root.id}/save-as-template`)
+      .set(auth(admin))
+      .send({ name: 'From tree', includeDescendants: true, includeAttachments: false, rootRoleLabel: 'Owner' });
+    assert.equal(conv.status, 201, JSON.stringify(conv.body));
+
+    const nodes = conv.body.nodes as {
+      name: string;
+      startOffsetDays: number | null;
+      dueOffsetDays: number | null;
+      assigneeRole: string | null;
+      parentNodeId: number | null;
+    }[];
+    const byName = (n: string) => nodes.find((x) => x.name === n)!;
+    assert.equal(nodes.length, 4);
+    assert.deepEqual(
+      [byName('Root').startOffsetDays, byName('Root').dueOffsetDays],
+      [0, 2],
+      'root: Day 0 anchor, due +2',
+    );
+    assert.deepEqual([byName('Child A').startOffsetDays, byName('Child A').dueOffsetDays], [1, 4]);
+    assert.deepEqual(
+      [byName('Grandchild').startOffsetDays, byName('Grandchild').dueOffsetDays],
+      [null, 3],
+      'due-only stays due-only',
+    );
+    assert.deepEqual(
+      [byName('Child B').startOffsetDays, byName('Child B').dueOffsetDays],
+      [7, null],
+      'start-only stays start-only',
+    );
+    // Root's role placeholder came from the override; the tree structure is preserved.
+    assert.equal(byName('Root').assigneeRole, 'Owner');
+    assert.equal(byName('Root').parentNodeId, null, 'exactly one root');
+
+    // A task with NEITHER start nor due leaves the template dates blank.
+    const noDates = await makeTask(admin, 'No dates');
+    const conv2 = await request(app)
+      .post(`/api/tasks/${noDates.id}/save-as-template`)
+      .set(auth(admin))
+      .send({ name: 'Blank dates', includeDescendants: false, includeAttachments: false });
+    assert.equal(conv2.status, 201);
+    assert.equal(conv2.body.nodes[0].startOffsetDays, null);
+    assert.equal(conv2.body.nodes[0].dueOffsetDays, null);
+  });
+
+  it('copies attachments into independent template storage, re-copied onto each instantiation', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Task with a file', {
+      startAt: '2026-08-01T00:00:00.000Z',
+      dueAt: '2026-08-02T00:00:00.000Z',
+    });
+    const att = await attachToTask(admin, t.id, { filename: 'spec.pdf', contentType: 'application/pdf', size: 2048 });
+    assert.equal(att.status, 201, JSON.stringify(att.body));
+    const src = await prisma.attachment.findFirst({ where: { taskId: t.id, commentId: null } });
+    assert.ok(src, 'the source task has a task-level attachment');
+    // Seed the source blob so the memory-fake copyObject produces a real copy.
+    memoryStorage.__put(src!.storageKey, { size: src!.size, contentType: src!.contentType });
+
+    // Convert WITH attachments.
+    const conv = await request(app)
+      .post(`/api/tasks/${t.id}/save-as-template`)
+      .set(auth(admin))
+      .send({ name: 'Template with file', includeDescendants: false, includeAttachments: true });
+    assert.equal(conv.status, 201, JSON.stringify(conv.body));
+    const rootNodeId = conv.body.nodes[0].id as number;
+    assert.equal(conv.body.nodes[0].attachmentCount, 1, 'the node carries the copied default attachment');
+
+    const tplAtt = await prisma.taskTemplateNodeAttachment.findFirst({ where: { templateNodeId: rootNodeId } });
+    assert.ok(tplAtt, 'a template-scoped attachment row exists');
+    assert.notEqual(tplAtt!.storageKey, src!.storageKey, 'it is a COPY (new key), not a reference to the original');
+    assert.match(tplAtt!.storageKey, /^templates\//, 'stored under template-scoped storage');
+    assert.ok(await memoryStorage.headObject(tplAtt!.storageKey), 'the template blob exists independently');
+
+    // Instantiate → the generated task gets its OWN fresh copy (independent again).
+    const inst = await request(app)
+      .post(`/api/templates/${conv.body.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2026-09-01T00:00:00.000Z' });
+    assert.equal(inst.status, 201, JSON.stringify(inst.body));
+    const newRoot = inst.body.rootTaskId as number;
+    const genAtt = await prisma.attachment.findFirst({ where: { taskId: newRoot, commentId: null } });
+    assert.ok(genAtt, 'the instantiated task received the default attachment');
+    assert.notEqual(genAtt!.storageKey, tplAtt!.storageKey, 'a fresh copy, independent of the template blob');
+    assert.notEqual(genAtt!.storageKey, src!.storageKey);
+    assert.match(genAtt!.storageKey, new RegExp(`^tasks/${newRoot}/`));
+    assert.ok(await memoryStorage.headObject(genAtt!.storageKey), 'the generated task blob exists');
+
+    // With attachments DISABLED, nothing carries over.
+    const conv2 = await request(app)
+      .post(`/api/tasks/${t.id}/save-as-template`)
+      .set(auth(admin))
+      .send({ name: 'No files', includeDescendants: false, includeAttachments: false });
+    assert.equal(conv2.status, 201);
+    assert.equal(conv2.body.nodes[0].attachmentCount, 0, 'no attachments when the toggle is off');
   });
 });
