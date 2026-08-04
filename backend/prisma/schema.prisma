@@ -595,9 +595,8 @@ model TaskTemplate {
   endType        RecurrenceEndType @default(Never)
   endDate        DateTime?
   maxOccurrences Int?
-  // How long before an occurrence's anchor to auto-materialize it into real
-  // tasks (so it reliably reaches Kanban/assignee lists in time). Default 2 wks.
-  leadTimeDays   Int @default(14)
+  // The lead time before an occurrence's anchor at which it auto-materializes is
+  // NOT stored per-template: it is a single global Admin setting (AppSetting).
   // Optional label prefix applied to scheduled occurrences ("BATCH" ⇒ "BATCH-1:
   // …"); manual instantiations always supply their own label instead.
   labelPrefix    String?
@@ -736,11 +735,22 @@ model TaskRecurrence {
   endType        RecurrenceEndType @default(Never)
   endDate        DateTime?
   maxOccurrences Int?
-  leadTimeDays   Int               @default(14)
+  // Lead time is global (AppSetting.materializeLeadDays), not per-task.
   isActive       Boolean           @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Singleton (id = 1) of global, Admin-controlled app settings. Currently holds
+// the recurrence materialization lead time: how many days before an occurrence
+// is due it turns into a real task (nearer ones materialize; further-out ones
+// show as ghost previews). This value is global — never overridden per-task or
+// per-template.
+model AppSetting {
+  id                 Int      @id @default(1)
+  materializeLeadDays Int     @default(14)
+  updatedAt          DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------

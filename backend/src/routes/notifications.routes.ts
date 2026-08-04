@@ -7,6 +7,7 @@ import {
   getNotificationPreferencesController,
   listNotificationsController,
   markNotificationReadController,
+  markNotificationUnreadController,
   unreadCountController,
   updateNotificationPreferencesController,
 } from '../controllers/notifications.controller.js';
@@ -27,3 +28,4 @@ notificationsRouter.put(
 );
 
 notificationsRouter.post('/:id/read', asyncHandler(markNotificationReadController));
+notificationsRouter.post('/:id/unread', asyncHandler(markNotificationUnreadController));

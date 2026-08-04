@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  DEFAULT_TEMPLATE_LEAD_DAYS,
   RECURRENCE_UNIT_LABELS,
   RECURRENCE_UNITS,
   WEEKDAYS,
@@ -57,7 +56,6 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
   const [endType, setEndType] = useState<RecurrenceEndType>(rec?.endType ?? 'Never');
   const [endDate, setEndDate] = useState(rec?.endDate?.slice(0, 10) ?? '');
   const [maxOccurrences, setMaxOccurrences] = useState(String(rec?.maxOccurrences ?? 3));
-  const [lead, setLead] = useState(String(rec?.leadTimeDays ?? DEFAULT_TEMPLATE_LEAD_DAYS));
 
   function openEditor() {
     setType(rec?.recurrenceType ?? 'Fixed');
@@ -67,7 +65,6 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
     setEndType(rec?.endType ?? 'Never');
     setEndDate(rec?.endDate?.slice(0, 10) ?? '');
     setMaxOccurrences(String(rec?.maxOccurrences ?? 3));
-    setLead(String(rec?.leadTimeDays ?? DEFAULT_TEMPLATE_LEAD_DAYS));
     setError(null);
     setEditing(true);
   }
@@ -87,7 +84,6 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
       endType,
       endDate: endType === 'OnDate' ? endDate || null : null,
       maxOccurrences: endType === 'AfterOccurrences' ? Number(maxOccurrences) : null,
-      leadTimeDays: Number(lead),
     };
     setBusy(true);
     try {
@@ -138,7 +134,7 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
               <span className="recur-badge">Repeats</span> {describeRecurrence(rec)}
             </p>
             <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.75rem' }}>
-              {rec.occurrenceCount} generated so far · lead {rec.leadTimeDays}d
+              {rec.occurrenceCount} generated so far
               {!rec.isActive && ' · paused'}
             </p>
             <div className="btn-row">
@@ -225,21 +221,6 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
               />
             </div>
           )}
-          <div className="field">
-            <label htmlFor="recur-lead">Materialize (days ahead)</label>
-            <input
-              id="recur-lead"
-              type="number"
-              min={0}
-              value={lead}
-              onChange={(e) => setLead(e.target.value)}
-              style={{ width: 80 }}
-            />
-            <p className="muted" style={{ fontSize: '0.72rem', margin: '0.25rem 0 0' }}>
-              Occurrences turn into real tasks this many days before they’re due; further-out ones
-              show as ghost previews.
-            </p>
-          </div>
           <div className="btn-row">
             <button type="button" className="btn-sm" onClick={() => void save()} disabled={busy}>
               {busy ? 'Saving…' : 'Save'}

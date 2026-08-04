@@ -47,10 +47,10 @@ export const taskDetailInclude = {
   children: { select: taskRefSelect, orderBy: { id: 'asc' } },
   blocking: { include: { blocked: { select: taskRefSelect } }, orderBy: { id: 'asc' } },
   blockedBy: { include: { blocker: { select: taskRefSelect } }, orderBy: { id: 'asc' } },
-  // Phase 4: task-level attachments (comment attachments live on the comment)
-  // and the comment thread (oldest first).
+  // Phase 4: task-level attachments (comment attachments live on the comment).
+  // The comment thread is newest-first (most recent comment at the top).
   attachments: { include: attachmentInclude, orderBy: { createdAt: 'asc' } },
-  comments: { include: commentInclude, orderBy: { createdAt: 'asc' } },
+  comments: { include: commentInclude, orderBy: { createdAt: 'desc' } },
   // Phase 11: this task's own recurrence rule + how many instances it has spawned.
   recurrence: true,
   _count: { select: { recurrenceOccurrences: true } },
@@ -79,7 +79,6 @@ export function toTaskRecurrenceDto(r: TaskRecurrence, occurrenceCount: number):
     endType: r.endType,
     endDate: r.endDate?.toISOString() ?? null,
     maxOccurrences: r.maxOccurrences,
-    leadTimeDays: r.leadTimeDays,
     isActive: r.isActive,
     occurrenceCount,
   };

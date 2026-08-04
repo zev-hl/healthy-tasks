@@ -216,6 +216,18 @@ export async function markNotificationRead(userId: string, id: string): Promise<
   }
 }
 
+/** Re-mark one of the user's Mentioned/Assigned notifications as unread. */
+export async function markNotificationUnread(userId: string, id: string): Promise<void> {
+  const n = await prisma.notification.findUnique({
+    where: { id },
+    select: { userId: true, readAt: true },
+  });
+  if (!n || n.userId !== userId) throw HttpError.notFound('Notification not found');
+  if (n.readAt) {
+    await prisma.notification.update({ where: { id }, data: { readAt: null } });
+  }
+}
+
 /**
  * Send "also email me" reminder emails for reminders that have just become due
  * and haven't been emailed yet. Called on the polling heartbeat (the unread

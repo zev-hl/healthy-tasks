@@ -1125,8 +1125,23 @@ export type RecurrenceEndType = (typeof RECURRENCE_END_TYPES)[number];
 export const TEMPLATE_OCCURRENCE_ORIGINS = ['manual', 'scheduled'] as const;
 export type TemplateOccurrenceOrigin = (typeof TEMPLATE_OCCURRENCE_ORIGINS)[number];
 
-/** Default lead time (days) before an occurrence's anchor to auto-materialize. */
-export const DEFAULT_TEMPLATE_LEAD_DAYS = 14;
+/** Default global lead time (days) before an occurrence's anchor to auto-materialize. */
+export const DEFAULT_MATERIALIZE_LEAD_DAYS = 14;
+/** Bounds for the global materialization lead-time setting. */
+export const MATERIALIZE_LEAD_DAYS_MIN = 0;
+export const MATERIALIZE_LEAD_DAYS_MAX = 365;
+
+/** Global, Admin-controlled application settings (a singleton). */
+export interface AppSettingsDto {
+  /** Days before an occurrence is due that it materializes into a real task;
+   * further-out occurrences show as ghost previews. Global — not per-template. */
+  materializeLeadDays: number;
+}
+
+/** Update the global application settings (Admin only). */
+export interface UpdateAppSettingsRequest {
+  materializeLeadDays: number;
+}
 
 /**
  * How far ahead ghost previews are computed for an indefinite (`Never`-ending)
@@ -1184,7 +1199,6 @@ export interface TemplateDto {
   endType: RecurrenceEndType;
   endDate: string | null; // ISO
   maxOccurrences: number | null;
-  leadTimeDays: number;
   labelPrefix: string | null;
   isActive: boolean;
   nodes: TemplateNodeDto[];
@@ -1269,7 +1283,6 @@ export interface RecurrenceInput {
   endType?: RecurrenceEndType;
   endDate?: string | null; // ISO
   maxOccurrences?: number | null;
-  leadTimeDays?: number;
   labelPrefix?: string | null;
   isActive?: boolean;
 }
@@ -1356,7 +1369,6 @@ export interface TaskRecurrenceDto {
   endType: RecurrenceEndType;
   endDate: string | null; // ISO
   maxOccurrences: number | null; // counts the source as #1
-  leadTimeDays: number;
   isActive: boolean;
   /** Generated future instances materialized so far (excludes the source #1). */
   occurrenceCount: number;
@@ -1372,7 +1384,6 @@ export interface SetTaskRecurrenceRequest {
   endType?: RecurrenceEndType;
   endDate?: string | null; // ISO
   maxOccurrences?: number | null;
-  leadTimeDays?: number;
   isActive?: boolean;
 }
 

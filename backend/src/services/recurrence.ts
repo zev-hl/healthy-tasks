@@ -25,7 +25,6 @@ export interface RecurrenceConfig {
   endType: RecurrenceEndType;
   endDate: Date | null;
   maxOccurrences: number | null;
-  leadTimeDays: number;
 }
 
 export function addDays(date: Date, days: number): Date {
@@ -158,6 +157,7 @@ export function dueFixedSeqs(
   cfg: RecurrenceConfig,
   firedSeqs: Set<number>,
   now: Date,
+  leadTimeDays: number,
   referenceOffsetDays = 0,
 ): number[] {
   if (cfg.recurrenceType !== 'Fixed') return [];
@@ -169,7 +169,7 @@ export function dueFixedSeqs(
   for (let seq = 1; seq <= HARD_CAP; seq++) {
     const anchor = fixedAnchorForSeq(cfg, seq);
     if (!seqAllowed(cfg, seq, anchor)) break;
-    if (!isWithinLeadTime(anchor, cfg.leadTimeDays, now, referenceOffsetDays)) break;
+    if (!isWithinLeadTime(anchor, leadTimeDays, now, referenceOffsetDays)) break;
     if (!firedSeqs.has(seq)) out.push(seq);
   }
   return out;

@@ -2,7 +2,6 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import {
-  DEFAULT_TEMPLATE_LEAD_DAYS,
   TERMINAL_TASK_STATUSES,
   type ApplyToFutureResultDto,
   type FutureOccurrenceDto,
@@ -28,6 +27,7 @@ import {
 } from './template.mapper.js';
 import { addDays, fixedAnchorForSeq, isWithinLeadTime, seqAllowed, upcomingFixedSeqs, type RecurrenceConfig } from './recurrence.js';
 import { carryForwardAssignees, generateOccurrence } from './template-instantiation.service.js';
+import { getMaterializeLeadDays } from './app-settings.service.js';
 import {
   buildTaskFieldEntries,
   recordHistory,
@@ -53,7 +53,6 @@ function toRecurrenceConfig(t: {
   endType: RecurrenceConfig['endType'];
   endDate: Date | null;
   maxOccurrences: number | null;
-  leadTimeDays: number;
 }): RecurrenceConfig {
   return {
     recurrenceType: t.recurrenceType,
@@ -64,7 +63,6 @@ function toRecurrenceConfig(t: {
     endType: t.endType,
     endDate: t.endDate,
     maxOccurrences: t.maxOccurrences,
-    leadTimeDays: t.leadTimeDays,
   };
 }
 
@@ -161,7 +159,6 @@ function recurrenceData(r: RecurrenceInputParsed | undefined) {
       endType: 'Never' as const,
       endDate: null,
       maxOccurrences: null,
-      leadTimeDays: r?.leadTimeDays ?? DEFAULT_TEMPLATE_LEAD_DAYS,
       labelPrefix: r?.labelPrefix ?? null,
       isActive: r?.isActive ?? true,
     };
@@ -180,7 +177,6 @@ function recurrenceData(r: RecurrenceInputParsed | undefined) {
     endType,
     endDate: endType === 'OnDate' ? (r.endDate ?? null) : null,
     maxOccurrences: endType === 'AfterOccurrences' ? (r.maxOccurrences ?? null) : null,
-    leadTimeDays: r.leadTimeDays ?? DEFAULT_TEMPLATE_LEAD_DAYS,
     labelPrefix: r.labelPrefix ?? null,
     isActive: r.isActive ?? true,
   };
@@ -447,6 +443,7 @@ export async function getTemplateGhosts(id: number, now: Date): Promise<GhostOcc
   if (!template) throw HttpError.notFound('Template not found');
   if (template.recurrenceType !== 'Fixed' || !template.isActive) return [];
 
+  const leadDays = await getMaterializeLeadDays();
   const cfg = toRecurrenceConfig(template);
   const fired = await prisma.templateOccurrence.findMany({
     where: { templateId: id, seq: { not: null } },
@@ -471,7 +468,7 @@ export async function getTemplateGhosts(id: number, now: Date): Promise<GhostOcc
       startAt: root.startOffsetDays != null ? addDays(anchor, root.startOffsetDays).toISOString() : null,
       dueAt: root.dueOffsetDays != null ? addDays(anchor, root.dueOffsetDays).toISOString() : null,
       priority: root.defaultPriority,
-      withinLeadTime: isWithinLeadTime(anchor, cfg.leadTimeDays, now, earliestOffset),
+      withinLeadTime: isWithinLeadTime(anchor, leadDays, now, earliestOffset),
     };
   });
 }

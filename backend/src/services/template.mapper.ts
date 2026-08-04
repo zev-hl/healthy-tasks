@@ -99,7 +99,6 @@ export function toTemplateDto(t: TemplateWithGraph): TemplateDto {
     endType: t.endType,
     endDate: iso(t.endDate),
     maxOccurrences: t.maxOccurrences,
-    leadTimeDays: t.leadTimeDays,
     labelPrefix: t.labelPrefix,
     isActive: t.isActive,
     nodes: sortedNodes.map(toNodeDto),

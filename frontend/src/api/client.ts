@@ -1,6 +1,8 @@
 import type {
   ActiveUserDto,
   AdminResetLinkResponse,
+  AppSettingsDto,
+  UpdateAppSettingsRequest,
   AttachmentDownloadResponse,
   ConfirmAttachmentRequest,
   CreateCommentRequest,
@@ -320,6 +322,8 @@ export const api = {
   getUnreadCount: () => request<UnreadCountDto>('/api/notifications/unread-count'),
   markNotificationRead: (id: string) =>
     request<void>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  markNotificationUnread: (id: string) =>
+    request<void>(`/api/notifications/${id}/unread`, { method: 'POST' }),
   getNotificationPreferences: () =>
     request<NotificationPreferencesDto>('/api/notifications/preferences'),
   updateNotificationPreferences: (body: UpdateNotificationPreferencesRequest) =>
@@ -338,6 +342,8 @@ export const api = {
   removeReminder: (id: string) => request<void>(`/api/reminders/${id}`, { method: 'DELETE' }),
   markReminderRead: (id: string) =>
     request<void>(`/api/reminders/${id}/read`, { method: 'POST' }),
+  markReminderUnread: (id: string) =>
+    request<void>(`/api/reminders/${id}/unread`, { method: 'POST' }),
   snoozeReminder: (id: string, minutes: number) =>
     request<void>(`/api/reminders/${id}/snooze`, {
       method: 'POST',
@@ -408,6 +414,11 @@ export const api = {
   finalizeGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/finalize`, { method: 'POST' }),
   resolveGoal: (id: number, body: ResolveGoalRequest) =>
     request<GoalDto>(`/api/goals/${id}/resolve`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // --- Global app settings (Admin) ---
+  getAppSettings: () => request<AppSettingsDto>('/api/settings'),
+  updateAppSettings: (body: UpdateAppSettingsRequest) =>
+    request<AppSettingsDto>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
 };
 
 /**

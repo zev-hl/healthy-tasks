@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  DEFAULT_TEMPLATE_LEAD_DAYS,
   RECURRENCE_TYPE_LABELS,
   RECURRENCE_UNIT_LABELS,
   RECURRENCE_UNITS,
@@ -44,7 +43,6 @@ interface EditorRecurrence {
   endType: RecurrenceEndType;
   endDate: string;
   maxOccurrences: string;
-  leadTimeDays: string;
   labelPrefix: string;
   isActive: boolean;
 }
@@ -66,7 +64,6 @@ const emptyRecurrence = (): EditorRecurrence => ({
   endType: 'Never',
   endDate: '',
   maxOccurrences: '3',
-  leadTimeDays: String(DEFAULT_TEMPLATE_LEAD_DAYS),
   labelPrefix: '',
   isActive: true,
 });
@@ -103,7 +100,6 @@ function toEditor(t: TemplateDto): EditorState {
       endType: t.endType,
       endDate: t.endDate?.slice(0, 10) ?? '',
       maxOccurrences: String(t.maxOccurrences ?? 3),
-      leadTimeDays: String(t.leadTimeDays),
       labelPrefix: t.labelPrefix ?? '',
       isActive: t.isActive,
     },
@@ -144,7 +140,6 @@ function toRequest(e: EditorState): CreateTemplateRequest {
       endType: r.endType,
       endDate: r.endType === 'OnDate' ? r.endDate || null : null,
       maxOccurrences: r.endType === 'AfterOccurrences' ? Number(r.maxOccurrences) || null : null,
-      leadTimeDays: Number(r.leadTimeDays) || DEFAULT_TEMPLATE_LEAD_DAYS,
       labelPrefix: r.labelPrefix.trim() || null,
       isActive: r.isActive,
     },
@@ -511,10 +506,6 @@ function TemplateEditor({
                         <input type="number" min={1} value={r.maxOccurrences} onChange={(e) => patchRec({ maxOccurrences: e.target.value })} />
                       </div>
                     )}
-                    <div className="field">
-                      <label>Materialize (days ahead)</label>
-                      <input type="number" min={0} value={r.leadTimeDays} onChange={(e) => patchRec({ leadTimeDays: e.target.value })} />
-                    </div>
                     <div className="field">
                       <label>Label prefix (optional)</label>
                       <input value={r.labelPrefix} placeholder="e.g. BATCH" onChange={(e) => patchRec({ labelPrefix: e.target.value })} />

@@ -15,6 +15,8 @@ import {
   GOAL_STATUSES,
   GOAL_RESOLUTIONS,
   GOAL_SPECIFIC_MIN_LENGTH,
+  MATERIALIZE_LEAD_DAYS_MIN,
+  MATERIALIZE_LEAD_DAYS_MAX,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -395,7 +397,6 @@ const recurrenceInputSchema = z
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
-    leadTimeDays: z.number().int().min(0).max(365).optional(),
     labelPrefix: optionalText,
     isActive: z.boolean().optional(),
   })
@@ -502,7 +503,6 @@ export const setTaskRecurrenceSchema = z
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
-    leadTimeDays: z.number().int().min(0).max(365).optional(),
     isActive: z.boolean().optional(),
   })
   .superRefine((r, ctx) => {
@@ -605,6 +605,18 @@ export type UpdateGoalProgressInput = z.infer<typeof updateGoalProgressSchema>;
 export type RejectGoalInput = z.infer<typeof rejectGoalSchema>;
 export type ResolveGoalInput = z.infer<typeof resolveGoalSchema>;
 export type GoalTeamInput = z.infer<typeof goalTeamSchema>;
+
+// --- App settings (global, Admin-controlled) -------------------------------
+
+export const updateAppSettingsSchema = z.object({
+  materializeLeadDays: z
+    .number()
+    .int()
+    .min(MATERIALIZE_LEAD_DAYS_MIN)
+    .max(MATERIALIZE_LEAD_DAYS_MAX),
+});
+
+export type UpdateAppSettingsInput = z.infer<typeof updateAppSettingsSchema>;
 
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;

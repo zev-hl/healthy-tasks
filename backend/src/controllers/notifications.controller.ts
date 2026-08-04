@@ -11,6 +11,7 @@ import {
   getUnreadCounts,
   listNotifications,
   markNotificationRead,
+  markNotificationUnread,
   processDueReminderEmails,
 } from '../services/notification.service.js';
 import {
@@ -54,6 +55,13 @@ export async function unreadCountController(req: Request, res: Response): Promis
 export async function markNotificationReadController(req: Request, res: Response): Promise<void> {
   const userId = currentUserId(req);
   await markNotificationRead(userId, (req.params as { id: string }).id);
+  res.status(204).send();
+}
+
+/** POST /api/notifications/:id/unread — re-mark a Mentioned/Assigned entry unread. */
+export async function markNotificationUnreadController(req: Request, res: Response): Promise<void> {
+  const userId = currentUserId(req);
+  await markNotificationUnread(userId, (req.params as { id: string }).id);
   res.status(204).send();
 }
 

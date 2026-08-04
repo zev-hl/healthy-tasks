@@ -13,6 +13,7 @@ import { remindersRouter } from './routes/reminders.routes.js';
 import { templatesRouter } from './routes/templates.routes.js';
 import { goalsRouter } from './routes/goals.routes.js';
 import { reportsRouter } from './routes/reports.routes.js';
+import { settingsRouter } from './routes/app-settings.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp() {
@@ -49,6 +50,7 @@ export function createApp() {
   app.use('/api/templates', templatesRouter);
   app.use('/api/goals', goalsRouter);
   app.use('/api/reports', reportsRouter);
+  app.use('/api/settings', settingsRouter);
 
   // Fallbacks
   app.use(notFoundHandler);

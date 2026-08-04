@@ -193,13 +193,33 @@ export function NotificationsPage() {
         kind === 'reminder' ? d.reminders.map((r) => (r.id === id ? { ...r, read: true } : r)) : d.reminders,
     }));
 
+  const applyReadState = (kind: FeedKind, id: string, read: boolean) =>
+    setData((d) => ({
+      mentioned:
+        kind === 'mentioned' ? d.mentioned.map((m) => (m.id === id ? { ...m, read } : m)) : d.mentioned,
+      assigned:
+        kind === 'assigned' ? d.assigned.map((a) => (a.id === id ? { ...a, read } : a)) : d.assigned,
+      reminders:
+        kind === 'reminder' ? d.reminders.map((r) => (r.id === id ? { ...r, read } : r)) : d.reminders,
+    }));
+
   const readCall = (kind: FeedKind, id: string) =>
     kind === 'reminder' ? api.markReminderRead(id) : api.markNotificationRead(id);
+
+  const unreadCall = (kind: FeedKind, id: string) =>
+    kind === 'reminder' ? api.markReminderUnread(id) : api.markNotificationUnread(id);
 
   const markRead = (item: FeedItem) => {
     if (item.read) return;
     applyRead(item.kind, item.id);
     void readCall(item.kind, item.id).then(refreshUnread).catch(() => {});
+  };
+
+  // Re-mark a read notification as unread; the bell count updates on refresh.
+  const markUnread = (item: FeedItem) => {
+    if (!item.read) return;
+    applyReadState(item.kind, item.id, false);
+    void unreadCall(item.kind, item.id).then(refreshUnread).catch(() => {});
   };
 
   const markAllRead = async () => {
@@ -256,9 +276,6 @@ export function NotificationsPage() {
             Mark all read
           </button>
         )}
-        <Link to="/profile" className="link-button">
-          Settings
-        </Link>
       </header>
 
       {error && <div className="alert error">{error}</div>}
@@ -402,7 +419,7 @@ export function NotificationsPage() {
                         <TimeStamp iso={it.at} />
                       </span>
                       <div className="notif-item-actions">
-                        {!it.read && (
+                        {!it.read ? (
                           <button
                             type="button"
                             className="notif-action"
@@ -412,6 +429,17 @@ export function NotificationsPage() {
                             }}
                           >
                             Mark read
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="notif-action"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markUnread(it);
+                            }}
+                          >
+                            Mark unread
                           </button>
                         )}
                         {it.kind === 'reminder' && (
@@ -468,9 +496,7 @@ export function NotificationsPage() {
         )}
       </section>
 
-      <p className="muted notif-foot">
-        <Link to="/profile">Notification settings</Link> · Updates every 30 seconds.
-      </p>
+      <p className="muted notif-foot">Updates every 30 seconds.</p>
     </div>
   );
 }

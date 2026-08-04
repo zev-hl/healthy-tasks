@@ -13,6 +13,7 @@ import {
 import { carryForwardAssignees, generateOccurrence } from './template-instantiation.service.js';
 import { materializeDueTaskRecurrences } from './task-recurrence.service.js';
 import { runGoalReviewPass } from './goal.service.js';
+import { getMaterializeLeadDays } from './app-settings.service.js';
 
 /**
  * Recurrence scheduler (Phase 11). A real background timer (started from
@@ -42,7 +43,6 @@ type TemplateForSchedule = {
   endType: RecurrenceConfig['endType'];
   endDate: Date | null;
   maxOccurrences: number | null;
-  leadTimeDays: number;
   labelPrefix: string | null;
   nodes: { startOffsetDays: number | null; dueOffsetDays: number | null }[];
 };
@@ -68,7 +68,6 @@ const scheduleSelect = {
   endType: true,
   endDate: true,
   maxOccurrences: true,
-  leadTimeDays: true,
   labelPrefix: true,
   // Offsets drive the occurrence's earliest date (the lead-window reference).
   nodes: { select: { startOffsetDays: true, dueOffsetDays: true } },
@@ -84,7 +83,6 @@ function toConfig(t: TemplateForSchedule): RecurrenceConfig {
     endType: t.endType,
     endDate: t.endDate,
     maxOccurrences: t.maxOccurrences,
-    leadTimeDays: t.leadTimeDays,
   };
 }
 
@@ -125,15 +123,20 @@ async function firedSeqSet(templateId: number): Promise<Set<number>> {
   return new Set(rows.map((r) => r.seq as number));
 }
 
-/** Materialize any due occurrences for one template; returns how many fired. */
-async function materializeDueForTemplate(t: TemplateForSchedule, now: Date): Promise<number> {
+/** Materialize any due occurrences for one template; returns how many fired.
+ * `leadDays` is the single global materialization lead time (AppSetting). */
+async function materializeDueForTemplate(
+  t: TemplateForSchedule,
+  now: Date,
+  leadDays: number,
+): Promise<number> {
   const cfg = toConfig(t);
   let count = 0;
 
   if (cfg.recurrenceType === 'Fixed') {
     const fired = await firedSeqSet(t.id);
     const offset = earliestOffset(t.nodes);
-    for (const seq of dueFixedSeqs(cfg, fired, now, offset)) {
+    for (const seq of dueFixedSeqs(cfg, fired, now, leadDays, offset)) {
       count += await fireOccurrence(t, seq, fixedAnchorForSeq(cfg, seq));
     }
     return count;
@@ -151,7 +154,7 @@ async function materializeDueForTemplate(t: TemplateForSchedule, now: Date): Pro
     if (!latest) {
       // First occurrence: anchored at the series start.
       if (!cfg.anchorDate) return 0;
-      if (seqAllowed(cfg, 1, cfg.anchorDate) && isWithinLeadTime(cfg.anchorDate, cfg.leadTimeDays, now)) {
+      if (seqAllowed(cfg, 1, cfg.anchorDate) && isWithinLeadTime(cfg.anchorDate, leadDays, now)) {
         count += await fireOccurrence(t, 1, cfg.anchorDate);
       }
       return count;
@@ -164,7 +167,7 @@ async function materializeDueForTemplate(t: TemplateForSchedule, now: Date): Pro
     const completedAt = latest.rootTask.statusChangedAt ?? now;
     const nextSeq = (latest.seq as number) + 1;
     const nextAnchor = addInterval(completedAt, cfg.intervalUnit, cfg.intervalCount);
-    if (seqAllowed(cfg, nextSeq, nextAnchor) && isWithinLeadTime(nextAnchor, cfg.leadTimeDays, now)) {
+    if (seqAllowed(cfg, nextSeq, nextAnchor) && isWithinLeadTime(nextAnchor, leadDays, now)) {
       count += await fireOccurrence(t, nextSeq, nextAnchor);
     }
     return count;
@@ -179,6 +182,8 @@ async function materializeDueForTemplate(t: TemplateForSchedule, now: Date): Pro
  * deterministically with an explicit `now`. Returns the number materialized.
  */
 export async function runScheduler(now: Date): Promise<number> {
+  // Single global materialization lead time, read once per pass.
+  const leadDays = await getMaterializeLeadDays();
   const templates = await prisma.taskTemplate.findMany({
     where: { isActive: true, recurrenceType: { in: ['Fixed', 'RelativeToCompletion'] } },
     select: scheduleSelect,
@@ -187,7 +192,7 @@ export async function runScheduler(now: Date): Promise<number> {
   let materialized = 0;
   for (const t of templates) {
     try {
-      materialized += await materializeDueForTemplate(t, now);
+      materialized += await materializeDueForTemplate(t, now, leadDays);
     } catch (err) {
       // Never let one bad template stall the whole pass.
       // eslint-disable-next-line no-console
@@ -198,7 +203,7 @@ export async function runScheduler(now: Date): Promise<number> {
   // Task-level recurrence (a regular task set to recur) is materialized in the
   // same pass.
   try {
-    materialized += await materializeDueTaskRecurrences(now);
+    materialized += await materializeDueTaskRecurrences(now, leadDays);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('scheduler: task-recurrence pass failed', err);

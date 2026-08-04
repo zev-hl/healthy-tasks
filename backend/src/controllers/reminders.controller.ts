@@ -5,6 +5,7 @@ import {
   addReminder,
   listRemindersForTask,
   markReminderRead,
+  markReminderUnread,
   removeReminder,
   snoozeReminder,
 } from '../services/reminder.service.js';
@@ -45,6 +46,13 @@ export async function removeReminderController(req: Request, res: Response): Pro
 export async function markReminderReadController(req: Request, res: Response): Promise<void> {
   const userId = currentUserId(req);
   await markReminderRead(userId, (req.params as { id: string }).id);
+  res.status(204).send();
+}
+
+/** POST /api/reminders/:id/unread — re-mark a reminder as unread. */
+export async function markReminderUnreadController(req: Request, res: Response): Promise<void> {
+  const userId = currentUserId(req);
+  await markReminderUnread(userId, (req.params as { id: string }).id);
   res.status(204).send();
 }
 

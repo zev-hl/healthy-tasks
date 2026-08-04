@@ -79,6 +79,18 @@ export async function markReminderRead(userId: string, reminderId: string): Prom
   }
 }
 
+/** Re-mark one of the current user's reminders as unread. */
+export async function markReminderUnread(userId: string, reminderId: string): Promise<void> {
+  const r = await prisma.reminder.findUnique({
+    where: { id: reminderId },
+    select: { userId: true, readAt: true },
+  });
+  if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
+  if (r.readAt) {
+    await prisma.reminder.update({ where: { id: reminderId }, data: { readAt: null } });
+  }
+}
+
 /** Snooze one of the current user's reminders for `minutes` from `now`. */
 export async function snoozeReminder(
   userId: string,

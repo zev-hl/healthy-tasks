@@ -4,6 +4,7 @@ import { HttpError } from '../utils/http-error.js';
 import { getTaskDetail } from './task.service.js';
 import { createAssignedNotification } from './notification.service.js';
 import { type Actor, assertCanEditTask } from './access-control.service.js';
+import { getMaterializeLeadDays } from './app-settings.service.js';
 import {
   addInterval,
   dueFixedSeqs,
@@ -13,11 +14,7 @@ import {
   upcomingFixedSeqs,
   type RecurrenceConfig,
 } from './recurrence.js';
-import {
-  DEFAULT_TEMPLATE_LEAD_DAYS,
-  type GhostOccurrenceDto,
-  type TaskDetailDto,
-} from '@healthy-tasks/shared';
+import { type GhostOccurrenceDto, type TaskDetailDto } from '@healthy-tasks/shared';
 import type { SetTaskRecurrenceInput } from '../validation/schemas.js';
 
 /**
@@ -38,7 +35,6 @@ type RecurrenceRow = {
   endType: RecurrenceConfig['endType'];
   endDate: Date | null;
   maxOccurrences: number | null;
-  leadTimeDays: number;
   isActive: boolean;
 };
 
@@ -52,7 +48,6 @@ function toConfig(r: RecurrenceRow): RecurrenceConfig {
     endType: r.endType,
     endDate: r.endDate,
     maxOccurrences: r.maxOccurrences,
-    leadTimeDays: r.leadTimeDays,
   };
 }
 
@@ -94,7 +89,6 @@ export async function setTaskRecurrence(
     endType,
     endDate: endType === 'OnDate' ? (input.endDate ?? null) : null,
     maxOccurrences: endType === 'AfterOccurrences' ? (input.maxOccurrences ?? null) : null,
-    leadTimeDays: input.leadTimeDays ?? DEFAULT_TEMPLATE_LEAD_DAYS,
     isActive: input.isActive ?? true,
   };
   await prisma.taskRecurrence.upsert({
@@ -207,7 +201,7 @@ type GhostSource = SourceTask & {
   recurrenceOccurrences: { recurrenceSeq: number | null }[];
 };
 
-function ghostsForSource(s: GhostSource, now: Date): GhostOccurrenceDto[] {
+function ghostsForSource(s: GhostSource, now: Date, leadDays: number): GhostOccurrenceDto[] {
   if (!s.recurrence || !s.recurrence.isActive || s.recurrence.recurrenceType !== 'Fixed') return [];
   const cfg = toConfig(s.recurrence);
   // seq 1 is the source itself; occurrences carry their own seqs.
@@ -223,7 +217,7 @@ function ghostsForSource(s: GhostSource, now: Date): GhostOccurrenceDto[] {
       startAt: startAt?.toISOString() ?? null,
       dueAt: dueAt?.toISOString() ?? null,
       priority: s.priority as GhostOccurrenceDto['priority'],
-      withinLeadTime: isWithinLeadTime(anchor, cfg.leadTimeDays, now),
+      withinLeadTime: isWithinLeadTime(anchor, leadDays, now),
     };
   });
 }
@@ -245,11 +239,12 @@ const ghostSourceSelect = {
 /** Ghosts across every active fixed-schedule recurring task (for Gantt/Calendar,
  * visible to all authenticated users). */
 export async function getTaskGhosts(now: Date): Promise<GhostOccurrenceDto[]> {
+  const leadDays = await getMaterializeLeadDays();
   const sources = await prisma.task.findMany({
     where: { recurrence: { isActive: true, recurrenceType: 'Fixed' } },
     select: ghostSourceSelect,
   });
-  return sources.flatMap((s) => ghostsForSource(s as GhostSource, now));
+  return sources.flatMap((s) => ghostsForSource(s as GhostSource, now, leadDays));
 }
 
 // --- Click-through materialization -----------------------------------------
@@ -307,13 +302,13 @@ type ScheduleSource = SourceTask & {
   recurrenceOccurrences: { recurrenceSeq: number | null }[];
 };
 
-async function materializeDueForSource(s: ScheduleSource, now: Date): Promise<number> {
+async function materializeDueForSource(s: ScheduleSource, now: Date, leadDays: number): Promise<number> {
   const cfg = toConfig(s.recurrence);
   let count = 0;
 
   if (cfg.recurrenceType === 'Fixed') {
     const fired = new Set<number>([1, ...s.recurrenceOccurrences.map((o) => o.recurrenceSeq ?? 0)]);
-    for (const seq of dueFixedSeqs(cfg, fired, now)) {
+    for (const seq of dueFixedSeqs(cfg, fired, now, leadDays)) {
       const { startAt, dueAt } = occurrenceStartDue(cfg, s, seq);
       const id = await generateTaskOccurrence({ source: s, seq, startAt, dueAt, actorId: s.creatorId });
       if (id !== null) count += 1;
@@ -335,7 +330,7 @@ async function materializeDueForSource(s: ScheduleSource, now: Date): Promise<nu
   const completedAt = latest.statusChangedAt ?? now;
   const nextSeq = (latest.recurrenceSeq ?? 1) + 1;
   const nextAnchor = addInterval(completedAt, cfg.intervalUnit!, cfg.intervalCount!);
-  if (!seqAllowed(cfg, nextSeq, nextAnchor) || !isWithinLeadTime(nextAnchor, cfg.leadTimeDays, now)) {
+  if (!seqAllowed(cfg, nextSeq, nextAnchor) || !isWithinLeadTime(nextAnchor, leadDays, now)) {
     return 0;
   }
   // Anchor the next instance at nextAnchor, preserving the source's start→due span.
@@ -346,8 +341,9 @@ async function materializeDueForSource(s: ScheduleSource, now: Date): Promise<nu
   return id !== null ? 1 : 0;
 }
 
-/** Materialize all due task-recurrence occurrences; returns how many fired. */
-export async function materializeDueTaskRecurrences(now: Date): Promise<number> {
+/** Materialize all due task-recurrence occurrences; returns how many fired.
+ * `leadDays` is the single global materialization lead time (AppSetting). */
+export async function materializeDueTaskRecurrences(now: Date, leadDays: number): Promise<number> {
   const sources = await prisma.task.findMany({
     where: { recurrence: { isActive: true, recurrenceType: { in: ['Fixed', 'RelativeToCompletion'] } } },
     select: { ...ghostSourceSelect, status: true, statusChangedAt: true },
@@ -355,7 +351,7 @@ export async function materializeDueTaskRecurrences(now: Date): Promise<number> 
   let count = 0;
   for (const s of sources) {
     try {
-      count += await materializeDueForSource(s as ScheduleSource, now);
+      count += await materializeDueForSource(s as ScheduleSource, now, leadDays);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(`task-recurrence: source ${s.id} failed`, err);

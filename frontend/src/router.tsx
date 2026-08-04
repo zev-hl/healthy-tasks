@@ -41,6 +41,9 @@ const TeamGoalsPage = lazy(() =>
 const DueDatePerformancePage = lazy(() =>
   import('./pages/DueDatePerformancePage').then((m) => ({ default: m.DueDatePerformancePage })),
 );
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
+);
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
@@ -107,6 +110,14 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth roles={['Admin', 'Manager']}>
                 <TemplatesPage />
+              </RequireAuth>
+            ),
+          },
+          {
+            path: '/admin/settings',
+            element: (
+              <RequireAuth roles={['Admin']}>
+                <SettingsPage />
               </RequireAuth>
             ),
           },

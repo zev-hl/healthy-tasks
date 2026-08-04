@@ -5585,3 +5585,27 @@ tr.just-completed > td {
 .task-ref-lock {
   font-size: 0.9em;
 }
+
+/* --- Admin global settings page ------------------------------------------- */
+.settings-page .page-head {
+  margin-bottom: 1.25rem;
+}
+.settings-page .page-head h1 {
+  margin: 0 0 0.25rem;
+}
+.settings-card {
+  max-width: 520px;
+}
+.settings-card-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+.settings-help {
+  font-size: 0.75rem;
+  margin: 0.3rem 0 0;
+}
+.settings-saved {
+  align-self: center;
+  color: var(--accent-strong, var(--accent));
+  font-size: 0.85rem;
+}

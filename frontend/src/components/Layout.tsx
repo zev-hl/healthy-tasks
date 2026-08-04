@@ -153,6 +153,11 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
               Users
             </NavLink>
           )}
+          {user?.role === 'Admin' && (
+            <NavLink to="/admin/settings" className={navItemClass}>
+              Settings
+            </NavLink>
+          )}
         </div>
       )}
 

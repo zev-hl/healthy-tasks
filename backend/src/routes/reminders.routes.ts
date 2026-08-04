@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { snoozeReminderSchema } from '../validation/schemas.js';
 import {
   markReminderReadController,
+  markReminderUnreadController,
   removeReminderController,
   snoozeReminderController,
 } from '../controllers/reminders.controller.js';
@@ -17,6 +18,7 @@ remindersRouter.use(requireAuth);
 
 remindersRouter.delete('/:id', asyncHandler(removeReminderController));
 remindersRouter.post('/:id/read', asyncHandler(markReminderReadController));
+remindersRouter.post('/:id/unread', asyncHandler(markReminderUnreadController));
 remindersRouter.post(
   '/:id/snooze',
   validateBody(snoozeReminderSchema),
