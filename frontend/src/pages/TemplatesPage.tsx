@@ -492,7 +492,11 @@ function TemplateEditor({
                       <select value={r.endType} onChange={(e) => patchRec({ endType: e.target.value as RecurrenceEndType })}>
                         <option value="Never">Never</option>
                         <option value="OnDate">On a date</option>
-                        <option value="AfterOccurrences">After N occurrences</option>
+                        <option value="AfterOccurrences">
+                          {r.recurrenceType === 'RelativeToCompletion'
+                            ? 'Stop after N completions'
+                            : 'After N occurrences'}
+                        </option>
                       </select>
                     </div>
                     {r.endType === 'OnDate' && (
@@ -503,7 +507,7 @@ function TemplateEditor({
                     )}
                     {r.endType === 'AfterOccurrences' && (
                       <div className="field">
-                        <label>Occurrences</label>
+                        <label>{r.recurrenceType === 'RelativeToCompletion' ? 'Completions' : 'Occurrences'}</label>
                         <input type="number" min={1} value={r.maxOccurrences} onChange={(e) => patchRec({ maxOccurrences: e.target.value })} />
                       </div>
                     )}

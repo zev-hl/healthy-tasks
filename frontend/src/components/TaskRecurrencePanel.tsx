@@ -199,7 +199,9 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
             <select id="recur-end" value={endType} onChange={(e) => setEndType(e.target.value as RecurrenceEndType)}>
               <option value="Never">Never</option>
               <option value="OnDate">On a date</option>
-              <option value="AfterOccurrences">After N occurrences</option>
+              <option value="AfterOccurrences">
+                {type === 'RelativeToCompletion' ? 'Stop after N completions' : 'After N occurrences'}
+              </option>
             </select>
           </div>
           {endType === 'OnDate' && (
@@ -210,7 +212,9 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
           )}
           {endType === 'AfterOccurrences' && (
             <div className="field">
-              <label htmlFor="recur-max">Occurrences</label>
+              <label htmlFor="recur-max">
+                {type === 'RelativeToCompletion' ? 'Completions' : 'Occurrences'}
+              </label>
               <input
                 id="recur-max"
                 type="number"
