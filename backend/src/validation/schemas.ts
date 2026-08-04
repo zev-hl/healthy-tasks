@@ -241,6 +241,8 @@ const pageSize = z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).optional();
 const taskFiltersSchema = z.object({
   assigneeIds: z.array(z.string().uuid()).max(200).optional(),
   includeUnassigned: z.boolean().optional(),
+  // Team Hierarchy filter (assignee IN a supervisor's selected downline).
+  hierarchyUserIds: z.array(z.string().uuid()).max(5000).optional(),
   statuses: z.array(z.enum(TASK_STATUSES)).optional(),
   priorities: z.array(z.enum(TASK_PRIORITIES)).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(50).optional(),

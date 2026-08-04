@@ -24,6 +24,7 @@ import { cycleSort, sortState } from '../lib/multiSort';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { FilterPopover } from '../components/FilterPopover';
 import { MultiSelect } from '../components/MultiSelect';
+import { HierarchyTree, toggleSubtree } from '../components/HierarchyTree';
 import { SortHeader } from '../components/SortHeader';
 import { UserChip, UnassignedAvatar, userLabel } from '../components/ui/Avatar';
 import { StatusPill } from '../components/ui/indicators';
@@ -39,12 +40,6 @@ interface PersistedState {
   includeReadOnly: boolean;
   groupByAssignee: boolean;
   hierarchyUserIds: string[];
-}
-
-/** Flatten the org tree into a lookup of node → descendant ids (inclusive). */
-function collectSubtree(node: OrgHierarchyNode, into: string[]): void {
-  into.push(node.user.id);
-  for (const c of node.children) collectSubtree(c, into);
 }
 
 const BUCKET_CLASS: Record<DueDateBucket, string> = {
@@ -166,19 +161,16 @@ export function DueDatePerformancePage() {
   const sortForKey = (key: TaskSortField) => sortState(sort, key);
 
   // Team Hierarchy tree: toggling a node toggles it + its whole subtree; nested
-  // people stay individually toggleable within a selected supervisor.
+  // people stay individually toggleable within a selected supervisor. Selecting
+  // any hierarchy member clears the Assignee filter (the two are mutually
+  // exclusive — the report's backend ANDs both, so keeping both would silently
+  // intersect them).
   function toggleNode(node: OrgHierarchyNode) {
-    const subtree: string[] = [];
-    collectSubtree(node, subtree);
-    setSelectedHierarchy((prev) => {
-      const next = new Set(prev);
-      const turningOn = !next.has(node.user.id);
-      for (const id of subtree) {
-        if (turningOn) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
+    const next = toggleSubtree(selectedHierarchy, node);
+    setSelectedHierarchy(next);
+    if (next.size > 0 && (filters.assigneeIds?.length ?? 0) > 0) {
+      patchFilters({ assigneeIds: [] });
+    }
   }
 
   async function handleExport() {
@@ -311,7 +303,11 @@ export function DueDatePerformancePage() {
             <MultiSelect
               options={users.map((u) => ({ value: u.id, label: userLabel(u) }))}
               selected={filters.assigneeIds ?? []}
-              onChange={(next) => patchFilters({ assigneeIds: next })}
+              onChange={(next) => {
+                patchFilters({ assigneeIds: next });
+                // Assignee and Team hierarchy are mutually exclusive.
+                if (next.length > 0 && selectedHierarchy.size > 0) setSelectedHierarchy(new Set());
+              }}
             />
           </FilterPopover>
           <FilterPopover label="Tags" active={(filters.tags ?? []).length > 0}>
@@ -348,15 +344,7 @@ export function DueDatePerformancePage() {
           <p className="muted" style={{ margin: '0 0 0.5rem' }}>
             Select a supervisor to include their whole downline; toggle individuals within.
           </p>
-          {hierarchy.length === 0 ? (
-            <p className="muted">No team members.</p>
-          ) : (
-            <ul className="hierarchy-tree">
-              {hierarchy.map((n) => (
-                <HierarchyNode key={n.user.id} node={n} depth={0} selected={selectedHierarchy} onToggle={toggleNode} />
-              ))}
-            </ul>
-          )}
+          <HierarchyTree nodes={hierarchy} selected={selectedHierarchy} onToggle={toggleNode} />
         </div>
       )}
 
@@ -472,25 +460,6 @@ function GroupBlock({ group, collapsed, onToggle }: { group: AssigneeGroup; coll
       </tr>
       {!collapsed && group.rows.map((r) => <ReportRow key={r.id} row={r} />)}
     </>
-  );
-}
-
-function HierarchyNode({ node, depth, selected, onToggle }: { node: OrgHierarchyNode; depth: number; selected: Set<string>; onToggle: (n: OrgHierarchyNode) => void }) {
-  return (
-    <li>
-      <label className="hierarchy-row" style={{ paddingLeft: `${depth * 18}px` }}>
-        <input type="checkbox" checked={selected.has(node.user.id)} onChange={() => onToggle(node)} />
-        <span>{userLabel(node.user)}</span>
-        {node.user.title && <span className="muted"> · {node.user.title}</span>}
-      </label>
-      {node.children.length > 0 && (
-        <ul>
-          {node.children.map((c) => (
-            <HierarchyNode key={c.user.id} node={c} depth={depth + 1} selected={selected} onToggle={onToggle} />
-          ))}
-        </ul>
-      )}
-    </li>
   );
 }
 

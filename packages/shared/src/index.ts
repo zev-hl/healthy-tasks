@@ -646,6 +646,11 @@ export interface TaskSearchFilters {
   assigneeIds?: string[];
   /** Include tasks with no assignee (the "Unassigned" option). */
   includeUnassigned?: boolean;
+  /** Team Hierarchy filter: restrict to tasks assigned to these users (a
+   * supervisor's selected downline). Intersected with the caller's access scope,
+   * so it can never widen visibility. Mutually exclusive with `assigneeIds` in
+   * the UI (selecting one clears the other). */
+  hierarchyUserIds?: string[];
   statuses?: TaskStatus[];
   priorities?: TaskPriority[];
   tags?: string[]; // task must have at least one of these

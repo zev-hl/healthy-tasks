@@ -13,6 +13,7 @@ import {
   isSupervisorRole,
   type ActiveUserDto,
   type GhostOccurrenceDto,
+  type OrgHierarchyNode,
   type TaskColumnKey,
   type TaskDashboardDto,
   type TaskRowDto,
@@ -38,6 +39,7 @@ import {
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
 import { FilterPopover } from '../components/FilterPopover';
+import { HierarchyTree, toggleSubtree } from '../components/HierarchyTree';
 import { UserChip, UnassignedAvatar } from '../components/ui/Avatar';
 import { StatusPill, PriorityRamp } from '../components/ui/indicators';
 import { AnimatedCount } from '../components/ui/AnimatedCount';
@@ -145,6 +147,7 @@ export function TaskSearchPage() {
 
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [hierarchy, setHierarchy] = useState<OrgHierarchyNode[]>([]);
   const [dash, setDash] = useState<TaskDashboardDto | null>(null);
   const [showColumns, setShowColumns] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -180,6 +183,7 @@ export function TaskSearchPage() {
     hydratedOnce.current = true;
     void api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
     void api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
+    void api.getUserHierarchy().then(setHierarchy).catch(() => setHierarchy([]));
     void api
       .getPreference('task-search')
       .then(({ state }) => {
@@ -369,13 +373,27 @@ export function TaskSearchPage() {
     patchFilters({
       includeUnassigned: next.includes(UNASSIGNED),
       assigneeIds: next.filter((v) => v !== UNASSIGNED),
+      // Assignee and Team hierarchy are mutually exclusive.
+      ...(next.length > 0 ? { hierarchyUserIds: undefined } : {}),
     });
+
+  // --- Team Hierarchy filter (mutually exclusive with Assignee) -------------
+  const hierarchySelected = new Set(filters.hierarchyUserIds ?? []);
+  const toggleHierarchy = (node: OrgHierarchyNode) => {
+    const next = toggleSubtree(hierarchySelected, node);
+    patchFilters({
+      hierarchyUserIds: next.size > 0 ? [...next] : undefined,
+      // Selecting anyone in the hierarchy clears the Assignee filter.
+      ...(next.size > 0 ? { assigneeIds: [], includeUnassigned: false } : {}),
+    });
+  };
 
   // --- Active-filter chips (removable) -------------------------------------
   const chips: { id: string; label: string; clear: Partial<TaskSearchFilters> }[] = [];
   {
     const assignN = (filters.assigneeIds?.length ?? 0) + (filters.includeUnassigned ? 1 : 0);
     if (assignN > 0) chips.push({ id: 'assignee', label: `Assignee · ${assignN}`, clear: { assigneeIds: [], includeUnassigned: false } });
+    if (filters.hierarchyUserIds?.length) chips.push({ id: 'team', label: `Team · ${filters.hierarchyUserIds.length} selected`, clear: { hierarchyUserIds: undefined } });
     if (filters.statuses?.length) chips.push({ id: 'status', label: `Status · ${filters.statuses.length}`, clear: { statuses: [] } });
     if (filters.priorities?.length) chips.push({ id: 'priority', label: `Priority · ${filters.priorities.length}`, clear: { priorities: [] } });
     if (filters.tags?.length) chips.push({ id: 'tags', label: `Tags · ${filters.tags.length}`, clear: { tags: [] } });
@@ -715,17 +733,30 @@ export function TaskSearchPage() {
               {columnFilter(k)}
             </div>
           ))}
+          {/* Team Hierarchy: restrict to a supervisor's downline (clears Assignee). */}
+          <div className="tasks-filter-field">
+            <span className="u-label">Team</span>
+            <FilterPopover label="Team" active={(filters.hierarchyUserIds?.length ?? 0) > 0}>
+              <div className="hierarchy-pop">
+                <p className="muted hierarchy-pop-hint">
+                  Select a supervisor to include their whole downline; toggle individuals within.
+                </p>
+                <HierarchyTree nodes={hierarchy} selected={hierarchySelected} onToggle={toggleHierarchy} />
+              </div>
+            </FilterPopover>
+          </div>
           {/* Phase 11: free-text filter on a generated task's PO/batch label. */}
           <div className="tasks-filter-field">
             <span className="u-label">Instance label</span>
-            <input
-              className="tasks-search"
-              style={{ minWidth: 160 }}
-              value={filters.instanceLabel ?? ''}
-              onChange={(e) => patchFilters({ instanceLabel: e.target.value || undefined })}
-              placeholder="PO / batch…"
-              aria-label="Filter by instance label"
-            />
+            <FilterPopover label="Instance label" active={!!filters.instanceLabel}>
+              <input
+                className="pop-input"
+                value={filters.instanceLabel ?? ''}
+                onChange={(e) => patchFilters({ instanceLabel: e.target.value || undefined })}
+                placeholder="PO / batch…"
+                aria-label="Filter by instance label"
+              />
+            </FilterPopover>
           </div>
         </div>
       )}

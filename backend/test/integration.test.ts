@@ -1722,6 +1722,21 @@ describe('task search / query (Phase 6)', () => {
     assert.equal(byTag.total, 1);
   });
 
+  it('filters by Team Hierarchy (assignee IN the selected downline)', async () => {
+    const tok = await adminToken();
+    const a = await seedUser({ email: 'hier-a@test.local', role: 'Member' });
+    const b = await seedUser({ email: 'hier-b@test.local', role: 'Member' });
+    await makeTask(tok, 'A task', { assigneeId: a.id });
+    await makeTask(tok, 'B task', { assigneeId: b.id });
+
+    const onlyA = await queryTasks(tok, { filters: { hierarchyUserIds: [a.id] } });
+    assert.equal(onlyA.total, 1);
+    assert.equal(onlyA.rows[0]?.assignee?.email, 'hier-a@test.local');
+
+    const both = await queryTasks(tok, { filters: { hierarchyUserIds: [a.id, b.id] } });
+    assert.equal(both.total, 2, 'selecting both members returns both their tasks');
+  });
+
   it('due-date range respects the include-no-due toggle', async () => {
     const tok = await adminToken();
     await makeTask(tok, 'Has due', { dueAt: '2026-09-15T12:00:00Z' });
