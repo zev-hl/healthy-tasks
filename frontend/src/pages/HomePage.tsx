@@ -329,8 +329,6 @@ export function HomePage() {
                   >
                     <PriorityRamp priority={r.priority} />
                     <span className="mday-row-title">{r.name}</span>
-                    <div className="spacer" />
-                    <DueDate iso={r.dueAt} status={r.status} completedAt={r.statusChangedAt} isDue inline />
                     <span className="mday-row-assignee" title={r.assignee ? userLabel(r.assignee) : 'Unassigned'}>
                       {r.assignee ? (
                         <Avatar user={r.assignee} px={22} decorative />
@@ -341,6 +339,8 @@ export function HomePage() {
                         {r.assignee ? userLabel(r.assignee) : 'Unassigned'}
                       </span>
                     </span>
+                    <div className="spacer" />
+                    <DueDate iso={r.dueAt} status={r.status} completedAt={r.statusChangedAt} isDue inline />
                   </li>
                 );
               })}
