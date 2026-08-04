@@ -47,7 +47,6 @@ function HierarchyRow({
       <label className="hierarchy-row" style={{ paddingLeft: `${depth * 18}px` }}>
         <input type="checkbox" checked={selected.has(node.user.id)} onChange={() => onToggle(node)} />
         <span>{userLabel(node.user)}</span>
-        {node.user.title && <span className="muted"> · {node.user.title}</span>}
       </label>
       {node.children.length > 0 && (
         <ul>
