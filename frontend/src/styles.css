@@ -1250,7 +1250,7 @@ textarea:focus-visible {
    --------------------------------------------------------------------------- */
 .detail-page {
   padding: 20px 26px;
-  max-width: 1200px;
+  max-width: 1600px;
 }
 .detail-topbar {
   display: flex;
@@ -1455,9 +1455,25 @@ textarea:focus-visible {
 }
 
 .detail-work {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 16px;
+  align-items: start;
+}
+/* On wide screens, Description spans the full width with Sub-tasks and
+   Attachments side-by-side beneath it (Sub-tasks left — it's usually taller).
+   Below the breakpoint it falls back to the single stacked column above. */
+@media (min-width: 1200px) {
+  .detail-work {
+    grid-template-columns: 1fr 1fr;
+  }
+  .detail-desc {
+    grid-column: 1 / -1;
+  }
+}
+/* Keep the Description prose readable even when its card is wide. */
+.detail-desc .rich-text {
+  max-width: 78ch;
 }
 .detail-content .card {
   padding: 18px 20px;
@@ -2224,6 +2240,12 @@ button.btn-sm {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+/* Give the Save/Cancel row breathing room so it doesn't sit flush against the
+   bottom border of the editor (Description/Comments) or the name input. */
+.rte + .btn-row,
+.detail-headerblock .field .btn-row {
+  margin-top: 0.6rem;
+}
 
 /* ---------------------------------------------------------------------------
    Avatars (colored circle + initials) — Phase 9
@@ -2773,6 +2795,155 @@ th {
 .rich-text p:last-child {
   margin-bottom: 0;
 }
+
+/* --- Lists (bulleted / numbered / task) — editor + read-only view --------- */
+/* Compact list control: a small icon+caret button that opens a popover menu. */
+.rte-listmenu {
+  position: relative;
+  display: inline-flex;
+}
+.rte-listbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.2rem 0.3rem;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  cursor: pointer;
+}
+.rte-listbtn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.rte-listbtn.is-active {
+  background: var(--accent-tint);
+  border-color: var(--accent-tint-2);
+  color: var(--accent-active);
+}
+.rte-listbtn svg {
+  display: block;
+}
+.rte-listcaret {
+  font-size: 0.6rem;
+  line-height: 1;
+}
+.rte-listpop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop);
+}
+.rte-listopt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: var(--radius-chip);
+  text-align: left;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rte-listopt:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.rte-listopt.is-active {
+  background: var(--accent-tint);
+  color: var(--accent-active);
+}
+.rte-listopt-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.rte-content ul,
+.rte-content ol,
+.rich-text ul,
+.rich-text ol {
+  margin: 0 0 0.5rem;
+  padding-left: 1.5em;
+}
+.rte-content ul,
+.rich-text ul {
+  list-style: disc;
+}
+.rte-content ol,
+.rich-text ol {
+  list-style: decimal;
+}
+.rte-content li,
+.rich-text li {
+  margin: 0.15rem 0;
+}
+.rte-content li > p,
+.rich-text li > p {
+  margin: 0;
+}
+
+/* Task lists: no bullets; a checkbox sits to the left of each item. */
+.rte-content ul[data-type='taskList'],
+.rich-text ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+.rte-content ul[data-type='taskList'] li,
+.rich-text ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+/* In the editor, TaskItem renders a real <label><input>; keep it aligned. */
+.rte-content ul[data-type='taskList'] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
+  user-select: none;
+}
+.rte-content ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+}
+.rte-content ul[data-type='taskList'] li > div > p {
+  margin: 0;
+}
+/* In the read-only view there's no <input> — draw the box from data-checked. */
+.rich-text ul[data-type='taskList'] li::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+.rich-text ul[data-type='taskList'] li[data-checked='true']::before {
+  content: '✓';
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .mention {
   color: var(--accent-active);
   background: var(--accent-tint);
@@ -3723,7 +3894,19 @@ button.dash-stat:hover {
 
 .notif-feed {
   padding: 0;
-  overflow: hidden;
+  /* overflow is intentionally visible so the Snooze popover (which drops below
+     its row) isn't clipped by the card. Corner rounding is handled per-row
+     below instead of by clipping the whole feed. */
+}
+/* Re-create the card's rounded corners on the first/last rows now that the feed
+   no longer clips its children. */
+.notif-day-group:first-child .notif-day-head {
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
+}
+.notif-list:last-child .notif-item:last-child {
+  border-bottom-left-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
 }
 .notif-feed-loading {
   padding: 1.25rem;

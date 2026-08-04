@@ -9,7 +9,16 @@ import { HttpError } from './http-error.js';
 // truth: all HTML is run through sanitizeRichText on write, never trusting the
 // client.
 
-const BASE_ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span'];
+const BASE_ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'ul', 'ol', 'li'];
+
+// List attributes: `data-type` marks a task list (`ul`) / task item (`li`), and
+// `data-checked` carries a task item's checked state. We store checkboxes as a
+// plain attribute (no <input>) so the read-only renderer can draw them via CSS.
+const LIST_ATTRIBUTES = {
+  ul: ['data-type'],
+  ol: ['data-type'],
+  li: ['data-type', 'data-checked'],
+};
 
 // Only the `color` CSS property is permitted, and only as a hex, rgb(a), or
 // named color — no url(), no other properties. sanitize-html drops anything else.
@@ -38,7 +47,7 @@ export function sanitizeRichText(html: string, opts: SanitizeOptions = {}): stri
   if (!opts.allowMentions) {
     return sanitizeHtml(html, {
       allowedTags: BASE_ALLOWED_TAGS,
-      allowedAttributes: { span: ['style'] },
+      allowedAttributes: { span: ['style'], ...LIST_ATTRIBUTES },
       allowedStyles: ALLOWED_STYLES,
       allowedSchemes: [],
       disallowedTagsMode: 'discard',
@@ -47,7 +56,7 @@ export function sanitizeRichText(html: string, opts: SanitizeOptions = {}): stri
 
   return sanitizeHtml(html, {
     allowedTags: BASE_ALLOWED_TAGS,
-    allowedAttributes: { span: ['data-type', 'data-id', 'data-label', 'class', 'style'] },
+    allowedAttributes: { span: ['data-type', 'data-id', 'data-label', 'class', 'style'], ...LIST_ATTRIBUTES },
     allowedStyles: ALLOWED_STYLES,
     allowedSchemes: [],
     disallowedTagsMode: 'discard',

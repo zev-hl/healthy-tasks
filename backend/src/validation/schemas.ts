@@ -428,7 +428,8 @@ const templateNodeInputSchema = z.object({
   key: nodeKey,
   parentKey: nodeKey.nullable(),
   name: templateName,
-  description: optionalText,
+  // Rich-text HTML, like task descriptions; sanitized in the service on save.
+  description: richText,
   defaultPriority: z.enum(TASK_PRIORITIES).optional(),
   startOffsetDays: offsetDays,
   dueOffsetDays: offsetDays,

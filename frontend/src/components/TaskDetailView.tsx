@@ -774,7 +774,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           {tab === 'work' && (
             <div className="detail-work">
               {/* Description */}
-              <section className="card">
+              <section className="card detail-desc">
                 <div className="section-head">
                   <h3>Description</h3>
                   {!editingDesc && canEdit && (
@@ -805,7 +805,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </section>
 
               {/* Sub-tasks */}
-              <section className="card">
+              <section className="card detail-subtasks">
                 <div className="section-head">
                   <h3>Sub-tasks</h3>
                   {task.children.length > 0 && (
@@ -853,7 +853,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </section>
 
               {/* Attachments */}
-              <section className="card">
+              <section className="card detail-attachments">
                 <h3 style={{ marginTop: 0 }}>Attachments</h3>
                 <AttachmentSection attachments={task.attachments} target={{ kind: 'task', taskId: task.id }} canUpload currentUser={currentUser} onChanged={applyTask} />
               </section>

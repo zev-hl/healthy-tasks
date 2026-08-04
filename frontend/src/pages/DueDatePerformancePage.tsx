@@ -207,10 +207,10 @@ export function DueDatePerformancePage() {
     chips.push({ id: `tg-${t}`, label: `Tag · ${t}`, clear: () => patchFilters({ tags: (filters.tags ?? []).filter((x) => x !== t) }) });
   if (filters.statusChangedFrom || filters.statusChangedTo)
     chips.push({ id: 'sc', label: 'Status changed', clear: () => patchFilters({ statusChangedFrom: null, statusChangedTo: null }) });
-  if (filters.startFrom || filters.startTo)
-    chips.push({ id: 'sd', label: 'Start date', clear: () => patchFilters({ startFrom: null, startTo: null }) });
-  if (filters.dueFrom || filters.dueTo)
-    chips.push({ id: 'dd', label: 'Due date', clear: () => patchFilters({ dueFrom: null, dueTo: null }) });
+  if (filters.startFrom || filters.startTo || filters.includeNoStart === false)
+    chips.push({ id: 'sd', label: (filters.startFrom || filters.startTo) ? 'Start date' : 'Has start date', clear: () => patchFilters({ startFrom: null, startTo: null, includeNoStart: true }) });
+  if (filters.dueFrom || filters.dueTo || filters.includeNoDue === false)
+    chips.push({ id: 'dd', label: (filters.dueFrom || filters.dueTo) ? 'Due date' : 'Has due date', clear: () => patchFilters({ dueFrom: null, dueTo: null, includeNoDue: true }) });
   if (selectedHierarchy.size > 0)
     chips.push({ id: 'tree', label: `Team · ${selectedHierarchy.size} selected`, clear: () => setSelectedHierarchy(new Set()) });
 
@@ -323,16 +323,24 @@ export function DueDatePerformancePage() {
               <label>To<input type="datetime-local" value={toLocalInput(filters.statusChangedTo)} onChange={(e) => patchFilters({ statusChangedTo: fromLocalInput(e.target.value) })} /></label>
             </div>
           </FilterPopover>
-          <FilterPopover label="Start date" active={!!(filters.startFrom || filters.startTo)}>
+          <FilterPopover label="Start date" active={!!(filters.startFrom || filters.startTo) || filters.includeNoStart === false}>
             <div className="range-filter">
               <label>From<input type="date" value={(filters.startFrom ?? '').slice(0, 10)} onChange={(e) => patchFilters({ startFrom: e.target.value || null })} /></label>
               <label>To<input type="date" value={(filters.startTo ?? '').slice(0, 10)} onChange={(e) => patchFilters({ startTo: e.target.value || null })} /></label>
+              <label className="check-inline">
+                <input type="checkbox" checked={filters.includeNoStart ?? true} onChange={(e) => patchFilters({ includeNoStart: e.target.checked })} />
+                <span>Include tasks without a Start Date</span>
+              </label>
             </div>
           </FilterPopover>
-          <FilterPopover label="Due date" active={!!(filters.dueFrom || filters.dueTo)}>
+          <FilterPopover label="Due date" active={!!(filters.dueFrom || filters.dueTo) || filters.includeNoDue === false}>
             <div className="range-filter">
               <label>From<input type="date" value={(filters.dueFrom ?? '').slice(0, 10)} onChange={(e) => patchFilters({ dueFrom: e.target.value || null })} /></label>
               <label>To<input type="date" value={(filters.dueTo ?? '').slice(0, 10)} onChange={(e) => patchFilters({ dueTo: e.target.value || null })} /></label>
+              <label className="check-inline">
+                <input type="checkbox" checked={filters.includeNoDue ?? true} onChange={(e) => patchFilters({ includeNoDue: e.target.checked })} />
+                <span>Include tasks without a Due Date</span>
+              </label>
             </div>
           </FilterPopover>
         </div>

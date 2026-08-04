@@ -23,6 +23,7 @@ import { api, ApiError } from '../api/client';
 import { userLabel } from '../components/ui/Avatar';
 import { EmptyState } from '../components/ui/EmptyState';
 import { WeekdayPicker } from '../components/WeekdayPicker';
+import { RichTextEditor } from '../components/RichTextEditor';
 
 // --- Editor model ----------------------------------------------------------
 
@@ -526,11 +527,10 @@ function TemplateEditor({
             </div>
             <div className="field tpl-node-wide">
               <label>Description</label>
-              <textarea
+              <RichTextEditor
                 value={n.description}
-                rows={2}
-                placeholder="Default description for the generated task…"
-                onChange={(e) => patchNode(n.key, { description: e.target.value })}
+                onChange={(html) => patchNode(n.key, { description: html })}
+                ariaLabel={`Description for node ${idx + 1}`}
               />
             </div>
             <div className="field">

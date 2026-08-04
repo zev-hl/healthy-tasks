@@ -5,10 +5,11 @@ import DOMPurify from 'dompurify';
 // dangerouslySetInnerHTML, allowing only the same tags/attributes.
 export function RichText({ html, className }: { html: string; className?: string }) {
   const clean = DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'ul', 'ol', 'li'],
     // `style` is kept for text color; DOMPurify sanitizes the CSS itself, and the
-    // server has already restricted it to `color`.
-    ALLOWED_ATTR: ['data-type', 'data-id', 'data-label', 'class', 'style'],
+    // server has already restricted it to `color`. `data-checked` carries a task
+    // item's state (rendered as a checkbox via CSS).
+    ALLOWED_ATTR: ['data-type', 'data-id', 'data-label', 'data-checked', 'class', 'style'],
   });
   return (
     <div

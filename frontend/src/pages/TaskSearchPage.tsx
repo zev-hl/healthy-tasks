@@ -404,8 +404,8 @@ export function TaskSearchPage() {
     if (filters.creatorIds?.length) chips.push({ id: 'creator', label: `Created by · ${filters.creatorIds.length}`, clear: { creatorIds: [] } });
     if (filters.relation) chips.push({ id: 'relation', label: `Relation · ${filters.relation}`, clear: { relation: undefined } });
     if (filters.statusChangedFrom || filters.statusChangedTo) chips.push({ id: 'sc', label: 'Status changed', clear: { statusChangedFrom: null, statusChangedTo: null } });
-    if (filters.startFrom || filters.startTo || filters.includeNoStart === false) chips.push({ id: 'start', label: 'Start date', clear: { startFrom: null, startTo: null, includeNoStart: true } });
-    if (filters.dueFrom || filters.dueTo || filters.includeNoDue === false) chips.push({ id: 'due', label: 'Due date', clear: { dueFrom: null, dueTo: null, includeNoDue: true } });
+    if (filters.startFrom || filters.startTo || filters.includeNoStart === false) chips.push({ id: 'start', label: (filters.startFrom || filters.startTo) ? 'Start date' : 'Has start date', clear: { startFrom: null, startTo: null, includeNoStart: true } });
+    if (filters.dueFrom || filters.dueTo || filters.includeNoDue === false) chips.push({ id: 'due', label: (filters.dueFrom || filters.dueTo) ? 'Due date' : 'Has due date', clear: { dueFrom: null, dueTo: null, includeNoDue: true } });
   }
   const filtersActive = chips.length > 0;
 

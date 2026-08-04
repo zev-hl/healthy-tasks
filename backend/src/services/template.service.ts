@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
+import { sanitizeAndValidate } from '../utils/rich-text.js';
 import { getStorage } from '../storage/index.js';
 import { assertCanEditTask } from './access-control.service.js';
 import {
@@ -221,7 +222,9 @@ async function reconcileTree(
     const parentNodeId = n.parentKey ? (keyToId.get(n.parentKey) ?? null) : null;
     const data = {
       name: n.name,
-      description: n.description ?? null,
+      description: n.description
+        ? sanitizeAndValidate(n.description, { fieldLabel: 'Node description' })
+        : null,
       defaultPriority: n.defaultPriority ?? 'Medium',
       startOffsetDays: n.startOffsetDays ?? null,
       dueOffsetDays: n.dueOffsetDays ?? null,
