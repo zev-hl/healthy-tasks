@@ -160,6 +160,12 @@ export async function buildWhere(
   if (f.includeUnassigned) assigneeOr.push({ assigneeId: null });
   if (assigneeOr.length > 0) and.push({ OR: assigneeOr });
 
+  // Team Hierarchy filter: restrict to assignees in the selected downline. ANDed
+  // in (intersected with the access scope, so it can never widen visibility).
+  if (f.hierarchyUserIds && f.hierarchyUserIds.length > 0) {
+    and.push({ assigneeId: { in: f.hierarchyUserIds } });
+  }
+
   if (f.statuses && f.statuses.length > 0) and.push({ status: { in: f.statuses } });
   if (f.priorities && f.priorities.length > 0) and.push({ priority: { in: f.priorities } });
   if (f.tags && f.tags.length > 0) and.push({ tags: { hasSome: f.tags } });

@@ -5585,3 +5585,14 @@ tr.just-completed > td {
 .task-ref-lock {
   font-size: 0.9em;
 }
+
+/* Team Hierarchy picker inside a FilterPopover (Tasks list) */
+.hierarchy-pop {
+  max-height: 280px;
+  overflow-y: auto;
+  min-width: 220px;
+}
+.hierarchy-pop-hint {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+}
