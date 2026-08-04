@@ -69,6 +69,15 @@ function inRange(day: Date, start: Date, end: Date): boolean {
   const t = startOfDay(day).getTime();
   return t >= startOfDay(start).getTime() && t <= startOfDay(end).getTime();
 }
+/** Compact "Aug 5, 1:00 PM" for the day-view chip's start/due line. */
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 function CalTaskChip({
   task,
@@ -76,6 +85,7 @@ function CalTaskChip({
   isEnd,
   single,
   mode,
+  detailed,
   onOpen,
 }: {
   task: TaskRowDto;
@@ -83,6 +93,8 @@ function CalTaskChip({
   isEnd: boolean;
   single: boolean;
   mode: CalendarMode;
+  /** Day view: larger chip that also shows the Start/Due dates & times. */
+  detailed?: boolean;
   onOpen: (id: number) => void;
 }) {
   const posClass =
@@ -100,7 +112,7 @@ function CalTaskChip({
   return (
     <button
       type="button"
-      className={`cal-chip${posClass}${readOnly ? ' mention-only' : ''}`}
+      className={`cal-chip${posClass}${readOnly ? ' mention-only' : ''}${detailed ? ' detailed' : ''}`}
       style={{ background: pill.bg, color: pill.fg }}
       title={
         readOnly
@@ -115,6 +127,13 @@ function CalTaskChip({
         {readOnly ? (treeCue ? '🌳 ' : '👁 ') : ''}
         {task.name}
       </span>
+      {detailed && (task.startAt || task.dueAt) && (
+        <span className="cal-chip-meta">
+          {task.startAt ? `Start ${fmtDateTime(task.startAt)}` : ''}
+          {task.startAt && task.dueAt ? ' · ' : ''}
+          {task.dueAt ? `Due ${fmtDateTime(task.dueAt)}` : ''}
+        </span>
+      )}
     </button>
   );
 }
@@ -312,6 +331,7 @@ export function TaskCalendar({
                     isEnd={isEnd}
                     single={single}
                     mode={mode}
+                    detailed
                     onOpen={openTask}
                   />
                 ))}
@@ -348,10 +368,18 @@ export function TaskCalendar({
                 key={day.toISOString()}
                 className={`calendar-cell${outside ? ' outside' : ''}${isToday ? ' is-today' : ''}`}
               >
-                <span className="calendar-daynum mono">
+                <button
+                  type="button"
+                  className="calendar-daynum mono"
+                  title="Open this day's Day view"
+                  onClick={() => {
+                    setAnchor(startOfDay(day));
+                    onScaleChange('day');
+                  }}
+                >
                   {day.getDate()}
                   {isToday ? ' · Today' : ''}
-                </span>
+                </button>
                 <div className="calendar-cell-tasks">
                   {items.slice(0, cap).map(({ task, isStart, isEnd, single }) => (
                     <CalTaskChip
