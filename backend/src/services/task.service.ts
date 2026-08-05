@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
+import { assertNotStale } from '../utils/optimistic.js';
 import { getStorage } from '../storage/index.js';
 import { sanitizeAndValidate } from '../utils/rich-text.js';
 import {
@@ -227,6 +228,10 @@ export async function updateTask(
   const actorId = actor.id;
   const existing = await prisma.task.findUnique({ where: { id } });
   if (!existing) throw HttpError.notFound('Task not found');
+
+  // Optimistic concurrency: reject if the task changed since the client loaded
+  // it (no-op when the client didn't send a token).
+  assertNotStale(existing, input.expectedUpdatedAt);
 
   // Access gate (Phase 13): editing a task requires FULL access. A user with no
   // access gets 404 (existence hidden); a mention-only user gets 403 (read-only).

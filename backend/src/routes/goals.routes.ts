@@ -4,7 +4,10 @@ import { validateBody } from '../middleware/validate.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import {
   createGoalSchema,
+  goalMineExportSchema,
+  goalTeamExportSchema,
   goalTeamSchema,
+  goalVersionSchema,
   rejectGoalSchema,
   resolveGoalSchema,
   updateGoalProgressSchema,
@@ -14,6 +17,8 @@ import {
   approveGoalController,
   createGoalController,
   deleteGoalController,
+  exportMyGoalsController,
+  exportTeamGoalsController,
   finalizeGoalController,
   getGoalController,
   listMyGoalsController,
@@ -35,10 +40,21 @@ goalsRouter.use(requireAuth);
 // Literal paths must precede `/:id`.
 goalsRouter.get('/mine', asyncHandler(listMyGoalsController));
 goalsRouter.post(
+  '/mine/export',
+  validateBody(goalMineExportSchema),
+  asyncHandler(exportMyGoalsController),
+);
+goalsRouter.post(
   '/team',
   requireRole('Admin', 'Manager'),
   validateBody(goalTeamSchema),
   asyncHandler(listTeamGoalsController),
+);
+goalsRouter.post(
+  '/team/export',
+  requireRole('Admin', 'Manager'),
+  validateBody(goalTeamExportSchema),
+  asyncHandler(exportTeamGoalsController),
 );
 goalsRouter.post('/', validateBody(createGoalSchema), asyncHandler(createGoalController));
 
@@ -53,9 +69,10 @@ goalsRouter.patch(
   asyncHandler(updateGoalProgressController),
 );
 
-// Lifecycle transitions.
-goalsRouter.post('/:id/submit', asyncHandler(submitGoalController));
-goalsRouter.post('/:id/approve', asyncHandler(approveGoalController));
+// Lifecycle transitions. The no-payload ones still validate a body so the
+// optimistic-concurrency token (expectedUpdatedAt) survives validation.
+goalsRouter.post('/:id/submit', validateBody(goalVersionSchema), asyncHandler(submitGoalController));
+goalsRouter.post('/:id/approve', validateBody(goalVersionSchema), asyncHandler(approveGoalController));
 goalsRouter.post('/:id/reject', validateBody(rejectGoalSchema), asyncHandler(rejectGoalController));
-goalsRouter.post('/:id/finalize', asyncHandler(finalizeGoalController));
+goalsRouter.post('/:id/finalize', validateBody(goalVersionSchema), asyncHandler(finalizeGoalController));
 goalsRouter.post('/:id/resolve', validateBody(resolveGoalSchema), asyncHandler(resolveGoalController));

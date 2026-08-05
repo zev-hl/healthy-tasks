@@ -7,6 +7,8 @@ import {
 } from '@healthy-tasks/shared';
 import { api } from '../../api/client';
 import { ApiError } from '../../api/client';
+import { useStaleWriteGuard } from '../../lib/useStaleWriteGuard';
+import { ConflictBanner } from '../ConflictBanner';
 import { isoToDateInput, dateInputToIso } from './goalUi';
 
 interface Props {
@@ -32,6 +34,9 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
   const [notes, setNotes] = useState(goal?.notes ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Version token for the edit path (optimistic concurrency); refreshed on Refresh.
+  const [version, setVersion] = useState(goal?.updatedAt);
+  const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
 
   const needsUnit = GOAL_METRIC_TYPES_NEEDING_UNIT.includes(metricType);
 
@@ -55,36 +60,64 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
 
     setSubmitting(true);
     try {
-      let saved: GoalDto;
-      if (editing) {
-        const body: UpdateGoalRequest = {
-          specific: specific.trim(),
-          metricType,
-          unitLabel: unitLabel.trim() || null,
-          targetValue: target,
-          deadline: dateInputToIso(deadline),
-          risks: risks.trim() || null,
-          mitigations: mitigations.trim() || null,
-          notes: notes.trim() || null,
-        };
-        saved = await api.updateGoal(goal!.id, body);
-      } else {
-        const body: CreateGoalRequest = {
-          ownerId: ownerOptions ? ownerId : null,
-          specific: specific.trim(),
-          metricType,
-          unitLabel: unitLabel.trim() || null,
-          targetValue: target,
-          deadline: dateInputToIso(deadline),
-          risks: risks.trim() || null,
-          mitigations: mitigations.trim() || null,
-          notes: notes.trim() || null,
-        };
-        saved = await api.createGoal(body);
-      }
-      onSaved(saved);
+      // On a stale-write 409 the guard raises the conflict banner instead of throwing.
+      await guard(async () => {
+        let saved: GoalDto;
+        if (editing) {
+          const body: UpdateGoalRequest = {
+            specific: specific.trim(),
+            metricType,
+            unitLabel: unitLabel.trim() || null,
+            targetValue: target,
+            deadline: dateInputToIso(deadline),
+            risks: risks.trim() || null,
+            mitigations: mitigations.trim() || null,
+            notes: notes.trim() || null,
+          };
+          saved = await api.updateGoal(goal!.id, body, version);
+        } else {
+          const body: CreateGoalRequest = {
+            ownerId: ownerOptions ? ownerId : null,
+            specific: specific.trim(),
+            metricType,
+            unitLabel: unitLabel.trim() || null,
+            targetValue: target,
+            deadline: dateInputToIso(deadline),
+            risks: risks.trim() || null,
+            mitigations: mitigations.trim() || null,
+            notes: notes.trim() || null,
+          };
+          saved = await api.createGoal(body);
+        }
+        onSaved(saved);
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the goal.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Reload current server data into the form after a conflict (Refresh).
+  async function handleRefresh() {
+    if (!goal) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const fresh = await api.getGoal(goal.id);
+      setOwnerId(fresh.ownerId);
+      setSpecific(fresh.specific);
+      setMetricType(fresh.metricType);
+      setUnitLabel(fresh.unitLabel ?? '');
+      setTargetValue(String(fresh.targetValue));
+      setDeadline(isoToDateInput(fresh.deadline));
+      setRisks(fresh.risks ?? '');
+      setMitigations(fresh.mitigations ?? '');
+      setNotes(fresh.notes ?? '');
+      setVersion(fresh.updatedAt);
+      reset();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not refresh the goal.');
     } finally {
       setSubmitting(false);
     }
@@ -95,6 +128,7 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>{editing ? 'Edit goal' : 'New goal'}</h3>
         {error && <div className="alert error">{error}</div>}
+        {bannerShown && <ConflictBanner entity="goal" onReview={review} />}
         <form onSubmit={onSubmit}>
           {ownerOptions && !editing && (
             <div className="field">
@@ -192,9 +226,15 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
             <button type="button" className="secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" disabled={submitting}>
-              {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create goal'}
-            </button>
+            {conflict ? (
+              <button type="button" disabled={submitting} onClick={() => void handleRefresh()}>
+                {submitting ? 'Refreshing…' : 'Refresh'}
+              </button>
+            ) : (
+              <button type="submit" disabled={submitting}>
+                {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create goal'}
+              </button>
+            )}
           </div>
         </form>
       </div>

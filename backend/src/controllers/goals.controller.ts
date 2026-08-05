@@ -23,6 +23,10 @@ import {
   updateGoalDraft,
   updateGoalProgress,
 } from '../services/goal.service.js';
+import { buildGoalsWorkbook } from '../services/goal-export.service.js';
+
+const XLSX_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function actor(req: Request): { id: string; role: Role } {
   if (!req.user) throw HttpError.unauthorized();
@@ -41,6 +45,26 @@ export async function listMyGoalsController(req: Request, res: Response): Promis
 
 export async function listTeamGoalsController(req: Request, res: Response): Promise<void> {
   res.json((await listTeamGoals(actor(req), req.body as GoalTeamInput)) satisfies GoalDto[]);
+}
+
+export async function exportMyGoalsController(req: Request, res: Response): Promise<void> {
+  const { timeZone } = req.body as { timeZone?: string };
+  const goals = await listMyGoals(actor(req));
+  const wb = await buildGoalsWorkbook(goals, { timeZone, includeOwner: false });
+  res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
+  res.setHeader('Content-Disposition', 'attachment; filename="my-goals.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
+}
+
+export async function exportTeamGoalsController(req: Request, res: Response): Promise<void> {
+  const body = req.body as GoalTeamInput & { timeZone?: string };
+  const goals = await listTeamGoals(actor(req), body);
+  const wb = await buildGoalsWorkbook(goals, { timeZone: body.timeZone, includeOwner: true });
+  res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
+  res.setHeader('Content-Disposition', 'attachment; filename="team-goals.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
 }
 
 export async function getGoalController(req: Request, res: Response): Promise<void> {
@@ -68,11 +92,13 @@ export async function updateGoalProgressController(req: Request, res: Response):
 }
 
 export async function submitGoalController(req: Request, res: Response): Promise<void> {
-  res.json((await submitGoal(actor(req), parseGoalId(req))) satisfies GoalDto);
+  const { expectedUpdatedAt } = req.body as { expectedUpdatedAt?: string };
+  res.json((await submitGoal(actor(req), parseGoalId(req), expectedUpdatedAt)) satisfies GoalDto);
 }
 
 export async function approveGoalController(req: Request, res: Response): Promise<void> {
-  res.json((await approveGoal(actor(req), parseGoalId(req))) satisfies GoalDto);
+  const { expectedUpdatedAt } = req.body as { expectedUpdatedAt?: string };
+  res.json((await approveGoal(actor(req), parseGoalId(req), expectedUpdatedAt)) satisfies GoalDto);
 }
 
 export async function rejectGoalController(req: Request, res: Response): Promise<void> {
@@ -81,7 +107,8 @@ export async function rejectGoalController(req: Request, res: Response): Promise
 }
 
 export async function finalizeGoalController(req: Request, res: Response): Promise<void> {
-  res.json((await finalizeResults(actor(req), parseGoalId(req))) satisfies GoalDto);
+  const { expectedUpdatedAt } = req.body as { expectedUpdatedAt?: string };
+  res.json((await finalizeResults(actor(req), parseGoalId(req), expectedUpdatedAt)) satisfies GoalDto);
 }
 
 export async function resolveGoalController(req: Request, res: Response): Promise<void> {

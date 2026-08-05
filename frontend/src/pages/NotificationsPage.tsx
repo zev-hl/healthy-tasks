@@ -145,16 +145,18 @@ export function NotificationsPage() {
 
   const feed = useMemo(() => buildFeed(data), [data]);
 
-  // Total per-type tallies for the pill badges (matches the mock, which shows
-  // totals rather than unread-only counts).
+  // Per-type tallies for the pill badges. When "Unread only" is on, the badges
+  // count just the unread items (matching what the list below shows); otherwise
+  // they show totals.
   const countByType = useMemo(() => {
     const c = { all: 0, mentioned: 0, assigned: 0, reminder: 0 };
     for (const it of feed) {
+      if (unreadOnly && it.read) continue;
       c.all += 1;
       c[it.kind] += 1;
     }
     return c;
-  }, [feed]);
+  }, [feed, unreadOnly]);
 
   const unreadTotal = useMemo(() => feed.filter((it) => !it.read).length, [feed]);
 

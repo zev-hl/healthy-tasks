@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GoalDto, GoalResolution } from '@healthy-tasks/shared';
 import { GOAL_RESOLUTIONS, GOAL_RESOLUTION_LABELS } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import { useStaleWriteGuard } from '../../lib/useStaleWriteGuard';
+import { ConflictBanner } from '../ConflictBanner';
 import { UserChip } from '../ui/Avatar';
 import { GoalStatusPill, formatGoalValue, formatDeadline } from './goalUi';
 import { GoalEditorModal } from './GoalEditorModal';
@@ -35,6 +37,54 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
   const [resolution, setResolution] = useState<GoalResolution>('Met');
   const [supervisorComments, setSupervisorComments] = useState('');
 
+  const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
+
+  // Sync the editable panel fields (results/notes/risks/mitigations) to a goal.
+  function syncPanelFields(g: GoalDto) {
+    setResultValue(g.resultValue != null ? String(g.resultValue) : '');
+    setNotes(g.notes ?? '');
+    setRisks(g.risks ?? '');
+    setMitigations(g.mitigations ?? '');
+  }
+
+  // Re-fetch fresh on open: the goal object came from the (possibly stale) list.
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getGoal(initial.id)
+      .then((fresh) => {
+        if (cancelled) return;
+        setGoal(fresh);
+        syncPanelFields(fresh);
+      })
+      .catch(() => {
+        /* keep the list's copy if the refetch fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Only on mount / when a different goal is opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial.id]);
+
+  // Reload current server data onto the screen after a conflict (Refresh).
+  async function handleRefresh() {
+    setBusy(true);
+    setError(null);
+    try {
+      const fresh = await api.getGoal(goal.id);
+      setGoal(fresh);
+      syncPanelFields(fresh);
+      onChanged(fresh);
+      reset();
+      setPanel(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not refresh the goal.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const isOwner = user?.id === goal.ownerId;
   const isCreator = user?.id === goal.createdById;
   const isAdmin = user?.role === 'Admin';
@@ -52,7 +102,11 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
     setBusy(true);
     setError(null);
     try {
-      applied(await fn());
+      // On a stale-write 409 the guard raises the conflict banner instead of
+      // throwing; other errors fall through to the catch below.
+      await guard(async () => {
+        applied(await fn());
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Action failed.');
     } finally {
@@ -108,6 +162,7 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
         </div>
 
         {error && <div className="alert error">{error}</div>}
+        {bannerShown && <ConflictBanner entity="goal" onReview={review} />}
 
         {goal.status === 'Draft' && goal.rejectionComments && (
           <div className="alert error goal-reject-note">
@@ -215,22 +270,32 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
               <button type="button" className="secondary" onClick={() => setPanel(null)}>
                 Cancel
               </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  run(() =>
-                    api.updateGoalProgress(goal.id, {
-                      resultValue: resultValue === '' ? null : Number(resultValue),
-                      notes,
-                      risks,
-                      mitigations,
-                    }),
-                  )
-                }
-              >
-                Save results
-              </button>
+              {conflict ? (
+                <button type="button" disabled={busy} onClick={() => void handleRefresh()}>
+                  {busy ? 'Refreshing…' : 'Refresh'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() =>
+                      api.updateGoalProgress(
+                        goal.id,
+                        {
+                          resultValue: resultValue === '' ? null : Number(resultValue),
+                          notes,
+                          risks,
+                          mitigations,
+                        },
+                        goal.updatedAt,
+                      ),
+                    )
+                  }
+                >
+                  Save results
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -250,14 +315,22 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
               <button type="button" className="secondary" onClick={() => setPanel(null)}>
                 Cancel
               </button>
-              <button
-                type="button"
-                className="danger"
-                disabled={busy || !rejectComments.trim()}
-                onClick={() => run(() => api.rejectGoal(goal.id, { comments: rejectComments.trim() }))}
-              >
-                Send back to draft
-              </button>
+              {conflict ? (
+                <button type="button" disabled={busy} onClick={() => void handleRefresh()}>
+                  {busy ? 'Refreshing…' : 'Refresh'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={busy || !rejectComments.trim()}
+                  onClick={() =>
+                    run(() => api.rejectGoal(goal.id, { comments: rejectComments.trim() }, goal.updatedAt))
+                  }
+                >
+                  Send back to draft
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -293,17 +366,27 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
               <button type="button" className="secondary" onClick={() => setPanel(null)}>
                 Cancel
               </button>
-              <button
-                type="button"
-                disabled={busy || !supervisorComments.trim()}
-                onClick={() =>
-                  run(() =>
-                    api.resolveGoal(goal.id, { resolution, supervisorComments: supervisorComments.trim() }),
-                  )
-                }
-              >
-                Resolve goal
-              </button>
+              {conflict ? (
+                <button type="button" disabled={busy} onClick={() => void handleRefresh()}>
+                  {busy ? 'Refreshing…' : 'Refresh'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy || !supervisorComments.trim()}
+                  onClick={() =>
+                    run(() =>
+                      api.resolveGoal(
+                        goal.id,
+                        { resolution, supervisorComments: supervisorComments.trim() },
+                        goal.updatedAt,
+                      ),
+                    )
+                  }
+                >
+                  Resolve goal
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -311,62 +394,78 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
         {/* --- Primary action bar (hidden while an inline panel is open) --- */}
         {panel === null && (
           <div className="goal-detail-actions">
-            {goal.status === 'Draft' && canDraft && (
-              <>
-                <button type="button" className="secondary" onClick={() => setEditing(true)}>
-                  Edit
-                </button>
-                <button type="button" className="ghost danger" onClick={onDelete} disabled={busy}>
-                  Delete
-                </button>
-                <button type="button" disabled={busy} onClick={() => run(() => api.submitGoal(goal.id))}>
-                  Submit for approval
-                </button>
-              </>
-            )}
-
-            {goal.status === 'PendingApproval' && canSupervise && (
-              <>
-                <button type="button" className="secondary" onClick={() => setPanel('reject')}>
-                  Reject…
-                </button>
-                <button type="button" disabled={busy} onClick={() => run(() => api.approveGoal(goal.id))}>
-                  Approve
-                </button>
-              </>
-            )}
-            {goal.status === 'PendingApproval' && !canSupervise && (
-              <span className="muted">Awaiting supervisor approval.</span>
-            )}
-
-            {goal.status === 'Approved' && (isOwner || isAdmin) && (
-              <>
-                <button type="button" className="secondary" onClick={() => setPanel('progress')}>
-                  Update results
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm('Mark results final and send for review? You will no longer be able to update results.'))
-                      run(() => api.finalizeGoal(goal.id));
-                  }}
-                >
-                  Mark results final
-                </button>
-              </>
-            )}
-            {goal.status === 'Approved' && !isOwner && !isAdmin && (
-              <span className="muted">Active — the employee is recording results.</span>
-            )}
-
-            {goal.status === 'UnderReview' && canSupervise && (
-              <button type="button" disabled={busy} onClick={() => setPanel('resolve')}>
-                Review &amp; resolve…
+            {conflict ? (
+              <button type="button" disabled={busy} onClick={() => void handleRefresh()}>
+                {busy ? 'Refreshing…' : 'Refresh'}
               </button>
-            )}
-            {goal.status === 'UnderReview' && !canSupervise && (
-              <span className="muted">Results submitted — awaiting the supervisor&rsquo;s review.</span>
+            ) : (
+              <>
+                {goal.status === 'Draft' && canDraft && (
+                  <>
+                    <button type="button" className="secondary" onClick={() => setEditing(true)}>
+                      Edit
+                    </button>
+                    <button type="button" className="ghost danger" onClick={onDelete} disabled={busy}>
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => run(() => api.submitGoal(goal.id, goal.updatedAt))}
+                    >
+                      Submit for approval
+                    </button>
+                  </>
+                )}
+
+                {goal.status === 'PendingApproval' && canSupervise && (
+                  <>
+                    <button type="button" className="secondary" onClick={() => setPanel('reject')}>
+                      Reject…
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => run(() => api.approveGoal(goal.id, goal.updatedAt))}
+                    >
+                      Approve
+                    </button>
+                  </>
+                )}
+                {goal.status === 'PendingApproval' && !canSupervise && (
+                  <span className="muted">Awaiting supervisor approval.</span>
+                )}
+
+                {goal.status === 'Approved' && (isOwner || isAdmin) && (
+                  <>
+                    <button type="button" className="secondary" onClick={() => setPanel('progress')}>
+                      Update results
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        if (window.confirm('Mark results final and send for review? You will no longer be able to update results.'))
+                          run(() => api.finalizeGoal(goal.id, goal.updatedAt));
+                      }}
+                    >
+                      Mark results final
+                    </button>
+                  </>
+                )}
+                {goal.status === 'Approved' && !isOwner && !isAdmin && (
+                  <span className="muted">Active — the employee is recording results.</span>
+                )}
+
+                {goal.status === 'UnderReview' && canSupervise && (
+                  <button type="button" disabled={busy} onClick={() => setPanel('resolve')}>
+                    Review &amp; resolve…
+                  </button>
+                )}
+                {goal.status === 'UnderReview' && !canSupervise && (
+                  <span className="muted">Results submitted — awaiting the supervisor&rsquo;s review.</span>
+                )}
+              </>
             )}
 
             <span className="goal-actions-spacer" />

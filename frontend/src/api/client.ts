@@ -226,8 +226,11 @@ export const api = {
   getTaskHistory: (id: number) => request<TaskHistoryEntryDto[]>(`/api/tasks/${id}/history`),
   createTask: (body: CreateTaskRequest) =>
     request<TaskDto>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
-  updateTask: (id: number, body: UpdateTaskRequest) =>
-    request<TaskDetailDto>(`/api/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateTask: (id: number, body: UpdateTaskRequest, expectedUpdatedAt?: string) =>
+    request<TaskDetailDto>(`/api/tasks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...body, expectedUpdatedAt }),
+    }),
   // Review workflow (Phase 10): leave Review, restoring prior assignee + status.
   reviewed: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}/reviewed`, { method: 'POST' }),
   recallReview: (id: number) =>
@@ -408,18 +411,33 @@ export const api = {
   getGoal: (id: number) => request<GoalDto>(`/api/goals/${id}`),
   createGoal: (body: CreateGoalRequest) =>
     request<GoalDto>('/api/goals', { method: 'POST', body: JSON.stringify(body) }),
-  updateGoal: (id: number, body: UpdateGoalRequest) =>
-    request<GoalDto>(`/api/goals/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateGoal: (id: number, body: UpdateGoalRequest, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...body, expectedUpdatedAt }),
+    }),
   deleteGoal: (id: number) => request<void>(`/api/goals/${id}`, { method: 'DELETE' }),
-  updateGoalProgress: (id: number, body: UpdateGoalProgressRequest) =>
-    request<GoalDto>(`/api/goals/${id}/progress`, { method: 'PATCH', body: JSON.stringify(body) }),
-  submitGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/submit`, { method: 'POST' }),
-  approveGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/approve`, { method: 'POST' }),
-  rejectGoal: (id: number, body: RejectGoalRequest) =>
-    request<GoalDto>(`/api/goals/${id}/reject`, { method: 'POST', body: JSON.stringify(body) }),
-  finalizeGoal: (id: number) => request<GoalDto>(`/api/goals/${id}/finalize`, { method: 'POST' }),
-  resolveGoal: (id: number, body: ResolveGoalRequest) =>
-    request<GoalDto>(`/api/goals/${id}/resolve`, { method: 'POST', body: JSON.stringify(body) }),
+  updateGoalProgress: (id: number, body: UpdateGoalProgressRequest, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}/progress`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...body, expectedUpdatedAt }),
+    }),
+  submitGoal: (id: number, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}/submit`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
+  approveGoal: (id: number, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}/approve`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
+  rejectGoal: (id: number, body: RejectGoalRequest, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, expectedUpdatedAt }),
+    }),
+  finalizeGoal: (id: number, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}/finalize`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
+  resolveGoal: (id: number, body: ResolveGoalRequest, expectedUpdatedAt?: string) =>
+    request<GoalDto>(`/api/goals/${id}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, expectedUpdatedAt }),
+    }),
 
   // --- Global app settings (Admin) ---
   getAppSettings: () => request<AppSettingsDto>('/api/settings'),
@@ -464,6 +482,24 @@ export function exportTasksToExcel(body: TaskSearchRequest): Promise<void> {
 /** Export the Due Date Performance Report to an .xlsx download (Phase 13). */
 export function exportDueDateReportToExcel(body: DueDateReportRequest): Promise<void> {
   return downloadXlsx('/api/reports/due-date/export', body, 'due-date-performance.xlsx');
+}
+
+/** Export My Goals to an .xlsx download. */
+export function exportMyGoalsToExcel(): Promise<void> {
+  return downloadXlsx(
+    '/api/goals/mine/export',
+    { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    'my-goals.xlsx',
+  );
+}
+
+/** Export Team Goals (with the current filters) to an .xlsx download. */
+export function exportTeamGoalsToExcel(body: GoalTeamRequest = {}): Promise<void> {
+  return downloadXlsx(
+    '/api/goals/team/export',
+    { ...body, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+    'team-goals.xlsx',
+  );
 }
 
 /**

@@ -159,6 +159,9 @@ export const updateTaskSchema = z.object({
   // Phase 10: set by Gantt-drag date edits so the server coalesces the History
   // entry with a recent one instead of logging every intermediate position.
   coalesceHistory: z.boolean().optional(),
+  // Optimistic-concurrency token: the ISO updatedAt the client last saw (409 on
+  // mismatch). Optional/back-compatible.
+  expectedUpdatedAt: z.string().optional(),
 });
 
 // Duplicate a task: optionally clone its whole sub-tree.
@@ -578,6 +581,11 @@ export const createGoalSchema = z
     }
   });
 
+// Optimistic-concurrency token: the ISO `updatedAt` the client last saw. When
+// present, a write is rejected (409, code STALE_WRITE) if the record changed
+// since. Optional/back-compatible.
+const expectedUpdatedAt = z.string().optional();
+
 // Draft edit (PATCH). Any field may be omitted (left unchanged). The
 // metric/unit cross-check runs in the service, where the merged value is known.
 export const updateGoalSchema = z.object({
@@ -589,6 +597,7 @@ export const updateGoalSchema = z.object({
   risks: optionalText,
   mitigations: optionalText,
   notes: optionalText,
+  expectedUpdatedAt,
 });
 
 // Employee progress update while Active (results + soft fields only).
@@ -597,16 +606,23 @@ export const updateGoalProgressSchema = z.object({
   notes: optionalText,
   risks: optionalText,
   mitigations: optionalText,
+  expectedUpdatedAt,
 });
 
 export const rejectGoalSchema = z.object({
   comments: requiredComment,
+  expectedUpdatedAt,
 });
 
 export const resolveGoalSchema = z.object({
   resolution: z.enum(GOAL_RESOLUTIONS),
   supervisorComments: requiredComment,
+  expectedUpdatedAt,
 });
+
+// Body for the lifecycle transitions that otherwise take no payload
+// (submit / approve / finalize): just the concurrency token.
+export const goalVersionSchema = z.object({ expectedUpdatedAt });
 
 export const goalTeamSchema = z.object({
   filters: z
@@ -618,6 +634,12 @@ export const goalTeamSchema = z.object({
     })
     .optional(),
 });
+
+// Export bodies: carry the requester's local time zone so dates render to match
+// the app. The team export also carries the same filters as the list.
+const timeZoneField = z.string().max(64).optional();
+export const goalMineExportSchema = z.object({ timeZone: timeZoneField });
+export const goalTeamExportSchema = goalTeamSchema.extend({ timeZone: timeZoneField });
 
 export type CreateGoalInput = z.infer<typeof createGoalSchema>;
 export type UpdateGoalInput = z.infer<typeof updateGoalSchema>;

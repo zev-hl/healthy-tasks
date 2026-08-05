@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ActiveUserDto, GoalDto, GoalStatus, GoalTeamFilters } from '@healthy-tasks/shared';
 import { GOAL_STATUSES, GOAL_STATUS_LABELS } from '@healthy-tasks/shared';
-import { api, ApiError } from '../api/client';
+import { api, ApiError, exportTeamGoalsToExcel } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState } from '../components/ui/EmptyState';
 import { FilterPopover } from '../components/FilterPopover';
@@ -27,6 +27,18 @@ export function TeamGoalsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await exportTeamGoalsToExcel({ filters });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   // Phase 13: the employee filter shows the supervisor's ENTIRE downline (Admin:
   // everyone), matching the broadened Team Goals visibility. Creating a goal
@@ -110,6 +122,14 @@ export function TeamGoalsPage() {
         <h1>Team Goals</h1>
         <span className="tasks-total">{goals.length}</span>
         <span className="spacer" />
+        <button
+          type="button"
+          className="secondary"
+          disabled={exporting || goals.length === 0}
+          onClick={() => void handleExport()}
+        >
+          {exporting ? 'Exporting…' : 'Export'}
+        </button>
         {createOwnerOptions.length > 0 && (
           <button type="button" onClick={() => setCreating(true)}>
             + New goal

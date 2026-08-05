@@ -14,6 +14,8 @@ import {
   type UserDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { useStaleWriteGuard } from '../lib/useStaleWriteGuard';
+import { ConflictBanner } from './ConflictBanner';
 import { RichText } from './RichText';
 import { RichTextEditor } from './RichTextEditor';
 import { AttachmentSection } from './AttachmentSection';
@@ -55,6 +57,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setTask(t);
     setHistoryVersion((v) => v + 1);
   }, []);
+
+  // Optimistic concurrency for the task's own saves (fields / name / description).
+  const { conflict, bannerShown, guard, review, reset: resetConflict } = useStaleWriteGuard();
 
   const [tab, setTab] = useState<Tab>('work');
   const [error, setError] = useState<string | null>(null);
@@ -184,20 +189,26 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     const becameCompleted = nextStatus === 'Completed' && task.status !== 'Completed';
     setSavingFields(true);
     try {
-      const updated = await api.updateTask(task.id, {
-        assigneeId: assigneeId === '' ? null : assigneeId,
-        priority,
-        status: nextStatus,
-        startAt: stagedStartIso,
-        dueAt: stagedDueIso,
+      await guard(async () => {
+        const updated = await api.updateTask(
+          task.id,
+          {
+            assigneeId: assigneeId === '' ? null : assigneeId,
+            priority,
+            status: nextStatus,
+            startAt: stagedStartIso,
+            dueAt: stagedDueIso,
+          },
+          task.updatedAt,
+        );
+        applyTask(updated);
+        syncStaged(updated);
+        flashSaved();
+        if (becameCompleted) {
+          setJustCompleted(true);
+          window.setTimeout(() => setJustCompleted(false), 1300);
+        }
       });
-      applyTask(updated);
-      syncStaged(updated);
-      flashSaved();
-      if (becameCompleted) {
-        setJustCompleted(true);
-        window.setTimeout(() => setJustCompleted(false), 1300);
-      }
     } catch (err) {
       setFieldsError(err instanceof ApiError ? err.message : 'Could not save changes');
     } finally {
@@ -226,6 +237,22 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     syncStaged(task);
   }
 
+  // Reload the task from the server after a stale-write conflict (Refresh) —
+  // discards the on-screen edits and shows the current data.
+  async function handleConflictRefresh() {
+    try {
+      const fresh = await api.getTask(task.id);
+      applyTask(fresh);
+      syncStaged(fresh);
+      setEditingName(false);
+      setEditingDesc(false);
+      setFieldsError(null);
+      resetConflict();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not refresh the task');
+    }
+  }
+
   // Clearing a date clears its time too, so a time is never left orphaned.
   function handleStartDate(value: string) {
     setStartDate(value);
@@ -244,16 +271,22 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setFieldsError(null);
     setSavingFields(true);
     try {
-      const updated = await api.updateTask(task.id, {
-        priority,
-        status: 'Review',
-        reviewerId,
-        startAt: stagedStartIso,
-        dueAt: stagedDueIso,
+      await guard(async () => {
+        const updated = await api.updateTask(
+          task.id,
+          {
+            priority,
+            status: 'Review',
+            reviewerId,
+            startAt: stagedStartIso,
+            dueAt: stagedDueIso,
+          },
+          task.updatedAt,
+        );
+        applyTask(updated);
+        syncStaged(updated);
+        flashSaved();
       });
-      applyTask(updated);
-      syncStaged(updated);
-      flashSaved();
     } catch (err) {
       setFieldsError(err instanceof ApiError ? err.message : 'Could not send to Review');
     } finally {
@@ -326,9 +359,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     if (name.length < TASK_NAME_MIN_LENGTH) return;
     setSavingName(true);
     try {
-      applyTask(await api.updateTask(task.id, { name }));
-      setEditingName(false);
-      flashSaved();
+      await guard(async () => {
+        applyTask(await api.updateTask(task.id, { name }, task.updatedAt));
+        setEditingName(false);
+        flashSaved();
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the name');
     } finally {
@@ -338,9 +373,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   async function saveDesc() {
     setSavingDesc(true);
     try {
-      applyTask(await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }));
-      setEditingDesc(false);
-      flashSaved();
+      await guard(async () => {
+        applyTask(
+          await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }, task.updatedAt),
+        );
+        setEditingDesc(false);
+        flashSaved();
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the description');
     } finally {
@@ -572,6 +611,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {notice && <div className="alert success">{notice}</div>}
       {error && <div className="alert error">{error}</div>}
+      {bannerShown && <ConflictBanner entity="task" onReview={review} />}
       {!canEdit && (
         <div className="alert info read-only-banner" role="status">
           {task.access === 'tree' ? (
@@ -588,9 +628,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           <div className="field" style={{ margin: 0, maxWidth: 640 }}>
             <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} aria-label="Task name" autoFocus />
             <div className="btn-row">
-              <button type="button" disabled={savingName || nameDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={saveName}>
-                {savingName ? 'Saving…' : 'Save'}
-              </button>
+              {conflict ? (
+                <button type="button" disabled={savingName} onClick={() => void handleConflictRefresh()}>
+                  {savingName ? 'Refreshing…' : 'Refresh'}
+                </button>
+              ) : (
+                <button type="button" disabled={savingName || nameDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={saveName}>
+                  {savingName ? 'Saving…' : 'Save'}
+                </button>
+              )}
               <button type="button" className="secondary" onClick={() => { setEditingName(false); setNameDraft(task.name); }}>
                 Cancel
               </button>
@@ -743,14 +789,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           ) : null}
           {fieldsError && <span className="savebar-error">{fieldsError}</span>}
           <div className="spacer" />
-          {fieldsDirty && (
+          {fieldsDirty && !conflict && (
             <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
               Discard
             </button>
           )}
-          <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty} onClick={() => void saveFields()}>
-            {savingFields ? 'Saving…' : 'Save changes'}
-          </button>
+          {conflict ? (
+            <button type="button" className="btn-sm" disabled={savingFields} onClick={() => void handleConflictRefresh()}>
+              {savingFields ? 'Refreshing…' : 'Refresh'}
+            </button>
+          ) : (
+            <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty} onClick={() => void saveFields()}>
+              {savingFields ? 'Saving…' : 'Save changes'}
+            </button>
+          )}
         </div>
         )}
       </div>
@@ -787,9 +839,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   <div>
                     <RichTextEditor value={descDraft} onChange={setDescDraft} ariaLabel="Task description" autoFocus />
                     <div className="btn-row">
-                      <button type="button" disabled={savingDesc} onClick={saveDesc}>
-                        {savingDesc ? 'Saving…' : 'Save'}
-                      </button>
+                      {conflict ? (
+                        <button type="button" disabled={savingDesc} onClick={() => void handleConflictRefresh()}>
+                          {savingDesc ? 'Refreshing…' : 'Refresh'}
+                        </button>
+                      ) : (
+                        <button type="button" disabled={savingDesc} onClick={saveDesc}>
+                          {savingDesc ? 'Saving…' : 'Save'}
+                        </button>
+                      )}
                       <button type="button" className="secondary" onClick={() => { setEditingDesc(false); setDescDraft(task.description ?? ''); }}>
                         Cancel
                       </button>

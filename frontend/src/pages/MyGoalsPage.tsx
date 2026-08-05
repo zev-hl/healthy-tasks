@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { GoalDto, GoalStatus } from '@healthy-tasks/shared';
 import { GOAL_STATUSES, GOAL_STATUS_LABELS } from '@healthy-tasks/shared';
-import { api, ApiError } from '../api/client';
+import { api, ApiError, exportMyGoalsToExcel } from '../api/client';
 import { EmptyState } from '../components/ui/EmptyState';
 import { GoalCard } from '../components/goals/GoalCard';
 import { GoalDetailModal } from '../components/goals/GoalDetailModal';
@@ -16,6 +16,18 @@ export function MyGoalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      await exportMyGoalsToExcel();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -41,6 +53,14 @@ export function MyGoalsPage() {
         <h1>My Goals</h1>
         <span className="tasks-total">{goals.length}</span>
         <span className="spacer" />
+        <button
+          type="button"
+          className="secondary"
+          disabled={exporting || goals.length === 0}
+          onClick={() => void handleExport()}
+        >
+          {exporting ? 'Exporting…' : 'Export'}
+        </button>
         <button type="button" onClick={() => setCreating(true)}>
           + New goal
         </button>

@@ -1,6 +1,7 @@
 import type { GoalDto, Role } from '@healthy-tasks/shared';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
+import { assertNotStale } from '../utils/optimistic.js';
 import type {
   CreateGoalInput,
   GoalTeamInput,
@@ -181,6 +182,7 @@ export async function updateGoalDraft(
   input: UpdateGoalInput,
 ): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, input.expectedUpdatedAt);
   if (goal.status !== 'Draft') throw HttpError.conflict('Only a draft goal can be edited');
   if (!canEditDraft(actor, goal)) throw HttpError.forbidden('You cannot edit this goal');
 
@@ -227,6 +229,7 @@ export async function updateGoalProgress(
   input: UpdateGoalProgressInput,
 ): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, input.expectedUpdatedAt);
   assertIsOwner(actor, goal);
   if (goal.status !== 'Approved') {
     throw HttpError.conflict('Results can only be updated while the goal is active');
@@ -246,8 +249,13 @@ export async function updateGoalProgress(
 
 // --- Lifecycle transitions -------------------------------------------------
 
-export async function submitGoal(actor: GoalActor, id: number): Promise<GoalDto> {
+export async function submitGoal(
+  actor: GoalActor,
+  id: number,
+  expectedUpdatedAt?: string,
+): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, expectedUpdatedAt);
   if (goal.status !== 'Draft') throw HttpError.conflict('Only a draft goal can be submitted for approval');
   if (!canEditDraft(actor, goal)) throw HttpError.forbidden('You cannot submit this goal');
   if (goal.metricType === 'Other' && !goal.unitLabel) {
@@ -262,8 +270,13 @@ export async function submitGoal(actor: GoalActor, id: number): Promise<GoalDto>
   return toGoalDto(updated);
 }
 
-export async function approveGoal(actor: GoalActor, id: number): Promise<GoalDto> {
+export async function approveGoal(
+  actor: GoalActor,
+  id: number,
+  expectedUpdatedAt?: string,
+): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, expectedUpdatedAt);
   if (goal.status !== 'PendingApproval') {
     throw HttpError.conflict('Only a goal pending approval can be approved');
   }
@@ -285,6 +298,7 @@ export async function approveGoal(actor: GoalActor, id: number): Promise<GoalDto
 
 export async function rejectGoal(actor: GoalActor, id: number, input: RejectGoalInput): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, input.expectedUpdatedAt);
   if (goal.status !== 'PendingApproval') {
     throw HttpError.conflict('Only a goal pending approval can be rejected');
   }
@@ -305,8 +319,13 @@ export async function rejectGoal(actor: GoalActor, id: number, input: RejectGoal
  * even before its deadline (whichever comes first). If the deadline pass already
  * moved it, the status guard rejects this as a no-op conflict.
  */
-export async function finalizeResults(actor: GoalActor, id: number): Promise<GoalDto> {
+export async function finalizeResults(
+  actor: GoalActor,
+  id: number,
+  expectedUpdatedAt?: string,
+): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, expectedUpdatedAt);
   assertIsOwner(actor, goal);
   if (goal.status !== 'Approved') {
     throw HttpError.conflict('Only an active goal can have its results marked final');
@@ -322,6 +341,7 @@ export async function finalizeResults(actor: GoalActor, id: number): Promise<Goa
 
 export async function resolveGoal(actor: GoalActor, id: number, input: ResolveGoalInput): Promise<GoalDto> {
   const goal = await findGoalOrThrow(id);
+  assertNotStale(goal, input.expectedUpdatedAt);
   if (goal.status !== 'UnderReview') {
     throw HttpError.conflict('A goal can only be resolved once it is under review');
   }
