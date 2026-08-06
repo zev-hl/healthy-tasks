@@ -5,5 +5,13 @@
     "rootDir": "./src",
     "moduleResolution": "Node"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  // Only consulted by `tsc --watch` (the compose `shared` dev watcher); ignored
+  // by one-shot builds (prod/test). Polling is required because Windows bind
+  // mounts don't deliver inotify events into the Linux container.
+  "watchOptions": {
+    "watchFile": "priorityPollingInterval",
+    "watchDirectory": "dynamicPriorityPolling",
+    "fallbackPolling": "dynamicPriority"
+  }
 }

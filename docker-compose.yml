@@ -23,6 +23,23 @@ services:
       timeout: 5s
       retries: 10
 
+  # Watches packages/shared and rebuilds its dist on change, so edits to the
+  # shared package hot-reload into backend + frontend the same way their own
+  # src does. Without this, packages/shared is baked into each image at build
+  # time and a shared edit silently ships a stale bundle until a full rebuild
+  # (a missing runtime export then crash-loops the backend). Reuses the backend
+  # image because it already has the workspace + TypeScript installed.
+  shared:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    working_dir: /app
+    command: ['npm', 'run', 'dev', '--workspace', '@healthy-tasks/shared']
+    volumes:
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+
   backend:
     build:
       context: .
@@ -33,6 +50,23 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      shared:
+        condition: service_started
+    # Surface a crash-loop (e.g. a stale @healthy-tasks/shared bundle missing a
+    # runtime export) as "unhealthy" in `docker compose ps`, instead of a bare
+    # "Up" that hides a dead process and looks like a login/password failure.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:4000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     environment:
       NODE_ENV: development
       PORT: '4000'
@@ -67,6 +101,8 @@ services:
     volumes:
       # Bind-mount source for hot reload; keep container-managed node_modules.
       - ./backend:/app/backend
+      # Live shared package (dist kept fresh by the `shared` watcher service).
+      - ./packages/shared:/app/packages/shared
       - /app/backend/node_modules
       - /app/node_modules
 
@@ -86,6 +122,8 @@ services:
       - '5173:5173'
     volumes:
       - ./frontend:/app/frontend
+      # Live shared package (dist kept fresh by the `shared` watcher service).
+      - ./packages/shared:/app/packages/shared
       - /app/frontend/node_modules
       - /app/node_modules
 
