@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  REMINDER_CANCEL_REASON_LABELS,
   REMINDER_SNOOZE_OPTIONS,
   reminderLeadLabel,
   type AssignAction,
   type NotificationsDto,
+  type ReminderCancelReason,
   type TaskPriority,
   type TaskUserRef,
 } from '@healthy-tasks/shared';
@@ -33,6 +35,9 @@ interface FeedItem {
   commentHtml?: string;
   priority?: TaskPriority;
   leadMinutes?: number;
+  // reminder: distinguishes a live/due reminder from a soft-canceled notice.
+  reminderKind?: 'due' | 'canceled';
+  canceledReason?: ReminderCancelReason | null;
   action?: AssignAction;
   actor?: TaskUserRef | null; // assigned: who assigned/unassigned
   dueAt?: string | null; // assigned: the task's due date
@@ -76,10 +81,13 @@ function buildFeed(d: NotificationsDto): FeedItem[] {
       id: r.id,
       taskId: r.taskId,
       taskName: r.taskName,
-      at: r.startAt,
+      // A canceled notice sorts by when it was canceled; a due one by Start time.
+      at: r.canceledAt ?? r.startAt,
       read: r.read,
       priority: r.priority,
       leadMinutes: r.leadMinutes,
+      reminderKind: r.kind,
+      canceledReason: r.canceledReason,
     });
   // Newest first; undated (null) entries sort to the bottom.
   return items.sort((x, y) => (y.at ?? '').localeCompare(x.at ?? ''));
@@ -363,6 +371,8 @@ export function NotificationsPage() {
                             ) : (
                               <strong>{it.action === 'added' ? 'Assigned to you' : 'Unassigned from you'}</strong>
                             )
+                          ) : it.reminderKind === 'canceled' ? (
+                            <strong>Reminder canceled</strong>
                           ) : (
                             <strong>Reminder due</strong>
                           )}
@@ -406,12 +416,24 @@ export function NotificationsPage() {
                               </span>
                             </>
                           )}
-                          {it.kind === 'reminder' && it.leadMinutes != null && (
+                          {it.kind === 'reminder' && it.reminderKind === 'canceled' && (
                             <>
                               {it.priority && <span className="notif-meta-sep">·</span>}
-                              <span className="muted">{reminderLeadLabel(it.leadMinutes)}</span>
+                              <span className="muted">
+                                {it.canceledReason
+                                  ? REMINDER_CANCEL_REASON_LABELS[it.canceledReason]
+                                  : 'canceled'}
+                              </span>
                             </>
                           )}
+                          {it.kind === 'reminder' &&
+                            it.reminderKind !== 'canceled' &&
+                            it.leadMinutes != null && (
+                              <>
+                                {it.priority && <span className="notif-meta-sep">·</span>}
+                                <span className="muted">{reminderLeadLabel(it.leadMinutes)}</span>
+                              </>
+                            )}
                         </div>
                       )}
                     </div>
@@ -444,7 +466,7 @@ export function NotificationsPage() {
                             Mark unread
                           </button>
                         )}
-                        {it.kind === 'reminder' && (
+                        {it.kind === 'reminder' && it.reminderKind !== 'canceled' && (
                           <span className="notif-snooze">
                             <button
                               type="button"

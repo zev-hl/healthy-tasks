@@ -5,6 +5,7 @@ import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
 import { listDueReminders, type DueReminder } from './reminder.service.js';
+import type { Actor } from './access-control.service.js';
 import {
   reminderLeadLabel,
   TERMINAL_TASK_STATUSES,
@@ -90,9 +91,10 @@ function mentionedWhere(userId: string, filter: MentionedFilter) {
 
 /** All three lists for the Notifications screen. */
 export async function listNotifications(
-  userId: string,
+  actor: Actor,
   filter: MentionedFilter,
 ): Promise<NotificationsDto> {
+  const userId = actor.id;
   const prefs = await getNotificationPreferences(userId);
 
   const mentionedRows = await prisma.notification.findMany({
@@ -168,10 +170,15 @@ export async function listNotifications(
   }));
 
   // Reminders are live/time-conditional; opting out suppresses the whole list.
+  // The list carries both due reminders and soft-canceled notices (access-gated
+  // inside listDueReminders). Canceled notices sort by when they were canceled;
+  // due reminders by their task's Start time.
   let reminders: ReminderNotificationDto[] = [];
   if (prefs.remindersInApp) {
-    const due = await listDueReminders(userId, new Date());
-    due.sort((a, b) => (a.startAt?.getTime() ?? 0) - (b.startAt?.getTime() ?? 0));
+    const due = await listDueReminders(actor, new Date());
+    const sortKey = (r: DueReminder): number =>
+      (r.canceledAt ?? r.startAt)?.getTime() ?? 0;
+    due.sort((a, b) => sortKey(a) - sortKey(b));
     reminders = due.map((r) => ({
       id: r.id,
       taskId: r.taskId,
@@ -180,6 +187,9 @@ export async function listNotifications(
       priority: r.priority,
       leadMinutes: r.leadMinutes,
       read: r.readAt !== null,
+      kind: r.kind,
+      canceledReason: r.canceledReason,
+      canceledAt: iso(r.canceledAt),
     }));
   }
 
@@ -189,8 +199,9 @@ export async function listNotifications(
 /** Unread tallies for the bell badge. `schedulerDown` is layered on by the
  * controller (which owns the scheduler-health read), so this stays count-only. */
 export async function getUnreadCounts(
-  userId: string,
+  actor: Actor,
 ): Promise<Omit<UnreadCountDto, 'schedulerDown'>> {
+  const userId = actor.id;
   const prefs = await getNotificationPreferences(userId);
   const [mentioned, assigned] = await Promise.all([
     prisma.notification.count({ where: { userId, type: 'mentioned', readAt: null } }),
@@ -198,7 +209,8 @@ export async function getUnreadCounts(
   ]);
   let reminders = 0;
   if (prefs.remindersInApp) {
-    const due = await listDueReminders(userId, new Date());
+    // Counts unread due reminders AND unread cancel notices (both access-gated).
+    const due = await listDueReminders(actor, new Date());
     reminders = due.filter((r) => r.readAt === null).length;
   }
   return { total: mentioned + assigned + reminders, mentioned, reminders, assigned };
@@ -235,12 +247,14 @@ export async function markNotificationUnread(userId: string, id: string): Promis
  * reminder is claimed (emailSentAt stamped) before sending so concurrent polls
  * don't double-send.
  */
-export async function processDueReminderEmails(userId: string, now: Date): Promise<void> {
+export async function processDueReminderEmails(actor: Actor, now: Date): Promise<void> {
+  const userId = actor.id;
   const prefs = await getNotificationPreferences(userId);
   if (!prefs.remindersInApp || !prefs.remindersEmail) return;
 
-  const due = await listDueReminders(userId, now);
-  const pending = due.filter((r) => r.emailSentAt === null);
+  // Only real (due) reminders are emailed; cancel notices are in-app only.
+  const due = await listDueReminders(actor, now);
+  const pending = due.filter((r) => r.kind === 'due' && r.emailSentAt === null);
   if (pending.length === 0) return;
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });

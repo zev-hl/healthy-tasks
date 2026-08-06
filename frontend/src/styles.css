@@ -1565,6 +1565,10 @@ textarea:focus-visible {
   color: var(--muted-2);
   margin-bottom: 10px;
 }
+/* Inline note on a rail section title, e.g. why "Add reminder" is blocked. */
+.rail-title-note {
+  color: var(--danger-deep);
+}
 .rail-row {
   display: flex;
   align-items: center;

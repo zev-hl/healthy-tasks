@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  REMINDER_BLOCK_LABELS,
+  reminderAddBlock,
   TASK_NAME_MIN_LENGTH,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -85,6 +87,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Reviewed / Recall actions.
   const [pendingReview, setPendingReview] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
+  // Reminders overhaul: when a Save would clear the Start Date or Cancel a task
+  // that HAS reminders, confirm first (the reason drives the dialog copy).
+  const [pendingReminderRemoval, setPendingReminderRemoval] = useState<
+    'start-date-removed' | 'task-canceled' | null
+  >(null);
   // Savebar "All changes saved" label lifecycle: appears on a save, holds
   // briefly, then fades out and goes blank. 'hidden' is the resting state, so a
   // fresh/untouched task shows no flag.
@@ -152,6 +159,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Phase 11 note.)
   const persistedStart = isoToParts(task.startAt);
   const persistedDue = isoToParts(task.dueAt);
+
+  // Whether (and why) adding a reminder is blocked for the task's CURRENT saved
+  // state — shown as a note on the Reminders section title (see TaskReminders,
+  // which disables Add for the same reason, and the server, which also 400s).
+  const reminderBlock = reminderAddBlock(task.startAt, task.status, new Date());
   const fieldsDirty =
     assigneeId !== (task.assigneeId ?? '') ||
     priority !== task.priority ||
@@ -163,7 +175,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
   // Commit all staged fields at once (status, priority, assignee, and dates),
   // always via the explicit "Save changes" button.
-  async function saveFields() {
+  async function saveFields(skipReminderConfirm = false) {
     setFieldsError(null);
     // A time with no date is ambiguous — reject it. (A date with no time is fine:
     // partsToIso fills in the default hour, i.e. auto-defaults on save.)
@@ -178,6 +190,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     const nextStatus = status;
     if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
       setFieldsError('Start must be earlier than Due');
+      return;
+    }
+    // Reminders overhaul: clearing the Start Date or moving into Canceled removes
+    // the task's reminders (the actor's own are hard-deleted). Confirm first when
+    // the task actually has reminders.
+    const startCleared = !stagedStartIso && task.startAt !== null;
+    const becameCanceled = nextStatus === 'Canceled' && task.status !== 'Canceled';
+    if (!skipReminderConfirm && (startCleared || becameCanceled) && task.reminderCount > 0) {
+      setPendingReminderRemoval(becameCanceled ? 'task-canceled' : 'start-date-removed');
       return;
     }
     // Transitioning INTO Review requires choosing a reviewer first — the actual
@@ -1086,8 +1107,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           <TaskRecurrencePanel task={task} onChanged={applyTask} />
 
           <div className="rail-section">
-            <div className="rail-section-title">Reminders</div>
-            <TaskReminders taskId={task.id} />
+            <div className="rail-section-title">
+              Reminders
+              {reminderBlock && (
+                <span className="rail-title-note"> · {REMINDER_BLOCK_LABELS[reminderBlock]}</span>
+              )}
+            </div>
+            <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
           </div>
         </aside>
       </div>
@@ -1106,6 +1132,44 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           onClose={() => setPendingReview(false)}
           onPick={(reviewerId) => saveReview(reviewerId)}
         />
+      )}
+
+      {pendingReminderRemoval && (
+        <div className="modal-backdrop" onClick={() => setPendingReminderRemoval(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0 }}>
+              {pendingReminderRemoval === 'task-canceled'
+                ? 'Cancel this task?'
+                : 'Clear the Start Date?'}
+            </h3>
+            <p>
+              {pendingReminderRemoval === 'task-canceled'
+                ? 'Canceling this task will remove its reminders.'
+                : 'Clearing the Start Date will remove this task’s reminders.'}{' '}
+              Your own reminders are deleted; anyone else with one sees a
+              {' '}“Canceled” notice. Continue?
+            </p>
+            <div className="btn-row">
+              <button
+                type="button"
+                disabled={savingFields}
+                onClick={() => {
+                  setPendingReminderRemoval(null);
+                  void saveFields(true);
+                }}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setPendingReminderRemoval(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {dupOpen && (

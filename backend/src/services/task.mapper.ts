@@ -53,7 +53,9 @@ export const taskDetailInclude = {
   comments: { include: commentInclude, orderBy: { createdAt: 'desc' } },
   // Phase 11: this task's own recurrence rule + how many instances it has spawned.
   recurrence: true,
-  _count: { select: { recurrenceOccurrences: true } },
+  // recurrenceOccurrences: instance count; reminders: all users' reminders on the
+  // task (drives the frontend "reminders will be removed" confirm dialog).
+  _count: { select: { recurrenceOccurrences: true, reminders: true } },
 } as const;
 
 export type TaskWithDetail = TaskWithRefs & {
@@ -66,7 +68,7 @@ export type TaskWithDetail = TaskWithRefs & {
   recurrence: TaskRecurrence | null;
   recurrenceSourceId: number | null;
   recurrenceSeq: number | null;
-  _count: { recurrenceOccurrences: number };
+  _count: { recurrenceOccurrences: number; reminders: number };
 };
 
 export function toTaskRecurrenceDto(r: TaskRecurrence, occurrenceCount: number): TaskRecurrenceDto {
@@ -147,6 +149,7 @@ export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext)
     ...toTaskDto(task),
     access: access.level,
     canTogglePrivate: access.canTogglePrivate,
+    reminderCount: task._count.reminders,
     parent: task.parent ? ref(task.parent) : null,
     children: task.children.map(ref),
     // `blocking` edges → the tasks this one blocks; `blockedBy` edges → predecessors.

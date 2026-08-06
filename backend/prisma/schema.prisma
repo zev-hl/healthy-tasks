@@ -514,6 +514,13 @@ model Reminder {
   // this time (user snoozed it).
   snoozedUntil DateTime?
 
+  // Soft-cancel (Reminders overhaul). Stamped when another user's Save removed
+  // this reminder by clearing the task's Start Date or Canceling the task; the
+  // owner still sees it as a "Canceled" notice (while they have task access)
+  // until they dismiss it. Terminal: a canceled reminder never fires or resurrects.
+  canceledAt     DateTime?
+  canceledReason String?
+
   createdAt DateTime @default(now())
 
   @@index([userId])

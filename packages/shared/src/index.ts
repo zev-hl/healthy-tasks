@@ -316,6 +316,12 @@ export interface TaskDetailDto extends TaskDto {
    * in the Assignee's supervisor chain, but never the Assignee themselves.
    */
   canTogglePrivate: boolean;
+  /**
+   * Count of reminders on this task across ALL users (Reminders overhaul). The
+   * frontend uses it to decide whether to show the "reminders will be removed"
+   * confirm dialog when a Save would clear the Start Date or Cancel the task.
+   */
+  reminderCount: number;
 }
 
 // --- Relationship request shapes (Phase 3) ---------------------------------
@@ -978,7 +984,12 @@ export interface MentionedNotificationDto {
   read: boolean;
 }
 
-/** A row in the Reminders list (a personal reminder that has become due). */
+/**
+ * A row in the Reminders list. Either a `due` reminder (a personal reminder that
+ * has become due) or a `canceled` notice — a reminder another user's Save
+ * removed by clearing the task's Start Date or Canceling it. Both surface only
+ * while the recipient currently has access to the task (the A2 access gate).
+ */
 export interface ReminderNotificationDto {
   id: string; // Reminder id (for mark-read / remove)
   taskId: number;
@@ -987,6 +998,12 @@ export interface ReminderNotificationDto {
   priority: TaskPriority;
   leadMinutes: number;
   read: boolean;
+  /** `due` = a live/time-based reminder; `canceled` = a soft-canceled notice. */
+  kind: 'due' | 'canceled';
+  /** Why a `canceled` notice was raised; null for `due` reminders. */
+  canceledReason: ReminderCancelReason | null;
+  /** ISO timestamp the reminder was soft-canceled; null for `due` reminders. */
+  canceledAt: string | null;
 }
 
 /** A row in the Assigned list (assignee added/removed). */
@@ -1050,6 +1067,49 @@ export function reminderLeadLabel(minutes: number): string {
     `${minutes} minutes before`
   );
 }
+
+/**
+ * Why adding a reminder is blocked (Reminders overhaul, condition set B):
+ *  - `no-start`   — the task has no Start Date (a reminder would never fire).
+ *  - `past-start` — the Start Date itself is already in the past (fires instantly).
+ *  - `canceled`   — the task is Canceled (its reminders are removed, not added).
+ * A FUTURE start with an already-elapsed lead is NOT blocked (still a useful
+ * "coming up" heads-up), so this keys off the Start Date, never the lead.
+ */
+export type ReminderBlock = 'no-start' | 'past-start' | 'canceled';
+
+export const REMINDER_BLOCK_LABELS: Record<ReminderBlock, string> = {
+  'no-start': 'Requires Start Date',
+  'past-start': 'Start date has passed',
+  canceled: 'Task canceled',
+};
+
+/**
+ * The single source of truth (shared by the API and the Task Detail UI) for
+ * whether a reminder may be added to a task, and if not, why. Returns null when
+ * adding is allowed. `startAt` is the task's Start Date/Time (ISO or null).
+ */
+export function reminderAddBlock(
+  startAt: string | null,
+  status: TaskStatus,
+  now: Date,
+): ReminderBlock | null {
+  if (status === 'Canceled') return 'canceled';
+  if (!startAt) return 'no-start';
+  if (new Date(startAt).getTime() < now.getTime()) return 'past-start';
+  return null;
+}
+
+/**
+ * Reason a reminder was soft-canceled: the task's Start Date was cleared, or the
+ * task itself was Canceled. Stored on the Reminder and surfaced in the notice.
+ */
+export type ReminderCancelReason = 'start-date-removed' | 'task-canceled';
+
+export const REMINDER_CANCEL_REASON_LABELS: Record<ReminderCancelReason, string> = {
+  'start-date-removed': 'start date removed',
+  'task-canceled': 'task canceled',
+};
 
 /** The current user's reminder on a task (shown on the Task Detail page). */
 export interface ReminderDto {

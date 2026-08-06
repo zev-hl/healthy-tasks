@@ -9,11 +9,17 @@ import {
   removeReminder,
   snoozeReminder,
 } from '../services/reminder.service.js';
+import type { Actor } from '../services/access-control.service.js';
 import type { AddReminderInput, SnoozeReminderInput } from '../validation/schemas.js';
 
 function currentUserId(req: Request): string {
   if (!req.user) throw HttpError.unauthorized();
   return req.user.id;
+}
+
+function actorOf(req: Request): Actor {
+  if (!req.user) throw HttpError.unauthorized();
+  return { id: req.user.id, role: req.user.role };
 }
 
 function parseTaskId(req: Request): number {
@@ -30,9 +36,10 @@ export async function listTaskRemindersController(req: Request, res: Response): 
 
 /** POST /api/tasks/:id/reminders — add a reminder for the current user. */
 export async function addTaskReminderController(req: Request, res: Response): Promise<void> {
-  const userId = currentUserId(req);
   const { leadMinutes } = req.body as AddReminderInput;
-  res.status(201).json((await addReminder(userId, parseTaskId(req), leadMinutes)) satisfies ReminderDto);
+  res
+    .status(201)
+    .json((await addReminder(actorOf(req), parseTaskId(req), leadMinutes)) satisfies ReminderDto);
 }
 
 /** DELETE /api/reminders/:id — remove one of the current user's reminders. */

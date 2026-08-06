@@ -11,6 +11,7 @@ import {
   type TaskFieldValues,
 } from './task-history.service.js';
 import { createAssignedNotification } from './notification.service.js';
+import { applyReminderRemovalOnTaskChange } from './reminder.service.js';
 import type { CreateTaskInput, UpdateTaskInput } from '../validation/schemas.js';
 import {
   taskInclude,
@@ -41,6 +42,7 @@ import {
   TASK_STATUS_LABELS,
   TERMINAL_TASK_STATUSES,
   type ActiveUserDto,
+  type ReminderCancelReason,
   type Role,
   type TaskDetailDto,
   type TaskDto,
@@ -357,6 +359,18 @@ export async function updateTask(
     dueAt: input.dueAt !== undefined ? input.dueAt : existing.dueAt,
   };
 
+  // Reminders overhaul (removal + notify): a Save that clears the Start Date
+  // (non-null -> null) OR moves the task into Canceled removes its reminders.
+  // The actor's own are hard-deleted (they consented via the confirm dialog);
+  // everyone else's become a soft-canceled notice. Canceled wins if both fire.
+  const startCleared = input.startAt === null && existing.startAt !== null;
+  const becameCanceled = input.status === 'Canceled' && existing.status !== 'Canceled';
+  const reminderRemovalReason: ReminderCancelReason | null = becameCanceled
+    ? 'task-canceled'
+    : startCleared
+      ? 'start-date-removed'
+      : null;
+
   // Review bookkeeping: capture prior state on the way IN, clear it on the way OUT.
   const reviewData: {
     reviewInitiatorId?: string | null;
@@ -410,6 +424,11 @@ export async function updateTask(
       }
     } else {
       await recordHistory(tx, entries);
+    }
+    // Remove this task's reminders when the Save cleared its Start Date or
+    // Canceled it (atomic with the update above).
+    if (reminderRemovalReason) {
+      await applyReminderRemovalOnTaskChange(tx, actorId, id, reminderRemovalReason, new Date());
     }
     return updated;
   });

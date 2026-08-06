@@ -2125,6 +2125,9 @@ interface NotifShape {
     priority: string;
     leadMinutes: number;
     read: boolean;
+    kind: 'due' | 'canceled';
+    canceledReason: string | null;
+    canceledAt: string | null;
   }[];
   assigned: {
     id: string;
@@ -2350,13 +2353,14 @@ describe('notifications: preferences (Phase 8)', () => {
 
   it('opting out of Reminders suppresses the live list and count', async () => {
     const admin = await adminToken();
+    // Future Start (so Add is allowed) + a lead already elapsed => due now.
     const t = await makeTask(admin, 'Rem opt', {
-      startAt: new Date(Date.now() - 1000).toISOString(),
+      startAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     });
     await request(app)
       .post(`/api/tasks/${t.id}/reminders`)
       .set(auth(admin))
-      .send({ leadMinutes: 0 });
+      .send({ leadMinutes: 60 });
     assert.equal((await getNotifs(admin)).reminders.length, 1);
 
     await setPrefs(admin, { remindersInApp: false });
@@ -2384,12 +2388,12 @@ describe('notifications: preferences (Phase 8)', () => {
     // Reminder email fires on the polling heartbeat (unread-count).
     await setPrefs(admin, { remindersEmail: true });
     const t2 = await makeTask(admin, 'Rem email', {
-      startAt: new Date(Date.now() - 1000).toISOString(),
+      startAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     });
     await request(app)
       .post(`/api/tasks/${t2.id}/reminders`)
       .set(auth(admin))
-      .send({ leadMinutes: 0 });
+      .send({ leadMinutes: 60 });
     const out2 = await captureConsole(async () => {
       await unread(admin);
     });
@@ -4605,9 +4609,10 @@ describe('notifications: manual mark-as-unread (follow-up)', () => {
 
   it('re-marks a due reminder as unread and it counts again', async () => {
     const admin = await adminToken();
-    const startSoon = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // 5 min ago → due
+    // Future Start (so Add is allowed) + an already-elapsed lead => due now.
+    const startSoon = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const t = await makeTask(admin, 'Due reminder task', { startAt: startSoon });
-    const rem = await request(app).post(`/api/tasks/${t.id}/reminders`).set(auth(admin)).send({ leadMinutes: 0 });
+    const rem = await request(app).post(`/api/tasks/${t.id}/reminders`).set(auth(admin)).send({ leadMinutes: 60 });
     assert.equal(rem.status, 201);
     assert.equal((await unread(admin)).reminders, 1);
 
@@ -4891,5 +4896,243 @@ describe('task -> template conversion (follow-up)', () => {
       .send({ name: 'No files', includeDescendants: false, includeAttachments: false });
     assert.equal(conv2.status, 201);
     assert.equal(conv2.body.nodes[0].attachmentCount, 0, 'no attachments when the toggle is off');
+  });
+});
+
+// --- Optimistic concurrency: stale-write guard (backfill) -------------------
+// Pins the SEQUENTIAL guard on shipped code: a write carrying an out-of-date
+// expectedUpdatedAt is rejected 409 with details.code === 'STALE_WRITE'; the
+// current token still saves. (The audit's real bug — the check is non-atomic,
+// findUnique-then-write, so a truly concurrent pair can still lose an update —
+// is a separate item that this sequential runner cannot exercise.)
+
+describe('optimistic concurrency: stale-write guard (backfill)', () => {
+  const PW = 'StalePass123!';
+
+  it('task PATCH: stale token -> 409 STALE_WRITE, current token -> 200', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Concurrency task');
+    const loadedUpdatedAt = t.updatedAt as string;
+
+    // A token from "before" the current state stands in for a concurrent write.
+    const stale = new Date(new Date(loadedUpdatedAt).getTime() - 60_000).toISOString();
+    const conflict = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(admin))
+      .send({ priority: 'High', expectedUpdatedAt: stale });
+    assert.equal(conflict.status, 409, JSON.stringify(conflict.body));
+    assert.equal(conflict.body.details?.code, 'STALE_WRITE');
+
+    const ok = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(admin))
+      .send({ priority: 'High', expectedUpdatedAt: loadedUpdatedAt });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.priority, 'High');
+  });
+
+  it('goal PATCH: stale token -> 409 STALE_WRITE, current token -> 200', async () => {
+    await seedUser({ email: 'goalowner@test.local', role: 'Member', password: PW });
+    const tok = await login('goalowner@test.local', PW);
+    const created = await request(app).post('/api/goals').set(auth(tok)).send({
+      specific: 'Reduce cycle time',
+      metricType: 'Percentage',
+      targetValue: 5,
+      deadline: '2026-12-31T00:00:00.000Z',
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const goalId = created.body.id as number;
+    const loadedUpdatedAt = created.body.updatedAt as string;
+
+    const stale = new Date(new Date(loadedUpdatedAt).getTime() - 60_000).toISOString();
+    const conflict = await request(app)
+      .patch(`/api/goals/${goalId}`)
+      .set(auth(tok))
+      .send({ specific: 'Reduce cycle time by half', expectedUpdatedAt: stale });
+    assert.equal(conflict.status, 409, JSON.stringify(conflict.body));
+    assert.equal(conflict.body.details?.code, 'STALE_WRITE');
+
+    const ok = await request(app)
+      .patch(`/api/goals/${goalId}`)
+      .set(auth(tok))
+      .send({ specific: 'Reduce cycle time by half', expectedUpdatedAt: loadedUpdatedAt });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.specific, 'Reduce cycle time by half');
+  });
+});
+
+// --- Reminders overhaul: access gate (A), add-blocks (B), removal+notify (C),
+// terminal statuses (D) ------------------------------------------------------
+
+describe('Reminders overhaul (A/B/C/D)', () => {
+  const PW = 'RemindPass123!';
+
+  // Future start so the add-block (B) passes; a large lead makes it due NOW
+  // (surfaces when now >= startAt - lead), which is how a reminder becomes due
+  // without ever being added on a past start.
+  const futureStart = (mins = 30) => new Date(Date.now() + mins * 60_000).toISOString();
+  const pastStart = (mins = 60) => new Date(Date.now() - mins * 60_000).toISOString();
+
+  const addReminder = (tok: string, taskId: number, leadMinutes: number) =>
+    request(app).post(`/api/tasks/${taskId}/reminders`).set(auth(tok)).send({ leadMinutes });
+  const patchTask = (tok: string, taskId: number, body: Record<string, unknown>) =>
+    request(app).patch(`/api/tasks/${taskId}`).set(auth(tok)).send(body);
+  const reparent = (admin: string, userId: string, supervisorId: string) =>
+    request(app).patch(`/api/users/${userId}`).set(auth(admin)).send({ supervisorId });
+
+  // mgr -> emp (assignee); an unrelated member with no access to emp's task.
+  async function seedAccessTeam() {
+    const mgr = await seedUser({ email: 'rm-mgr@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 'rm-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const out = await seedUser({ email: 'rm-out@test.local', role: 'Member', password: PW });
+    return {
+      mgr,
+      emp,
+      out,
+      mgrTok: await login('rm-mgr@test.local', PW),
+      empTok: await login('rm-emp@test.local', PW),
+      outTok: await login('rm-out@test.local', PW),
+    };
+  }
+
+  // A1 -----------------------------------------------------------------------
+  it('A1: a user with no access cannot add a reminder (404, not 201) — closes the IDOR', async () => {
+    const admin = await adminToken();
+    const t = await seedAccessTeam();
+    const task = await makeTask(admin, 'Private-ish task', { assigneeId: t.emp.id, startAt: futureStart() });
+
+    // The unrelated member can't even see the task, so adding a reminder 404s
+    // (indistinguishable from missing — no metadata leaks).
+    const blocked = await addReminder(t.outTok, task.id, 60);
+    assert.equal(blocked.status, 404, JSON.stringify(blocked.body));
+    // The assignee (has access) can add one.
+    assert.equal((await addReminder(t.empTok, task.id, 60)).status, 201);
+  });
+
+  // A2 -----------------------------------------------------------------------
+  it('A2: a reminder set while accessible stops surfacing once access is lost', async () => {
+    const admin = await adminToken();
+    const mgrA = await seedUser({ email: 'a2-a@test.local', role: 'Manager', password: PW });
+    const mgrB = await seedUser({ email: 'a2-b@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 'a2-emp@test.local', role: 'Member', password: PW, supervisorId: mgrA.id });
+    const mgrATok = await login('a2-a@test.local', PW);
+    const task = await makeTask(admin, 'Live-access task', { assigneeId: emp.id, startAt: futureStart() });
+
+    // mgrA (supervisor of the assignee) adds a due reminder and sees it.
+    assert.equal((await addReminder(mgrATok, task.id, 60)).status, 201);
+    assert.equal((await getNotifs(mgrATok)).reminders.length, 1, 'supervisor sees the due reminder');
+
+    // Re-parent the employee under mgrB — mgrA loses access; the reminder is gone
+    // from mgrA's feed even though the row still exists.
+    assert.equal((await reparent(admin, emp.id, mgrB.id)).status, 200);
+    assert.equal((await getNotifs(mgrATok)).reminders.length, 0, 'suppressed once access is lost');
+  });
+
+  // B ------------------------------------------------------------------------
+  it('B: Add is blocked (400) for no start date, a past start date, and a Canceled task', async () => {
+    const admin = await adminToken();
+
+    const noStart = await makeTask(admin, 'No start');
+    const b1 = await addReminder(admin, noStart.id, 60);
+    assert.equal(b1.status, 400);
+    assert.match(b1.body.error, /Requires Start Date/i);
+
+    const past = await makeTask(admin, 'Past start', { startAt: pastStart() });
+    const b2 = await addReminder(admin, past.id, 60);
+    assert.equal(b2.status, 400);
+    assert.match(b2.body.error, /Start date has passed/i);
+
+    const canceled = await makeTask(admin, 'To cancel', { startAt: futureStart() });
+    assert.equal((await patchTask(admin, canceled.id, { status: 'Canceled' })).status, 200);
+    const b3 = await addReminder(admin, canceled.id, 60);
+    assert.equal(b3.status, 400);
+    assert.match(b3.body.error, /Task canceled/i);
+
+    // A future start with an already-elapsed lead is NOT blocked (useful heads-up):
+    // start is 5 min out, a 1-week lead means it's already "due", but Add is allowed.
+    const future = await makeTask(admin, 'Future start', { startAt: futureStart(5) });
+    const ok = await addReminder(admin, future.id, 10080);
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+  });
+
+  // C: clearing the Start Date -----------------------------------------------
+  it('C: clearing the Start Date removes reminders — actor hard-deleted, others soft-canceled + dismissible', async () => {
+    const admin = await adminToken();
+    const t = await seedAccessTeam();
+    const task = await makeTask(admin, 'Start-clear task', { assigneeId: t.emp.id, startAt: futureStart() });
+
+    // Both the assignee (actor) and their supervisor hold a due reminder.
+    const empRem = await addReminder(t.empTok, task.id, 60);
+    assert.equal(empRem.status, 201);
+    assert.equal((await addReminder(t.mgrTok, task.id, 60)).status, 201);
+    assert.equal((await getNotifs(t.empTok)).reminders.length, 1);
+    assert.equal((await getNotifs(t.mgrTok)).reminders.length, 1);
+
+    // The assignee clears the Start Date.
+    assert.equal((await patchTask(t.empTok, task.id, { startAt: null })).status, 200);
+
+    // Actor's own reminder is hard-deleted (feed + the task-detail management list).
+    assert.equal((await getNotifs(t.empTok)).reminders.length, 0, "actor's reminder deleted");
+    const empOnTask = await request(app).get(`/api/tasks/${task.id}/reminders`).set(auth(t.empTok));
+    assert.equal(empOnTask.body.length, 0, 'gone from the task-detail list too');
+
+    // The supervisor's reminder becomes a soft-canceled notice (they still have access).
+    const mgrFeed = await getNotifs(t.mgrTok);
+    assert.equal(mgrFeed.reminders.length, 1);
+    assert.equal(mgrFeed.reminders[0]?.kind, 'canceled');
+    assert.equal(mgrFeed.reminders[0]?.canceledReason, 'start-date-removed');
+
+    // Dismiss (Remove) hard-deletes the notice — the only cleanup path.
+    const del = await request(app).delete(`/api/reminders/${mgrFeed.reminders[0]!.id}`).set(auth(t.mgrTok));
+    assert.equal(del.status, 204);
+    assert.equal((await getNotifs(t.mgrTok)).reminders.length, 0);
+    assert.equal(await prisma.reminder.count({ where: { taskId: task.id } }), 0, 'no rows remain');
+  });
+
+  // C: canceling the task, plus suppression once access is lost ---------------
+  it('C: Canceling the task soft-cancels others reminders; a since-lost-access user sees nothing', async () => {
+    const admin = await adminToken();
+    const mgr = await seedUser({ email: 'c2-mgr@test.local', role: 'Manager', password: PW });
+    const mgr2 = await seedUser({ email: 'c2-mgr2@test.local', role: 'Manager', password: PW });
+    const emp = await seedUser({ email: 'c2-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const mgrTok = await login('c2-mgr@test.local', PW);
+    const empTok = await login('c2-emp@test.local', PW);
+    const task = await makeTask(admin, 'Cancel task', { assigneeId: emp.id, startAt: futureStart() });
+
+    assert.equal((await addReminder(empTok, task.id, 60)).status, 201);
+    assert.equal((await addReminder(mgrTok, task.id, 60)).status, 201);
+
+    // The assignee Cancels the task.
+    assert.equal((await patchTask(empTok, task.id, { status: 'Canceled' })).status, 200);
+
+    // Actor's own reminder gone; supervisor sees a "task-canceled" notice.
+    assert.equal((await getNotifs(empTok)).reminders.length, 0);
+    const mgrFeed = await getNotifs(mgrTok);
+    assert.equal(mgrFeed.reminders.length, 1);
+    assert.equal(mgrFeed.reminders[0]?.kind, 'canceled');
+    assert.equal(mgrFeed.reminders[0]?.canceledReason, 'task-canceled');
+
+    // Re-parent the employee away from mgr — mgr loses access, so the cancel
+    // notice is suppressed (A2 gate applies to notices too).
+    assert.equal((await reparent(admin, emp.id, mgr2.id)).status, 200);
+    assert.equal((await getNotifs(mgrTok)).reminders.length, 0, 'notice suppressed once access is lost');
+  });
+
+  // D ------------------------------------------------------------------------
+  it('D: a Completed task still fires its reminder; a Canceled task does not', async () => {
+    const admin = await adminToken();
+
+    const done = await makeTask(admin, 'Will complete', { startAt: futureStart() });
+    assert.equal((await addReminder(admin, done.id, 60)).status, 201);
+    assert.equal((await patchTask(admin, done.id, { status: 'Completed' })).status, 200);
+
+    const canceled = await makeTask(admin, 'Will cancel', { startAt: futureStart() });
+    assert.equal((await addReminder(admin, canceled.id, 60)).status, 201);
+    assert.equal((await patchTask(admin, canceled.id, { status: 'Canceled' })).status, 200);
+
+    const feed = await getNotifs(admin);
+    assert.equal(feed.reminders.length, 1, 'only the Completed task still fires');
+    assert.equal(feed.reminders[0]?.taskId, done.id);
+    assert.equal(feed.reminders[0]?.kind, 'due');
   });
 });
