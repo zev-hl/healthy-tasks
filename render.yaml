@@ -201,13 +201,25 @@ projects:
                 value: 8h
               - key: PASSWORD_RESET_EXPIRES_IN
                 value: 60m
-              # Phase 14: no recurrence scheduler on Staging. Its 60s timer kept
-              # the Neon staging branch's compute awake 24/7 for no benefit.
-              # With this off, Staging does not auto-materialize recurring
-              # occurrences and does not dispatch reminder emails - verify those
-              # on a local Docker run or in Production, not here.
+              # Phase 14: the recurrence scheduler RUNS on Staging.
+              #
+              # It was briefly disabled here (PR 1) because the old 60s tick kept
+              # the Neon staging branch's compute awake 24/7 - about 3/4 of the
+              # entire database bill. S4's next-wake scheduling then solved that
+              # generally: the scheduler now wakes ~6 times a day, so leaving it
+              # ON costs roughly $0.40/month here instead of ~$19, and Staging
+              # stays a real testbed for the scheduler changes themselves.
+              #
+              # That testbed matters. Nothing else can exercise S4/S4a/S4b before
+              # Production - with the scheduler off, promoting to main would make
+              # Production the first deployed environment ever to run them.
+              #
+              # Keep this variable: "false" is the kill switch if the scheduler
+              # ever regresses into tight looping. Note that with it off, Staging
+              # does not auto-materialize recurring occurrences and does not
+              # dispatch reminder emails.
               - key: SCHEDULER_ENABLED
-                value: "false"
+                value: "true"
               # Recommended: keep Staging email STUBBED (console) even after
               # Production goes live, so test resets never email real people.
               - key: EMAIL_PROVIDER

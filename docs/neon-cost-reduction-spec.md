@@ -195,9 +195,28 @@ After S1 both are memory reads anyway, but the duplication should still go.
 
 - `backend/src/config/env.ts`: add `SCHEDULER_ENABLED` (boolean, default true).
 - `backend/src/server.ts`: only call `startScheduler()` when enabled.
-- `render.yaml`: set `SCHEDULER_ENABLED=false` on `hlcentral-api-staging`.
+- `render.yaml`: `SCHEDULER_ENABLED` on `hlcentral-api-staging`.
 
-Staging then suspends essentially 24/7.
+**AS BUILT - reversed after PR 2.** S3 shipped as `false`, then went back to
+`true`. The saving it was sized against no longer exists, because S4 solved the
+same problem more generally:
+
+| Staging scheduler | Compute | Cost |
+|---|---|---|
+| Old 60s tick, pre-2026-08-27 CU | awake 24/7 | ~$56/mo |
+| Old 60s tick, 0.25 CU | awake 24/7 | ~$19/mo |
+| **With S4, scheduler ON** | ~6 wakes/day x 5-min timeout ~= 30 min/day | **~$0.40/mo** |
+
+So disabling it was buying about forty cents a month while costing the only
+pre-production testbed for S4/S4a/S4b - the most novel and least-proven work in
+the phase. With the scheduler off on staging, promoting to `main` would make
+PRODUCTION the first deployed environment ever to run next-wake scheduling.
+
+The env var stays regardless: `false` is the kill switch if the scheduler ever
+regresses into tight looping, and it is what makes the tradeoff explicit rather
+than implicit. Note the Blueprint syncs from `main`, so this value only takes
+effect for staging once it reaches `main`; overriding in the Render dashboard
+works immediately but a later Blueprint sync can reset it.
 
 ### S4 - In-memory next-wake scheduling (REVISED)
 
