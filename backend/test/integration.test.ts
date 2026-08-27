@@ -5528,6 +5528,57 @@ describe('scheduler: server-side reminder dispatch (Phase 14 / S4a)', () => {
   });
 });
 
+describe('production readiness reporting (Phase 14)', () => {
+  let gaps: typeof import('../src/config/startup-checks.js').productionReadinessGaps;
+  let summary: typeof import('../src/config/startup-checks.js').mailerSummary;
+  before(async () => {
+    const mod = await import('../src/config/startup-checks.js');
+    gaps = mod.productionReadinessGaps;
+    summary = mod.mailerSummary;
+  });
+
+  const ready = {
+    isProduction: true,
+    emailProvider: 'smtp',
+    smtpHost: 'smtp.example.com',
+    storageDriver: 's3',
+    schedulerEnabled: true,
+  };
+
+  it('says nothing outside production', () => {
+    assert.deepEqual(gaps({ ...ready, isProduction: false, emailProvider: 'console' }), []);
+  });
+
+  it('says nothing when production is fully wired', () => {
+    assert.deepEqual(gaps(ready), []);
+  });
+
+  it('flags stubbed email, because it makes every health alert a no-op', () => {
+    const found = gaps({ ...ready, emailProvider: 'console' });
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /NO email is delivered/);
+  });
+
+  it('flags smtp selected without a host', () => {
+    const found = gaps({ ...ready, smtpHost: undefined });
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /SMTP_HOST is unset/);
+  });
+
+  it('flags in-memory storage and a disabled scheduler', () => {
+    const found = gaps({ ...ready, storageDriver: 'memory', schedulerEnabled: false });
+    assert.equal(found.length, 2);
+    assert.ok(found.some((g) => /attachments are lost/.test(g)));
+    assert.ok(found.some((g) => /will not materialize/.test(g)));
+  });
+
+  it('names the live mail path on every boot', () => {
+    assert.match(summary('smtp', 'smtp.example.com'), /SMTP via smtp\.example\.com/);
+    assert.match(summary('smtp', undefined), /SMTP_HOST unset/);
+    assert.match(summary('console'), /nothing is actually delivered/);
+  });
+});
+
 describe('unread counts: per-user memo (Phase 14 / S5)', () => {
   async function adminId(): Promise<string> {
     const u = await prisma.user.findFirstOrThrow({
