@@ -11,6 +11,7 @@ let db: TestDb;
 let app: Express;
 let prisma: PrismaClient;
 let hashPassword: (plaintext: string) => Promise<string>;
+let resetUnreadCache: () => void;
 
 const ADMIN_EMAIL = 'admin@test.local';
 const ADMIN_PASSWORD = 'AdminPass123!';
@@ -30,14 +31,16 @@ before(async () => {
   // Use the in-memory storage fake so attachment tests need no MinIO/S3.
   process.env.STORAGE_DRIVER = 'memory';
 
-  const [appMod, prismaMod, pwMod] = await Promise.all([
+  const [appMod, prismaMod, pwMod, cacheMod] = await Promise.all([
     import('../src/app.js'),
     import('../src/db/prisma.js'),
     import('../src/utils/password.js'),
+    import('../src/services/unread-cache.js'),
   ]);
   app = appMod.createApp();
   prisma = prismaMod.prisma;
   hashPassword = pwMod.hashPassword;
+  resetUnreadCache = cacheMod.__resetUnreadCache;
 });
 
 after(async () => {
@@ -56,6 +59,9 @@ beforeEach(async () => {
   // generated tasks cascade from Task). SchedulerState is unlinked, so it is
   // truncated explicitly to isolate the scheduler tests.
   memoryStorage.__reset();
+  // The unread-count memo (S5) is process-local, so truncating tables does not
+  // clear it. Without this, one test's counts leak into the next.
+  resetUnreadCache();
   await seedUser({ email: ADMIN_EMAIL, role: 'Admin', password: ADMIN_PASSWORD });
 });
 
@@ -5519,5 +5525,105 @@ describe('scheduler: server-side reminder dispatch (Phase 14 / S4a)', () => {
     });
     assert.equal(row?.emailSentAt ?? null, null);
     assert.equal(reminderMail().length, 0);
+  });
+});
+
+describe('unread counts: per-user memo (Phase 14 / S5)', () => {
+  async function adminId(): Promise<string> {
+    const u = await prisma.user.findFirstOrThrow({
+      where: { email: ADMIN_EMAIL },
+      select: { id: true },
+    });
+    return u.id;
+  }
+
+  it('serves a memo rather than recomputing on every poll', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Cache probe');
+    assert.equal((await unread(admin)).total, 0);
+
+    // Written straight to the database, so no service-level invalidation runs.
+    await prisma.notification.create({
+      data: { userId: await adminId(), type: 'assigned', taskId: t.id, assignAction: 'added' },
+    });
+    assert.equal((await unread(admin)).total, 0, 'still serving the memo');
+
+    resetUnreadCache();
+    assert.equal((await unread(admin)).total, 1, 'and recomputes once it is dropped');
+  });
+
+  it('marking a notification read is never masked by the memo', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Read invalidation');
+    const n = await prisma.notification.create({
+      data: { userId: await adminId(), type: 'assigned', taskId: t.id, assignAction: 'added' },
+      select: { id: true },
+    });
+    assert.equal((await unread(admin)).total, 1);
+
+    const res = await request(app).post(`/api/notifications/${n.id}/read`).set(auth(admin));
+    assert.equal(res.status, 204);
+
+    // The whole risk of S5: a stale count here reads to the user as "I clicked
+    // it and nothing happened".
+    assert.equal((await unread(admin)).total, 0);
+  });
+
+  it('marking it unread again is also not masked', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Unread invalidation');
+    const n = await prisma.notification.create({
+      data: {
+        userId: await adminId(),
+        type: 'assigned',
+        taskId: t.id,
+        assignAction: 'added',
+        readAt: new Date(),
+      },
+      select: { id: true },
+    });
+    assert.equal((await unread(admin)).total, 0);
+
+    await request(app).post(`/api/notifications/${n.id}/unread`).set(auth(admin));
+    assert.equal((await unread(admin)).total, 1);
+  });
+
+  it('reminder read/remove invalidate too, across the service boundary', async () => {
+    const admin = await adminToken();
+    const startAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    const t = await makeTask(admin, 'Reminder memo', { startAt });
+    const r = await addRem(admin, t.id, 60);
+    assert.equal(r.status, 201);
+
+    // Adding a reminder must itself invalidate, or the new count never appears.
+    assert.equal((await unread(admin)).reminders, 1);
+
+    await request(app).post(`/api/reminders/${r.body.id}/read`).set(auth(admin));
+    assert.equal((await unread(admin)).reminders, 0, 'read is not masked');
+
+    await request(app).post(`/api/reminders/${r.body.id}/unread`).set(auth(admin));
+    assert.equal((await unread(admin)).reminders, 1, 'unread is not masked');
+
+    await request(app).delete(`/api/reminders/${r.body.id}`).set(auth(admin));
+    assert.equal((await unread(admin)).reminders, 0, 'removal is not masked');
+  });
+
+  it('keeps one user’s memo out of another’s', async () => {
+    const admin = await adminToken();
+    const other = await seedUser({
+      email: 'memo-other@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const otherTok = await login('memo-other@test.local', MEMBER_PASSWORD);
+    const t = await makeTask(admin, 'Per-user memo');
+
+    await prisma.notification.create({
+      data: { userId: other.id, type: 'assigned', taskId: t.id, assignAction: 'added' },
+    });
+    resetUnreadCache();
+
+    assert.equal((await unread(admin)).total, 0);
+    assert.equal((await unread(otherTok)).total, 1);
   });
 });

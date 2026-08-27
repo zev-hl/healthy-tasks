@@ -5,6 +5,7 @@ import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
 import { listDueReminders, type DueReminder } from './reminder.service.js';
+import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cache.js';
 import type { Actor } from './access-control.service.js';
 import {
   reminderLeadLabel,
@@ -48,6 +49,7 @@ export async function createMentionNotifications(
   const inApp = recipients.filter((id) => prefs.get(id)?.mentionedInApp);
   for (const userId of inApp) {
     await prisma.notification.create({ data: { userId, type: 'mentioned', taskId, commentId } });
+    invalidateUnread(userId);
   }
 
   const emailIds = recipients.filter((id) => {
@@ -77,6 +79,7 @@ export async function createAssignedNotification(params: {
   await prisma.notification.create({
     data: { userId: recipientId, type: 'assigned', taskId, assignAction: action, actorId },
   });
+  invalidateUnread(recipientId);
   if (prefs.assignedEmail) await emailAssignment(recipientId, taskId, action);
 }
 
@@ -202,6 +205,12 @@ export async function getUnreadCounts(
   actor: Actor,
 ): Promise<Omit<UnreadCountDto, 'schedulerDown'>> {
   const userId = actor.id;
+  // S5: every open tab polls this, and the work below is the heaviest on that
+  // path. Memoized briefly per user; every mutation that can change this user's
+  // own count calls `invalidateUnread`, so a mark-read is never masked.
+  const cached = getCachedUnread<Omit<UnreadCountDto, 'schedulerDown'>>(userId);
+  if (cached) return cached;
+
   const prefs = await getNotificationPreferences(userId);
   const [mentioned, assigned] = await Promise.all([
     prisma.notification.count({ where: { userId, type: 'mentioned', readAt: null } }),
@@ -213,7 +222,9 @@ export async function getUnreadCounts(
     const due = await listDueReminders(actor, new Date());
     reminders = due.filter((r) => r.readAt === null).length;
   }
-  return { total: mentioned + assigned + reminders, mentioned, reminders, assigned };
+  const counts = { total: mentioned + assigned + reminders, mentioned, reminders, assigned };
+  setCachedUnread(userId, counts);
+  return counts;
 }
 
 /** Mark one of the user's Mentioned/Assigned notifications read. */
@@ -225,6 +236,7 @@ export async function markNotificationRead(userId: string, id: string): Promise<
   if (!n || n.userId !== userId) throw HttpError.notFound('Notification not found');
   if (!n.readAt) {
     await prisma.notification.update({ where: { id }, data: { readAt: new Date() } });
+    invalidateUnread(userId);
   }
 }
 
@@ -237,6 +249,7 @@ export async function markNotificationUnread(userId: string, id: string): Promis
   if (!n || n.userId !== userId) throw HttpError.notFound('Notification not found');
   if (n.readAt) {
     await prisma.notification.update({ where: { id }, data: { readAt: null } });
+    invalidateUnread(userId);
   }
 }
 

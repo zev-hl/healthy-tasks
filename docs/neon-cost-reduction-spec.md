@@ -98,9 +98,60 @@ failures loud), not compute cost. Sequence accordingly - see Rollout.
 
 These gate whether the code work pays off at all. Do them first.
 
-- N1. Confirm autosuspend is ENABLED on both branches and note the timeout.
-- N2. Drop the staging branch's compute size to the minimum CU.
-- N3. Confirm the current Neon plan actually includes scale-to-zero.
+- N1. DONE 2026-08-27. Autosuspend is enabled and working; the Launch plan card
+  states scale-to-zero after 5 minutes, matching the `Start 3:02pm -> Suspend
+  3:08pm` pair in the Jul 30 operations log. Every estimate here assumes 5 min.
+- N2. DONE 2026-08-27. Staging branch compute pinned at 0.25 CU (min AND max).
+  Correct for staging: 0.02 GB of data and near-zero traffic, and a FIXED size
+  makes this phase's before/after chart readable, since compute-hours become a
+  pure function of awake-time rather than awake-time x size. Revisit only if
+  `prisma migrate deploy` starts timing out on a large table rewrite, or if a
+  prod-sized dump is ever loaded into staging.
+- N4. DONE 2026-08-27. Production autoscale is 0.25 CU min / 8 CU max. This is
+  the right shape and needs no change: a floor low enough to cost almost nothing
+  while idle, a ceiling high enough to absorb real load when it arrives (the
+  Launch plan allows 16). The ceiling does not drive cost at this traffic, since
+  Neon bills actual usage rather than the configured maximum. With near-zero traffic prod
+  sits at its floor whenever awake, and lowering the floor costs nothing in
+  capability because it still scales up on demand. This STACKS with the phase -
+  the phase cuts how LONG prod is awake, the floor cuts what it COSTS while awake.
+
+RESOLVED 2026-08-27: BOTH endpoints bill into the one Compute line, and BOTH have
+been awake continuously since Aug 10 11:20am. The staging endpoint
+(`ep-broad-waterfall-av9u7bvv`) shows no Suspend between Aug 10 and the Aug 27
+1:11pm restart that applied its CU change - so the staging API is running and
+ticking its 60s scheduler exactly like prod. (An earlier note in this spec guessed
+"399 hours = one endpoint"; that assumed equal CU sizes and was wrong.)
+
+Approximate split over the ~406 awake hours:
+
+| Endpoint | Avg CU | Compute-hours |
+|---|---|---|
+| Prod (0.25 floor, pre-existing) | 0.25 | ~101 |
+| Staging (larger until 2026-08-27) | ~0.73 | ~298 |
+| **Total** | | **~399** |
+
+**Staging is ~3/4 of the bill.** So S3 - a one-line env var - is the highest-value
+item in PR 1, not the S4 machinery. Pinning staging to 0.25 CU already cuts it ~3x;
+S3 then takes its awake time to near zero.
+
+ALSO RESOLVED: the 12h31m gap on Aug 9-10 was a PROJECT-LEVEL event, not an API
+crash - both endpoints suspended and restarted at identical timestamps, matching a
+free-tier compute allowance running out and the subsequent upgrade to Launch (the
+billing period starts Aug 10).
+
+FOLLOW-UP, OUT OF SCOPE FOR THIS PHASE: that failure class is invisible to the
+app's own alerting by construction. With the database suspended, the watchdog
+cannot claim `lastAlertAt`, `alertAdmins` cannot query for admins, and staging's
+mailer is console-only. No amount of in-app instrumentation can catch "the
+database is gone". This needs EXTERNAL uptime monitoring against `/health`.
+- N3. DONE 2026-08-27. Scale-to-zero is an included Launch-plan feature.
+
+STILL OPEN (diagnostic, not a blocker): pull the PER-ENDPOINT compute breakdown.
+The 399.04 compute-hours in the Aug 10-27 period is almost exactly ONE endpoint
+running continuously; two would be nearer 800. If staging is not contributing,
+its API is probably not running at all - worth knowing on its own, and it would
+mean S3 saves ~nothing while ALL of the measured cost is production.
 
 ## Scope
 
@@ -125,7 +176,13 @@ served by that same process. The failure it does catch - timer dies, process
 lives - is fully preserved. Under multi-instance, each instance watching its own
 timer is more correct than a shared row.
 
-### S2 - Collapse the duplicate SchedulerState read
+### S2 - DROPPED (PR 1 absorbed it)
+
+S2's whole justification was that `checkSchedulerHealth` and `isSchedulerDown` each
+did a database read of the same row on every poll. After S1 both are memory reads,
+so there is nothing left to save. Original description kept below for the record.
+
+### S2 (original) - Collapse the duplicate SchedulerState read
 
 `backend/src/controllers/notifications.controller.ts`
 
@@ -249,6 +306,26 @@ Cache `getUnreadCounts(actor)` per user for ~10s so a user with four tabs open
 costs one DB read, not four. Must be invalidated by `markNotificationRead` and
 `markNotificationUnread` so the bell stays responsive after a click.
 
+### C1/C2/C3 - AS BUILT: one mechanism, not three
+
+The spec treated these as three separate changes. They collapsed into one:
+**leadership is held only while a tab is visible.**
+
+A hidden tab resigns, letting a visible one take over; if every tab is hidden,
+nobody holds the lock and nobody polls. That removes the need for visibility
+aggregation across tabs, for any heartbeat, and for stale-entry TTLs - and Web
+Locks already hands leadership over when a tab DIES, crash included. C2's ladder
+then rides on the leader alone, reset by an activity message that any tab can
+broadcast (throttled to once per 30s).
+
+**Correction to the stated payoff.** Earlier notes implied C3 would reduce cost.
+It does not, and the reason matters: **Neon autosuspend is binary.** Any query
+resets the idle timer, so ONE tab polling every 30s keeps the compute awake
+exactly as much as five tabs do. Collapsing N pollers to one reduces query volume
+and server load, not awake time. Only C1+C2 - which can take polling to actual
+zero - move the Neon bill. C3's real value is server load, cross-tab consistency,
+and being the prerequisite that makes Phase 15's one-stream-per-browser possible.
+
 ### C1 - Page Visibility
 
 `frontend/src/notifications/NotificationContext.tsx`
@@ -287,6 +364,10 @@ Structure the election behind an injectable interface so the logic is testable
 without Web Locks. See Testing.
 
 ## Testing
+
+AS BUILT: **backend 226/226** (baseline 200: PR 1 added 21, PR 2 added 5) and
+**frontend 18/18** in a harness that did not exist before this phase. Both
+packages typecheck; the frontend builds.
 
 ### Backend
 
