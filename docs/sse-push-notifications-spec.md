@@ -61,9 +61,11 @@ risk. The cost is that you hand-roll the SSE client: wire-format parsing,
 reconnect with backoff, and `Last-Event-ID` resumption, all of which
 `EventSource` provides for free.
 
-Recommendation to evaluate in the spike: **C**, on the grounds that keeping the
-auth model unchanged is worth writing ~100 lines of client. Confirm by
-prototyping the reconnect path, which is where C's hidden cost lives.
+**DECIDED 2026-08-27: C.** Keeping the auth model untouched is worth ~100 lines of
+client code; B would put every user's login at risk to save them. The spike is no
+longer about choosing - it is about prototyping the RECONNECT path, which is where
+C's real cost lives (backoff, `Last-Event-ID` resumption, and not hammering the
+server during an outage).
 
 ## The second blocker: the sliding session
 
@@ -79,12 +81,31 @@ out and be expired by the 10s expiry check in `frontend/src/auth/AuthContext.tsx
 it forces a sliding-session redesign. Options to evaluate:
 
 - emit periodic `token-refresh` events over the stream carrying a fresh JWT
-- keep a separate low-frequency renew ping (e.g. every 5 min) purely for session
-  extension - cheap, but reintroduces a timer and some DB contact
+- keep a separate low-frequency renew ping purely for session extension
 - treat an open stream as implicit activity and extend server-side
 
-The first is cleanest and keeps the "zero queries while idle" property, but means
-the stream carries auth-critical data - worth care.
+**DECIDED 2026-08-27: the renew ping, fired ON INTERACTION.**
+
+Both environments run `JWT_EXPIRES_IN: 8h`, which makes this cheap. A renewal at
+most every ~4h is a handful of requests per day, and the compute still sleeps
+between them. (Note each one IS a database query: `requireAuth` does a
+`user.findUnique` for the `isActive`/`tokenVersion` revocation check. That is why
+the interval matters, and why a 5-minute ping - the original sketch above - would
+have quietly undone Phase 14.)
+
+Renew on INTERACTION, not on the connection. This is the part that is a product
+decision rather than a technical one: a held stream persists whether or not anyone
+is at the keyboard, so renewing on the connection would mean sessions never expire
+while a tab is open - an unattended laptop stays logged in indefinitely. For an
+app with task-level access control that is a real change in security posture.
+Renewing on interaction keeps "idle" meaning exactly what it means today, at a
+fraction of the request rate.
+
+Implementation note: PR 2 already tracks last-interaction time for the C2 idle
+ladder (`lastActivityRef` in `NotificationContext`), and it is already shared
+across tabs via the throttled `activity` broadcast. The renewal timer should reuse
+that signal rather than growing its own. A dedicated `/api/auth/renew` endpoint
+that does nothing but let `requireAuth` re-issue the header is the cheapest shape.
 
 ## Server-side work
 
@@ -180,9 +201,9 @@ survivor re-establishes the stream. If Playwright was added by then, automate it
 
 ## Open questions to resolve before build
 
-- Auth transport: B or C?
-- Sliding session: token-refresh events, separate renew ping, or server-side
-  implicit extension?
+- ~~Auth transport: B or C?~~ **DECIDED: C** (`fetch` + `ReadableStream`).
+- ~~Sliding session mechanism?~~ **DECIDED: renew ping, fired on interaction**,
+  reusing PR 2's existing last-interaction signal.
 - Is multi-instance on the roadmap within a year? If yes, the pub/sub question
   moves from deferred to in-scope.
 - Does reminder delivery still need email at all once in-app push is instant, or
