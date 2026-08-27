@@ -12,12 +12,27 @@ export interface Mailer {
 }
 
 /**
+ * Outbox for the console mailer: every send is also recorded here so tests can
+ * assert on outbound mail without a provider or console scraping. Capped so a
+ * long-running dev process cannot grow it without bound.
+ */
+export const sentEmails: Email[] = [];
+const SENT_EMAILS_CAP = 100;
+
+/** Test seam: clear the console mailer's outbox. */
+export function __resetSentEmails(): void {
+  sentEmails.length = 0;
+}
+
+/**
  * Dev mailer: prints the email (and any links inside it) to the server console.
  * This is what makes the password-reset flow observable end-to-end in dev
  * without a real provider.
  */
 class ConsoleMailer implements Mailer {
   async send(email: Email): Promise<void> {
+    sentEmails.push(email);
+    if (sentEmails.length > SENT_EMAILS_CAP) sentEmails.shift();
     // eslint-disable-next-line no-console
     console.log(
       [

@@ -201,6 +201,13 @@ projects:
                 value: 8h
               - key: PASSWORD_RESET_EXPIRES_IN
                 value: 60m
+              # Phase 14: no recurrence scheduler on Staging. Its 60s timer kept
+              # the Neon staging branch's compute awake 24/7 for no benefit.
+              # With this off, Staging does not auto-materialize recurring
+              # occurrences and does not dispatch reminder emails - verify those
+              # on a local Docker run or in Production, not here.
+              - key: SCHEDULER_ENABLED
+                value: "false"
               # Recommended: keep Staging email STUBBED (console) even after
               # Production goes live, so test resets never email real people.
               - key: EMAIL_PROVIDER

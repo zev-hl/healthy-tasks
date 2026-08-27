@@ -275,6 +275,46 @@ export async function processDueReminderEmails(actor: Actor, now: Date): Promise
   }
 }
 
+/**
+ * Dispatch due reminder emails for EVERY user (Phase 14 / S4a), from the
+ * scheduler pass.
+ *
+ * This used to run only in the request path, scoped to the polling actor, which
+ * meant a user's reminder email was sent only while that user happened to be
+ * polling - close the app and it never arrived. Reducing poll frequency (C1/C2/C3)
+ * would have made that worse, so delivery moved server-side.
+ *
+ * The candidate query is only a COARSE pre-filter - "users who still have an
+ * un-emailed reminder on a task with a start date". It deliberately does not try
+ * to evaluate due-ness in SQL: a reminder's due time is derived
+ * (`startAt - leadMinutes`), and comparing that against a bound parameter makes
+ * the query timezone-fragile. Due-ness, notification preferences and the A2
+ * task-access gate are all decided by `processDueReminderEmails` /
+ * `listDueReminders`, which stay the single source of truth, and the
+ * `emailSentAt` claim keeps dispatch idempotent across passes.
+ */
+export async function dispatchDueReminderEmails(now: Date): Promise<void> {
+  const rows = await prisma.reminder.findMany({
+    where: { canceledAt: null, emailSentAt: null, task: { startAt: { not: null } } },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  if (rows.length === 0) return;
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: rows.map((r) => r.userId) }, isActive: true },
+    select: { id: true, role: true },
+  });
+  for (const u of users) {
+    try {
+      await processDueReminderEmails({ id: u.id, role: u.role }, now);
+    } catch (err) {
+      // One user's failure must not stall the rest of the dispatch.
+      console.error('Failed to dispatch reminder emails for user', u.id, err);
+    }
+  }
+}
+
 // --- Email bodies (dev: printed to console via the shared mailer) -----------
 
 async function emailMention(taskId: number, commentId: string, userIds: string[]): Promise<void> {

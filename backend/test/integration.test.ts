@@ -2385,7 +2385,9 @@ describe('notifications: preferences (Phase 8)', () => {
     assert.match(out, /email8@test\.local/);
     assert.match(out, /mentioned/i);
 
-    // Reminder email fires on the polling heartbeat (unread-count).
+    // Reminder email fires on the SCHEDULER pass (Phase 14 / S4a). It used to
+    // fire on the polling heartbeat, scoped to the polling actor, so a user only
+    // ever received their own reminder emails while they had the app open.
     await setPrefs(admin, { remindersEmail: true });
     const t2 = await makeTask(admin, 'Rem email', {
       startAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
@@ -2394,8 +2396,9 @@ describe('notifications: preferences (Phase 8)', () => {
       .post(`/api/tasks/${t2.id}/reminders`)
       .set(auth(admin))
       .send({ leadMinutes: 60 });
+    const { runScheduler: runPass } = await import('../src/services/scheduler.service.js');
     const out2 = await captureConsole(async () => {
-      await unread(admin);
+      await runPass(new Date());
     });
     assert.match(out2, /Reminder:/);
   });
@@ -5134,5 +5137,387 @@ describe('Reminders overhaul (A/B/C/D)', () => {
     assert.equal(feed.reminders.length, 1, 'only the Completed task still fires');
     assert.equal(feed.reminders[0]?.taskId, done.id);
     assert.equal(feed.reminders[0]?.kind, 'due');
+  });
+});
+
+// --- Phase 14: scheduler cost + reliability --------------------------------
+// The scheduler no longer writes a heartbeat row once a minute (which kept the
+// Neon compute awake 24/7). It keeps its heartbeat in memory and sleeps until the
+// next thing is actually due, with a 6h ceiling as the backstop. These tests
+// cover the watchdog (previously untested), the next-wake derivation, the overdue
+// invariant that stops failures being swallowed, and server-side reminder email
+// dispatch.
+
+type SchedulerMod = typeof import('../src/services/scheduler.service.js');
+type MailerMod = typeof import('../src/utils/mailer.js');
+
+let S: SchedulerMod;
+let M: MailerMod;
+
+async function loadSchedulerMods(): Promise<void> {
+  S = await import('../src/services/scheduler.service.js');
+  M = await import('../src/utils/mailer.js');
+}
+
+/** An Approved goal is the simplest piece of schedulable work to seed directly. */
+async function seedApprovedGoal(deadline: Date): Promise<number> {
+  const owner = await prisma.user.findFirstOrThrow({
+    where: { email: ADMIN_EMAIL },
+    select: { id: true },
+  });
+  const g = await prisma.goal.create({
+    data: {
+      ownerId: owner.id,
+      createdById: owner.id,
+      specific: 'Ship Phase 14',
+      metricType: 'Count',
+      targetValue: 1,
+      deadline,
+      status: 'Approved',
+    },
+    select: { id: true },
+  });
+  return g.id;
+}
+
+const addRem = (tok: string, taskId: number, leadMinutes: number) =>
+  request(app).post(`/api/tasks/${taskId}/reminders`).set(auth(tok)).send({ leadMinutes });
+
+const ALL_PREFS_EMAIL_ON = {
+  mentionedInApp: true,
+  mentionedEmail: false,
+  remindersInApp: true,
+  remindersEmail: true,
+  assignedInApp: true,
+  assignedEmail: false,
+};
+
+describe('scheduler: health watchdog (Phase 14)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => {
+    S.__resetSchedulerState();
+    M.__resetSentEmails();
+  });
+
+  it('a scheduler that has never ticked is not reported down', async () => {
+    const now = new Date();
+    assert.equal(S.isSchedulerDown(now), false, 'a fresh boot must not flash the banner');
+    await S.checkSchedulerHealth(now);
+    assert.equal(M.sentEmails.length, 0, 'no alert before the first pass');
+  });
+
+  it('a long quiet sleep is healthy, because staleness is measured against its own next wake', async () => {
+    const now = new Date();
+    await S.runScheduler(now);
+    S.__setTimerArmed(true);
+
+    // An empty database means the scheduler legitimately sleeps for the ceiling.
+    // Under the old fixed-interval watchdog this gap would have read as "down".
+    const fiveHoursLater = new Date(now.getTime() + 5 * 60 * 60 * 1000);
+    assert.equal(S.isSchedulerDown(fiveHoursLater), false);
+    await S.checkSchedulerHealth(fiveHoursLater);
+    assert.equal(M.sentEmails.length, 0);
+  });
+
+  it('oversleeping its own next wake past the grace is reported down', async () => {
+    const now = new Date();
+    await S.runScheduler(now);
+    S.__setTimerArmed(true);
+
+    const wake = S.getSchedulerState().nextWakeAt;
+    assert.ok(wake, 'a pass must set the next wake');
+    const justBefore = new Date(wake.getTime() + S.SCHEDULER_OVERDUE_GRACE_MS - 1000);
+    const wellAfter = new Date(wake.getTime() + S.SCHEDULER_OVERDUE_GRACE_MS + 60_000);
+    assert.equal(S.isSchedulerDown(justBefore), false, 'inside the grace is still healthy');
+    assert.equal(S.isSchedulerDown(wellAfter), true);
+  });
+
+  it('a dead timer alerts admins exactly once per cooldown window', async () => {
+    const now = new Date();
+    await S.runScheduler(now);
+    S.__setTimerArmed(false); // the timer died while the process lives
+
+    assert.equal(S.isSchedulerDown(now), true);
+
+    const downMail = () => M.sentEmails.filter((e) => e.subject.includes('is not running'));
+
+    await S.checkSchedulerHealth(now);
+    assert.equal(downMail().length, 1, 'first detection alerts');
+    assert.equal(downMail()[0]?.to, ADMIN_EMAIL);
+
+    const state = await prisma.schedulerState.findUnique({ where: { id: 1 } });
+    assert.ok(state?.lastAlertAt, 'the alert slot is claimed in the database');
+
+    // A second heartbeat inside the cooldown must not re-alert.
+    await S.checkSchedulerHealth(new Date(now.getTime() + 10 * 60_000));
+    assert.equal(downMail().length, 1, 'cooldown suppresses the repeat');
+
+    // Past the cooldown it alerts again, so a prolonged outage stays visible.
+    await S.checkSchedulerHealth(new Date(now.getTime() + S.SCHEDULER_ALERT_COOLDOWN_MS + 60_000));
+    assert.equal(downMail().length, 2);
+  });
+});
+
+describe('scheduler: next-wake derivation (Phase 14)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => {
+    S.__resetSchedulerState();
+    M.__resetSentEmails();
+  });
+
+  const approx = (actual: Date, expected: Date, toleranceMs = 5_000) =>
+    Math.abs(actual.getTime() - expected.getTime()) <= toleranceMs;
+
+  it('sleeps for the full ceiling when there is nothing to do', async () => {
+    const now = new Date();
+    const wake = await S.computeNextWakeAt(now);
+    assert.ok(
+      approx(wake, new Date(now.getTime() + S.SCHEDULER_MAX_SLEEP_MS)),
+      `expected the 6h ceiling, got ${wake.toISOString()}`,
+    );
+  });
+
+  it('an approved goal deadline pulls the wake forward', async () => {
+    const now = new Date();
+    const deadline = new Date(now.getTime() + 90 * 60_000);
+    await seedApprovedGoal(deadline);
+
+    const wake = await S.computeNextWakeAt(now);
+    assert.ok(approx(wake, deadline), `expected the deadline, got ${wake.toISOString()}`);
+  });
+
+  it('a pending reminder pulls the wake forward to when it becomes due', async () => {
+    const admin = await adminToken();
+    const now = new Date();
+    // Start 3h out with a 60-minute lead => the reminder is due at +2h.
+    const startAt = new Date(now.getTime() + 3 * 60 * 60_000);
+    const t = await makeTask(admin, 'Reminder wake', { startAt: startAt.toISOString() });
+    assert.equal((await addRem(admin, t.id, 60)).status, 201);
+
+    const wake = await S.computeNextWakeAt(now);
+    const expected = new Date(startAt.getTime() - 60 * 60_000);
+    assert.ok(approx(wake, expected), `expected ${expected.toISOString()}, got ${wake.toISOString()}`);
+  });
+
+  it('takes the soonest across every source', async () => {
+    const admin = await adminToken();
+    const now = new Date();
+    // Reminder due at +2h ...
+    const startAt = new Date(now.getTime() + 3 * 60 * 60_000);
+    const t = await makeTask(admin, 'Later of the two', { startAt: startAt.toISOString() });
+    assert.equal((await addRem(admin, t.id, 60)).status, 201);
+    // ... and a goal deadline at +1h, which should win.
+    const deadline = new Date(now.getTime() + 60 * 60_000);
+    await seedApprovedGoal(deadline);
+
+    const wake = await S.computeNextWakeAt(now);
+    assert.ok(approx(wake, deadline), `expected the sooner goal deadline, got ${wake.toISOString()}`);
+  });
+
+  it('never sleeps less than the floor, however soon the next item is', async () => {
+    const now = new Date();
+    await seedApprovedGoal(new Date(now.getTime() + 5_000)); // due in 5 seconds
+
+    const wake = await S.computeNextWakeAt(now);
+    assert.ok(
+      wake.getTime() >= now.getTime() + S.SCHEDULER_MIN_SLEEP_MS,
+      'the 1-minute floor stops a near-due item pinning the timer',
+    );
+  });
+
+  it('ignores work that is already due, so an undeliverable item cannot pin the timer', async () => {
+    const admin = await adminToken();
+    const now = new Date();
+    // A reminder that is already due but whose owner has email reminders OFF (the
+    // default): it will never be stamped, so it must not become a wake candidate
+    // on every pass, or the scheduler would spin at its floor forever.
+    const startAt = new Date(now.getTime() + 30 * 60_000);
+    const t = await makeTask(admin, 'Already due', { startAt: startAt.toISOString() });
+    assert.equal((await addRem(admin, t.id, 60)).status, 201);
+
+    const wake = await S.computeNextWakeAt(now);
+    assert.ok(
+      approx(wake, new Date(now.getTime() + S.SCHEDULER_MAX_SLEEP_MS)),
+      `expected the ceiling, got ${wake.toISOString()}`,
+    );
+  });
+
+  it('a pass records the heartbeat and the next wake in memory, not in the database', async () => {
+    const now = new Date();
+    assert.equal(S.getSchedulerState().lastTickAt, null);
+    await S.runScheduler(now);
+    const state = S.getSchedulerState();
+    assert.equal(state.lastTickAt?.getTime(), now.getTime());
+    assert.ok(state.nextWakeAt);
+
+    // The write that used to happen here, once a minute, is what kept the Neon
+    // compute awake around the clock.
+    const row = await prisma.schedulerState.findUnique({ where: { id: 1 } });
+    assert.equal(row?.lastTickAt ?? null, null, 'the pass must not write lastTickAt');
+  });
+});
+
+describe('scheduler: overdue invariant + late alerting (Phase 14)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => {
+    S.__resetSchedulerState();
+    M.__resetSentEmails();
+  });
+
+  const lateMail = () => M.sentEmails.filter((e) => e.subject.includes('ran late'));
+
+  it('reports nothing overdue on an empty database', async () => {
+    const m = await S.measureOverdue(new Date(), 0);
+    assert.equal(m.count, 0);
+    assert.equal(m.maxLateMs, 0);
+  });
+
+  it('reports eligible-but-undone work, with how late it is', async () => {
+    const now = new Date();
+    await seedApprovedGoal(new Date(now.getTime() - 2 * 60 * 60_000)); // 2h past deadline
+
+    const m = await S.measureOverdue(now, 0);
+    assert.equal(m.count, 1);
+    assert.ok(
+      Math.abs(m.maxLateMs - 2 * 60 * 60_000) < 5_000,
+      `expected ~2h late, got ${m.maxLateMs}ms`,
+    );
+  });
+
+  it('is zero after a pass, by construction', async () => {
+    const now = new Date();
+    await seedApprovedGoal(new Date(now.getTime() - 2 * 60 * 60_000));
+    assert.equal((await S.measureOverdue(now, 0)).count, 1, 'overdue before the pass');
+
+    await S.runScheduler(now);
+
+    const after = await S.measureOverdue(now, 0);
+    assert.equal(after.count, 0, 'a completed pass must leave nothing eligible-but-undone');
+    assert.equal(after.maxLateMs, 0);
+  });
+
+  it('emails admins when a pass finds work that was well overdue', async () => {
+    const now = new Date();
+    // Overdue by more than SCHEDULER_LATE_THRESHOLD_MS => we woke too late.
+    await seedApprovedGoal(new Date(now.getTime() - 3 * 60 * 60_000));
+
+    await S.runScheduler(now);
+
+    assert.equal(lateMail().length, 1, 'lateness is reported, not swallowed');
+    assert.equal(lateMail()[0]?.to, ADMIN_EMAIL);
+    assert.match(lateMail()[0]?.text ?? '', /overdue/);
+  });
+
+  it('stays silent when work is only slightly late', async () => {
+    const now = new Date();
+    // Inside the threshold: normal scheduling jitter, not worth an email.
+    await seedApprovedGoal(new Date(now.getTime() - 60_000));
+
+    await S.runScheduler(now);
+
+    assert.equal(lateMail().length, 0);
+  });
+
+  it('rate-limits health alerts so a persistent problem cannot spam admins', async () => {
+    const now = new Date();
+    await seedApprovedGoal(new Date(now.getTime() - 3 * 60 * 60_000));
+    await S.runScheduler(now);
+    assert.equal(lateMail().length, 1);
+
+    // A second late pass inside the cooldown is suppressed ...
+    const soon = new Date(now.getTime() + 10 * 60_000);
+    await seedApprovedGoal(new Date(soon.getTime() - 3 * 60 * 60_000));
+    await S.runScheduler(soon);
+    assert.equal(lateMail().length, 1, 'cooldown suppresses the repeat');
+
+    // ... and allowed again once the cooldown has elapsed.
+    const later = new Date(now.getTime() + S.SCHEDULER_ALERT_COOLDOWN_MS + 60_000);
+    await seedApprovedGoal(new Date(later.getTime() - 3 * 60 * 60_000));
+    await S.runScheduler(later);
+    assert.equal(lateMail().length, 2);
+  });
+});
+
+describe('scheduler: server-side reminder dispatch (Phase 14 / S4a)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => {
+    S.__resetSchedulerState();
+    M.__resetSentEmails();
+  });
+
+  /** A reminder that is due right now: future start, elapsed lead. */
+  async function dueReminder(tok: string): Promise<string> {
+    const startAt = new Date(Date.now() + 30 * 60_000).toISOString();
+    const t = await makeTask(tok, 'Dispatch me', { startAt });
+    const r = await addRem(tok, t.id, 60);
+    assert.equal(r.status, 201, `add reminder failed: ${JSON.stringify(r.body)}`);
+    return r.body.id as string;
+  }
+
+  const reminderMail = () =>
+    M.sentEmails.filter((e) => e.to === ADMIN_EMAIL && /remind/i.test(e.subject));
+
+  it('emails a due reminder to a user who is not polling', async () => {
+    const admin = await adminToken();
+    await setPrefs(admin, ALL_PREFS_EMAIL_ON);
+    const id = await dueReminder(admin);
+    M.__resetSentEmails();
+
+    // No HTTP request at all - the scheduler alone drives delivery. Before this
+    // change the email only went out while the recipient themselves was polling.
+    await S.runScheduler(new Date());
+
+    const row = await prisma.reminder.findUnique({ where: { id }, select: { emailSentAt: true } });
+    assert.ok(row?.emailSentAt, 'dispatch stamps emailSentAt');
+    assert.equal(reminderMail().length, 1, 'exactly one reminder email');
+  });
+
+  it('does not re-send on a later pass', async () => {
+    const admin = await adminToken();
+    await setPrefs(admin, ALL_PREFS_EMAIL_ON);
+    const id = await dueReminder(admin);
+
+    await S.runScheduler(new Date());
+    const first = await prisma.reminder.findUnique({ where: { id }, select: { emailSentAt: true } });
+    M.__resetSentEmails();
+
+    await S.runScheduler(new Date());
+    const second = await prisma.reminder.findUnique({ where: { id }, select: { emailSentAt: true } });
+
+    assert.equal(second?.emailSentAt?.getTime(), first?.emailSentAt?.getTime(), 'claim is terminal');
+    assert.equal(reminderMail().length, 0, 'no duplicate email');
+  });
+
+  it('respects the recipient opt-out', async () => {
+    const admin = await adminToken();
+    // remindersEmail defaults to false; leave it that way.
+    const id = await dueReminder(admin);
+    M.__resetSentEmails();
+
+    await S.runScheduler(new Date());
+
+    const row = await prisma.reminder.findUnique({ where: { id }, select: { emailSentAt: true } });
+    assert.equal(row?.emailSentAt ?? null, null, 'an opted-out user is never emailed');
+    assert.equal(reminderMail().length, 0);
+  });
+
+  it('does not dispatch a reminder that is not due yet', async () => {
+    const admin = await adminToken();
+    await setPrefs(admin, ALL_PREFS_EMAIL_ON);
+    // Start 3h out with a 15-minute lead => not due for another ~2h45m.
+    const startAt = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
+    const t = await makeTask(admin, 'Not yet', { startAt });
+    const r = await addRem(admin, t.id, 15);
+    assert.equal(r.status, 201);
+    M.__resetSentEmails();
+
+    await S.runScheduler(new Date());
+
+    const row = await prisma.reminder.findUnique({
+      where: { id: r.body.id as string },
+      select: { emailSentAt: true },
+    });
+    assert.equal(row?.emailSentAt ?? null, null);
+    assert.equal(reminderMail().length, 0);
   });
 });

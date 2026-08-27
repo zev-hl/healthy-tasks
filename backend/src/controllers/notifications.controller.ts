@@ -13,7 +13,6 @@ import {
   listNotifications,
   markNotificationRead,
   markNotificationUnread,
-  processDueReminderEmails,
 } from '../services/notification.service.js';
 import {
   getNotificationPreferences,
@@ -39,22 +38,23 @@ export async function listNotificationsController(req: Request, res: Response): 
   const filter: MentionedFilter = (MENTIONED_FILTERS as readonly string[]).includes(raw)
     ? (raw as MentionedFilter)
     : 'all';
-  // Visiting the screen is also a polling opportunity for reminder emails.
-  await processDueReminderEmails(actor, new Date());
   res.json((await listNotifications(actor, filter)) satisfies NotificationsDto);
 }
 
-/** GET /api/notifications/unread-count — the 30s bell poll (and email heartbeat). */
+/** GET /api/notifications/unread-count — the 30s bell poll.
+ *
+ * Phase 14: reminder-email dispatch no longer happens here. It ran scoped to the
+ * polling actor, so a user only received their own reminder emails while they
+ * personally had the app open; the scheduler now dispatches for everyone. */
 export async function unreadCountController(req: Request, res: Response): Promise<void> {
   const actor = actorOf(req);
   const now = new Date();
-  await processDueReminderEmails(actor, now);
-  // Watchdog for the recurrence timer: if it has gone stale, email admins (once
-  // per outage) AND report `schedulerDown` so every client shows a global banner.
+  // Watchdog for the recurrence timer: if it has stopped, email admins (once per
+  // outage) AND report `schedulerDown` so every client shows a global banner.
+  // Both calls read in-memory state and cost nothing while the scheduler is well.
   await checkSchedulerHealth(now);
   const counts = await getUnreadCounts(actor);
-  const schedulerDown = await isSchedulerDown(now);
-  res.json({ ...counts, schedulerDown } satisfies UnreadCountDto);
+  res.json({ ...counts, schedulerDown: isSchedulerDown(now) } satisfies UnreadCountDto);
 }
 
 /** POST /api/notifications/:id/read — mark a Mentioned/Assigned entry read. */

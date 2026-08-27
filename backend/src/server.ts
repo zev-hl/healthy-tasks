@@ -11,7 +11,12 @@ const server = app.listen(env.port, () => {
   // Start the recurrence scheduler only in the running server (never under
   // tests, which import createApp and drive runScheduler directly). Its heartbeat
   // is watched by the notifications endpoint, which alerts admins if it stops.
-  startScheduler();
+  if (env.schedulerEnabled) {
+    startScheduler();
+  } else {
+    // eslint-disable-next-line no-console
+    console.log('⏸  Recurrence scheduler disabled (SCHEDULER_ENABLED=false)');
+  }
 });
 
 // Graceful shutdown so Prisma releases its connections.
