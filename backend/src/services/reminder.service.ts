@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
+import { invalidateUnread } from './unread-cache.js';
 import {
   reminderAddBlock,
   REMINDER_BLOCK_LABELS,
@@ -99,6 +100,7 @@ export async function addReminder(
   const block = reminderAddBlock(task.startAt ? task.startAt.toISOString() : null, task.status, new Date());
   if (block) throw HttpError.badRequest(REMINDER_BLOCK_LABELS[block]);
   const row = await prisma.reminder.create({ data: { userId: actor.id, taskId, leadMinutes } });
+  invalidateUnread(actor.id);
   return toDto(row);
 }
 
@@ -110,6 +112,7 @@ export async function removeReminder(userId: string, reminderId: string): Promis
   const r = await prisma.reminder.findUnique({ where: { id: reminderId }, select: { userId: true } });
   if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
   await prisma.reminder.delete({ where: { id: reminderId } });
+  invalidateUnread(userId);
 }
 
 /** Mark one of the current user's reminders read (on click-through). */
@@ -121,6 +124,7 @@ export async function markReminderRead(userId: string, reminderId: string): Prom
   if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
   if (!r.readAt) {
     await prisma.reminder.update({ where: { id: reminderId }, data: { readAt: new Date() } });
+    invalidateUnread(userId);
   }
 }
 
@@ -133,6 +137,7 @@ export async function markReminderUnread(userId: string, reminderId: string): Pr
   if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
   if (r.readAt) {
     await prisma.reminder.update({ where: { id: reminderId }, data: { readAt: null } });
+    invalidateUnread(userId);
   }
 }
 
@@ -150,6 +155,7 @@ export async function snoozeReminder(
   if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
   const until = new Date(now.getTime() + minutes * 60_000);
   await prisma.reminder.update({ where: { id: reminderId }, data: { snoozedUntil: until } });
+  invalidateUnread(userId);
 }
 
 /**
