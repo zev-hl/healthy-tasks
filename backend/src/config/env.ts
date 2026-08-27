@@ -23,6 +23,12 @@ export const env = {
 
   databaseUrl: required('DATABASE_URL'),
 
+  // Whether this process runs the recurrence scheduler (Phase 14 / S3). Default
+  // on; set false on staging, where an always-ticking timer keeps the Neon
+  // compute awake 24/7 for no benefit. NOTE: with the scheduler off, recurring
+  // occurrences are not materialized and reminder emails are not dispatched.
+  schedulerEnabled: optional('SCHEDULER_ENABLED', 'true') !== 'false',
+
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: optional('JWT_EXPIRES_IN', '15m'),
   passwordResetExpiresIn: optional('PASSWORD_RESET_EXPIRES_IN', '60m'),
