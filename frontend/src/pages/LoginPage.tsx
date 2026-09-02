@@ -33,9 +33,15 @@ export function LoginPage() {
         <h1 className="auth-title">Welcome back</h1>
         <p className="auth-sub">Sign in with your Health Life email.</p>
       </div>
+      {/* Nothing is persisted across a sign-out: the expiry redirect unmounts the
+          page and its draft state goes with it. The earlier wording promised
+          edits "were kept", which was never true.
+          "Any unsaved changes" is deliberate — we cannot tell whether anything
+          was actually dirty (that state died with the unmounted component), so
+          the phrasing must not assert a loss that may not have happened. */}
       {sessionExpired && !error && (
         <div className="alert info">
-          You were signed out after a period of inactivity. Your unsaved task edits were kept.
+          You were signed out after a period of inactivity. Any unsaved changes were lost.
         </div>
       )}
       {error && <div className="alert error">{error}</div>}
