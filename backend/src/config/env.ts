@@ -65,4 +65,15 @@ export const env = {
     secretKey: optional('S3_SECRET_KEY', 'minioadmin'),
     forcePathStyle: optional('S3_FORCE_PATH_STYLE', 'true') === 'true',
   },
+
+  // Amazon SP-API (Exclusives). Undefined until Amazon is wired up so the app
+  // still boots; merchantToken is the own-seller id used for Buy Box detection.
+  amazon: {
+    clientId: process.env.SP_API_CLIENT_ID,
+    clientSecret: process.env.SP_API_CLIENT_SECRET,
+    refreshToken: process.env.SP_API_REFRESH_TOKEN,
+    merchantToken: process.env.SP_API_MERCHANT_TOKEN,
+    storeName: optional('SELLER_STORE_NAME', 'HL Central'),
+    sweepMinutes: Number(optional('EXCLUSIVES_SWEEP_MINUTES', '30')),
+  },
 } as const;

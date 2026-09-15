@@ -44,6 +44,15 @@ const DueDatePerformancePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
 );
+const ExclusivesGroupsPage = lazy(() =>
+  import('./pages/ExclusivesGroupsPage').then((m) => ({ default: m.ExclusivesGroupsPage })),
+);
+const ExclusivesLogPage = lazy(() =>
+  import('./pages/ExclusivesLogPage').then((m) => ({ default: m.ExclusivesLogPage })),
+);
+const ExclusivesEditorPage = lazy(() =>
+  import('./pages/ExclusivesEditorPage').then((m) => ({ default: m.ExclusivesEditorPage })),
+);
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
@@ -86,6 +95,12 @@ export const router = createBrowserRouter([
           { path: '/tasks/new', element: <TaskCreatePage /> },
           { path: '/tasks/:id', element: <TaskDetailPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
+          // Exclusives (HLAI-71). Open to any authenticated user for now; role
+          // gating is a deliberate later pass (see .claude/docs/plans/HLAI-71.md).
+          { path: '/exclusives/groups', element: <ExclusivesGroupsPage /> },
+          { path: '/exclusives/groups/new', element: <ExclusivesEditorPage /> },
+          { path: '/exclusives/groups/:id/edit', element: <ExclusivesEditorPage /> },
+          { path: '/exclusives/log', element: <ExclusivesLogPage /> },
           { path: '/profile', element: <ProfilePage /> },
           { path: '/reports/due-date', element: <DueDatePerformancePage /> },
           { path: '/goals', element: <MyGoalsPage /> },

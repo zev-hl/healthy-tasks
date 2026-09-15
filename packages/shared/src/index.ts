@@ -1746,3 +1746,101 @@ export interface GoalTeamFilters {
 export interface GoalTeamRequest {
   filters?: GoalTeamFilters;
 }
+
+// ===========================================================================
+// Exclusives — Amazon Seller Alerts (HLAI-71)
+// ---------------------------------------------------------------------------
+// Contract for the "E-commerce exclusives" module. Phase 1 is read-only Amazon
+// SP-API monitoring surfaced in-app. See .claude/docs/plans/HLAI-71.md.
+// These enums/label/tone maps are the single source of truth shared by backend
+// and frontend; the frontend maps `ExclusivesAlertTone` onto the app's existing
+// --danger/--warn/--ok/--review CSS tokens (same palette as the design mockup).
+// ===========================================================================
+
+/** A monitored group is either a single ASIN ("individual") or a set of them. */
+export const EXCLUSIVES_GROUP_TYPES = ['INDIVIDUAL', 'GROUP'] as const;
+export type ExclusivesGroupType = (typeof EXCLUSIVES_GROUP_TYPES)[number];
+export const EXCLUSIVES_GROUP_TYPE_LABELS: Record<ExclusivesGroupType, string> = {
+  INDIVIDUAL: 'Individual',
+  GROUP: 'Group',
+};
+
+/**
+ * Per-group / per-alert-type delivery mode. In Phase 1 both `daily` and
+ * `immediate` mean "on" (alerts always show in-app); the distinction is stored
+ * for a later digest-vs-push phase.
+ */
+export const EXCLUSIVES_ALERT_MODES = ['off', 'daily', 'immediate'] as const;
+export type ExclusivesAlertMode = (typeof EXCLUSIVES_ALERT_MODES)[number];
+export const EXCLUSIVES_ALERT_MODE_LABELS: Record<ExclusivesAlertMode, string> = {
+  off: 'Off',
+  daily: 'Daily',
+  immediate: 'Immediate',
+};
+
+/**
+ * The 12 detected alert types, in the fixed UI/seed order. Keys are stable
+ * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names.
+ */
+export const EXCLUSIVES_ALERT_TYPES = [
+  'ListingSuppressed',
+  'BuyBoxLost',
+  'BuyBoxWon',
+  'NumberOfSellersChanged',
+  'PriceChanged',
+  'CategoryChanged',
+  'BrandChanged',
+  'TitleChanged',
+  'MainImageChanged',
+  'DescriptionChanged',
+  'BulletPointsChanged',
+  'DimensionsChanged',
+] as const;
+export type ExclusivesAlertType = (typeof EXCLUSIVES_ALERT_TYPES)[number];
+
+export const EXCLUSIVES_ALERT_TYPE_LABELS: Record<ExclusivesAlertType, string> = {
+  ListingSuppressed: 'Listing Suppressed',
+  BuyBoxLost: 'Buy Box Lost',
+  BuyBoxWon: 'Buy Box Won',
+  NumberOfSellersChanged: 'Number of Sellers Changed',
+  PriceChanged: 'Price Changed',
+  CategoryChanged: 'Category Changed',
+  BrandChanged: 'Brand Changed',
+  TitleChanged: 'Title Changed',
+  MainImageChanged: 'Main Image Changed',
+  DescriptionChanged: 'Description Changed',
+  BulletPointsChanged: 'Bullet Points Changed',
+  DimensionsChanged: 'Dimensions Changed',
+};
+
+/**
+ * Colour family for an alert type's dot/badge (brief §10.4). The frontend maps
+ * each tone onto the app's existing pill palette:
+ *   danger → --danger*, warn → --warn*, ok → --ok*, review → --review*,
+ *   neutral → grey. This keeps Exclusives visually part of one design system.
+ */
+export const EXCLUSIVES_ALERT_TONES = ['danger', 'warn', 'ok', 'review', 'neutral'] as const;
+export type ExclusivesAlertTone = (typeof EXCLUSIVES_ALERT_TONES)[number];
+
+export const EXCLUSIVES_ALERT_TYPE_TONE: Record<ExclusivesAlertType, ExclusivesAlertTone> = {
+  ListingSuppressed: 'danger',
+  BuyBoxLost: 'danger',
+  BuyBoxWon: 'ok',
+  NumberOfSellersChanged: 'warn',
+  PriceChanged: 'warn',
+  CategoryChanged: 'review',
+  BrandChanged: 'review',
+  TitleChanged: 'review',
+  MainImageChanged: 'review',
+  DescriptionChanged: 'review',
+  BulletPointsChanged: 'review',
+  DimensionsChanged: 'review',
+};
+
+/** Marketplaces a listing can be monitored in. */
+export const EXCLUSIVES_MARKETPLACES = ['USA', 'Canada'] as const;
+export type ExclusivesMarketplace = (typeof EXCLUSIVES_MARKETPLACES)[number];
+export const EXCLUSIVES_MARKETPLACE_LABELS: Record<ExclusivesMarketplace, string> = {
+  USA: 'United States',
+  Canada: 'Canada',
+};

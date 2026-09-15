@@ -17,21 +17,21 @@ enum Role {
 }
 
 model User {
-  id             String   @id @default(uuid())
+  id             String  @id @default(uuid())
   // `email` is the user's login id. Unique, required, validated as an email
   // at the application layer (see Zod schemas). Editable in place by an admin
   // (Phase 5) with a uniqueness check.
-  email          String   @unique
+  email          String  @unique
   // First/Last name added in Phase 5. Required (non-empty) going forward, but
   // stored NOT NULL DEFAULT '' so pre-Phase-5 rows backfill to blank for an
   // admin to fill in — see the migration.
-  firstName      String   @default("")
-  lastName       String   @default("")
+  firstName      String  @default("")
+  lastName       String  @default("")
   title          String?
   jobDescription String?
   role           Role
   passwordHash   String
-  isActive       Boolean  @default(true)
+  isActive       Boolean @default(true)
 
   // Account merge (Phase 5): when two accounts are merged, the non-surviving one
   // is deactivated (never deleted) and points here at the account it was merged
@@ -95,6 +95,11 @@ model User {
   approvedGoals Goal[] @relation("GoalApprover")
   resolvedGoals Goal[] @relation("GoalResolver")
 
+  // Exclusives alert groups/listings this user created or last updated.
+  createdAlertGroups AlertGroup[] @relation("AlertGroupCreator")
+  updatedAlertGroups AlertGroup[] @relation("AlertGroupUpdater")
+  createdListings    Listing[]    @relation("ListingCreator")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -103,15 +108,15 @@ model User {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Only a SHA-256 hash of the token is stored; the raw token lives only in the
   // emailed link. This prevents DB reads from yielding usable reset tokens.
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
 }
@@ -235,6 +240,10 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Claim guard: one task per (source, seq) so concurrent scheduler ticks can't
+  // double-generate an occurrence. Both null for ordinary tasks (Postgres treats
+  // nulls as distinct, so plain tasks never collide).
+  @@unique([recurrenceSourceId, recurrenceSeq])
   @@index([creatorId])
   @@index([assigneeId])
   @@index([status])
@@ -256,10 +265,6 @@ model Task {
   @@index([templateOccurrenceId])
   @@index([instanceLabel])
   @@index([recurrenceSourceId])
-  // Claim guard: one task per (source, seq) so concurrent scheduler ticks can't
-  // double-generate an occurrence. Both null for ordinary tasks (Postgres treats
-  // nulls as distinct, so plain tasks never collide).
-  @@unique([recurrenceSourceId, recurrenceSeq])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -506,10 +511,10 @@ model Reminder {
   leadMinutes Int
 
   // Read state once the reminder has surfaced; set on click-through.
-  readAt DateTime?
+  readAt       DateTime?
   // Stamped when the "also email me" reminder email was sent — sent once, when
   // the reminder first becomes due (detected during the polling heartbeat).
-  emailSentAt DateTime?
+  emailSentAt  DateTime?
   // When set and in the future, the reminder is hidden from the due list until
   // this time (user snoozed it).
   snoozedUntil DateTime?
@@ -599,11 +604,11 @@ model TaskTemplate {
   intervalUnit   RecurrenceUnit?
   // For a weekly interval, the specific weekdays it repeats on (0=Sun … 6=Sat).
   // Empty ⇒ repeats on the anchor's own weekday. Ignored for non-weekly units.
-  weekdays       Int[]           @default([])
+  weekdays       Int[]                  @default([])
   // Start of the series: the first occurrence's anchor (its "instantiation
   // date", from which node offsets are measured).
   anchorDate     DateTime?
-  endType        RecurrenceEndType @default(Never)
+  endType        RecurrenceEndType      @default(Never)
   endDate        DateTime?
   maxOccurrences Int?
   // The lead time before an occurrence's anchor at which it auto-materializes is
@@ -612,11 +617,11 @@ model TaskTemplate {
   // …"); manual instantiations always supply their own label instead.
   labelPrefix    String?
   // Paused series generate no new scheduled occurrences (existing ones remain).
-  isActive       Boolean @default(true)
+  isActive       Boolean                @default(true)
 
   nodes       TaskTemplateNode[]
   occurrences TemplateOccurrence[]
-  tasks       Task[] @relation("TaskFromTemplate")
+  tasks       Task[]               @relation("TaskFromTemplate")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -651,7 +656,7 @@ model TaskTemplateNode {
   // Free-text role placeholder (not a user, not the permission Role enum).
   assigneeRole    String?
   // Sibling ordering within a parent.
-  orderIndex      Int @default(0)
+  orderIndex      Int          @default(0)
 
   // Default attachments copied onto the generated task at each instantiation
   // (seeded when a live task with attachments is converted into a template).
@@ -730,7 +735,7 @@ model TemplateOccurrence {
   instanceLabel String?
   // The resolved anchor (instantiation date) for this occurrence; node offsets
   // are measured from here.
-  anchorStart DateTime
+  anchorStart   DateTime
 
   // The generated root task. SetNull if it is later hard-deleted.
   rootTaskId Int?  @unique
@@ -771,13 +776,13 @@ model TaskRecurrence {
   intervalCount  Int
   intervalUnit   RecurrenceUnit
   // Weekly-only: weekdays it repeats on (0=Sun … 6=Sat); empty ⇒ the anchor's day.
-  weekdays       Int[]             @default([])
+  weekdays       Int[]                  @default([])
   anchorDate     DateTime
-  endType        RecurrenceEndType @default(Never)
+  endType        RecurrenceEndType      @default(Never)
   endDate        DateTime?
   maxOccurrences Int?
   // Lead time is global (AppSetting.materializeLeadDays), not per-task.
-  isActive       Boolean           @default(true)
+  isActive       Boolean                @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -789,9 +794,9 @@ model TaskRecurrence {
 // show as ghost previews). This value is global — never overridden per-task or
 // per-template.
 model AppSetting {
-  id                 Int      @id @default(1)
-  materializeLeadDays Int     @default(14)
-  updatedAt          DateTime @updatedAt
+  id                  Int      @id @default(1)
+  materializeLeadDays Int      @default(14)
+  updatedAt           DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -853,7 +858,7 @@ model Goal {
 
   // --- SMART fields ---
   // What (Specific).
-  specific String
+  specific    String
   // How Much (Measurable): a metric type + a target value in that unit, plus a
   // free-text unit label (required when metricType is `Other`).
   metricType  GoalMetricType
@@ -861,16 +866,16 @@ model Goal {
   targetValue Float
   // By When (Time-bound): the deadline. In this phase the deadline alone is the
   // review period — there is no separate review-cycle entity.
-  deadline DateTime
+  deadline    DateTime
 
   risks       String?
   mitigations String?
   // Editable throughout the goal's life (until it is Resolved).
-  notes String?
+  notes       String?
 
   // Results: the actuals, in the same metric type/unit as the target. Entered and
   // updatable by the employee while the goal is Approved (Active).
-  resultValue Float?
+  resultValue        Float?
   // Stamped when the employee marks Results final — this forces the Under-Review
   // transition even before the deadline.
   resultsFinalizedAt DateTime?
@@ -905,4 +910,101 @@ model Goal {
   @@index([createdById])
   @@index([status])
   @@index([deadline])
+}
+
+// Exclusives — Amazon Seller Alerts. List-type fields (groupType, marketplace,
+// alertType, mode) are strings validated by the shared unions, so values can be
+// added or removed in code without a DB migration or touching existing rows.
+
+model AlertGroup {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  groupType   String
+  createdById String
+  createdBy   User     @relation("AlertGroupCreator", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?    @relation("AlertGroupUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  listings Listing[]
+  settings AlertSetting[]
+  logs     AlertLog[]
+
+  @@index([createdById])
+  @@index([updatedById])
+}
+
+model Listing {
+  id          Int        @id @default(autoincrement())
+  groupId     Int
+  group       AlertGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  marketplace String
+  asin        String
+  sku         String
+  createdById String
+  createdBy   User       @relation("ListingCreator", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+
+  snapshots ListingSnapshot[]
+  logs      AlertLog[]
+
+  @@unique([marketplace, asin])
+  @@index([groupId])
+  @@index([createdById])
+}
+
+model ListingSnapshot {
+  id                   Int      @id @default(autoincrement())
+  listingId            Int
+  listing              Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  title                String?
+  mainImageUrl         String?
+  category             String?
+  brand                String?
+  bulletPoints         Json?
+  description          String?
+  dimensions           String?
+  listedPrice          Decimal? @db.Decimal(10, 2)
+  currency             String?
+  buyboxWinnerSellerId String?
+  buyboxPrice          Decimal? @db.Decimal(10, 2)
+  offerCount           Int?
+  isSuppressed         Boolean  @default(false)
+  suppressionReason    String?
+  capturedAt           DateTime @default(now())
+
+  @@index([listingId, capturedAt(sort: Desc)])
+}
+
+model AlertSetting {
+  id        Int        @id @default(autoincrement())
+  groupId   Int
+  group     AlertGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  alertType String
+  mode      String     @default("off")
+
+  @@unique([groupId, alertType])
+  @@index([groupId])
+}
+
+model AlertLog {
+  id            Int         @id @default(autoincrement())
+  groupId       Int?
+  group         AlertGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  listingId     Int?
+  listing       Listing?    @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  alertType     String
+  category      String?
+  previousValue String?
+  newValue      String?
+  message       String
+  asin          String
+  marketplace   String
+  title         String
+  groupName     String
+  createdAt     DateTime    @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([listingId, createdAt(sort: Desc)])
 }
