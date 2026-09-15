@@ -9,6 +9,7 @@ import type {
   CreateTaskRequest,
   CreateUserRequest,
   DependencyType,
+  ExclusivesStatusDto,
   LoginResponse,
   MergeUsersRequest,
   PaginatedResult,
@@ -150,6 +151,10 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<UserDto>('/api/auth/me'),
+
+  // --- Exclusives ---
+  getExclusivesStatus: () => request<ExclusivesStatusDto>('/api/exclusives/status'),
+
   forgotPassword: (email: string) =>
     request<{ message: string }>('/api/auth/forgot-password', {
       method: 'POST',

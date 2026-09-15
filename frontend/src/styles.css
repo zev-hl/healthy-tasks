@@ -6790,3 +6790,34 @@ tr.just-completed > td {
   font-size: 11.5px;
   color: var(--muted-2);
 }
+
+/* --- SP-API status light (HLAI-71, Chunk 3b) ---------------------------- */
+.exc-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: var(--faint-2);
+}
+.exc-status-dot.up {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+.exc-status-dot.down {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.exc-status-dot.checking {
+  animation: exc-status-pulse 1.1s ease-in-out infinite;
+}
+@keyframes exc-status-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}

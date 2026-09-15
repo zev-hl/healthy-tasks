@@ -21,6 +21,7 @@ import { GroupTypeBadge } from '../components/exclusives/AlertBadge';
 import { ExcPager } from '../components/exclusives/ExcPager';
 import { DeleteGroupModal } from '../components/exclusives/DeleteGroupModal';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
+import { StatusDot } from '../components/exclusives/StatusDot';
 
 /** ASIN chips: single code for individuals, first 3 + "+N" for groups. */
 function asinSummary(g: MockGroup): string {
@@ -68,7 +69,10 @@ export function ExclusivesGroupsPage() {
     <div className="exc-page">
       <header className="page-head exc-head">
         <div>
-          <h1>Exclusives monitoring</h1>
+          <h1>
+            <StatusDot />
+            Exclusives monitoring
+          </h1>
           <p className="muted mono exc-runline">{RUN_HEADER}</p>
         </div>
         <div className="exc-actions">

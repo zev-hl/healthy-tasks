@@ -173,10 +173,33 @@ request), and so schema/secrets are reviewable before any Amazon code.
   `SP_API_MERCHANT_TOKEN`, `SELLER_STORE_NAME`, `EXCLUSIVES_SWEEP_MINUTES` to
   `env.ts` + `.env.example` (optional; blank until Chunk 3). Verified: schema
   valid, backend typecheck clean, boots 200.
-- **Chunk 3 — SP-API client.** Token refresh + in-memory cache (refresh at 55m),
-  `searchListingsItems` + `getListingOffersBatch`, header-driven rate limiter
-  (`x-amzn-RateLimit-Limit`), 429 backoff+jitter (cap 60s). Unit tests on
-  recorded HTTP fixtures; never hit Amazon in tests.
+- **Chunk 3 — SP-API client (READ-ONLY).** Split into testable sub-parts. Hard
+  rule: a single central request layer permits **only GET + an allowlist of the
+  three read-only POST-shaped calls** (`getListingOffersBatch`, `feesEstimate`,
+  `competitiveSummary`); any other method/endpoint **throws before sending**. No
+  code path constructs a write — the app cannot mutate production listings. Real
+  creds live in `.env` (gitignored). No DB writes in Chunk 3.
+  - **3a — Auth + read-only guardrail. ✅ DONE.** `sp-api/{auth,client,errors}.ts`
+    + `scripts/sp-api-check.ts`. Added `env_file: .env` to the backend compose
+    service (local-only). Verified vs real creds: LWA token acquired; guardrail
+    blocked 4/4 write attempts, allowed only the pricing POST.
+  - **3b — Health probe + status light. ✅ DONE.** `sp-api/sellers.ts`
+    (`getMarketplaceParticipations`) + `status.service.ts` (server-cached ~5m) +
+    `GET /api/exclusives/status` (authed) + shared `ExclusivesStatusDto` +
+    frontend `useExclusivesStatus` (session-cached, fetched once) + `StatusDot`
+    left of the `<h1>` on both pages (green/red/grey, tooltip w/ detail +
+    last-checked). Verified: real probe returned connected (US, CA, MX, BR);
+    typechecks clean; status route 401 without auth.
+  - **3c — Listings read (`searchListingsItems`).** GET batches of 20 SKUs →
+    parse all snapshot fields; header-driven rate limiter + 429 backoff (5/sec).
+    Test: print parsed fields for real ASINs, nothing stored.
+  - **3d — Pricing read (`getListingOffersBatch`).** Read-only POST → Buy Box
+    winner/price + offer count via the reliable algorithm (ignore
+    `IsBuyBoxWinner`); rate limiter + backoff (0.5/sec). Test: print real Buy Box
+    data.
+  - **3e — Fixtures + unit tests + hardening.** Record responses as fixtures;
+    HTTP-boundary unit tests (suppressed / empty-issues / normal); consolidate
+    throttle + retry. Never hits Amazon in tests.
 - **Chunk 4 — Snapshot ingestion.** One-off command: fetch all listings once,
   write `ListingSnapshot`. Proves connectivity. No diffing yet.
 - **Chunk 5 — Change-detection engine.** Pure function over (prev, current)

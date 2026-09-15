@@ -17,6 +17,7 @@ import { AlertTypeBadge } from '../components/exclusives/AlertBadge';
 import { ExcPager } from '../components/exclusives/ExcPager';
 import { Flag } from '../components/exclusives/Flag';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
+import { StatusDot } from '../components/exclusives/StatusDot';
 
 export function ExclusivesLogPage() {
   const [search, setSearch] = useState('');
@@ -75,7 +76,10 @@ export function ExclusivesLogPage() {
     <div className="exc-page">
       <header className="page-head exc-head">
         <div>
-          <h1>Exclusives Alert Log</h1>
+          <h1>
+            <StatusDot />
+            Exclusives Alert Log
+          </h1>
           <p className="muted mono">
             {entries.length} alerts · newest first · runs at :00 and :30
           </p>

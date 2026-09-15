@@ -1844,3 +1844,11 @@ export const EXCLUSIVES_MARKETPLACE_LABELS: Record<ExclusivesMarketplace, string
   USA: 'United States',
   Canada: 'Canada',
 };
+
+/** SP-API connection health for the status dot on the Exclusives pages. */
+export interface ExclusivesStatusDto {
+  connected: boolean;
+  checkedAt: string; // ISO
+  detail: string;
+  marketplaces: string[];
+}

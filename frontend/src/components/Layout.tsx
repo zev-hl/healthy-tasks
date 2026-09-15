@@ -100,11 +100,9 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       <div className="side-group">
         <div className="side-group-label">E-commerce exclusives</div>
         <NavLink to="/exclusives/groups" className={navItemClass}>
-          <span className="side-dot" style={{ background: 'var(--accent)' }} aria-hidden="true" />
           Alert Groups
         </NavLink>
         <NavLink to="/exclusives/log" className={navItemClass}>
-          <span className="side-dot" style={{ background: 'var(--review)' }} aria-hidden="true" />
           Alert Log
         </NavLink>
       </div>
