@@ -190,18 +190,46 @@ request), and so schema/secrets are reviewable before any Amazon code.
     left of the `<h1>` on both pages (green/red/grey, tooltip w/ detail +
     last-checked). Verified: real probe returned connected (US, CA, MX, BR);
     typechecks clean; status route 401 without auth.
-  - **3c — Listings read (`searchListingsItems`).** GET batches of 20 SKUs →
-    parse all snapshot fields; header-driven rate limiter + 429 backoff (5/sec).
-    Test: print parsed fields for real ASINs, nothing stored.
-  - **3d — Pricing read (`getListingOffersBatch`).** Read-only POST → Buy Box
-    winner/price + offer count via the reliable algorithm (ignore
-    `IsBuyBoxWinner`); rate limiter + backoff (0.5/sec). Test: print real Buy Box
-    data.
-  - **3e — Fixtures + unit tests + hardening.** Record responses as fixtures;
-    HTTP-boundary unit tests (suppressed / empty-issues / normal); consolidate
-    throttle + retry. Never hits Amazon in tests.
-- **Chunk 4 — Snapshot ingestion.** One-off command: fetch all listings once,
-  write `ListingSnapshot`. Proves connectivity. No diffing yet.
+  - **3c — Listings read (`searchListingsItems`). ✅ DONE.** `sp-api/listings.ts`
+    (enumerate or fetch by SKU) + `snapshot.mapper.ts` (title, image, category,
+    brand, bullets, description, dimensions, price+currency, suppression per
+    §6.5) + 429 retry/backoff in the client. Verified vs production: a
+    brand-owned listing (SOMBRA) mapped all fields. Finding: the Versure US
+    account is mostly *reseller* listings (only 3/240 owned) — their ~350
+    exclusives are the owned subset, which this code fully captures. Resold
+    listings lack brand content in `attributes`; if any of the 350 are resold
+    we'd add the read-only Catalog Items API (deferred until the list confirms).
+    Batch-of-20 fetching is a small extension for the sweep (Chunk 6).
+  - **3d — Pricing read (`getListingOffersBatch`). ✅ DONE.** `sp-api/pricing.ts`
+    → `getListingOffersBatch` (whitelisted read-only POST) + `resolveBuyBox`
+    (landed-price match, ignores `IsBuyBoxWinner` per §6.4). Verified vs
+    production: SKU C-YSL-1602-A → 26 offers, Buy Box 89.98 held by a competitor
+    (≠ our merchant token). Note: pricing-by-SKU only works for BUYABLE SKUs
+    (ones we actively offer); listed-but-not-offered SKUs return "invalid SKU"
+    (expected). Inter-call 0.5/sec spacing lands with the sweep loop (Chunk 6).
+  - **3e — Fixtures + unit tests + hardening. ✅ DONE.** `test/fixtures/
+    exclusives.ts` (trimmed real shapes) + `test/unit/` (guardrail, snapshot
+    mapper incl. §6.5 edge case, Buy Box resolver) + `test:unit` script. 12/12
+    pass, no DB, never hits Amazon. **Chunk 3 complete (3a–3e).**
+- **Chunk 4 — Snapshot ingestion.** Fetch monitored listings + pricing and store
+  `ListingSnapshot` rows. No diffing yet. Split into testable sub-parts; staying
+  under the rate limit is the explicit acceptance criterion.
+  - **4a — Rate-limit pacer + batcher.** Batches of 20; per-endpoint inter-call
+    spacing (~200ms listings / ~2s pricing); reads `x-amzn-RateLimit-Limit` and
+    adapts down. Unit-tested (timing/adaptation), no network.
+  - **4b — Sweep fetcher.** Merge listings (3c) + pricing (3d) per (SKU,
+    marketplace) into one snapshot draft, via paced batches (4a). Read-only, no
+    DB. Test: print merged snapshots for a few real SKUs; confirm under limits.
+  - **4c — Snapshot persistence. ✅ DONE.** `snapshot.repository.ts`
+    (`snapshotCreateData` + `persistSnapshots` via `createMany`). Verified: a
+    real merged draft wrote a `ListingSnapshot` row (Decimal/Json/FK all correct)
+    and read back. Test script seeds an idempotent "Ingestion Test" group+listing.
+  - **4d — Ingestion service + test seed. ✅ DONE.** `ingestion.service.ts`
+    `runIngestion()` (loads monitored Listings → paced sweep → persist, remaps
+    snapshots to listings by (marketplace, SKU), idempotent, returns report + per-
+    marketplace call counts). Seed script seeds 50 distinct US ASINs (rate-paced).
+    Verified: 50 listings → 50 snapshots via **3 listings + 3 pricing calls**,
+    ~6s (pacer spacing the pricing calls). **Chunk 4 complete (4a–4d).**
 - **Chunk 5 — Change-detection engine.** Pure function over (prev, current)
   snapshot → `AlertLog[]`, honouring `AlertSetting.mode` and the Buy Box
   algorithm (§6.4 of brief — do **not** trust `IsBuyBoxWinner`) and suppression

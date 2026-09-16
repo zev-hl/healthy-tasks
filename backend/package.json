@@ -13,7 +13,8 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "lint": "eslint src --ext .ts",
-    "test": "node --import tsx --test test/integration.test.ts"
+    "test": "node --import tsx --test test/integration.test.ts",
+    "test:unit": "node --import tsx --test test/unit/*.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
