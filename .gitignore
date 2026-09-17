@@ -30,3 +30,4 @@ backend/prisma/*.db
 
 # Test / coverage
 coverage/
+backend/scripts/data/

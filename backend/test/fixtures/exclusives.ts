@@ -1,5 +1,6 @@
 import type { ListingItem } from '../../src/services/exclusives/sp-api/listings.js';
 import type { ListingOffersPayload } from '../../src/services/exclusives/sp-api/pricing.js';
+import type { CatalogItem } from '../../src/services/exclusives/sp-api/catalog.js';
 
 // Trimmed from real SP-API responses, keeping the exact shapes we parse.
 
@@ -122,4 +123,24 @@ export const offersSuppressed: ListingOffersPayload = {
   SKU: 'SUPP-BB',
   Summary: { TotalOfferCount: 0, BuyBoxPrices: [] },
   Offers: [],
+};
+
+// Catalog content for a resold listing (fills what the listing call lacked).
+export const catalogItem: CatalogItem = {
+  asin: 'B000W7GXZ2',
+  summaries: [
+    { itemName: 'Walden Farms Strawberry Fruit Spread, 12 Oz', brand: 'Walden Farms', manufacturer: 'Walden Farms' },
+  ],
+  attributes: {
+    bullet_point: [{ value: 'Zero calorie strawberry spread.' }, { value: 'Keto-friendly, sugar-free.' }],
+    product_description: [{ value: 'A calorie-free strawberry fruit spread.' }],
+    item_package_dimensions: [
+      {
+        length: { value: 3, unit: 'inches' },
+        width: { value: 3, unit: 'inches' },
+        height: { value: 5, unit: 'inches' },
+      },
+    ],
+  },
+  images: [{ images: [{ variant: 'MAIN', link: 'https://m.media-amazon.com/images/I/51chypizJCL.jpg' }] }],
 };

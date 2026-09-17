@@ -36,7 +36,7 @@ export async function runIngestion(
   });
 
   let snapshotsWritten = 0;
-  let calls: CallCounts = { listings: 0, pricing: 0 };
+  let calls: CallCounts = { listings: 0, pricing: 0, catalog: 0 };
   let callsByMarketplace: Record<string, CallCounts> = {};
 
   if (monitored.length > 0) {
@@ -55,7 +55,7 @@ export async function runIngestion(
   const finishedAt = new Date().toISOString();
   onLog(
     `[exclusives] ingestion done — ${snapshotsWritten} snapshot(s); ` +
-      `calls listings=${calls.listings} pricing=${calls.pricing}`,
+      `calls listings=${calls.listings} pricing=${calls.pricing} catalog=${calls.catalog}`,
   );
 
   return {

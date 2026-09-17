@@ -4,6 +4,7 @@ import type {
   ListingIssue,
   ListingItem,
 } from './sp-api/listings.js';
+import type { CatalogItem } from './sp-api/catalog.js';
 
 // The listing half of a snapshot. Buy Box winner/price and offer count come
 // from the pricing call (3d) and are merged in later.
@@ -93,6 +94,30 @@ function detectSuppression(
     if (err) return { suppressed: true, reason: err.message };
   }
   return { suppressed: false };
+}
+
+export interface CatalogContent {
+  brand?: string;
+  bulletPoints?: string[];
+  description?: string;
+  dimensions?: string;
+  mainImageUrl?: string;
+}
+
+// Extract the content fields from a Catalog Items response — used to fill gaps
+// on resold listings whose own attributes carry no brand content.
+export function mapCatalogContent(item: CatalogItem): CatalogContent {
+  const attrs = item.attributes ?? {};
+  const bullets = values(attrs, 'bullet_point')
+    .map((b) => b.value)
+    .filter((v): v is string => typeof v === 'string');
+  return {
+    brand: item.summaries?.[0]?.brand ?? first(attrs, 'brand'),
+    bulletPoints: bullets.length ? bullets : undefined,
+    description: first(attrs, 'product_description'),
+    dimensions: extractDimensions(attrs),
+    mainImageUrl: item.images?.[0]?.images?.find((i) => i.variant === 'MAIN')?.link,
+  };
 }
 
 export function mapListingSnapshot(

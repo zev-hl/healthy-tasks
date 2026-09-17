@@ -2,6 +2,7 @@
 export const SP_API_RATES = {
   listings: 5,
   pricing: 0.5,
+  catalog: 2,
 } as const;
 
 export function batch<T>(items: T[], size: number): T[][] {

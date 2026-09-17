@@ -224,6 +224,11 @@ request), and so schema/secrets are reviewable before any Amazon code.
     (`snapshotCreateData` + `persistSnapshots` via `createMany`). Verified: a
     real merged draft wrote a `ListingSnapshot` row (Decimal/Json/FK all correct)
     and read back. Test script seeds an idempotent "Ingestion Test" group+listing.
+  - **Catalog supplement (added). ✅** Conditional read-only Catalog Items call
+    (`searchCatalogItems`, batched 20, paced 2/sec) — fires **only** for
+    content-missing (resold) drafts, filling brand/bullets/description/dimensions/
+    image. Owned listings skip it. On the real 434: brand 51%→96%, bullets
+    51%→94%, at +22 calls / +10s. Price/BuyBox/suppression still from Listings.
   - **4d — Ingestion service + test seed. ✅ DONE.** `ingestion.service.ts`
     `runIngestion()` (loads monitored Listings → paced sweep → persist, remaps
     snapshots to listings by (marketplace, SKU), idempotent, returns report + per-
