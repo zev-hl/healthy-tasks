@@ -369,21 +369,38 @@ placeholder routes.
    AlertLog denormalized + `SetNull`. Full model in §4. Refresh token + merchant
    token + store name all in env — this **resolves the old §3.4 open question**.
 
+**Decided (later):**
+8. ✅ **Catalog Items supplement** — conditional read-only Catalog call fills
+   brand/bullets/description/dimensions for resold listings; owned skip it. (§5)
+9. ✅ **Scale + failure policy (2026-09-17)** — ceiling ~600–700 ASINs, so keep
+   the scheduler in the single backend process (no queue, no separate worker;
+   escape hatch = `SCHEDULER_ENABLED`). Bounded retry for transient errors
+   (429/5xx/network + one 401→refresh); no retry for 400/403; the 30-min sweep is
+   the outer retry; per-listing try/catch. (Chunk 6 details.)
+
 **Deferred:**
 7. ⚠️ **Snapshot retention/prune policy** — decide in Chunk 6 (scheduler), not a
    schema change. (§4)
+10. ⚠️ **Rename `AlertLog.category` → `changedField`/`detail`** — the name clashes
+    with the "Category Changed" alert type; small migration when convenient.
 
-**Status: Chunk 1 built** ✅ (nav + tab scaffolding). Delivered:
-- `packages/shared`: Exclusives enums/labels + alert-type tone map (§4); rebuilt.
-- `frontend`: sidebar "E-commerce exclusives" group (2 tabs, colour dots), two
-  lazy routes (`/exclusives/groups`, `/exclusives/log`, no role gate),
-  `ExclusivesGroupsPage` + `ExclusivesLogPage` (full design chrome + empty
-  states), `components/exclusives/AlertBadge.tsx` (reuses `.status-pill`, maps
-  tones → existing `--danger/--warn/--ok/--review` tokens), scoped `exc-*` CSS.
-- Verified: frontend `tsc --noEmit` clean; Vite compiles the modules; route 200.
-- Design reuse held to plan §7 — no copied markup/classnames; app tokens only.
+**Status (2026-09-17): Chunks 1–5 complete.** ✅
+- **Chunk 1** — nav + both screens + editor + delete modal + status dot (mock UI).
+- **Chunk 2** — Prisma migration (5 tables + list fields as validated strings),
+  env vars.
+- **Chunk 3** — SP-API read-only client: auth + guardrail, health probe/dot,
+  listings, pricing/Buy Box, catalog supplement, 429 retry. Verified vs prod.
+- **Chunk 4** — ingestion: pacer/batcher, sweep+merge, persistence, `runIngestion`.
+  Real seed of 351 ASINs → 434 listings (US+CA) snapshotted, rate-safe.
+- **Chunk 5** — change detection (5a diff → 5b rules/Buy Box → 5c messages →
+  5d gating → 5e persistence). 53 unit tests; live demo logged a real
+  `PriceChanged` alert end-to-end.
+- Backend does **read → snapshot → detect → log**, strictly read-only, untested
+  only via the scheduler/UI.
 
-Next: Chunk 2 (Prisma migration + seeders) — reviewable DDL first per brief §15.
+**Next: Chunk 6** — run `runIngestion` + `runDetection` on the 30-min scheduler
+(`EXCLUSIVES_SWEEP_MINUTES`), plus the 5xx/network retry enhancement. Then
+Chunk 7 (API routes) + Chunk 8 (wire the screens to real data).
 
 ---
 
