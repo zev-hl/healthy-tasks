@@ -235,13 +235,40 @@ request), and so schema/secrets are reviewable before any Amazon code.
     marketplace call counts). Seed script seeds 50 distinct US ASINs (rate-paced).
     Verified: 50 listings → 50 snapshots via **3 listings + 3 pricing calls**,
     ~6s (pacer spacing the pricing calls). **Chunk 4 complete (4a–4d).**
-- **Chunk 5 — Change-detection engine.** Pure function over (prev, current)
-  snapshot → `AlertLog[]`, honouring `AlertSetting.mode` and the Buy Box
-  algorithm (§6.4 of brief — do **not** trust `IsBuyBoxWinner`) and suppression
-  rule (§6.5). Fixture-driven unit tests.
+- **Chunk 5 — Change-detection engine. ✅ DONE (5a–5e).** 53 unit tests pass; 5e
+  verified against the DB (a real snapshot pair produced 5 correct alerts).
+  - **5a ✅** `snapshot-diff.ts` — `SnapshotView` + `diffSnapshots` (cent-tolerant
+    price compare, null↔value handling, `changedBulletIndices`).
+  - **5b ✅** `alert-detection.ts` — `detectAlerts` → 12 alert types; Buy Box
+    Won/Lost from winner+price+merchant token across snapshots (suppressed ≠
+    Lost); price/offer only when both values known.
+  - **5c ✅** `alert-message.ts` — `describeAlert` (short human lines incl. price
+    %; "a competitor" since SP-API gives only seller id).
+  - **5d ✅** `alert-gating.ts` — `gateAlerts` (daily/immediate = on; off/missing
+    = off).
+  - **5e ✅** `detection.service.ts` — `runDetection`: newest two snapshots →
+    5a–5d → denormalized `AlertLog` rows; per-listing try/catch; idempotent in
+    the cycle (fresh snapshot each pass). (First sweep = baseline; alerts from the
+    second.)
 - **Chunk 6 — Scheduler pass.** Wire ingestion+detection into
-  `scheduler.service.ts` on the sweep cadence; idempotent; logs per-marketplace
-  call counts.
+  `scheduler.service.ts` on the sweep cadence; idempotent; per-listing try/catch;
+  batched writes; logs per-marketplace call counts. **Scaling decision (settled):**
+  expected ceiling is ~600–700 ASINs over 3–4 years — tiny and I/O-bound (a sweep
+  is ~2–3 min of paced work every 30 min, event loop mostly idle). So: **keep it
+  in the existing single backend process, no queue, no separate worker.** The
+  sweep is background (off the API request path) and the API only reads finished
+  rows, so API responsiveness is never affected. Escape hatch: `SCHEDULER_ENABLED`
+  already lets us split the scheduler into a separate worker process with a
+  one-flag config change if load ever surprises us — deferred as YAGNI.
+  - **Failure/retry policy (settled).** Bounded retry with backoff+jitter for
+    *transient* errors only — 429 (built) + 5xx + network/timeout (extend the
+    client) + a single 401→token-refresh retry. **No retry** for 403 / 400
+    (invalid SKU handled per-item → null). No tight loops on a sustained outage:
+    a few retries, then skip the batch and let the **next 30-min sweep be the
+    retry**. Per-batch and per-listing `try/catch` so nothing crashes. Missing a
+    cycle = no data loss / no missed or false alerts (next snapshot compares to
+    the last good one, one cycle later). Outage surfaced via the red status dot +
+    the existing scheduler watchdog (admin email on heartbeat stall).
 - **Chunk 7 — Backend routes.** AlertGroup CRUD, AlertLog list/filter/paginate,
   ASIN lookup preview, bulk import, CSV export. Authenticated (`requireAuth`);
   role restriction deferred (§3.3).
