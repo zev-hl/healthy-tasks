@@ -52,6 +52,7 @@ function sellerId(): string {
 export async function searchListingsItems(opts: {
   marketplace: ExclusivesMarketplace;
   identifiers?: string[];
+  identifiersType?: 'SKU' | 'ASIN';
   includedData?: string[];
   pageSize?: number;
   pageToken?: string;
@@ -64,7 +65,7 @@ export async function searchListingsItems(opts: {
   };
   if (opts.identifiers?.length) {
     query.identifiers = opts.identifiers.join(',');
-    query.identifiersType = 'SKU';
+    query.identifiersType = opts.identifiersType ?? 'SKU';
   }
 
   const res = await spApiRequest<{
