@@ -16,6 +16,15 @@ function optional(name: string, fallback: string): string {
   return value && value.length > 0 ? value : fallback;
 }
 
+/** A whole number of minutes within [min, max]; a typo fails loudly at boot. */
+function minutes(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(optional(name, String(fallback)));
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be a whole number of minutes from ${min} to ${max}`);
+  }
+  return value;
+}
+
 export const env = {
   nodeEnv: optional('NODE_ENV', 'development'),
   isProduction: optional('NODE_ENV', 'development') === 'production',
@@ -74,6 +83,11 @@ export const env = {
     refreshToken: process.env.SP_API_REFRESH_TOKEN,
     merchantToken: process.env.SP_API_MERCHANT_TOKEN,
     storeName: optional('SELLER_STORE_NAME', 'HL Central'),
-    sweepMinutes: Number(optional('EXCLUSIVES_SWEEP_MINUTES', '30')),
+    // Whether THIS process polls Amazon on a timer (needs SCHEDULER_ENABLED
+    // too). Off unless set to "true", so staging and dev machines never sweep
+    // the seller's account — and share its rate limit — by accident.
+    sweepEnabled: optional('EXCLUSIVES_SWEEP_ENABLED', 'false') === 'true',
+    // A sweep takes ~1 min; one a day is the slowest that still makes sense.
+    sweepMinutes: minutes('EXCLUSIVES_SWEEP_MINUTES', 30, 5, 24 * 60),
   },
 } as const;

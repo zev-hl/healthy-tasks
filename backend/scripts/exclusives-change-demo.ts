@@ -3,7 +3,6 @@ import type { ExclusivesMarketplace } from '@healthy-tasks/shared';
 import { EXCLUSIVES_ALERT_TYPES } from '@healthy-tasks/shared';
 import { prisma } from '../src/db/prisma.js';
 import { sweepListings } from '../src/services/exclusives/sweep.service.js';
-import { persistSnapshots } from '../src/services/exclusives/snapshot.repository.js';
 import { runDetection } from '../src/services/exclusives/detection.service.js';
 
 async function main() {
@@ -43,17 +42,28 @@ async function main() {
   console.log(`Listing ${listing.asin} / ${listing.sku} (${listing.marketplace})`);
   console.log(`Edited stored snapshot price on the DB: real ${realPrice} → set to ${fakedPrice} (DB only; Amazon untouched)\n`);
 
-  // 4. Re-fetch this one listing's REAL data from Amazon (read-only) + store it.
+  // 4. Re-fetch this one listing's REAL data from Amazon (read-only).
   console.log('Fetching fresh data from Amazon (read-only)…');
-  const { snapshots } = await sweepListings([
+  const { snapshots, skipped } = await sweepListings([
     { sku: listing.sku, marketplace: listing.marketplace as ExclusivesMarketplace },
   ]);
-  await persistSnapshots(snapshots.map((draft) => ({ listingId: listing!.id, draft })));
   const fresh = snapshots[0];
-  console.log(`Fresh Amazon price: ${fresh?.listedPrice ?? '(none)'} ${fresh?.currency ?? ''}\n`);
+  if (!fresh) {
+    // Nothing to compare against: put the real price back and stop.
+    await prisma.listingSnapshot.update({
+      where: { id: stored.id },
+      data: { listedPrice: stored.listedPrice },
+    });
+    const reason = skipped[0]?.reason ?? 'unknown';
+    console.log(`No fresh snapshot this time (${reason}); stored price restored.`);
+    await prisma.$disconnect();
+    return;
+  }
+  console.log(`Fresh Amazon price: ${fresh.listedPrice ?? '(none)'} ${fresh.currency ?? ''}\n`);
 
-  // 5. Detect changes → write AlertLog.
-  await runDetection((m) => console.log(m));
+  // 5. Compare with the (edited) saved snapshot → AlertLog, then save the fresh
+  //    data over it — which also puts the real price back.
+  await runDetection([{ listingId: listing.id, draft: fresh }], (m) => console.log(m));
 
   // 6. Show the alert(s) as they would appear in the Alert Log.
   const logs = await prisma.alertLog.findMany({

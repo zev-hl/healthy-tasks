@@ -1,11 +1,13 @@
-import { after, before, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import type { Express } from 'express';
 import type { PrismaClient, Role } from '@prisma/client';
 import { startTestDb, type TestDb } from './db.js';
 import { memoryStorage } from '../src/storage/memory.storage.js';
+import { __resetHttpHooks } from '../src/services/exclusives/sp-api/http.js';
 import { moveTemplateNode, templateSubtreeKeys } from '@healthy-tasks/shared';
+import { fakeAmazon, plainListing, type FakeAmazonWorld } from './fixtures/fake-amazon.js';
 
 let db: TestDb;
 let app: Express;
@@ -30,6 +32,15 @@ before(async () => {
   process.env.NODE_ENV = 'test';
   // Use the in-memory storage fake so attachment tests need no MinIO/S3.
   process.env.STORAGE_DRIVER = 'memory';
+  // Exclusives: fake SP-API credentials, so real ones in the environment (the
+  // dev container loads .env) can never reach a test. Amazon itself is faked
+  // per test (fixtures/fake-amazon.ts) — no request leaves the process.
+  process.env.SP_API_CLIENT_ID = 'test-client';
+  process.env.SP_API_CLIENT_SECRET = 'test-secret';
+  process.env.SP_API_REFRESH_TOKEN = 'test-refresh';
+  process.env.SP_API_MERCHANT_TOKEN = 'A1UWLDVGZSXGKG';
+  process.env.EXCLUSIVES_SWEEP_ENABLED = 'false';
+  process.env.EXCLUSIVES_SWEEP_MINUTES = '30';
 
   const [appMod, prismaMod, pwMod, cacheMod] = await Promise.all([
     import('../src/app.js'),
@@ -5676,5 +5687,591 @@ describe('unread counts: per-user memo (Phase 14 / S5)', () => {
 
     assert.equal((await unread(admin)).total, 0);
     assert.equal((await unread(otherTok)).total, 1);
+  });
+});
+
+// --- Exclusives: change detection (HLAI-71 Chunk 6c) -------------------------
+// Each listing keeps ONE saved snapshot (its latest state). runDetection compares
+// fresh data with it, logs what changed (the AlertLog is the history), then saves
+// the fresh data over it — alerts and update in one transaction.
+
+type DetectionMod = typeof import('../src/services/exclusives/detection.service.js');
+
+describe('exclusives: change detection (HLAI-71 6c)', () => {
+  let D: DetectionMod;
+  before(async () => {
+    D = await import('../src/services/exclusives/detection.service.js');
+  });
+
+  type SnapshotFields = {
+    title?: string;
+    listedPrice?: number;
+    currency?: string;
+    capturedAt?: Date;
+  };
+
+  // One US listing in its own group, watching `types`.
+  async function seedListing(asin: string, types: string[] = ['PriceChanged', 'TitleChanged']) {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: {
+        name: `Group ${asin}`,
+        groupType: 'GROUP',
+        createdById: admin.id,
+        settings: { create: types.map((alertType) => ({ alertType, mode: 'immediate' })) },
+      },
+    });
+    return prisma.listing.create({
+      data: {
+        groupId: group.id,
+        marketplace: 'USA',
+        asin,
+        sku: `SKU-${asin}`,
+        createdById: admin.id,
+      },
+    });
+  }
+
+  // The listing's saved snapshot (its last known state).
+  function saveSnapshot(listingId: number, fields: SnapshotFields = {}) {
+    return prisma.listingSnapshot.create({
+      data: {
+        listingId,
+        title: fields.title ?? 'Widget',
+        listedPrice: fields.listedPrice ?? 34.99,
+        currency: fields.currency ?? 'USD',
+        bulletPoints: [],
+        ...(fields.capturedAt ? { capturedAt: fields.capturedAt } : {}),
+      },
+    });
+  }
+
+  // Fresh data for a listing, as a sweep would bring it.
+  function fresh(listing: { id: number; asin: string; sku: string }, fields: SnapshotFields = {}) {
+    return {
+      listingId: listing.id,
+      draft: {
+        sku: listing.sku,
+        marketplace: 'USA' as const,
+        asin: listing.asin,
+        title: fields.title ?? 'Widget',
+        listedPrice: fields.listedPrice ?? 34.99,
+        currency: fields.currency ?? 'USD',
+        bulletPoints: [],
+        isSuppressed: false,
+      },
+    };
+  }
+
+  const alertsFor = (listingId: number) =>
+    prisma.alertLog.findMany({ where: { listingId }, orderBy: { alertType: 'asc' } });
+  const snapshotsOf = (listingId: number) =>
+    prisma.listingSnapshot.findMany({ where: { listingId } });
+
+  it('logs the changes against the saved snapshot, then saves the fresh data in place', async () => {
+    const listing = await seedListing('B0DETECT01');
+    await saveSnapshot(listing.id);
+
+    const change = fresh(listing, { title: 'Widget XL', listedPrice: 31.49 });
+    const report = await D.runDetection([change]);
+    assert.equal(report.compared, 1);
+    assert.equal(report.alertsWritten, 2);
+    assert.equal(report.snapshotsSaved, 1);
+
+    const logs = await alertsFor(listing.id);
+    assert.deepEqual(
+      logs.map((l) => l.alertType),
+      ['PriceChanged', 'TitleChanged'],
+    );
+    const price = logs[0]!;
+    assert.equal(price.message, 'List price changed from $34.99 to $31.49 (-10.0%).');
+    assert.equal(price.asin, 'B0DETECT01');
+    assert.equal(price.marketplace, 'USA');
+    assert.equal(price.title, 'Widget XL');
+    assert.equal(price.groupName, 'Group B0DETECT01');
+
+    const rows = await snapshotsOf(listing.id);
+    assert.equal(rows.length, 1, 'still one row: updated in place');
+    assert.equal(rows[0]!.title, 'Widget XL');
+    assert.equal(rows[0]!.listedPrice?.toNumber(), 31.49);
+  });
+
+  it('saves a baseline the first time a listing is seen, with no alerts', async () => {
+    const listing = await seedListing('B0DETECT02');
+    const report = await D.runDetection([fresh(listing)]);
+    assert.equal(report.baselines, 1);
+    assert.equal(report.compared, 0);
+    assert.equal(report.alertsWritten, 0);
+    assert.equal((await snapshotsOf(listing.id)).length, 1);
+  });
+
+  it('logs nothing when re-run with the same data', async () => {
+    const listing = await seedListing('B0DETECT03');
+    await saveSnapshot(listing.id);
+    const entries = [fresh(listing, { listedPrice: 20 })];
+    await D.runDetection(entries);
+
+    const rerun = await D.runDetection(entries);
+    assert.equal(rerun.compared, 1);
+    assert.equal(rerun.alertsWritten, 0, 'the saved snapshot already matches');
+    assert.equal((await alertsFor(listing.id)).length, 1);
+  });
+
+  it('leaves a listing it is not given untouched', async () => {
+    const checked = await seedListing('B0DETECT04');
+    const unchecked = await seedListing('B0DETECT05');
+    await saveSnapshot(checked.id);
+    const lastGood = await saveSnapshot(unchecked.id);
+
+    await D.runDetection([fresh(checked, { listedPrice: 40 })]);
+    assert.equal((await alertsFor(unchecked.id)).length, 0);
+    const [row] = await snapshotsOf(unchecked.id);
+    assert.equal(row?.capturedAt.getTime(), lastGood.capturedAt.getTime(), 'last good data kept');
+  });
+
+  it('logs only the types a group watches, but always saves the fresh data', async () => {
+    const off = await seedListing('B0DETECT06', []);
+    const priceOnly = await seedListing('B0DETECT07', ['PriceChanged']);
+    for (const l of [off, priceOnly]) await saveSnapshot(l.id);
+
+    const renamed = { title: 'Renamed', listedPrice: 50 };
+    const report = await D.runDetection([fresh(off, renamed), fresh(priceOnly, renamed)]);
+    assert.equal(report.snapshotsSaved, 2);
+    assert.equal((await alertsFor(off.id)).length, 0);
+    assert.deepEqual(
+      (await alertsFor(priceOnly.id)).map((l) => l.alertType),
+      ['PriceChanged'],
+    );
+    assert.equal((await snapshotsOf(off.id))[0]?.title, 'Renamed');
+  });
+
+  it('compares with the newest row and removes older leftovers', async () => {
+    const listing = await seedListing('B0DETECT08');
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await saveSnapshot(listing.id, { listedPrice: 10, capturedAt: twoDaysAgo });
+    await saveSnapshot(listing.id, { listedPrice: 12 });
+
+    const report = await D.runDetection([fresh(listing, { listedPrice: 12 })]);
+    assert.equal(report.alertsWritten, 0, 'compared with the newest row ($12), not the leftover');
+    const rows = await snapshotsOf(listing.id);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.listedPrice?.toNumber(), 12);
+  });
+
+  it('rewrites only changed snapshots; the rest just get a fresh last-checked time', async () => {
+    const changed = await seedListing('B0DETECT09');
+    const same = await seedListing('B0DETECT10');
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await saveSnapshot(changed.id, { capturedAt: anHourAgo });
+    await saveSnapshot(same.id, { capturedAt: anHourAgo });
+
+    const report = await D.runDetection([fresh(changed, { listedPrice: 40 }), fresh(same)]);
+    assert.equal(report.snapshotsChanged, 1);
+    assert.equal(report.snapshotsUnchanged, 1);
+    assert.equal(report.snapshotsSaved, 2);
+
+    const [sameRow] = await snapshotsOf(same.id);
+    assert.ok(sameRow!.capturedAt > anHourAgo, 'last-checked time moved forward');
+    assert.equal(sameRow!.listedPrice?.toNumber(), 34.99, 'data untouched');
+    const [changedRow] = await snapshotsOf(changed.id);
+    assert.equal(changedRow!.listedPrice?.toNumber(), 40);
+    assert.equal(changedRow!.capturedAt.getTime(), sameRow!.capturedAt.getTime());
+  });
+
+  it('saves a change to a field no alert watches', async () => {
+    const listing = await seedListing('B0DETECT11');
+    await saveSnapshot(listing.id, { currency: 'USD' });
+
+    const report = await D.runDetection([fresh(listing, { currency: 'CAD' })]);
+    assert.equal(report.alertsWritten, 0, 'no alert type watches currency');
+    assert.equal(report.snapshotsChanged, 1);
+    assert.equal((await snapshotsOf(listing.id))[0]?.currency, 'CAD');
+  });
+});
+
+// --- Exclusives: the pass runner (HLAI-71 Chunk 6d) ---------------------------
+// Ingestion → detection end to end, on the real database, against a fake Amazon.
+
+type PassMod = typeof import('../src/services/exclusives/pass.service.js');
+
+describe('exclusives: pass runner (HLAI-71 6d)', () => {
+  let P: PassMod;
+  before(async () => {
+    P = await import('../src/services/exclusives/pass.service.js');
+  });
+  afterEach(() => __resetHttpHooks());
+
+  // A group watching price changes, with one US listing per SKU.
+  async function seedWatchedListings(...skus: string[]) {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: {
+        name: 'Pass Test',
+        groupType: 'GROUP',
+        createdById: admin.id,
+        settings: { create: [{ alertType: 'PriceChanged', mode: 'immediate' }] },
+      },
+    });
+    await prisma.listing.createMany({
+      data: skus.map((sku) => ({
+        groupId: group.id,
+        marketplace: 'USA',
+        asin: `B0${sku}`,
+        sku,
+        createdById: admin.id,
+      })),
+    });
+  }
+
+  const alertCount = () => prisma.alertLog.count();
+
+  it('takes a baseline first, then alerts on what changed', async () => {
+    await seedWatchedListings('A', 'B');
+    const world: FakeAmazonWorld = { items: [plainListing('A', 10), plainListing('B', 20)] };
+    fakeAmazon(world);
+
+    const first = await P.runExclusivesPass();
+    assert.equal(first.status, 'completed');
+    assert.equal(first.detection?.snapshotsSaved, 2);
+    assert.equal(first.detection?.alertsWritten, 0, 'nothing to compare on the first pass');
+
+    world.items = [plainListing('A', 12), plainListing('B', 20)];
+    const second = await P.runExclusivesPass();
+    assert.equal(second.detection?.alertsWritten, 1);
+    const [alert] = await prisma.alertLog.findMany();
+    assert.equal(alert?.asin, 'B0A');
+    assert.equal(alert?.message, 'List price changed from $10.00 to $12.00 (+20.0%).');
+  });
+
+  it('does not re-alert a listing that Amazon skipped this cycle', async () => {
+    await seedWatchedListings('A', 'B');
+    const world: FakeAmazonWorld = { items: [plainListing('A', 10), plainListing('B', 20)] };
+    fakeAmazon(world);
+    await P.runExclusivesPass();
+    world.items = [plainListing('A', 12), plainListing('B', 20)];
+    await P.runExclusivesPass();
+    assert.equal(await alertCount(), 1);
+
+    // A's pricing answer is throttled this cycle, so A gets no snapshot. Its
+    // newest pair is still the one already alerted on — it must not be re-logged.
+    world.pricing = { A: { statusCode: 429 } };
+    const third = await P.runExclusivesPass();
+    assert.equal(third.status, 'completed');
+    assert.deepEqual(
+      third.ingestion?.skipped.map((s) => `${s.sku}:${s.reason}`),
+      ['A:pricing-unavailable'],
+    );
+    assert.equal(await alertCount(), 1);
+  });
+
+  it('skips without calling Amazon while another instance holds the lock', async () => {
+    await seedWatchedListings('A');
+    const amazon = fakeAmazon({ items: [plainListing('A', 10)] });
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${P.PASS_LOCK_KEY})`);
+        const report = await P.runExclusivesPass();
+        assert.equal(report.status, 'skipped');
+        assert.equal(report.reason, 'another instance is running a pass');
+      },
+      { timeout: 30_000 },
+    );
+    assert.deepEqual(amazon.requests, []);
+
+    // The lock is released with that transaction, so the next pass runs.
+    assert.equal((await P.runExclusivesPass()).status, 'completed');
+  });
+
+  it('runs one pass at a time in this process', async () => {
+    await seedWatchedListings('A');
+    fakeAmazon({ items: [plainListing('A', 10)] });
+
+    const reports = await Promise.all([P.runExclusivesPass(), P.runExclusivesPass()]);
+    assert.deepEqual(reports.map((r) => r.status).sort(), ['completed', 'skipped']);
+    assert.equal(await prisma.listingSnapshot.count(), 1);
+  });
+});
+
+// --- Exclusives: one snapshot per listing (HLAI-71 Chunk 6e) -----------------
+// Across passes each listing keeps a single snapshot row (updated in place); the
+// Alert Log is where the history of changes accumulates.
+
+describe('exclusives: one snapshot per listing (HLAI-71 6e)', () => {
+  let P: PassMod;
+  before(async () => {
+    P = await import('../src/services/exclusives/pass.service.js');
+  });
+  afterEach(() => __resetHttpHooks());
+
+  it('keeps one row per listing across passes, with the changes in the Alert Log', async () => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: {
+        name: 'One Row',
+        groupType: 'GROUP',
+        createdById: admin.id,
+        settings: { create: [{ alertType: 'PriceChanged', mode: 'immediate' }] },
+      },
+    });
+    await prisma.listing.createMany({
+      data: ['A', 'B'].map((sku) => ({
+        groupId: group.id,
+        marketplace: 'USA',
+        asin: `B0${sku}`,
+        sku,
+        createdById: admin.id,
+      })),
+    });
+    const world: FakeAmazonWorld = { items: [plainListing('A', 10), plainListing('B', 20)] };
+    fakeAmazon(world);
+
+    await P.runExclusivesPass(); // baseline
+    world.items = [plainListing('A', 11), plainListing('B', 20)];
+    await P.runExclusivesPass();
+    world.items = [plainListing('A', 12), plainListing('B', 20)];
+    await P.runExclusivesPass();
+
+    assert.equal(await prisma.listingSnapshot.count(), 2, 'one row per listing');
+    const history = await prisma.alertLog.findMany({ orderBy: { id: 'asc' } });
+    assert.deepEqual(
+      history.map((a) => `${a.asin}: ${a.previousValue} → ${a.newValue}`),
+      ['B0A: 10 → 11', 'B0A: 11 → 12'],
+    );
+  });
+});
+
+// --- Exclusives: the sweep clock (HLAI-71 Chunk 6f) --------------------------
+// The timer never starts under tests; these drive its decision directly. The
+// interval is pinned to 30 minutes in the suite setup.
+
+describe('exclusives: sweep clock (HLAI-71 6f)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => S.__resetExclusivesClock());
+  afterEach(() => __resetHttpHooks());
+
+  const MINUTE_MS = 60 * 1000;
+  const INTERVAL_MS = 30 * MINUTE_MS;
+
+  async function seedListing(sku: string) {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: { name: `Clock ${sku}`, groupType: 'GROUP', createdById: admin.id },
+    });
+    return prisma.listing.create({
+      data: {
+        groupId: group.id,
+        marketplace: 'USA',
+        asin: `B0${sku}`,
+        sku,
+        createdById: admin.id,
+      },
+    });
+  }
+
+  it('says whether this process sweeps, and why not', () => {
+    const creds = { clientId: 'id', clientSecret: 's', refreshToken: 'r', merchantToken: 'm' };
+    const on = { sweepEnabled: true, sweepMinutes: 30 };
+    assert.deepEqual(S.exclusivesSweepMode({ ...creds, ...on }), {
+      on: true,
+      summary: 'on, every 30 min',
+    });
+    assert.equal(S.exclusivesSweepMode({ ...creds, ...on, sweepEnabled: false }).on, false);
+    const noCreds = S.exclusivesSweepMode(on);
+    assert.equal(noCreds.on, false);
+    assert.match(noCreds.summary, /missing SP_API_CLIENT_ID/);
+    assert.equal(S.exclusivesSweepMode().on, false, 'off unless EXCLUSIVES_SWEEP_ENABLED=true');
+  });
+
+  it('is due now when nothing has been snapshotted yet', async () => {
+    const now = new Date();
+    assert.equal((await S.exclusivesDueAt(now, null)).getTime(), now.getTime());
+  });
+
+  it('is due one interval after the newest snapshot', async () => {
+    const listing = await seedListing('A');
+    const capturedAt = new Date(Date.now() - 10 * MINUTE_MS);
+    await prisma.listingSnapshot.create({
+      data: { listingId: listing.id, bulletPoints: [], capturedAt },
+    });
+    const due = await S.exclusivesDueAt(new Date(), null);
+    assert.equal(due.getTime(), capturedAt.getTime() + INTERVAL_MS);
+  });
+
+  it('waits a full interval after a failed attempt instead of retrying at once', async () => {
+    await seedListing('A');
+    fakeAmazon({ items: [], failListings: () => true });
+
+    assert.equal((await S.runExclusivesIfDue()).ran, true);
+    assert.equal(await prisma.listingSnapshot.count(), 0, 'Amazon was down: nothing saved');
+
+    const again = await S.runExclusivesIfDue();
+    assert.equal(again.ran, false, 'no tight loop while Amazon is down');
+    assert.ok(again.nextAt.getTime() - Date.now() > INTERVAL_MS - MINUTE_MS);
+  });
+
+  it('runs a pass when due, and does not sweep early after a restart', async () => {
+    await seedListing('A');
+    const amazon = fakeAmazon({ items: [plainListing('A', 10)] });
+
+    assert.equal((await S.runExclusivesIfDue()).ran, true);
+    assert.equal(await prisma.listingSnapshot.count(), 1);
+
+    S.__resetExclusivesClock(); // a restart forgets the in-memory attempt…
+    const afterRestart = await S.runExclusivesIfDue();
+    assert.equal(afterRestart.ran, false, '…but the fresh snapshot in the DB says "not yet"');
+    assert.equal(amazon.requests.length, 2, 'only the first pass called Amazon');
+  });
+});
+
+// --- Exclusives: sweep health (HLAI-71 Chunk 6g) -----------------------------
+// After each pass: email admins when listings go several sweeps without a fresh
+// check (at most hourly); the status endpoint reports the last successful check.
+// The interval is pinned to 30 minutes, so "stale" means over 1.5 hours.
+
+describe('exclusives: sweep health (HLAI-71 6g)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => {
+    S.__resetExclusivesClock();
+    M.__resetSentEmails();
+  });
+  afterEach(() => __resetHttpHooks());
+
+  const MINUTE_MS = 60 * 1000;
+
+  // A listing whose only snapshot was captured `minutesAgo` (none if null).
+  async function seedListing(sku: string, minutesAgo: number | null) {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: { name: `Health ${sku}`, groupType: 'GROUP', createdById: admin.id },
+    });
+    const listing = await prisma.listing.create({
+      data: {
+        groupId: group.id,
+        marketplace: 'USA',
+        asin: `B0${sku}`,
+        sku,
+        createdById: admin.id,
+      },
+    });
+    if (minutesAgo !== null) {
+      const capturedAt = new Date(Date.now() - minutesAgo * MINUTE_MS);
+      await prisma.listingSnapshot.create({
+        data: { listingId: listing.id, bulletPoints: [], capturedAt },
+      });
+    }
+    return listing;
+  }
+
+  const outageEmails = () => M.sentEmails.filter((e) => e.subject.includes('Exclusives'));
+
+  it('emails admins when sweeps keep failing — at most once an hour', async () => {
+    await seedListing('A', 120); // already 2 hours behind
+    fakeAmazon({ items: [], failListings: () => true });
+
+    const t0 = new Date();
+    await S.runExclusivesIfDue(t0);
+    assert.equal(outageEmails().length, 1);
+    const email = outageEmails()[0]!;
+    assert.equal(email.to, ADMIN_EMAIL);
+    const overdue = /1 of 1 monitored Amazon listings have not been checked for over 1\.5 hour/;
+    assert.match(email.text, overdue);
+    assert.match(email.text, /Latest attempt: 0 of 1 listings checked; skipped: batch-failed=1/);
+
+    await S.runExclusivesIfDue(new Date(t0.getTime() + 31 * MINUTE_MS)); // next sweep fails too
+    assert.equal(outageEmails().length, 1, 'no repeat within the hour');
+
+    await S.runExclusivesIfDue(new Date(t0.getTime() + 62 * MINUTE_MS));
+    assert.equal(outageEmails().length, 2, 'a reminder once the hour has passed');
+  });
+
+  it('stays quiet once a sweep succeeds', async () => {
+    await seedListing('A', 120);
+    fakeAmazon({ items: [plainListing('A', 10)] });
+    await S.runExclusivesIfDue();
+    assert.equal(outageEmails().length, 0, 'the fresh snapshot brings it up to date');
+  });
+
+  it('gives a newly added listing time for its first check', async () => {
+    await seedListing('NEW', null);
+    fakeAmazon({ items: [], failListings: () => true });
+    await S.runExclusivesIfDue();
+    assert.equal(outageEmails().length, 0);
+  });
+
+  it('reports the last successful check on the status endpoint', async () => {
+    const listing = await seedListing('A', 10);
+    fakeAmazon({ items: [] });
+
+    const res = await request(app)
+      .get('/api/exclusives/status')
+      .set(auth(await adminToken()));
+    assert.equal(res.status, 200);
+    assert.equal(res.body.connected, true);
+    const snapshot = await prisma.listingSnapshot.findFirstOrThrow({
+      where: { listingId: listing.id },
+    });
+    assert.equal(res.body.lastSweepAt, snapshot.capturedAt.toISOString());
+  });
+});
+
+describe('exclusives: scheduled sweep log lines (HLAI-71 6g)', () => {
+  before(loadSchedulerMods);
+  beforeEach(() => S.__resetExclusivesClock());
+  afterEach(() => __resetHttpHooks());
+
+  // Run one scheduled pass and return what it printed.
+  async function logsOf(run: () => Promise<unknown>): Promise<string[]> {
+    const log = mock.method(console, 'log', () => {});
+    try {
+      await run();
+      return log.mock.calls.map((c) => String(c.arguments[0]));
+    } finally {
+      log.mock.restore();
+    }
+  }
+
+  async function seedListing() {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: { name: 'Log Test', groupType: 'GROUP', createdById: admin.id },
+    });
+    await prisma.listing.create({
+      data: {
+        groupId: group.id,
+        marketplace: 'USA',
+        asin: 'B0A',
+        sku: 'A',
+        createdById: admin.id,
+      },
+    });
+  }
+
+  it('opens and closes every scheduled run with a start and an end line', async () => {
+    await seedListing();
+    fakeAmazon({ items: [plainListing('A', 10)] });
+
+    const lines = await logsOf(() => S.runExclusivesIfDue());
+    const started = /^\[exclusives\] ▶ Scheduled sweep #\d+ started at .+ \(runs every 30 min\)$/;
+    const ended =
+      /^\[exclusives\] ■ Scheduled sweep #\d+ ended after \d+s — completed: 1\/1 listings checked, 0 alert\(s\)\. Next sweep at /;
+    assert.match(lines[0]!, started);
+    assert.match(lines.at(-1)!, ended);
+  });
+
+  it('says so when a run is skipped', async () => {
+    await seedListing();
+    const P = await import('../src/services/exclusives/pass.service.js');
+    fakeAmazon({ items: [plainListing('A', 10)] });
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${P.PASS_LOCK_KEY})`);
+        const lines = await logsOf(() => S.runExclusivesIfDue());
+        const skipped = /ended after \d+s — skipped: another instance is running a pass/;
+        assert.match(lines.at(-1)!, skipped);
+      },
+      { timeout: 30_000 },
+    );
   });
 });

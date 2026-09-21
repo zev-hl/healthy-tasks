@@ -1,5 +1,6 @@
 import { getAccessToken } from './auth.js';
 import { SpApiError, SpApiWriteBlockedError } from './errors.js';
+import { fetchWithRetry, parseBody } from './http.js';
 
 export const SP_API_HOST = 'https://sellingpartnerapi-na.amazon.com';
 
@@ -23,16 +24,22 @@ export interface SpApiResult<T> {
   rateLimit: number | null;
 }
 
-const MAX_RETRIES = 3;
-const BACKOFF_CAP_MS = 60_000;
+interface SpApiErrorBody {
+  errors?: Array<{ code?: unknown; message?: unknown; details?: unknown }>;
+}
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-// Exponential backoff with jitter, honouring Retry-After when present.
-function backoffMs(attempt: number, retryAfter: string | null): number {
-  const header = retryAfter ? Number(retryAfter) * 1000 : 0;
-  const base = Math.min(BACKOFF_CAP_MS, 1000 * 2 ** attempt);
-  return Math.min(BACKOFF_CAP_MS, Math.max(header, base) + Math.floor(Math.random() * 400));
+// Amazon rejected the access token itself (expired, revoked or malformed).
+// SP-API usually reports that as a 403 "Unauthorized" whose text names the
+// access token rather than as a 401; a 403 for any other reason (e.g. a
+// missing role) is final.
+export function isTokenRejected(status: number, body: unknown): boolean {
+  if (status === 401) return true;
+  if (status !== 403) return false;
+  const errors = (body as SpApiErrorBody | null)?.errors ?? [];
+  return errors.some(
+    (e) =>
+      e.code === 'Unauthorized' && /access token/i.test(`${e.message ?? ''} ${e.details ?? ''}`),
+  );
 }
 
 export async function spApiRequest<T>(opts: {
@@ -40,10 +47,11 @@ export async function spApiRequest<T>(opts: {
   path: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
+  /** Rate pacer for this endpoint, awaited before every attempt (retries too). */
+  pace?: () => Promise<void>;
 }): Promise<SpApiResult<T>> {
   assertReadOnly(opts.method, opts.path);
 
-  const token = await getAccessToken();
   const url = new URL(opts.path, SP_API_HOST);
   if (opts.query) {
     for (const [key, value] of Object.entries(opts.query)) {
@@ -51,30 +59,32 @@ export async function spApiRequest<T>(opts: {
     }
   }
 
-  const init: RequestInit = {
+  const body =
+    opts.method === 'POST' && opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
+  const init = (token: string): RequestInit => ({
     method: opts.method,
     headers: {
       'x-amz-access-token': token,
       accept: 'application/json',
       ...(opts.method === 'POST' ? { 'content-type': 'application/json' } : {}),
     },
-    body: opts.method === 'POST' && opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-  };
+    body,
+  });
+  const label = `${opts.method} ${opts.path}`;
+  const retry = { beforeAttempt: opts.pace };
 
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url, init);
-    if (res.status === 429 && attempt < MAX_RETRIES) {
-      await sleep(backoffMs(attempt, res.headers.get('Retry-After')));
-      continue;
-    }
-
-    const rateLimit = res.headers.get('x-amzn-RateLimit-Limit');
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : {};
-
-    if (!res.ok) {
-      throw new SpApiError(res.status, opts.method, opts.path, data);
-    }
-    return { status: res.status, data: data as T, rateLimit: rateLimit ? Number(rateLimit) : null };
+  let res = await fetchWithRetry(label, url, init(await getAccessToken()), retry);
+  let data = parseBody(res.text);
+  // The cached token can be rejected before its expiry (rotated or revoked):
+  // mint a fresh one and try exactly once more.
+  if (isTokenRejected(res.status, data)) {
+    res = await fetchWithRetry(label, url, init(await getAccessToken(true)), retry);
+    data = parseBody(res.text);
   }
+
+  if (res.status < 200 || res.status >= 300) {
+    throw new SpApiError(res.status, opts.method, opts.path, data);
+  }
+  const rateLimit = res.headers.get('x-amzn-RateLimit-Limit');
+  return { status: res.status, data: data as T, rateLimit: rateLimit ? Number(rateLimit) : null };
 }

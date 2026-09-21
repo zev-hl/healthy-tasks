@@ -1851,4 +1851,6 @@ export interface ExclusivesStatusDto {
   checkedAt: string; // ISO
   detail: string;
   marketplaces: string[];
+  /** The last successful Amazon check (newest listing snapshot), ISO; null if never. */
+  lastSweepAt: string | null;
 }

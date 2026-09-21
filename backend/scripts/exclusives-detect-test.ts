@@ -4,6 +4,7 @@ import { EXCLUSIVES_ALERT_TYPES } from '@healthy-tasks/shared';
 import { prisma } from '../src/db/prisma.js';
 import { env } from '../src/config/env.js';
 import { runDetection } from '../src/services/exclusives/detection.service.js';
+import type { ListingSnapshotDraft } from '../src/services/exclusives/snapshot.mapper.js';
 
 async function main() {
   const user = await prisma.user.findFirst();
@@ -29,7 +30,7 @@ async function main() {
 
   const bullets = (b: string[]) => b as unknown as Prisma.InputJsonValue;
 
-  // Previous snapshot — we hold the Buy Box at $34.99, 3 offers.
+  // The saved snapshot (last known state) — we hold the Buy Box at $34.99, 3 offers.
   await prisma.listingSnapshot.create({
     data: {
       listingId: listing.id,
@@ -43,29 +44,28 @@ async function main() {
       buyboxPrice: 34.99,
       offerCount: 3,
       isSuppressed: false,
-      capturedAt: new Date(Date.now() - 60_000),
     },
   });
-  // Current snapshot — price drop, Buy Box lost to a competitor, +3 offers,
-  // title edited, bullet 2 rewritten.
-  await prisma.listingSnapshot.create({
-    data: {
-      listingId: listing.id,
-      title: 'Widget XL',
-      category: 'Vitamins',
-      brand: 'Acme',
-      bulletPoints: bullets(['one', 'TWO', 'three']),
-      listedPrice: 31.49,
-      currency: 'USD',
-      buyboxWinnerSellerId: 'A9COMPETITOR0',
-      buyboxPrice: 31.49,
-      offerCount: 6,
-      isSuppressed: false,
-      capturedAt: new Date(),
-    },
-  });
+  // Fresh data as a sweep would bring it — price drop, Buy Box lost to a
+  // competitor, +3 offers, title edited, bullet 2 rewritten.
+  const fresh: ListingSnapshotDraft = {
+    sku: 'TEST-1',
+    marketplace: 'USA',
+    asin: 'B000TEST01',
+    title: 'Widget XL',
+    category: 'Vitamins',
+    brand: 'Acme',
+    bulletPoints: ['one', 'TWO', 'three'],
+    listedPrice: 31.49,
+    currency: 'USD',
+    buyboxWinnerSellerId: 'A9COMPETITOR0',
+    buyboxPrice: 31.49,
+    offerCount: 6,
+    isSuppressed: false,
+  };
+  const entries = [{ listingId: listing.id, draft: fresh }];
 
-  const report = await runDetection((m) => console.log(m));
+  const report = await runDetection(entries, (m) => console.log(m));
 
   const logs = await prisma.alertLog.findMany({
     where: { listingId: listing.id },
@@ -75,9 +75,16 @@ async function main() {
   for (const l of logs) console.log(`  [${l.alertType}] ${l.message}  (cat=${l.category ?? '-'})`);
   console.log(`\nreport: ${JSON.stringify(report)}`);
 
-  // Re-run to prove idempotency (no new snapshot → same newest pair → but this
-  // would re-detect; in the real flow a fresh snapshot is written each cycle).
-  await prisma.alertGroup.delete({ where: { id: group.id } }); // cleanup (cascade)
+  // Re-run with the same data: the saved snapshot already matches, so nothing is added.
+  const rerun = await runDetection(entries);
+  console.log(`re-run: ${JSON.stringify(rerun)} (expect alertsWritten 0)`);
+  const rows = await prisma.listingSnapshot.count({ where: { listingId: listing.id } });
+  console.log(`snapshot rows for this listing: ${rows} (expect 1 — updated in place)`);
+
+  // Cleanup. AlertLog survives group deletion by design (SetNull), so remove
+  // this test's rows explicitly or they'd linger as orphans.
+  await prisma.alertLog.deleteMany({ where: { listingId: listing.id } });
+  await prisma.alertGroup.delete({ where: { id: group.id } });
   await prisma.$disconnect();
 }
 

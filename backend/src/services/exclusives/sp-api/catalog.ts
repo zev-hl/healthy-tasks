@@ -50,6 +50,7 @@ export interface CatalogSearchResult {
 export async function searchCatalogItems(
   asins: string[],
   marketplace: ExclusivesMarketplace,
+  pace?: () => Promise<void>,
 ): Promise<CatalogSearchResult> {
   const res = await spApiRequest<{ items?: CatalogItem[] }>({
     method: 'GET',
@@ -61,6 +62,7 @@ export async function searchCatalogItems(
       includedData: CONTENT_DATA.join(','),
       pageSize: 20,
     },
+    pace,
   });
   return { items: res.data.items ?? [], rateLimit: res.rateLimit };
 }

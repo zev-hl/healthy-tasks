@@ -1,5 +1,6 @@
 import { env } from '../../../config/env.js';
 import { SpApiAuthError } from './errors.js';
+import { fetchWithRetry, parseBody } from './http.js';
 
 const TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
 // Refresh a little before the 1h expiry so calls never race a stale token.
@@ -36,18 +37,19 @@ export async function getAccessToken(force = false): Promise<string> {
     client_secret: clientSecret,
   });
 
-  const res = await fetch(TOKEN_URL, {
+  // Same timeout + transient retry as SP-API calls; a 4xx here (e.g. a revoked
+  // refresh token) is final.
+  const res = await fetchWithRetry('LWA token refresh', TOKEN_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body,
   });
 
-  const text = await res.text();
-  if (!res.ok) {
-    throw new SpApiAuthError(`LWA token refresh failed (${res.status}): ${text.slice(0, 300)}`);
+  if (res.status < 200 || res.status >= 300) {
+    throw new SpApiAuthError(`LWA token refresh failed (${res.status}): ${res.text.slice(0, 300)}`);
   }
 
-  const json = JSON.parse(text) as { access_token?: string; expires_in?: number };
+  const json = parseBody(res.text) as { access_token?: string; expires_in?: number };
   if (!json.access_token) {
     throw new SpApiAuthError('LWA token response did not include an access_token.');
   }

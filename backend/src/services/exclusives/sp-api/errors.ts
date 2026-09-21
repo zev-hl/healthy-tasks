@@ -12,6 +12,20 @@ export class SpApiWriteBlockedError extends Error {
   }
 }
 
+// Every attempt failed before Amazon answered (connection error or timeout).
+// Transient by nature: the next scheduled sweep is the retry.
+export class SpApiNetworkError extends Error {
+  label: string;
+
+  constructor(label: string, cause: unknown) {
+    super(`SP-API ${label} got no response: ${(cause as Error)?.message ?? String(cause)}`, {
+      cause,
+    });
+    this.name = 'SpApiNetworkError';
+    this.label = label;
+  }
+}
+
 export class SpApiError extends Error {
   status: number;
   method: string;

@@ -56,6 +56,7 @@ export async function searchListingsItems(opts: {
   includedData?: string[];
   pageSize?: number;
   pageToken?: string;
+  pace?: () => Promise<void>;
 }): Promise<SearchListingsResult> {
   const query: Record<string, string | number | undefined> = {
     marketplaceIds: AMAZON_MARKETPLACE_ID[opts.marketplace],
@@ -76,6 +77,7 @@ export async function searchListingsItems(opts: {
     method: 'GET',
     path: `/listings/2021-08-01/items/${sellerId()}`,
     query,
+    pace: opts.pace,
   });
 
   return {

@@ -17,6 +17,11 @@ import { materializeDueTaskRecurrences } from './task-recurrence.service.js';
 import { runGoalReviewPass } from './goal.service.js';
 import { getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
+import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
+import { missingSpApiConfig, type SpApiConfig } from './exclusives/sp-api/config.js';
+import { lastSuccessfulSweepAt, loadSweepHealth } from './exclusives/health.service.js';
+import { STALE_AFTER_SWEEPS } from './exclusives/sweep-health.js';
+import { summarizeSkips } from './exclusives/ingestion.service.js';
 
 /**
  * Recurrence scheduler (Phase 11; reworked in Phase 14).
@@ -695,6 +700,200 @@ async function alertAdminsSchedulerDown(last: Date | null, now: Date): Promise<v
   ]);
 }
 
+// --- Exclusives sweep clock (HLAI-71 Chunk 6f) -----------------------------
+//
+// The Exclusives (Amazon) sweep runs on its OWN timer: started and stopped with
+// the recurrence scheduler, but never inside `runScheduler`. A pass takes about a
+// minute, and while the recurrence timer is mid-pass it reads as disarmed, which
+// the watchdog above reports to admins and every client as "scheduler down". A
+// separate timer leaves recurrences, reminders and that watchdog as they were.
+//
+// Like the recurrence clock, the next run is re-derived from the database every
+// time (`exclusivesDueAt`), so a restart or hot reload never sweeps early and all
+// instances agree on when a sweep is due; the pass's advisory lock stops two from
+// running at once.
+
+/** If working out the next run fails, look again after this long. */
+const EXCLUSIVES_RETRY_MS = 5 * 60 * 1000;
+/** A timer can fire a hair early, and the due time comes from the DB's clock;
+ * treat "due within a second" as due rather than waking again moments later. */
+const EXCLUSIVES_DUE_SLACK_MS = 1000;
+
+let exclusivesTimer: ReturnType<typeof setTimeout> | null = null;
+let exclusivesStarted = false;
+/** When this process last started a pass. In memory on purpose — see exclusivesDueAt. */
+let lastExclusivesAttemptAt: Date | null = null;
+/** The latest pass's report, quoted in the outage email. */
+let lastExclusivesReport: ExclusivesPassReport | null = null;
+/** Cooldown for Exclusives outage emails — separate from the recurrence
+ * scheduler's, so neither kind of alert can hold back the other. */
+let lastExclusivesAlertAt: Date | null = null;
+/** Scheduled runs started by this process, numbered in the log. */
+let exclusivesRunCount = 0;
+
+// eslint-disable-next-line no-console
+const logExclusives = (msg: string): void => console.log(msg);
+
+type SweepConfig = SpApiConfig & { sweepEnabled: boolean; sweepMinutes: number };
+type SweepMode = { on: boolean; summary: string };
+
+/** Whether this process runs the Exclusives sweep, with a one-line why for the boot log. */
+export function exclusivesSweepMode(cfg: SweepConfig = env.amazon): SweepMode {
+  if (!cfg.sweepEnabled) {
+    return { on: false, summary: 'off (EXCLUSIVES_SWEEP_ENABLED is not "true")' };
+  }
+  const missing = missingSpApiConfig(cfg);
+  if (missing.length > 0) {
+    return { on: false, summary: `off (SP-API not configured: missing ${missing.join(', ')})` };
+  }
+  return { on: true, summary: `on, every ${cfg.sweepMinutes} min` };
+}
+
+/**
+ * When the next pass is due: one interval after the newest snapshot (the last
+ * successful sweep, by any instance) and one interval after this process's last
+ * attempt, whichever is later — and never before `now`. The attempt is what stops
+ * a tight loop while Amazon is down: a failing pass saves no snapshot, so the
+ * newest snapshot alone would read "due now" forever. It lives in memory, so a
+ * restart may retry once early; that is fine. No snapshots yet: due now.
+ */
+export async function exclusivesDueAt(
+  now: Date,
+  lastAttemptAt: Date | null = lastExclusivesAttemptAt,
+): Promise<Date> {
+  const intervalMs = env.amazon.sweepMinutes * 60 * 1000;
+  const candidates = [now.getTime()];
+  const lastSnapshotAt = await lastSuccessfulSweepAt();
+  if (lastSnapshotAt) candidates.push(lastSnapshotAt.getTime() + intervalMs);
+  if (lastAttemptAt) candidates.push(lastAttemptAt.getTime() + intervalMs);
+  return new Date(Math.max(...candidates));
+}
+
+/**
+ * Run a pass if one is due, and say when the next one is. Exposed so tests can
+ * drive the clock deterministically (the timer itself never starts under tests).
+ */
+export async function runExclusivesIfDue(
+  now: Date = new Date(),
+): Promise<{ ran: boolean; nextAt: Date }> {
+  const dueAt = await exclusivesDueAt(now);
+  if (dueAt.getTime() > now.getTime() + EXCLUSIVES_DUE_SLACK_MS) {
+    return { ran: false, nextAt: dueAt };
+  }
+
+  lastExclusivesAttemptAt = now;
+  const run = ++exclusivesRunCount;
+  logExclusives(
+    `[exclusives] ▶ Scheduled sweep #${run} started at ${now.toISOString()} ` +
+      `(runs every ${env.amazon.sweepMinutes} min)`,
+  );
+
+  const report = await runExclusivesPass(logExclusives); // never throws
+  lastExclusivesReport = report;
+  await checkExclusivesHealth(now);
+  const nextAt = await exclusivesDueAt(new Date());
+
+  const seconds = Math.round((Date.parse(report.finishedAt) - Date.parse(report.startedAt)) / 1000);
+  logExclusives(
+    `[exclusives] ■ Scheduled sweep #${run} ended after ${seconds}s — ${describeOutcome(report)}. ` +
+      `Next sweep${report.status === 'failed' ? ' (the retry)' : ''} at ${nextAt.toISOString()}`,
+  );
+  return { ran: true, nextAt };
+}
+
+// The outcome half of a run's closing log line.
+function describeOutcome(report: ExclusivesPassReport): string {
+  if (report.status === 'failed') return `FAILED: ${report.reason ?? 'no reason given'}`;
+  if (report.status === 'skipped') return `skipped: ${report.reason ?? 'no reason given'}`;
+  const saved = report.detection?.snapshotsSaved ?? 0;
+  const total = report.ingestion?.listingCount ?? 0;
+  return `completed: ${saved}/${total} listings checked, ${report.detection?.alertsWritten ?? 0} alert(s)`;
+}
+
+/** Test seam: forget everything held in memory, as a process restart would. */
+export function __resetExclusivesClock(): void {
+  lastExclusivesAttemptAt = null;
+  lastExclusivesReport = null;
+  lastExclusivesAlertAt = null;
+}
+
+// One line on the latest attempt, for the outage email.
+function describeAttempt(report: ExclusivesPassReport | null): string {
+  if (!report) return 'none yet in this process';
+  if (report.status !== 'completed' || !report.ingestion) {
+    return `${report.status} — ${report.reason ?? 'no reason given'} (${report.startedAt})`;
+  }
+  const { listingCount, skipped, aborted } = report.ingestion;
+  return (
+    `${report.detection?.snapshotsSaved ?? 0} of ${listingCount} listings checked` +
+    (aborted ? ', stopped early after repeated failures' : '') +
+    (skipped.length > 0 ? `; skipped: ${summarizeSkips(skipped)}` : '') +
+    ` (${report.startedAt})`
+  );
+}
+
+/**
+ * After each pass: if too many listings have gone several sweeps without a
+ * fresh check (see sweep-health.ts), email the admins — at most once per
+ * cooldown, and never again once sweeps recover. The recurrence watchdog can't
+ * see this: the timer keeps ticking fine while Amazon calls fail. Never throws.
+ */
+async function checkExclusivesHealth(now: Date): Promise<void> {
+  try {
+    const staleAfterMs = STALE_AFTER_SWEEPS * env.amazon.sweepMinutes * 60 * 1000;
+    const health = await loadSweepHealth(now, staleAfterMs);
+    if (!health.unhealthy) return;
+    const coolingDown =
+      lastExclusivesAlertAt !== null &&
+      now.getTime() - lastExclusivesAlertAt.getTime() < SCHEDULER_ALERT_COOLDOWN_MS;
+    if (coolingDown) return;
+    lastExclusivesAlertAt = now;
+
+    const { stale, listings, lastSuccessAt } = health;
+    logExclusives(`[exclusives] ${stale} of ${listings} listings are stale — emailing admins`);
+    await alertAdmins('HL Central: Amazon (Exclusives) checks are failing', [
+      `${stale} of ${listings} monitored Amazon listings have not been checked for over ` +
+        `${fmtDuration(staleAfterMs)}.`,
+      lastSuccessAt
+        ? `Last successful check: ${lastSuccessAt.toISOString()} ` +
+          `(~${fmtDuration(now.getTime() - lastSuccessAt.getTime())} ago).`
+        : 'No listing has been checked successfully yet.',
+      `Latest attempt: ${describeAttempt(lastExclusivesReport)}.`,
+      '',
+      'Price, Buy Box and listing alerts are not raised for these listings until this recovers.',
+      'Check the API logs for "[exclusives]" lines, the SP-API credentials, and Amazon\'s status.',
+    ]);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('exclusives: health check failed', err);
+  }
+}
+
+function armExclusives(delayMs: number): void {
+  if (!exclusivesStarted) return; // stopped while a pass was running
+  exclusivesTimer = setTimeout(() => void exclusivesTick(), Math.max(delayMs, 0));
+  exclusivesTimer.unref?.();
+}
+
+async function exclusivesTick(): Promise<void> {
+  exclusivesTimer = null;
+  let nextAt: Date;
+  try {
+    const result = await runExclusivesIfDue();
+    nextAt = result.nextAt;
+    // A run's closing line already names the next sweep; say it only when idle.
+    if (!result.ran) logExclusives(`[exclusives] Next sweep at ${nextAt.toISOString()}`);
+  } catch (err) {
+    // Only the due-time read can throw (the pass never does). Degrade to a
+    // slow retry, never to silence.
+    // eslint-disable-next-line no-console
+    console.error('exclusives: sweep clock failed', err);
+    nextAt = new Date(Date.now() + EXCLUSIVES_RETRY_MS);
+    logExclusives(`[exclusives] Next sweep at ${nextAt.toISOString()} (retrying after an error)`);
+  }
+  armExclusives(nextAt.getTime() - Date.now());
+}
+
 // --- Timer lifecycle (server.ts only; never started under tests) -----------
 
 let handle: ReturnType<typeof setTimeout> | null = null;
@@ -724,6 +923,12 @@ export function startScheduler(): void {
   // Run once at boot so the heartbeat and next wake are fresh immediately, and so
   // module state is rebuilt from the database after every restart.
   void tick();
+
+  // The Exclusives clock rides the same lifecycle, only where it is switched on.
+  if (exclusivesSweepMode().on && !exclusivesStarted) {
+    exclusivesStarted = true;
+    void exclusivesTick();
+  }
 }
 
 export function stopScheduler(): void {
@@ -732,4 +937,10 @@ export function stopScheduler(): void {
     handle = null;
   }
   timerArmed = false;
+
+  exclusivesStarted = false;
+  if (exclusivesTimer) {
+    clearTimeout(exclusivesTimer);
+    exclusivesTimer = null;
+  }
 }
