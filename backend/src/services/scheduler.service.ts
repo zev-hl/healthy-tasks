@@ -19,9 +19,7 @@ import { getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
 import { missingSpApiConfig, type SpApiConfig } from './exclusives/sp-api/config.js';
-import { lastSuccessfulSweepAt, loadSweepHealth } from './exclusives/health.service.js';
-import { STALE_AFTER_SWEEPS } from './exclusives/sweep-health.js';
-import { summarizeSkips } from './exclusives/ingestion.service.js';
+import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
 
 /**
  * Recurrence scheduler (Phase 11; reworked in Phase 14).
@@ -723,11 +721,6 @@ let exclusivesTimer: ReturnType<typeof setTimeout> | null = null;
 let exclusivesStarted = false;
 /** When this process last started a pass. In memory on purpose — see exclusivesDueAt. */
 let lastExclusivesAttemptAt: Date | null = null;
-/** The latest pass's report, quoted in the outage email. */
-let lastExclusivesReport: ExclusivesPassReport | null = null;
-/** Cooldown for Exclusives outage emails — separate from the recurrence
- * scheduler's, so neither kind of alert can hold back the other. */
-let lastExclusivesAlertAt: Date | null = null;
 /** Scheduled runs started by this process, numbered in the log. */
 let exclusivesRunCount = 0;
 
@@ -789,8 +782,6 @@ export async function runExclusivesIfDue(
   );
 
   const report = await runExclusivesPass(logExclusives); // never throws
-  lastExclusivesReport = report;
-  await checkExclusivesHealth(now);
   const nextAt = await exclusivesDueAt(new Date());
 
   const seconds = Math.round((Date.parse(report.finishedAt) - Date.parse(report.startedAt)) / 1000);
@@ -813,60 +804,6 @@ function describeOutcome(report: ExclusivesPassReport): string {
 /** Test seam: forget everything held in memory, as a process restart would. */
 export function __resetExclusivesClock(): void {
   lastExclusivesAttemptAt = null;
-  lastExclusivesReport = null;
-  lastExclusivesAlertAt = null;
-}
-
-// One line on the latest attempt, for the outage email.
-function describeAttempt(report: ExclusivesPassReport | null): string {
-  if (!report) return 'none yet in this process';
-  if (report.status !== 'completed' || !report.ingestion) {
-    return `${report.status} — ${report.reason ?? 'no reason given'} (${report.startedAt})`;
-  }
-  const { listingCount, skipped, aborted } = report.ingestion;
-  return (
-    `${report.detection?.snapshotsSaved ?? 0} of ${listingCount} listings checked` +
-    (aborted ? ', stopped early after repeated failures' : '') +
-    (skipped.length > 0 ? `; skipped: ${summarizeSkips(skipped)}` : '') +
-    ` (${report.startedAt})`
-  );
-}
-
-/**
- * After each pass: if too many listings have gone several sweeps without a
- * fresh check (see sweep-health.ts), email the admins — at most once per
- * cooldown, and never again once sweeps recover. The recurrence watchdog can't
- * see this: the timer keeps ticking fine while Amazon calls fail. Never throws.
- */
-async function checkExclusivesHealth(now: Date): Promise<void> {
-  try {
-    const staleAfterMs = STALE_AFTER_SWEEPS * env.amazon.sweepMinutes * 60 * 1000;
-    const health = await loadSweepHealth(now, staleAfterMs);
-    if (!health.unhealthy) return;
-    const coolingDown =
-      lastExclusivesAlertAt !== null &&
-      now.getTime() - lastExclusivesAlertAt.getTime() < SCHEDULER_ALERT_COOLDOWN_MS;
-    if (coolingDown) return;
-    lastExclusivesAlertAt = now;
-
-    const { stale, listings, lastSuccessAt } = health;
-    logExclusives(`[exclusives] ${stale} of ${listings} listings are stale — emailing admins`);
-    await alertAdmins('HL Central: Amazon (Exclusives) checks are failing', [
-      `${stale} of ${listings} monitored Amazon listings have not been checked for over ` +
-        `${fmtDuration(staleAfterMs)}.`,
-      lastSuccessAt
-        ? `Last successful check: ${lastSuccessAt.toISOString()} ` +
-          `(~${fmtDuration(now.getTime() - lastSuccessAt.getTime())} ago).`
-        : 'No listing has been checked successfully yet.',
-      `Latest attempt: ${describeAttempt(lastExclusivesReport)}.`,
-      '',
-      'Price, Buy Box and listing alerts are not raised for these listings until this recovers.',
-      'Check the API logs for "[exclusives]" lines, the SP-API credentials, and Amazon\'s status.',
-    ]);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('exclusives: health check failed', err);
-  }
 }
 
 function armExclusives(delayMs: number): void {

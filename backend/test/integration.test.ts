@@ -6129,78 +6129,28 @@ describe('exclusives: sweep clock (HLAI-71 6f)', () => {
 // check (at most hourly); the status endpoint reports the last successful check.
 // The interval is pinned to 30 minutes, so "stale" means over 1.5 hours.
 
-describe('exclusives: sweep health (HLAI-71 6g)', () => {
+describe('exclusives: last successful check (HLAI-71 6g)', () => {
   before(loadSchedulerMods);
-  beforeEach(() => {
-    S.__resetExclusivesClock();
-    M.__resetSentEmails();
-  });
+  beforeEach(() => S.__resetExclusivesClock());
   afterEach(() => __resetHttpHooks());
 
   const MINUTE_MS = 60 * 1000;
 
-  // A listing whose only snapshot was captured `minutesAgo` (none if null).
-  async function seedListing(sku: string, minutesAgo: number | null) {
+  it('reports the last successful check on the status endpoint', async () => {
     const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
     const group = await prisma.alertGroup.create({
-      data: { name: `Health ${sku}`, groupType: 'GROUP', createdById: admin.id },
+      data: { name: 'Health A', groupType: 'GROUP', createdById: admin.id },
     });
     const listing = await prisma.listing.create({
+      data: { groupId: group.id, marketplace: 'USA', asin: 'B0A', sku: 'A', createdById: admin.id },
+    });
+    await prisma.listingSnapshot.create({
       data: {
-        groupId: group.id,
-        marketplace: 'USA',
-        asin: `B0${sku}`,
-        sku,
-        createdById: admin.id,
+        listingId: listing.id,
+        bulletPoints: [],
+        capturedAt: new Date(Date.now() - 10 * MINUTE_MS),
       },
     });
-    if (minutesAgo !== null) {
-      const capturedAt = new Date(Date.now() - minutesAgo * MINUTE_MS);
-      await prisma.listingSnapshot.create({
-        data: { listingId: listing.id, bulletPoints: [], capturedAt },
-      });
-    }
-    return listing;
-  }
-
-  const outageEmails = () => M.sentEmails.filter((e) => e.subject.includes('Exclusives'));
-
-  it('emails admins when sweeps keep failing — at most once an hour', async () => {
-    await seedListing('A', 120); // already 2 hours behind
-    fakeAmazon({ items: [], failListings: () => true });
-
-    const t0 = new Date();
-    await S.runExclusivesIfDue(t0);
-    assert.equal(outageEmails().length, 1);
-    const email = outageEmails()[0]!;
-    assert.equal(email.to, ADMIN_EMAIL);
-    const overdue = /1 of 1 monitored Amazon listings have not been checked for over 1\.5 hour/;
-    assert.match(email.text, overdue);
-    assert.match(email.text, /Latest attempt: 0 of 1 listings checked; skipped: batch-failed=1/);
-
-    await S.runExclusivesIfDue(new Date(t0.getTime() + 31 * MINUTE_MS)); // next sweep fails too
-    assert.equal(outageEmails().length, 1, 'no repeat within the hour');
-
-    await S.runExclusivesIfDue(new Date(t0.getTime() + 62 * MINUTE_MS));
-    assert.equal(outageEmails().length, 2, 'a reminder once the hour has passed');
-  });
-
-  it('stays quiet once a sweep succeeds', async () => {
-    await seedListing('A', 120);
-    fakeAmazon({ items: [plainListing('A', 10)] });
-    await S.runExclusivesIfDue();
-    assert.equal(outageEmails().length, 0, 'the fresh snapshot brings it up to date');
-  });
-
-  it('gives a newly added listing time for its first check', async () => {
-    await seedListing('NEW', null);
-    fakeAmazon({ items: [], failListings: () => true });
-    await S.runExclusivesIfDue();
-    assert.equal(outageEmails().length, 0);
-  });
-
-  it('reports the last successful check on the status endpoint', async () => {
-    const listing = await seedListing('A', 10);
     fakeAmazon({ items: [] });
 
     const res = await request(app)
@@ -6214,6 +6164,7 @@ describe('exclusives: sweep health (HLAI-71 6g)', () => {
     assert.equal(res.body.lastSweepAt, snapshot.capturedAt.toISOString());
   });
 });
+
 
 describe('exclusives: scheduled sweep log lines (HLAI-71 6g)', () => {
   before(loadSchedulerMods);
