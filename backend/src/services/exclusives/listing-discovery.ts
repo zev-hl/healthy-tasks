@@ -1,6 +1,7 @@
 import type { ExclusivesMarketplace } from '@healthy-tasks/shared';
 import { searchListingsItems } from './sp-api/listings.js';
-import { Pacer, batch, SP_API_RATES } from './sp-api/pacer.js';
+import { batch, type Pacer } from './sp-api/pacer.js';
+import { sharedPacers } from './sp-api/shared-pacer.js';
 
 // Amazon accepts at most 20 identifiers per listings search and returns at most
 // 20 items per page. One ASIN can carry several SKUs on the same account, so a
@@ -40,53 +41,81 @@ export function pickSku(skus: string[]): string {
 export interface DiscoveryResult {
   /** asin -> the SKU we will monitor. */
   skuByAsin: Map<string, string>;
+  /** asin -> the title Amazon shows for it, when it gave one. */
+  titleByAsin: Map<string, string | null>;
   /** asin -> every SKU Amazon returned, in its order. */
   allSkusByAsin: Map<string, string[]>;
+  /** ASINs Amazon could not answer for. Only filled when `tolerateFailures`. */
+  failed: string[];
   pages: number;
+}
+
+export interface DiscoverOptions {
+  onLog?: (msg: string) => void;
+  /**
+   * Record a failed batch's ASINs in `failed` instead of throwing. The lookup
+   * endpoint needs this: one bad batch must not fail a 300-ASIN import.
+   */
+  tolerateFailures?: boolean;
+  /** Rate limiter; defaults to the process-wide listings pacer. */
+  pacer?: Pacer;
 }
 
 /**
  * Which of these ASINs does the seller account actually list in this
- * marketplace, and under which SKU? Paced inside the listings rate limit and
- * paged to exhaustion.
+ * marketplace, under which SKU, and with what title? Paced inside the listings
+ * rate limit and paged to exhaustion.
  */
 export async function discoverListings(
   asins: string[],
   marketplace: ExclusivesMarketplace,
-  onLog: (msg: string) => void = () => {},
+  opts: DiscoverOptions = {},
 ): Promise<DiscoveryResult> {
-  const pacer = new Pacer(SP_API_RATES.listings);
+  const onLog = opts.onLog ?? (() => {});
+  const pacer = opts.pacer ?? sharedPacers().listings;
   const allSkusByAsin = new Map<string, string[]>();
+  const titleByAsin = new Map<string, string | null>();
+  const failed: string[] = [];
   let pages = 0;
 
   for (const group of batch(asins, LISTINGS_BATCH_SIZE)) {
     let pageToken: string | undefined;
-    do {
-      await pacer.acquire();
-      const res = await searchListingsItems({
-        marketplace,
-        identifiers: group,
-        identifiersType: 'ASIN',
-        includedData: ['summaries'],
-        pageSize: LISTINGS_BATCH_SIZE,
-        pageToken,
-      });
-      pacer.observeLimit(res.rateLimit);
-      pages += 1;
+    try {
+      do {
+        await pacer.acquire();
+        const res = await searchListingsItems({
+          marketplace,
+          identifiers: group,
+          identifiersType: 'ASIN',
+          includedData: ['summaries'],
+          pageSize: LISTINGS_BATCH_SIZE,
+          pageToken,
+        });
+        pacer.observeLimit(res.rateLimit);
+        pages += 1;
 
-      for (const item of res.items) {
-        const asin = item.summaries?.[0]?.asin;
-        if (!asin) continue;
-        const skus = allSkusByAsin.get(asin) ?? [];
-        if (!skus.includes(item.sku)) skus.push(item.sku);
-        allSkusByAsin.set(asin, skus);
-      }
+        for (const item of res.items) {
+          const summary = item.summaries?.[0];
+          const asin = summary?.asin;
+          if (!asin) continue;
+          const skus = allSkusByAsin.get(asin) ?? [];
+          if (!skus.includes(item.sku)) skus.push(item.sku);
+          allSkusByAsin.set(asin, skus);
+          if (!titleByAsin.has(asin)) titleByAsin.set(asin, summary?.itemName ?? null);
+        }
 
-      pageToken = res.nextToken;
-      if (pageToken) onLog(`  ${marketplace}: extra page for a batch of ${group.length} ASIN(s)`);
-    } while (pageToken);
+        pageToken = res.nextToken;
+        if (pageToken) onLog(`  ${marketplace}: extra page for a batch of ${group.length} ASIN(s)`);
+      } while (pageToken);
+    } catch (err) {
+      if (!opts.tolerateFailures) throw err;
+      failed.push(...group);
+      onLog(
+        `  ${marketplace}: batch of ${group.length} ASIN(s) failed — ${(err as Error).message}`,
+      );
+    }
   }
 
   const skuByAsin = new Map([...allSkusByAsin].map(([asin, skus]) => [asin, pickSku(skus)]));
-  return { skuByAsin, allSkusByAsin, pages };
+  return { skuByAsin, titleByAsin, allSkusByAsin, failed, pages };
 }

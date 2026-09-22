@@ -64,10 +64,10 @@ async function main() {
 `);
 
   console.log('Discovering US listings…');
-  const us = await discoverListings(asins, 'USA', (m) => console.log(m));
+  const us = await discoverListings(asins, 'USA', { onLog: (m) => console.log(m) });
   console.log(`  ${us.skuByAsin.size} ASINs listed in US (${us.pages} page(s) fetched)`);
   console.log('Discovering CA listings…');
-  const ca = await discoverListings(asins, 'Canada', (m) => console.log(m));
+  const ca = await discoverListings(asins, 'Canada', { onLog: (m) => console.log(m) });
   console.log(`  ${ca.skuByAsin.size} ASINs listed in CA (${ca.pages} page(s) fetched)\n`);
 
   const rows = [

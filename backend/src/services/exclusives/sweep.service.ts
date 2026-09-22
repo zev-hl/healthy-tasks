@@ -2,8 +2,13 @@ import type { ExclusivesMarketplace } from '@healthy-tasks/shared';
 import { searchListingsItems } from './sp-api/listings.js';
 import { getListingOffersBatch, isTransientOfferResult, resolveBuyBox } from './sp-api/pricing.js';
 import { searchCatalogItems, type CatalogItem } from './sp-api/catalog.js';
-import { mapCatalogContent, mapListingSnapshot, type ListingSnapshotDraft } from './snapshot.mapper.js';
+import {
+  mapCatalogContent,
+  mapListingSnapshot,
+  type ListingSnapshotDraft,
+} from './snapshot.mapper.js';
 import { Pacer, batch, SP_API_RATES } from './sp-api/pacer.js';
+import { buildPacers, sharedPacers } from './sp-api/shared-pacer.js';
 
 export interface MonitoredListing {
   sku: string;
@@ -189,11 +194,9 @@ export async function sweepListings(
   onLog: (msg: string) => void = () => {},
   rates: Record<keyof CallCounts, number> = SP_API_RATES,
 ): Promise<SweepResult> {
-  const pacers = {
-    listings: new Pacer(rates.listings),
-    pricing: new Pacer(rates.pricing),
-    catalog: new Pacer(rates.catalog),
-  };
+  // The process-wide pacers, so a sweep and an ASIN lookup running at the same
+  // time share one rate limit instead of each keeping to it separately.
+  const pacers = rates === SP_API_RATES ? sharedPacers() : buildPacers(rates);
 
   const snapshots: ListingSnapshotDraft[] = [];
   const skipped: SkippedListing[] = [];

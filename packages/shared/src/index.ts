@@ -1854,3 +1854,220 @@ export interface ExclusivesStatusDto {
   /** The last successful Amazon check (newest listing snapshot), ISO; null if never. */
   lastSweepAt: string | null;
 }
+
+// --- Exclusives: group + summary reads (HLAI-71 Chunk 7a) ------------------
+
+/** How many ASINs the Groups list previews per row. */
+export const EXCLUSIVES_ASIN_PREVIEW = 3;
+
+/** One monitored listing, with what the last Amazon check saw. */
+export interface ExclusivesListingDto {
+  id: number;
+  asin: string;
+  marketplace: ExclusivesMarketplace;
+  sku: string;
+  /** From the saved snapshot; null until the first sweep has seen it. */
+  title: string | null;
+  lastCheckedAt: string | null; // ISO
+}
+
+/** One row of the Alert Groups list. */
+export interface ExclusivesGroupRowDto {
+  id: number;
+  name: string;
+  groupType: ExclusivesGroupType;
+  listingCount: number;
+  /** Up to EXCLUSIVES_ASIN_PREVIEW ASINs, for the preview column. */
+  asinPreview: string[];
+  /** Alerts logged for this group in the last 24 hours. */
+  alerts24h: number;
+  /** How many of the 12 alert types are not 'off'. */
+  alertTypesOn: number;
+  latestAlertAt: string | null; // ISO
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+/** A group opened in the editor: its listings and all 12 alert settings. */
+export interface ExclusivesGroupDto {
+  id: number;
+  name: string;
+  groupType: ExclusivesGroupType;
+  listings: ExclusivesListingDto[];
+  /** Always all 12 types; a missing row reads as 'off'. */
+  settings: Record<ExclusivesAlertType, ExclusivesAlertMode>;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+export const EXCLUSIVES_GROUP_SORT_FIELDS = [
+  'name',
+  'listingCount',
+  'createdAt',
+  'updatedAt',
+] as const;
+export type ExclusivesGroupSortField = (typeof EXCLUSIVES_GROUP_SORT_FIELDS)[number];
+
+/** The numbers across the top of the Exclusives screens. */
+export interface ExclusivesSummaryDto {
+  /** Alerts logged across all groups in the last 24 hours. */
+  alerts24h: number;
+  /** Listing rows being monitored (US and Canada counted separately). */
+  asinsMonitored: number;
+  groupCount: number;
+  individualCount: number;
+  /** Newest snapshot, i.e. the last successful Amazon check. ISO; null if never. */
+  lastSweepAt: string | null;
+  /** When the next sweep is due, ISO; null when sweeping is switched off. */
+  nextSweepAt: string | null;
+  sweepEnabled: boolean;
+  sweepMinutes: number;
+}
+
+// --- Exclusives: alert log (HLAI-71 Chunk 7b) ------------------------------
+
+/**
+ * One row of the Alert Log. Every field is stored on the alert itself, so a
+ * row stays readable after its listing or group is deleted — `groupId` then
+ * reads null while `groupName` keeps the name it had at the time.
+ */
+export interface ExclusivesAlertRowDto {
+  id: number;
+  groupId: number | null;
+  groupName: string;
+  listingId: number | null;
+  asin: string;
+  marketplace: ExclusivesMarketplace;
+  title: string;
+  alertType: ExclusivesAlertType;
+  /** Which field changed, for the content alerts; null for the rest. */
+  category: string | null;
+  message: string;
+  previousValue: string | null;
+  newValue: string | null;
+  createdAt: string; // ISO
+}
+
+// --- Exclusives: ASIN lookup (HLAI-71 Chunk 7c) ----------------------------
+
+/** How many ASINs one lookup request may carry. */
+export const EXCLUSIVES_LOOKUP_MAX_ASINS = 500;
+
+export const EXCLUSIVES_LOOKUP_STATUSES = [
+  /** On the seller account and free to add. */
+  'found',
+  /** On the account, but some other group already watches it. */
+  'already-monitored',
+  /** Amazon has no listing for it under this seller account. Final. */
+  'not-listed',
+  /** Amazon did not answer. Temporary — never show this as "not listed". */
+  'unavailable',
+] as const;
+export type ExclusivesLookupStatus = (typeof EXCLUSIVES_LOOKUP_STATUSES)[number];
+
+/** One marketplace where the seller account lists this ASIN. */
+export interface ExclusivesLookupListingDto {
+  marketplace: ExclusivesMarketplace;
+  sku: string;
+  title: string | null;
+  /** Set when this listing is already monitored, so the editor can offer a move. */
+  groupId: number | null;
+  groupName: string | null;
+}
+
+export interface ExclusivesLookupResultDto {
+  asin: string;
+  status: ExclusivesLookupStatus;
+  /** Every marketplace the account lists it in; empty unless found or monitored. */
+  listings: ExclusivesLookupListingDto[];
+}
+
+export interface ExclusivesLookupResponseDto {
+  results: ExclusivesLookupResultDto[];
+  /** Entries rejected before Amazon was asked — not a 10-character ASIN. */
+  invalid: string[];
+  /** Listing requests actually sent to Amazon; 0 when answered from our own data. */
+  amazonCalls: number;
+}
+
+// --- Exclusives: group writes + exports (HLAI-71 Chunk 7d) -----------------
+
+/**
+ * How a save treats the ASINs it was given. `merge` adds them and leaves the
+ * rest alone (the editor's Add button); `replace` makes the group exactly the
+ * list submitted, removing anything missing from it (Bulk import & replace).
+ */
+export const EXCLUSIVES_LISTINGS_MODES = ['merge', 'replace'] as const;
+export type ExclusivesListingsMode = (typeof EXCLUSIVES_LISTINGS_MODES)[number];
+
+/** Rows any one CSV download may contain. */
+export const EXCLUSIVES_EXPORT_MAX_ROWS = 10_000;
+
+/** One ASIN a save could not accept, so the editor can flag the row. */
+export interface ExclusivesListingProblemDto {
+  asin: string;
+  marketplace: ExclusivesMarketplace;
+  /** 'not-listed' is final; 'unavailable' means Amazon did not answer — retry. */
+  reason: Extract<ExclusivesLookupStatus, 'not-listed' | 'unavailable'>;
+}
+
+/** An ASIN another group already watches, offered for moving. */
+export interface ExclusivesListingClashDto {
+  asin: string;
+  marketplace: ExclusivesMarketplace;
+  groupId: number;
+  groupName: string;
+}
+
+// --- Exclusives: request shapes (HLAI-71 Chunk 8) --------------------------
+// The screens post these; the backend validates the same shapes with Zod in
+// backend/src/validation/schemas.ts.
+
+export interface ExclusivesGroupQueryRequest {
+  text?: string;
+  groupTypes?: ExclusivesGroupType[];
+  sort?: { field: ExclusivesGroupSortField; dir: SortDirection }[];
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ExclusivesAlertQueryRequest {
+  text?: string;
+  alertTypes?: ExclusivesAlertType[];
+  /** The Groups screen's "see this group's alerts" link. */
+  groupIds?: number[];
+  marketplaces?: ExclusivesMarketplace[];
+  from?: string | null; // ISO
+  to?: string | null; // ISO
+  page?: number;
+  pageSize?: number;
+}
+
+/** The alert download takes the log's own filters, so the file matches the screen. */
+export interface ExclusivesAlertExportRequest extends ExclusivesAlertQueryRequest {
+  timeZone?: string;
+}
+
+export interface ExclusivesLookupRequest {
+  asins: string[];
+  /** Both marketplaces when omitted. */
+  marketplaces?: ExclusivesMarketplace[];
+}
+
+export interface ExclusivesGroupListingInput {
+  asin: string;
+  marketplace: ExclusivesMarketplace;
+}
+
+export interface ExclusivesGroupWriteRequest {
+  name?: string;
+  groupType: ExclusivesGroupType;
+  listings: ExclusivesGroupListingInput[];
+  /** Defaults to 'merge'; 'replace' removes anything not submitted. */
+  listingsMode?: ExclusivesListingsMode;
+  /** Take an ASIN another group watches, keeping its history. */
+  moveExisting?: boolean;
+  settings?: Partial<Record<ExclusivesAlertType, ExclusivesAlertMode>>;
+  /** Optimistic concurrency token — the group's `updatedAt` as loaded. */
+  expectedUpdatedAt?: string;
+}

@@ -4,14 +4,14 @@
  * white body + grey footer split.
  */
 import { useEffect } from 'react';
-import type { MockGroup } from '../../lib/exclusivesMock';
+import type { ExclusivesGroupRowDto } from '@healthy-tasks/shared';
 
 export function DeleteGroupModal({
   group,
   onCancel,
   onConfirm,
 }: {
-  group: MockGroup;
+  group: ExclusivesGroupRowDto;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -23,7 +23,7 @@ export function DeleteGroupModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
-  const n = group.asins.length;
+  const n = group.listingCount;
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>

@@ -141,7 +141,10 @@ fields. Decisions that shaped it (all confirmed with the user):
   `mainImageUrl`, `category`, `brand`, `bulletPoints` (Json), `description`,
   `dimensions`, `listedPrice` Decimal(10,2), `currency`, `buyboxWinnerSellerId`,
   `buyboxPrice` Decimal(10,2), `offerCount`, `isSuppressed`, `suppressionReason`,
-  `capturedAt`. `@@index([listingId, capturedAt(Desc)])`.
+  `capturedAt`. `@@index([listingId, capturedAt(Desc)])`. **Since 2026-09-19
+  it holds each listing's latest state only — one row, updated in place every
+  sweep; the AlertLog is the history (§8 #14). Enforced in code, no schema
+  change.**
 - **AlertSetting** — `id` PK, `groupId` FK (`Cascade`), `alertType`, `mode`
   (default `off`). `@@unique([groupId, alertType])`.
 - **AlertLog** — `id` PK, `groupId` FK? (`SetNull`), `listingId` FK? (`SetNull`),
@@ -269,6 +272,207 @@ request), and so schema/secrets are reviewable before any Amazon code.
     cycle = no data loss / no missed or false alerts (next snapshot compares to
     the last good one, one cycle later). Outage surfaced via the red status dot +
     the existing scheduler watchdog (admin email on heartbeat stall).
+  - **Delivery (agreed 2026-09-18): one increment at a time**, each verified and
+    reviewed before the next. Decisions behind these are §8 #11.
+  - **6a — SP-API client hardening. ✅ DONE** (verified in Docker: full backend
+    typecheck, unit tests, ESLint). `sp-api/http.ts` `fetchWithRetry` — the transport for SP-API *and*
+    the LWA token endpoint: 30s per-attempt timeout; up to 3 retries (2s-base
+    exponential backoff + jitter, numeric `Retry-After` honoured) for
+    429/500/502/503/504 and network drops/timeouts; `SpApiNetworkError` when no
+    attempt got a response; non-JSON error bodies keep their real status.
+    `client.ts`: one fresh-token retry on a 401 **or a 403 "Unauthorized" that
+    names the access token** (how SP-API reports an expired token); every other
+    400/403 is final. 21 new unit tests (`sp-api-http`, `sp-api-client`) — 74/74
+    pass; strict typecheck of the touched files clean.
+  - **6b — Sweep saves only complete snapshots. ✅ DONE** (verified in Docker:
+    full backend typecheck, unit tests 86/86, ESLint, scripts typecheck; live
+    Amazon run pending `asins.txt`). `sweepListings` never throws for an SP-API
+    failure; every listing without a snapshot is reported with a reason
+    (`batch-failed`, `not-returned`, `pricing-unavailable`,
+    `catalog-unavailable`, `sweep-aborted`):
+    - a failed listings/pricing call skips only its batch;
+    - a per-SKU pricing answer that is missing / 429 / 5xx → no snapshot for
+      that listing (a 4xx such as "invalid SKU" is still a real no-Buy-Box
+      answer) — prevents the false Buy Box Won on recovery;
+    - a failed catalog fill skips only the listings that needed it;
+    - 3 failed batches in a row stop the sweep; 3 catalog failures in a row
+      only stop catalog fills for that sweep (losing the Catalog API must not
+      halt price/Buy Box monitoring);
+    - retries now wait on the rate pacer (`pace` option threaded through
+      `spApiRequest` → `fetchWithRetry`), so a retry can't exceed the limit.
+    `runIngestion` returns `listingIdsWritten` (for 6c), `skipped`, `aborted`,
+    and logs a skip summary. 11 new unit tests (`sweep.test.ts` against a fake
+    Amazon, plus a pacer-order test).
+  - ⚠️ **6c and 6e below were reworked on 2026-09-19 (§8 #14)** — see
+    "Rework — one snapshot per listing" after 6g. Their text is kept as a
+    record of what was first built.
+  - **6c — No duplicate alerts. ✅ DONE** (verified in Docker: backend typecheck,
+    86/86 unit tests, ESLint, scripts typecheck; full integration suite 238/238
+    on a real Postgres with the project's migrations, incl. 6 new ones). `runDetection(listingIds,
+    onLog)` compares only the listings it is given — the pass will hand it
+    `IngestionReport.listingIdsWritten`. Plus a self-guard: a listing whose
+    newest pair is already logged (an alert at/after its newest snapshot) is
+    skipped, so re-running is harmless; a pair that produced no alerts produces
+    none again. Groups with every type off are not read. Reads are 3 queries
+    per pass (listings+settings, newest-2 snapshots via one `LATERAL … LIMIT 2`
+    raw query, last-alert times), writes are ONE `createMany`, instead of 2
+    queries per listing. Report adds `alreadyDetected`, `failed`. Dev scripts
+    updated: `exclusives-detect-test` now proves the re-run is a no-op and
+    deletes its `AlertLog` rows (they used to linger as orphans);
+    `exclusives-change-demo` detects only its listing and restores the edited
+    price if Amazon returned no fresh snapshot. Integration tests run with
+    `TEST_DATABASE_URL` → a separate `healthy_tasks_test` DB on the compose
+    Postgres (embedded Postgres can't run as root in the container).
+  - **Live check of 6a–6c ✅ (2026-09-19, real Versure account, read-only).**
+    `asins.txt` (351 ASINs; its `ASIN` header row is now filtered out by the
+    seed loader) → 332 US + 102 CA = **434 listings**, 18 ASINs unlisted in both
+    (same as before). Two full sweeps: **434/434 snapshots, 0 skipped, no
+    aborts**, 23 listings + 23 pricing + 22 catalog calls, ~50s each. Coverage
+    unchanged vs. the original run (title 100%, price 99%, Buy Box 64% — we hold
+    149, brand 96%, bullets 94%, description 54%, 82 suppressed). The 13
+    listings with no offer data return `400 InvalidInput "invalid SKU"` per SKU
+    (1 US, 12 CA) → kept as a real "no Buy Box", confirming 6b's rule.
+    Detection (all 12 types on for the local "Versure Exclusives" group):
+    434 compared → **1 genuine alert** (B001SAZC2W US, sellers 4 → 6 in 2 min);
+    no content flapping between sweeps; re-run → 0 new, 1 already logged.
+  - **6d — Pass runner. ✅ DONE** (verified in Docker: backend typecheck, 88/88
+    unit tests, ESLint, scripts typecheck; 4 new integration tests on real
+    Postgres; one live pass on the real account). `pass.service.ts`
+    `runExclusivesPass(onLog)`: ingestion → detection on
+    `listingIdsWritten`; logs start + end with duration, per-marketplace call
+    counts, snapshots, skips, alerts. Never throws (`completed` / `skipped` /
+    `failed` report). Skips without calling Amazon when SP-API isn't configured
+    (silently — `sp-api/config.ts` `missingSpApiConfig`), when a pass is already
+    running in this process, or when another instance holds the lock:
+    `pg_try_advisory_xact_lock(0x484C4558 "HLEX")` held by a long-timeout
+    (20 min) transaction for the pass — transaction-scoped, so it is released
+    however the pass ends. The work runs on other pooled connections, so the
+    pool needs ≥ 2 connections (the local Docker database has no limit, so this
+    is fine). Pruning is 6e; the on/off switch comes with the scheduler (6f), so
+    the manual runner always works for testing. Manual runner:
+    `scripts/exclusives-run-pass.ts`. Tests: the fake Amazon moved to
+    `test/fixtures/fake-amazon.ts` (shared by unit + integration); the
+    integration suite now pins fake SP-API credentials in its setup, so the real
+    ones the dev container loads from `.env` can never reach a test.
+    **Live pass (2026-09-19):** 434/434 snapshotted, 0 skipped, 55s,
+    USA 17/17/16 + Canada 6/6/6 calls → 13 genuine alerts (7 price, 3 Buy Box
+    lost, 2 won, 1 seller count). 4 of the 7 price alerts were 1–3¢ repricer
+    moves — **kept by client decision** (§8 #12): every price change alerts.
+  - **6e — Retention. ✅ DONE** (verified in Docker: backend typecheck, 88/88
+    unit tests, ESLint, scripts typecheck; full integration suite after 6d
+    242/242, and all 12 Exclusives integration tests incl. 2 new retention ones
+    on real Postgres; one live pass). `snapshot.repository.ts`
+    `pruneSnapshots(olderThan)`: deletes snapshots captured before the cutoff
+    except each listing's newest two (kept however old — a quiet listing never
+    loses its baseline). The keep-set is an index-backed per-listing top-2 (raw
+    `LATERAL … LIMIT 2`); the date test goes through Prisma, because
+    `capturedAt` is a naive timestamp and a raw timestamptz parameter would shift
+    by the session's UTC offset. The pass prunes last, after detection, with
+    `SNAPSHOT_RETENTION_DAYS = 7`; a pruning failure is logged and reported
+    (`pruned` undefined) but doesn't fail the pass — nothing is lost and the
+    next pass prunes again. Pass log + `exclusives-run-pass.ts` report the
+    count. Steady state ≈ 434 × 48/day × 7 ≈ 146k rows. **Live pass
+    (2026-09-19):** 434/434, 0 skipped, 57s, 12 genuine alerts, 0 pruned
+    (all history < 1 day, as expected); snapshots 1302 → 1736.
+  - **6f — Scheduler wiring. ✅ DONE** (verified in Docker: backend typecheck,
+    88/88 unit tests, ESLint; Exclusives + scheduler integration tests 43/43
+    incl. 5 new clock tests; live run of 3 automatic sweeps). Its own timer in
+    `scheduler.service.ts` ("Exclusives sweep clock" section), started/stopped
+    by `startScheduler`/`stopScheduler`, never inside `runScheduler` — the
+    recurrence timer, reminders and the "scheduler down" watchdog are
+    untouched. Runs only when `SCHEDULER_ENABLED` and new
+    `EXCLUSIVES_SWEEP_ENABLED=true` (default off) and SP-API is configured;
+    boot log says which (`exclusivesSweepMode`). `EXCLUSIVES_SWEEP_MINUTES`
+    is validated at boot (whole minutes, 5–1440). Next run
+    (`exclusivesDueAt`) = the later of newest snapshot + interval and this
+    process's last attempt + interval — re-derived from the DB, so restarts
+    and hot reloads don't sweep early, and a failing sweep (no snapshot saved)
+    waits a full interval instead of looping. 1s slack absorbs a timer firing a
+    hair early / app-vs-DB clock skew (seen live: an extra wake-up before the
+    fix). Test seams: `runExclusivesIfDue`, `__resetExclusivesClock`; the
+    integration setup pins `EXCLUSIVES_SWEEP_ENABLED=false` and
+    `EXCLUSIVES_SWEEP_MINUTES=30`. **Live check (2026-09-18/19, local, 5-min
+    interval via a temporary `.env` edit, since reverted):** sweeps ran by
+    themselves at boot, +5 and +10 min — each 434/434, 0 skipped, ~55s
+    (28, 1, 8 alerts); a restart mid-interval did not sweep early (next time
+    read back from the DB); the app's `schedulerDown` flag stayed `false`
+    throughout a pass.
+  - **6g — Sweep-failure visibility. ✅ DONE** (verified in Docker: backend +
+    frontend typecheck, 92/92 unit tests, ESLint, frontend Vitest 18/18;
+    Exclusives + scheduler integration tests 49/49 incl. 6 new; full suite after
+    6g **255/255**; live console run). Summary of all of Chunk 6:
+    `chunk_6_completed.md`. After every scheduled pass the clock checks
+    health (`sweep-health.ts` pure rule, `health.service.ts` loader): a listing
+    is **stale** after missing 3 sweeps (its newest snapshot, or when it was
+    added); **unhealthy** when stale listings are more than 10% of those
+    monitored — catches an outage and a partial one (e.g. lost Catalog API ⇒
+    every resold listing), ignores a few delisted listings. Unhealthy ⇒ email
+    all active admins via the scheduler's `alertAdmins` — own 1-hour cooldown
+    (separate from the recurrence alerts), stops by itself once sweeps
+    recover. The email names stale/total, the last successful check and the
+    latest attempt's outcome/skip reasons. Status: `ExclusivesStatusDto.lastSweepAt`
+    (shared contract) → status-dot tooltip "Last Amazon check: …". Console:
+    every scheduled run opens `▶ Scheduled sweep #N started at … (runs every
+    N min)` and closes `■ Scheduled sweep #N ended after Ns — completed: X/Y
+    listings checked, Z alert(s) | skipped: … | FAILED: …. Next sweep (the
+    retry) at …`; the manual runner opens `▶ Manual sweep started`.
+  - **Rework — one snapshot per listing, updated in place. ✅ DONE
+    (2026-09-19, §8 #14; no migration).** The AlertLog is the history, so
+    keeping every sweep's full snapshot was redundant. New flow per pass:
+    **fetch** (`runIngestion` now only fetches and returns `entries`) →
+    **compare** each listing's fresh data with its single saved snapshot →
+    **log** alerts → **save** the fresh data over that row. `runDetection(entries)`
+    does compare + log + save in **one transaction**: a change is never logged
+    twice nor lost, which also closes 6c's "crash between ingest and detect"
+    gap. First sight of a listing = baseline (no alerts); a listing not fetched
+    this sweep keeps its saved row; re-running with the same data logs nothing.
+    Fresh money values are compared in stored form (Decimal(10,2), half-up) so
+    unchanged listings compare equal. Leftover extra rows are deleted as each
+    listing is saved. Removed: `persistSnapshots`, `pruneSnapshots`,
+    `SNAPSHOT_RETENTION_DAYS`, the pass's prune step, the newest-two `LATERAL`
+    query and the already-logged guard. Unchanged: the clock's due time and
+    the health rule (`capturedAt` is refreshed on every save). Local DB cleaned
+    per the user: snapshots and alerts deleted; users, listings, the group and
+    its settings kept. Verified: typecheck, 92/92 unit tests, ESLint, 48/48
+    Exclusives + scheduler integration tests (6c rewritten: 6 tests; 6e
+    replaced by 1 one-row-per-listing test), full integration suite
+    **254/254**; **live:** pass 1 → 434 baselines,
+    0 alerts; pass 2 → 434 compared, 0 false alerts; 434 rows, max 1 per
+    listing.
+  - **Hardening — pricing answers matched by SKU. ✅ DONE (2026-09-19).** The
+    pricing batch reply used to be paired with our SKUs by position (answer #1
+    → SKU #1), never checking which SKU an answer was for. A live trace (20 US
+    SKUs) showed Amazon keeps the order today, but it isn't promised. Live
+    check of the raw reply: **every answer echoes our request —
+    `request.SellerSKU` — errors included**; successful ones also carry
+    `payload.SKU`. `pricing.ts` → `matchAnswersToSkus` now matches by that SKU;
+    only an answer naming no SKU falls back to its position (logged), a
+    named answer is never displaced by a guess, an answer for a SKU not asked
+    about is ignored (logged), and a SKU left unanswered is skipped this round
+    as before. Out-of-order replies are logged. Verified: 100/100 unit tests
+    (7 matching + 1 shuffled-sweep test that fails on the old code), 48/48
+    Exclusives + scheduler integration tests, typecheck, ESLint; live pass:
+    434/434, 0 pricing warnings, 1 row per listing.
+  - **Optimization — rewrite only changed snapshots. ✅ DONE (2026-09-19).**
+    Every sweep used to rewrite all 434 snapshot rows in full (434 separate
+    UPDATEs carrying every column) although only ~15–25 changed.
+    `snapshot.repository.ts` → `sameStoredState` compares **every** stored
+    column in stored form (money to the cent; includes currency and suppression
+    reason, which no alert watches); `runDetection` rewrites only rows whose
+    data changed and moves the others' `capturedAt` ("last checked" — the
+    clock and health check need it) with ONE `updateMany`, still inside the
+    same transaction. Report: `snapshotsChanged` / `snapshotsUnchanged`; the
+    detection log shows both plus the save time. Note: Postgres still counts
+    an update per row (`n_tup_upd` +434/sweep) because every row's last-checked
+    time moves — the saving is statements (≈25 vs 434) and not re-sending
+    unchanged content. Verified: 106/106 unit tests (6 new, `snapshot-state`),
+    50/50 Exclusives + scheduler integration tests (2 new), full integration
+    suite **256/256**; **live:** 24
+    rewritten, 410 unchanged, **saved in 0.3 s (was 1.6–1.8 s)**, one shared
+    last-checked time.
+  - No deployment step: the app runs only on the local machine (§8 #13). To
+    run timed sweeps locally, set `EXCLUSIVES_SWEEP_ENABLED="true"` in `.env`
+    and recreate the backend container.
 - **Chunk 7 — Backend routes.** AlertGroup CRUD, AlertLog list/filter/paginate,
   ASIN lookup preview, bulk import, CSV export. Authenticated (`requireAuth`);
   role restriction deferred (§3.3).
@@ -377,10 +581,76 @@ placeholder routes.
    escape hatch = `SCHEDULER_ENABLED`). Bounded retry for transient errors
    (429/5xx/network + one 401→refresh); no retry for 400/403; the 30-min sweep is
    the outer retry; per-listing try/catch. (Chunk 6 details.)
+11. ✅ **Chunk 6 decisions (2026-09-18):**
+    - **Duplicate alerts:** detect only listings snapshotted in the current
+      cycle — no migration. Known gap: a crash between ingest and detect loses
+      that cycle's alerts. *(Superseded by #14: compare + log + save now commit
+      together, so the gap is gone.)*
+    - **Wiring:** a separate Exclusives clock inside `scheduler.service.ts`,
+      sharing its start/stop and `SCHEDULER_ENABLED` — not inside `runScheduler`.
+    - **Switch:** new `EXCLUSIVES_SWEEP_ENABLED`, default `false`; turn it on
+      in the local `.env` to run timed sweeps (see #13).
+    - **Retention:** 7 days, always keep each listing's newest 2 snapshots.
+      *(Superseded by #14: one snapshot per listing, so nothing to prune.)*
+    - **Token refresh:** refines #9 — also refresh once on a 403
+      "Unauthorized" that names the access token (SP-API's expired-token reply).
+    - **First live run:** take a fresh baseline first (no catch-up burst), delete
+      the demo `PriceChanged` row, confirm the "Versure Exclusives" group's
+      alert types (the change-demo script switched all 12 on).
+12. ✅ **No minimum for price alerts (client, 2026-09-19).** Every listed-price
+    change of 1¢ or more raises `PriceChanged`, including small repricer moves.
+    Only sub-cent float noise is ignored (`moneyEq` in `snapshot-diff.ts`). Do
+    not add a percentage or cents threshold without asking the client.
+13. ✅ **Local machine only (user, 2026-09-19).** This app runs only on the
+    user's local Docker stack. No Render, staging or production work — no
+    `render.yaml` changes, no deploys — unless the user explicitly asks. Older
+    Render mentions in this plan (§2, §3.5, §9) are background, not tasks.
+14. ✅ **One snapshot per listing, updated in place (user, 2026-09-19).** The
+    AlertLog is the history of what changed, so `ListingSnapshot` keeps only
+    each listing's latest state: fetch → compare with the saved row → log
+    alerts → overwrite the row. Enforced in code — **no migration** (the user:
+    don't add one unless a schema change is truly required). Replaces the
+    per-sweep history, the newest-two comparison and snapshot retention.
+
+15. ✅ **ASIN discovery must page to exhaustion (2026-09-21).** Amazon's
+    `searchListingsItems` returns at most 20 items per page, and one ASIN can
+    carry several SKUs on the account, so a batch of 20 ASINs can overflow a
+    page. The original `seed-exclusives.ts` read only the first page and
+    silently dropped the rest, leaving 11 listings unmonitored and reporting
+    18 ASINs as "not on the seller account" when only 8 really were. Discovery
+    now lives in `services/exclusives/listing-discovery.ts`, follows
+    `nextToken`, and ranks fulfilment leftovers (`FBA….missing1`) and test
+    SKUs last when an ASIN resolves to several. **Chunk 7's
+    `POST /listings/lookup` must reuse this module, not re-batch its own.** The
+    sweep itself was never affected — it looks up by SKU, which is unique.
+    Database rebuilt 2026-09-21: 445 listings (343 US + 102 CA), 8 ASINs
+    genuinely not listed.
+
+16. ✅ **Alert types are off by default (user, 2026-09-21).** Creating a group
+    writes all twelve `AlertSetting` rows with `mode: 'off'`; someone then
+    switches on the ones they want. The rows are written rather than left
+    out so all twelve are visible and toggleable in the UI — a missing row
+    counts as off too (`alert-gating.ts`), but invisibly. Applies to
+    `seed-exclusives.ts` and to Chunk 7's group create/edit. Expected
+    consequence: a new group keeps its snapshots current on every sweep and
+    writes no alerts until a type is switched on.
+
+17. ✅ **No email watchdog for Exclusives (user, 2026-09-21).** The Amazon
+    feature does not email admins when sweeps fail — the user ruled it out of
+    scope. Removed: `checkExclusivesHealth` (`scheduler.service.ts`),
+    `loadSweepHealth` (`exclusives/health.service.ts`), `sweep-health.ts` and
+    its unit tests, and the integration tests that asserted the emails. Kept:
+    `lastSuccessfulSweepAt()`, which the status dot and the 6f sweep clock both
+    need, the ▶/■ run log lines, and the app's own recurrence-scheduler
+    watchdog, which predates Exclusives and is a separate feature. An outage now
+    surfaces only through the `[exclusives]` log lines and a status dot whose
+    "last Amazon check" time stops advancing.
+
+
 
 **Deferred:**
-7. ⚠️ **Snapshot retention/prune policy** — decide in Chunk 6 (scheduler), not a
-   schema change. (§4)
+7. ✅ ~~**Snapshot retention/prune policy**~~ — no longer needed: one snapshot
+   per listing (#14).
 10. ⚠️ **Rename `AlertLog.category` → `changedField`/`detail`** — the name clashes
     with the "Category Changed" alert type; small migration when convenient.
 
@@ -398,9 +668,62 @@ placeholder routes.
 - Backend does **read → snapshot → detect → log**, strictly read-only, untested
   only via the scheduler/UI.
 
-**Next: Chunk 6** — run `runIngestion` + `runDetection` on the 30-min scheduler
-(`EXCLUSIVES_SWEEP_MINUTES`), plus the 5xx/network retry enhancement. Then
-Chunk 7 (API routes) + Chunk 8 (wire the screens to real data).
+**Chunk 6 complete (2026-09-19):** 6a (client hardening) ✅, 6b (complete-or-
+skip snapshots) ✅, 6c (no duplicate alerts) ✅, live-checked against the real
+account ✅, 6d (pass runner) ✅, 6e (snapshot retention) ✅, 6f (scheduler
+wiring) ✅, 6g (last-check status + run logs) ✅, then the
+rework to one snapshot per listing (§8 #14) ✅. Local machine only — no
+deployment step (§8 #13). Summary: `chunk_6_completed.md`.
+**Chunk 7a complete (2026-09-22):** group read + summary API — `POST
+/api/exclusives/groups/query`, `GET /api/exclusives/groups/:id`, `GET
+/api/exclusives/summary`. New `group.service.ts`, `group.mapper.ts`,
+`summary.service.ts` and `sweep-clock.ts` (the next-sweep rule, lifted out of
+`scheduler.service.ts` so the API can answer it without importing the
+scheduler). One index-only migration on `AlertLog(groupId, createdAt desc)`.
+Exclusives tests now live in their own `backend/test/exclusives.test.ts`, and
+`npm test` runs every test file one at a time. No Amazon call anywhere in 7a.
+**Chunk 7b complete (2026-09-22):** alert log query — `POST
+/api/exclusives/alerts/query`, newest first and paged, filtered by date range,
+alert type, marketplace, group ids (the Groups -> Log link) and free text over
+ASIN / title / group name. No joins: every filter column is denormalized onto
+`AlertLog`, and the 7a index covers the group filter. A deleted group's alerts
+still return, with `groupId: null` and the original `groupName`.
+**Chunk 7c complete (2026-09-22):** ASIN lookup — `POST
+/api/exclusives/listings/lookup`, four passes (normalize, database, 10-minute
+cache, Amazon) returning `found` / `already-monitored` / `not-listed` /
+`unavailable` per ASIN with a per-marketplace breakdown. A monitored ASIN costs
+zero Amazon calls. `unavailable` is never cached and never conflated with
+`not-listed`. New process-wide `sp-api/shared-pacer.ts`, now used by both the
+sweep and the lookup, so the two cannot together exceed the listings rate;
+`listing-discovery.ts` gained titles, an options object and `tolerateFailures`.
+Caps: 500 ASINs per request, 2 concurrent lookups (429 `LOOKUP_BUSY`).
+**Chunk 7d complete (2026-09-22): Chunk 7 is done.** Group writes and the two
+CSV downloads — `POST /groups`, `PATCH /groups/:id`, `DELETE /groups/:id`,
+`POST /alerts/export`, `POST /groups/:id/export`. All twelve settings written on
+every save, off by default on create (§8 #16). Every submitted ASIN is resolved
+through 7c before the transaction opens: `not-listed` -> 400 with the rows,
+`unavailable` -> 409 `AMAZON_UNAVAILABLE` with nothing written, an ASIN in
+another group -> 409 `LISTING_IN_ANOTHER_GROUP` unless `moveExisting`, which
+updates `Listing.groupId` in place so snapshots and alerts survive. `replace`
+drops only what is missing; `assertNotStale` runs first and the group row is
+always touched so an ASIN-only edit still moves `updatedAt`. New `utils/csv.ts`
+(RFC 4180, CRLF, BOM, `hourCycle: 'h23'`).
+**Chunk 8a complete (2026-09-22):** the Alert Groups screen reads real data —
+`GET /summary` for the header and run line, `POST /groups/query` for the table,
+with server-side search, sorting (`SortHeader` + `cycleSort`) and paging, a real
+`DELETE`, an empty state via `TableEmptyRow`, a request-id guard against
+out-of-order replies, and `ExcPager` capped to a window of page buttons. The
+whole Exclusives block was added to `api/client.ts`; `downloadXlsx` is now
+`downloadFile` (it never inspected the content type). First frontend
+render-with-providers helper: `frontend/src/test/render.tsx`.
+**Chunk 8b complete (2026-09-22):** the Alert Log screen reads real data —
+`POST /alerts/query` with every filter server-side (dates, alert types, group,
+text), rows showing the real `message` and previous -> new values, a working
+CSV Export over the on-screen filters, and an empty state. Fixes a live bug: the
+Groups screen pushed `state: { gid }` but the log never read it, so the
+"click a group to see its alerts" link silently showed everything; the log now
+reads it and shows a clearable chip (the row click also passes the group name).
+**Next:** 8c (the editor), then 8d (bulk import + exports).
 
 ---
 

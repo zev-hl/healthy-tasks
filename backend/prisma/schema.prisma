@@ -1007,4 +1007,5 @@ model AlertLog {
 
   @@index([createdAt(sort: Desc)])
   @@index([listingId, createdAt(sort: Desc)])
+  @@index([groupId, createdAt(sort: Desc)])
 }

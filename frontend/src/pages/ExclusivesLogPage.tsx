@@ -1,25 +1,54 @@
 /**
- * Exclusives — Alert Log (HLAI-71).
+ * Exclusives — Alert Log (HLAI-71 Chunk 8b).
  *
- * Populated with static mock data (lib/exclusivesMock.buildLog) so it matches
- * the reference design. Header toolbar = date-range filter, alert-type filter
- * (colour chips live in a popover, not an inline strip), search and export.
- * Filtering/search run client-side over the mock; export is a placeholder.
+ * Real data: rows come from POST /api/exclusives/alerts/query, and every filter
+ * here — dates, alert types, group, search — is applied by the server, so the
+ * screen never holds more than one page. The header toolbar keeps the reference
+ * design: date-range and alert-type popovers, search, and Export.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   EXCLUSIVES_ALERT_TYPES,
   EXCLUSIVES_ALERT_TYPE_LABELS,
+  type ExclusivesAlertQueryRequest,
+  type ExclusivesAlertRowDto,
   type ExclusivesAlertType,
 } from '@healthy-tasks/shared';
-import { ALERT_DETAILS, buildLog, fmtAbs, fmtRel } from '../lib/exclusivesMock';
+import { api, ApiError, exportExclusivesAlertsToCsv } from '../api/client';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { absoluteShort, formatAgo } from '../lib/datetime';
+import { TableEmptyRow } from '../components/ui/EmptyState';
 import { AlertTypeBadge } from '../components/exclusives/AlertBadge';
 import { ExcPager } from '../components/exclusives/ExcPager';
 import { Flag } from '../components/exclusives/Flag';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { StatusDot } from '../components/exclusives/StatusDot';
 
+const COLUMNS = 5;
+
+/** The Groups screen hands us a group to filter by when a row is clicked. */
+interface LogLinkState {
+  gid?: number;
+  gname?: string;
+}
+
+/** A `datetime-local` value is local wall-clock; the API wants an instant. */
+function toIso(local: string): string | undefined {
+  if (!local) return undefined;
+  const d = new Date(local);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+/** "$33.95 → $33.90", when the alert carries both sides of the change. */
+function beforeAfter(row: ExclusivesAlertRowDto): string | null {
+  if (row.previousValue === null && row.newValue === null) return null;
+  return `${row.previousValue ?? '—'} → ${row.newValue ?? '—'}`;
+}
+
 export function ExclusivesLogPage() {
+  const link = (useLocation().state ?? {}) as LogLinkState;
+
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
@@ -28,34 +57,55 @@ export function ExclusivesLogPage() {
   const [typesOpen, setTypesOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // Seeded from the Groups screen's row click, and clearable from the chip.
+  const [groupId, setGroupId] = useState<number | null>(link.gid ?? null);
+
+  const [rows, setRows] = useState<ExclusivesAlertRowDto[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const debouncedSearch = useDebouncedValue(search, 350);
+  // Filters change faster than the server answers; only the newest reply lands.
+  const requestId = useRef(0);
+
+  // Built from the individual filters rather than held in state, so the effect
+  // below can depend on the values instead of an object that changes identity
+  // on every render.
+  const buildQuery = useCallback(
+    (): ExclusivesAlertQueryRequest => ({
+      text: debouncedSearch.trim() || undefined,
+      alertTypes: active.size > 0 ? [...active] : undefined,
+      groupIds: groupId !== null ? [groupId] : undefined,
+      from: toIso(dateFrom),
+      to: toIso(dateTo),
+      page,
+      pageSize,
+    }),
+    [debouncedSearch, active, groupId, dateFrom, dateTo, page, pageSize],
+  );
+
+  const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    try {
+      const result = await api.queryExclusivesAlerts(buildQuery());
+      if (id !== requestId.current) return;
+      setRows(result.rows);
+      setTotal(result.total);
+      setError(null);
+    } catch (err) {
+      if (id !== requestId.current) return;
+      setError(err instanceof ApiError ? err.message : 'Could not load the alert log');
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
+  }, [buildQuery]);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(t);
-  }, []);
-
-  const allEntries = useMemo(() => buildLog(), []);
-
-  const entries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const from = dateFrom ? new Date(dateFrom).getTime() : null;
-    const to = dateTo ? new Date(dateTo).getTime() : null;
-    return allEntries.filter((e) => {
-      if (active.size > 0 && !active.has(e.type)) return false;
-      const t = e.date.getTime();
-      if (from !== null && t < from) return false;
-      if (to !== null && t > to) return false;
-      if (!q) return true;
-      return (
-        e.asin.toLowerCase().includes(q) ||
-        e.title.toLowerCase().includes(q) ||
-        e.group.toLowerCase().includes(q)
-      );
-    });
-  }, [allEntries, search, active, dateFrom, dateTo]);
-
-  const shown = entries.slice((page - 1) * pageSize, page * pageSize);
+    void load();
+  }, [load]);
 
   function toggleType(t: ExclusivesAlertType) {
     setPage(1);
@@ -72,6 +122,27 @@ export function ExclusivesLogPage() {
     setTypesOpen(false);
   }
 
+  async function onExport() {
+    setExporting(true);
+    try {
+      // Everything on screen, not just this page — the server caps it at 10,000.
+      await exportExclusivesAlertsToCsv({ ...buildQuery(), page: undefined });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const filtered =
+    debouncedSearch.trim().length > 0 ||
+    active.size > 0 ||
+    groupId !== null ||
+    dateFrom !== '' ||
+    dateTo !== '';
+  const groupName = link.gname ?? rows[0]?.groupName ?? 'one group';
+
   return (
     <div className="exc-page">
       <header className="page-head exc-head">
@@ -81,7 +152,7 @@ export function ExclusivesLogPage() {
             Exclusives Alert Log
           </h1>
           <p className="muted mono">
-            {entries.length} alerts · newest first · runs at :00 and :30
+            {loading ? 'Loading…' : `${total} alert${total === 1 ? '' : 's'}`} · newest first
           </p>
         </div>
         <div className="exc-actions">
@@ -98,7 +169,9 @@ export function ExclusivesLogPage() {
               <span aria-hidden="true">🗓</span>
               Filter by date / time
               {(dateFrom || dateTo) && <span className="exc-filter-count">1</span>}
-              <span className="exc-caret" aria-hidden="true">▾</span>
+              <span className="exc-caret" aria-hidden="true">
+                ▾
+              </span>
             </button>
             {datesOpen && (
               <div className="exc-filter-pop exc-date-pop">
@@ -156,14 +229,23 @@ export function ExclusivesLogPage() {
             >
               Filter by alert type
               {active.size > 0 && <span className="exc-filter-count">{active.size}</span>}
-              <span className="exc-caret" aria-hidden="true">▾</span>
+              <span className="exc-caret" aria-hidden="true">
+                ▾
+              </span>
             </button>
             {typesOpen && (
               <div className="exc-filter-pop exc-type-pop">
                 <div className="exc-filter-pop-head">
                   <span>Alert types</span>
                   {active.size > 0 && (
-                    <button type="button" className="exc-clear" onClick={() => setActive(new Set())}>
+                    <button
+                      type="button"
+                      className="exc-clear"
+                      onClick={() => {
+                        setActive(new Set());
+                        setPage(1);
+                      }}
+                    >
                       Clear
                     </button>
                   )}
@@ -200,14 +282,33 @@ export function ExclusivesLogPage() {
             }}
             aria-label="Search alerts"
           />
-          <button type="button" className="exc-toolbtn" disabled>
-            Export
+          <button
+            type="button"
+            className="exc-toolbtn"
+            onClick={() => void onExport()}
+            disabled={exporting || total === 0}
+          >
+            {exporting ? 'Exporting…' : 'Export'}
           </button>
         </div>
       </header>
 
+      {error && <div className="alert error">{error}</div>}
+
       <div className="exc-sortline">
         <span className="mono">Sort: Date / time ↓</span>
+        {groupId !== null && (
+          <button
+            type="button"
+            className="exc-clear"
+            onClick={() => {
+              setGroupId(null);
+              setPage(1);
+            }}
+          >
+            Showing “{groupName}” only — show all ✕
+          </button>
+        )}
       </div>
 
       <section className="card exc-table-card" aria-label="Alert log">
@@ -223,36 +324,49 @@ export function ExclusivesLogPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <LoadingRow colSpan={5} />}
-              {!loading &&
-                shown.map((e, i) => (
-                <tr key={`${e.asin}-${i}`}>
-                  <td className="exc-col-asin">
-                    <span className="exc-asin-cell">
-                      <Flag platform={e.platform} />
-                      <span className="mono">{e.asin}</span>
-                    </span>
-                  </td>
-                  <td className="exc-col-name">
-                    <span className="exc-log-title">{e.title}</span>
-                    <span className="exc-log-detail">{ALERT_DETAILS[e.type]}</span>
-                  </td>
-                  <td className="exc-muted">{e.group}</td>
-                  <td>
-                    <AlertTypeBadge type={e.type} />
-                  </td>
-                  <td>
-                    <span className="exc-latest">{fmtRel(e.date)}</span>
-                    <span className="mono exc-latest-abs">{fmtAbs(e.date)}</span>
-                  </td>
-                </tr>
-              ))}
+              {loading && rows.length === 0 && <LoadingRow colSpan={COLUMNS} />}
+              {!loading && rows.length === 0 && (
+                <TableEmptyRow
+                  colSpan={COLUMNS}
+                  title={filtered ? 'No alerts match these filters' : 'No alerts yet'}
+                >
+                  {filtered
+                    ? 'Try a wider date range, or clear a filter.'
+                    : 'Alerts appear here once a check finds a change on a watched product.'}
+                </TableEmptyRow>
+              )}
+              {rows.map((row) => {
+                const change = beforeAfter(row);
+                return (
+                  <tr key={row.id}>
+                    <td className="exc-col-asin">
+                      <span className="exc-asin-cell">
+                        <Flag platform={row.marketplace} />
+                        <span className="mono">{row.asin}</span>
+                      </span>
+                    </td>
+                    <td className="exc-col-name">
+                      <span className="exc-log-title">{row.title}</span>
+                      <span className="exc-log-detail">{row.message}</span>
+                    </td>
+                    <td className="exc-muted">{row.groupName}</td>
+                    <td>
+                      <AlertTypeBadge type={row.alertType} />
+                      {change && <span className="mono exc-log-detail">{change}</span>}
+                    </td>
+                    <td>
+                      <span className="exc-latest">{formatAgo(row.createdAt)}</span>
+                      <span className="mono exc-latest-abs">{absoluteShort(row.createdAt)}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
         <ExcPager
-          total={entries.length}
+          total={total}
           page={page}
           pageSize={pageSize}
           onPage={setPage}

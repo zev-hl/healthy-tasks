@@ -18,8 +18,8 @@ import { runGoalReviewPass } from './goal.service.js';
 import { getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
-import { missingSpApiConfig, type SpApiConfig } from './exclusives/sp-api/config.js';
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
+import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
 
 /**
  * Recurrence scheduler (Phase 11; reworked in Phase 14).
@@ -727,39 +727,15 @@ let exclusivesRunCount = 0;
 // eslint-disable-next-line no-console
 const logExclusives = (msg: string): void => console.log(msg);
 
-type SweepConfig = SpApiConfig & { sweepEnabled: boolean; sweepMinutes: number };
-type SweepMode = { on: boolean; summary: string };
+export { exclusivesSweepMode };
 
-/** Whether this process runs the Exclusives sweep, with a one-line why for the boot log. */
-export function exclusivesSweepMode(cfg: SweepConfig = env.amazon): SweepMode {
-  if (!cfg.sweepEnabled) {
-    return { on: false, summary: 'off (EXCLUSIVES_SWEEP_ENABLED is not "true")' };
-  }
-  const missing = missingSpApiConfig(cfg);
-  if (missing.length > 0) {
-    return { on: false, summary: `off (SP-API not configured: missing ${missing.join(', ')})` };
-  }
-  return { on: true, summary: `on, every ${cfg.sweepMinutes} min` };
-}
-
-/**
- * When the next pass is due: one interval after the newest snapshot (the last
- * successful sweep, by any instance) and one interval after this process's last
- * attempt, whichever is later — and never before `now`. The attempt is what stops
- * a tight loop while Amazon is down: a failing pass saves no snapshot, so the
- * newest snapshot alone would read "due now" forever. It lives in memory, so a
- * restart may retry once early; that is fine. No snapshots yet: due now.
- */
+/** When the next pass is due — see `exclusives/sweep-clock.ts` for the rule. */
 export async function exclusivesDueAt(
   now: Date,
   lastAttemptAt: Date | null = lastExclusivesAttemptAt,
 ): Promise<Date> {
-  const intervalMs = env.amazon.sweepMinutes * 60 * 1000;
-  const candidates = [now.getTime()];
-  const lastSnapshotAt = await lastSuccessfulSweepAt();
-  if (lastSnapshotAt) candidates.push(lastSnapshotAt.getTime() + intervalMs);
-  if (lastAttemptAt) candidates.push(lastAttemptAt.getTime() + intervalMs);
-  return new Date(Math.max(...candidates));
+  const lastSuccessAt = await lastSuccessfulSweepAt();
+  return nextSweepDueAt(now, lastSuccessAt, lastAttemptAt, env.amazon.sweepMinutes);
 }
 
 /**
