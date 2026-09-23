@@ -55,6 +55,20 @@ describe('detectAlerts — commercial', () => {
     assert.deepEqual(types(s({ listedPrice: null }), s({ listedPrice: 9.99 })), []);
   });
 
+  it('ignores penny/sub-floor price noise (< 1% and < $0.50)', () => {
+    assert.deepEqual(types(base, s({ listedPrice: 34.98 })), []); // $0.01, ~0.03%
+    assert.deepEqual(types(base, s({ listedPrice: 35.0 })), []); // $0.01, ~0.03%
+    assert.deepEqual(types(s({ listedPrice: 10 }), s({ listedPrice: 10.05 })), []); // $0.05, 0.5%
+  });
+
+  it('fires on the absolute floor even when the relative move is under 1%', () => {
+    assert.deepEqual(types(s({ listedPrice: 100 }), s({ listedPrice: 100.5 })), ['PriceChanged']); // $0.50, 0.5%
+  });
+
+  it('fires on the relative floor even when the absolute move is under $0.50', () => {
+    assert.deepEqual(types(s({ listedPrice: 10 }), s({ listedPrice: 10.15 })), ['PriceChanged']); // $0.15, 1.5%
+  });
+
   it('fires Number of Sellers Changed on offer-count change', () => {
     assert.deepEqual(types(base, s({ offerCount: 6 })), ['NumberOfSellersChanged']);
   });

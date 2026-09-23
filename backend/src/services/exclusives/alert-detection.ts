@@ -20,6 +20,22 @@ const CONTENT_ALERTS: Record<string, ExclusivesAlertType> = {
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 
+// Amazon list prices wiggle by a cent between sweeps; without a floor the log
+// fills with ±$0.01 "changes". A price move is only alert-worthy when it clears
+// an absolute OR a relative floor — whichever it hits first, so both a $0.60 move
+// on a cheap item and a 0.6% move on an expensive one register. NOTE: the saved
+// snapshot still advances every sweep (see detection.service `sameStoredState`),
+// so this is a per-sweep floor: a sub-floor move that repeats each sweep resets
+// the baseline and won't accumulate into an alert.
+const PRICE_ALERT_MIN_ABS = 0.5; // dollars
+const PRICE_ALERT_MIN_PCT = 0.01; // 1% of the previous price
+
+const priceMoveIsAlertWorthy = (prev: number, current: number): boolean => {
+  const absDelta = Math.abs(current - prev);
+  const pctDelta = prev === 0 ? Infinity : absDelta / Math.abs(prev);
+  return absDelta >= PRICE_ALERT_MIN_ABS || pctDelta >= PRICE_ALERT_MIN_PCT;
+};
+
 // Map the raw diff (5a) to alert types. Buy Box Won/Lost is derived from the
 // resolved winner + Buy Box price + our merchant token, across both snapshots
 // (never IsBuyBoxWinner). A suppressed Buy Box (price gone) is NOT "Lost".
@@ -63,7 +79,12 @@ export function detectAlerts(
     });
   }
 
-  if (changed.has('listedPrice') && prev.listedPrice != null && current.listedPrice != null) {
+  if (
+    changed.has('listedPrice') &&
+    prev.listedPrice != null &&
+    current.listedPrice != null &&
+    priceMoveIsAlertWorthy(prev.listedPrice, current.listedPrice)
+  ) {
     alerts.push({
       alertType: 'PriceChanged',
       category: null,
