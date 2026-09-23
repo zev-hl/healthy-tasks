@@ -7,7 +7,7 @@ export function ConflictBanner({
   entity,
   onReview,
 }: {
-  entity: 'goal' | 'task';
+  entity: 'goal' | 'task' | 'group';
   onReview: () => void;
 }) {
   return (

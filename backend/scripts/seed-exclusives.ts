@@ -8,6 +8,9 @@ import { runDetection } from '../src/services/exclusives/detection.service.js';
 
 const GROUP_NAME = 'Versure Exclusives';
 
+/** Re-seed the listings but leave the alert log alone. */
+const KEEP_ALERTS = process.argv.includes('--keep-alerts');
+
 // Keep only well-formed ASINs (10 letters/digits), so a spreadsheet export's
 // header row ("ASIN") or stray text is never sent to Amazon as an identifier.
 const ASIN_PATTERN = /^[A-Z0-9]{10}$/;
@@ -41,8 +44,16 @@ async function main() {
     await prisma.alertGroup.delete({ where: { id: existing.id } });
     console.log(`Wiped the previous group: ${before} listing(s) and their snapshots.`);
   }
-  const alerts = await prisma.alertLog.deleteMany({});
-  console.log(`Wiped ${alerts.count} alert log row(s).\n`);
+  // Alerts are the history and survive a rebuild perfectly well: each keeps the
+  // ASIN, title and group name as text, so the log stays readable even with its
+  // group gone. Pass --keep-alerts to re-seed the listings only.
+  if (KEEP_ALERTS) {
+    const kept = await prisma.alertLog.count();
+    console.log(`Kept ${kept} alert log row(s).\n`);
+  } else {
+    const alerts = await prisma.alertLog.deleteMany({});
+    console.log(`Wiped ${alerts.count} alert log row(s).\n`);
+  }
 
   const group = await prisma.alertGroup.create({
     data: { name: GROUP_NAME, groupType: 'GROUP', createdById: user.id },

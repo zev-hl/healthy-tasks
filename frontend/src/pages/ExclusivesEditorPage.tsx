@@ -1,12 +1,12 @@
 /**
- * Exclusives — New Group / Edit Group editor (HLAI-71).
+ * Exclusives — New Group / Edit Group editor (HLAI-71 Chunk 8c).
  *
  * Matches the reference design: left "Listing" + "ASINs" cards, right "Alert
- * settings" panel with per-type Off/Daily/Immediate toggles. State is local and
- * seeded from static mock data; Save/Cancel just navigate back for now (no
- * persistence until the backend lands).
+ * settings" panel. Now backed by the real API — an existing group is loaded
+ * from the server, adding an ASIN resolves it against the seller account, and
+ * Save creates or updates for real.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   EXCLUSIVES_ALERT_MODES,
@@ -14,22 +14,48 @@ import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
   type ExclusivesAlertMode,
   type ExclusivesAlertType,
+  type ExclusivesGroupDto,
   type ExclusivesGroupType,
+  type ExclusivesGroupWriteRequest,
+  type ExclusivesListingClashDto,
+  type ExclusivesListingProblemDto,
+  type ExclusivesMarketplace,
 } from '@healthy-tasks/shared';
-import { MOCK_GROUPS, type AsinRow, type Marketplace } from '../lib/exclusivesMock';
+import { api, ApiError, exportExclusivesGroupToCsv } from '../api/client';
+import { useStaleWriteGuard } from '../lib/useStaleWriteGuard';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { formatTimestamp } from '../lib/datetime';
+import { ConflictBanner } from '../components/ConflictBanner';
 import { alertTone } from '../components/exclusives/AlertBadge';
 import { Segmented } from '../components/exclusives/Segmented';
 import { Flag } from '../components/exclusives/Flag';
+import { Toast, useToast } from '../components/exclusives/Toast';
+import { NoticeModal } from '../components/exclusives/NoticeModal';
+import { BulkImportModal, type ImportRow } from '../components/exclusives/BulkImportModal';
 
 type Settings = Record<ExclusivesAlertType, ExclusivesAlertMode>;
 
-/** Derive the mockup's per-type settings from a group's "on" count. */
-function deriveSettings(onCount: number): Settings {
-  const s = {} as Settings;
-  EXCLUSIVES_ALERT_TYPES.forEach((t, i) => {
-    s[t] = i < onCount ? (i % 3 === 0 ? 'daily' : 'immediate') : 'off';
-  });
-  return s;
+/** A centred message. Some close themselves; some carry on afterwards. */
+interface Notice {
+  title?: string;
+  message: string;
+  autoCloseMs?: number;
+  onDone?: () => void;
+}
+
+/** How long a save error stays before clearing itself. */
+const ERROR_VISIBLE_MS = 10_000;
+
+/** One row of the ASIN list, with whatever the server last told us about it. */
+interface AsinRow {
+  asin: string;
+  marketplace: ExclusivesMarketplace;
+  title: string | null;
+  /** The group that currently watches it — saving moves it here. */
+  ownerId: number | null;
+  ownerName: string | null;
+  /** Why the last save refused this row, if it did. */
+  problem: string | null;
 }
 
 const allMode = (mode: ExclusivesAlertMode): Settings => {
@@ -43,41 +69,301 @@ const MODE_OPTIONS = EXCLUSIVES_ALERT_MODES.map((m) => ({
   label: m.charAt(0).toUpperCase() + m.slice(1),
 }));
 
+const rowKey = (r: { asin: string; marketplace: string }) => `${r.marketplace}:${r.asin}`;
+
+/** What the form holds, flattened, so "has anything changed?" is one compare. */
+const snapshotOf = (kind: string, name: string, rows: AsinRow[], settings: Settings): string =>
+  JSON.stringify({
+    kind,
+    name: name.trim(),
+    rows: rows.map(rowKey).sort(),
+    settings,
+  });
+
 export function ExclusivesEditorPage() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const existing = useMemo(() => MOCK_GROUPS.find((g) => g.id === id), [id]);
+  const groupId = id ? Number(id) : null;
+  const isNew = groupId === null;
 
-  const [kind, setKind] = useState<ExclusivesGroupType>(existing?.kind ?? 'GROUP');
-  const [name, setName] = useState(existing?.name ?? '');
-  const [asins, setAsins] = useState<AsinRow[]>(existing ? [...existing.asins] : []);
-  const [settings, setSettings] = useState<Settings>(
-    existing ? deriveSettings(existing.onCount) : allMode('immediate'),
-  );
+  const [kind, setKind] = useState<ExclusivesGroupType>('GROUP');
+  const [name, setName] = useState('');
+  const [rows, setRows] = useState<AsinRow[]>([]);
+  // Off by default — the creator switches on what they want (HLAI-71 §8 #16).
+  const [settings, setSettings] = useState<Settings>(allMode('off'));
+  const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | undefined>(undefined);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [baseline, setBaseline] = useState(() => snapshotOf('GROUP', '', [], allMode('off')));
+
   const [addAsin, setAddAsin] = useState('');
-  const [addPlatform, setAddPlatform] = useState<Marketplace>('USA');
+  const [addMarketplace, setAddMarketplace] = useState<ExclusivesMarketplace>('USA');
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const [loading, setLoading] = useState(!isNew);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const { toast, showToast, clearToast } = useToast();
+  const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
+
+  /** Fill the form from a group the server returned, and treat that as saved. */
+  const hydrate = useCallback((group: ExclusivesGroupDto) => {
+    const next: AsinRow[] = group.listings.map((l) => ({
+      asin: l.asin,
+      marketplace: l.marketplace,
+      title: l.title,
+      ownerId: null,
+      ownerName: null,
+      problem: null,
+    }));
+    setKind(group.groupType);
+    setName(group.name);
+    setRows(next);
+    setSettings({ ...allMode('off'), ...group.settings });
+    setExpectedUpdatedAt(group.updatedAt);
+    setSavedAt(group.updatedAt);
+    setBaseline(
+      snapshotOf(group.groupType, group.name, next, { ...allMode('off'), ...group.settings }),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (isNew || groupId === null) return;
+    let alive = true;
+    setLoading(true);
+    api
+      .getExclusivesGroup(groupId)
+      .then((group) => {
+        if (alive) hydrate(group);
+      })
+      .catch((err) => {
+        if (alive) setError(err instanceof ApiError ? err.message : 'Could not load the group');
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [groupId, isNew, hydrate]);
 
   const onCount = EXCLUSIVES_ALERT_TYPES.filter((t) => settings[t] !== 'off').length;
-  const crumb = existing ? existing.name : 'New group';
+  // An individual listing is exactly one product, so the add controls close
+  // once it has one. Removing the row opens them again.
+  const addLocked = kind === 'INDIVIDUAL' && rows.length >= 1;
+  const dirty = useMemo(
+    () => snapshotOf(kind, name, rows, settings) !== baseline,
+    [kind, name, rows, settings, baseline],
+  );
+  useUnsavedChangesWarning(dirty && !saving);
 
-  function addRow() {
-    const code = addAsin.trim().toUpperCase();
-    if (!code) return;
-    setAsins((prev) => [...prev, { asin: code, title: '', platform: addPlatform }]);
-    setAddAsin('');
+  // A save error is about the attempt just made, not a standing condition,
+  // so it steps out of the way rather than needing to be dismissed.
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), ERROR_VISIBLE_MS);
+    return () => clearTimeout(t);
+  }, [error]);
+
+  // --- adding one ASIN ------------------------------------------------------
+
+  async function addRow() {
+    const asin = addAsin.trim().toUpperCase();
+    if (!asin || adding) return;
+    if (rows.some((r) => rowKey(r) === `${addMarketplace}:${asin}`)) {
+      setNotice({
+        title: 'Already in this group',
+        message: `${asin} is in the list below, so there is nothing to add.`,
+      });
+      return;
+    }
+
+    setAdding(true);
+    try {
+      const res = await api.lookupExclusivesAsins({
+        asins: [asin],
+        marketplaces: [addMarketplace],
+      });
+      if (res.invalid.length > 0) {
+        setNotice({
+          title: 'Not a valid ASIN',
+          message: `“${asin}” is not a valid ASIN. An ASIN is ten characters long.`,
+        });
+        return;
+      }
+
+      const result = res.results[0];
+      const listing = result?.listings.find((l) => l.marketplace === addMarketplace);
+
+      if (!listing) {
+        // The one failure worth retrying must never read like the final one.
+        setNotice(
+          result?.status === 'unavailable'
+            ? {
+                title: 'Amazon did not answer',
+                message: `Nothing has been added for ${asin}. Try again in a moment.`,
+              }
+            : {
+                title: 'Not on the seller account',
+                message: `${asin} is not listed on the seller account in ${addMarketplace}, so it cannot be watched.`,
+              },
+        );
+        return;
+      }
+
+      const taken = listing.groupId !== null && listing.groupId !== groupId;
+      setRows((prev) => [
+        ...prev,
+        {
+          asin,
+          marketplace: addMarketplace,
+          title: listing.title,
+          ownerId: taken ? listing.groupId : null,
+          ownerName: taken ? listing.groupName : null,
+          problem: null,
+        },
+      ]);
+      setAddAsin('');
+      // Nothing to announce: the row appears below saying where it comes from,
+      // and the banner above the list explains what saving will do.
+    } catch (err) {
+      setNotice({
+        title: 'Could not check that ASIN',
+        message:
+          err instanceof ApiError
+            ? err.message
+            : `${asin} could not be checked against the seller account. Try again in a moment.`,
+      });
+    } finally {
+      setAdding(false);
+    }
   }
 
-  function removeRow(idx: number) {
-    setAsins((prev) => prev.filter((_, i) => i !== idx));
+  function removeRow(key: string) {
+    setRows((prev) => prev.filter((r) => rowKey(r) !== key));
   }
 
-  function togglePlatform(idx: number) {
-    setAsins((prev) =>
-      prev.map((a, i) =>
-        i === idx ? { ...a, platform: a.platform === 'USA' ? 'Canada' : 'USA' } : a,
-      ),
+  /** The import replaces the list on screen; the editor's Save persists it. */
+  function applyImport(imported: ImportRow[]) {
+    setRows(
+      imported.map((r) => ({
+        asin: r.asin,
+        marketplace: r.marketplace,
+        title: r.title,
+        ownerId: r.ownerId,
+        ownerName: r.ownerName,
+        problem: null,
+      })),
     );
+    setImporting(false);
+    setNotice({
+      title: 'Imported',
+      message: `${imported.length} ASIN(s) ready — click Save to apply.`,
+      autoCloseMs: 1_000,
+    });
   }
+
+  async function onExportList() {
+    if (groupId === null) return;
+    setExporting(true);
+    try {
+      await exportExclusivesGroupToCsv(groupId);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Download failed.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // --- saving ---------------------------------------------------------------
+
+  function applyProblems(details: unknown): boolean {
+    const d = details as
+      | { listings?: ExclusivesListingProblemDto[]; clashes?: ExclusivesListingClashDto[] }
+      | undefined;
+    const problems = new Map<string, string>();
+    for (const p of d?.listings ?? []) {
+      problems.set(
+        rowKey(p),
+        p.reason === 'unavailable' ? 'Amazon did not answer' : 'Not on the seller account',
+      );
+    }
+    const clashes = new Map((d?.clashes ?? []).map((c) => [rowKey(c), c]));
+    if (problems.size === 0 && clashes.size === 0) return false;
+
+    setRows((prev) =>
+      prev.map((r) => {
+        const key = rowKey(r);
+        const clash = clashes.get(key);
+        if (clash) {
+          return { ...r, ownerId: clash.groupId, ownerName: clash.groupName, problem: null };
+        }
+        return { ...r, problem: problems.get(key) ?? null };
+      }),
+    );
+    return true;
+  }
+
+  async function save(moveExisting: boolean) {
+    setSaving(true);
+    setError(null);
+    setNameError(null);
+    try {
+      const body: ExclusivesGroupWriteRequest = {
+        name: name.trim() || undefined,
+        groupType: kind,
+        listings: rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace })),
+        // The editor shows the whole list, so what is on screen is the group.
+        // 'merge' would quietly ignore rows the person removed.
+        listingsMode: 'replace',
+        moveExisting: moveExisting || rows.some((r) => r.ownerId !== null),
+        settings,
+        expectedUpdatedAt,
+      };
+
+      const ok = await guard(async () => {
+        const saved = isNew
+          ? await api.createExclusivesGroup(body)
+          : await api.updateExclusivesGroup(groupId as number, body);
+        hydrate(saved);
+        setNotice({
+          title: 'Saved',
+          message: `“${saved.name}” now watches ${saved.listings.length} ASIN(s).`,
+          onDone: () => navigate('/exclusives/groups'),
+        });
+      });
+      if (!ok) return; // a stale write; the conflict banner explains it
+    } catch (err) {
+      if (!(err instanceof ApiError)) {
+        setError('Could not save the group');
+        return;
+      }
+      const code = (err.details as { code?: string } | undefined)?.code;
+      if (code === 'DUPLICATE_NAME') setNameError(err.message);
+      applyProblems(err.details);
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function refreshAfterConflict() {
+    if (groupId === null) return;
+    try {
+      hydrate(await api.getExclusivesGroup(groupId));
+      reset();
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reload the group');
+    }
+  }
+
+  const clashing = rows.filter((r) => r.ownerId !== null);
+  const crumb = isNew ? 'New group' : name || 'Group';
 
   return (
     <div className="exc-page exc-editor">
@@ -88,17 +374,40 @@ export function ExclusivesEditorPage() {
         <span className="exc-crumb-sep mono">/</span>
         <span className="exc-crumb mono">{crumb}</span>
         <div className="exc-crumb-right">
-          <span className="mono exc-crumb-meta">{existing ? 'Last saved earlier' : 'Not yet saved'}</span>
+          <span className="mono exc-crumb-meta">
+            {savedAt ? `Saved ${formatTimestamp(savedAt)}` : 'Not yet saved'}
+          </span>
           <span className="exc-crumb-div" />
-          <span className="mono exc-crumb-hint">Unsaved changes</span>
-          <button type="button" className="secondary" onClick={() => navigate('/exclusives/groups')}>
+          {dirty && <span className="mono exc-crumb-hint">Unsaved changes</span>}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => navigate('/exclusives/groups')}
+          >
             Cancel
           </button>
-          <button type="button" onClick={() => navigate('/exclusives/groups')}>
-            Save
-          </button>
+          {conflict ? (
+            <button type="button" onClick={() => void refreshAfterConflict()}>
+              Refresh
+            </button>
+          ) : (
+            <button type="button" onClick={() => void save(false)} disabled={saving || loading}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
+
+      {bannerShown && <ConflictBanner entity="group" onReview={review} />}
+      {error && <div className="alert error">{error}</div>}
+      {clashing.length > 0 && (
+        <div className="alert success">
+          {clashing.length} ASIN{clashing.length === 1 ? '' : 's'} listed below{' '}
+          {clashing.length === 1 ? 'is' : 'are'} watched by another group. Saving moves{' '}
+          {clashing.length === 1 ? 'it' : 'them'} here, keeping{' '}
+          {clashing.length === 1 ? 'its' : 'their'} history.
+        </div>
+      )}
 
       <div className="exc-editor-body">
         <div className="exc-editor-left">
@@ -133,10 +442,11 @@ export function ExclusivesEditorPage() {
                     : 'Pulled from Amazon once the ASIN is added'
                 }
               />
-              <span className="exc-field-help">
-                {kind === 'GROUP'
-                  ? 'Required and must be unique across all groups.'
-                  : 'An individual listing is stored as a single-ASIN group.'}
+              <span className={`exc-field-help${nameError ? ' error' : ''}`}>
+                {nameError ??
+                  (kind === 'GROUP'
+                    ? 'Required and must be unique across all groups.'
+                    : 'Leave blank and the Amazon title is used.')}
               </span>
             </div>
           </section>
@@ -145,14 +455,25 @@ export function ExclusivesEditorPage() {
             <div className="exc-panel-head exc-asin-head">
               <span className="exc-panel-title">ASINs</span>
               <span className="mono muted">
-                {asins.length} {kind === 'GROUP' ? 'in this group' : '(individual)'}
+                {rows.length} {kind === 'GROUP' ? 'in this group' : '(individual)'}
               </span>
               <div className="exc-asin-head-btns">
-                <button type="button" className="secondary btn-sm">
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  onClick={() => setImporting(true)}
+                  disabled={kind === 'INDIVIDUAL'}
+                >
                   Bulk import &amp; replace
                 </button>
-                <button type="button" className="secondary btn-sm">
-                  Export list
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  onClick={() => void onExportList()}
+                  disabled={isNew || exporting || rows.length === 0}
+                  title={isNew ? 'Save the group first' : undefined}
+                >
+                  {exporting ? 'Preparing…' : 'Export list'}
                 </button>
               </div>
             </div>
@@ -162,27 +483,33 @@ export function ExclusivesEditorPage() {
                 className="exc-input mono exc-add-asin"
                 value={addAsin}
                 onChange={(e) => setAddAsin(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addRow()}
-                placeholder="Add ASIN, e.g. B0C7QMV3RK"
+                onKeyDown={(e) => e.key === 'Enter' && void addRow()}
+                placeholder={
+                  addLocked ? 'Remove the ASIN to choose another' : 'Add ASIN, e.g. B0C7QMV3RK'
+                }
+                aria-label="Add ASIN"
+                disabled={adding || addLocked}
               />
               <div className="exc-country" role="group" aria-label="Marketplace">
                 <button
                   type="button"
-                  className={`exc-country-btn${addPlatform === 'USA' ? ' active us' : ''}`}
-                  onClick={() => setAddPlatform('USA')}
+                  className={`exc-country-btn${addMarketplace === 'USA' ? ' active us' : ''}`}
+                  onClick={() => setAddMarketplace('USA')}
+                  disabled={addLocked}
                 >
                   USA
                 </button>
                 <button
                   type="button"
-                  className={`exc-country-btn${addPlatform === 'Canada' ? ' active ca' : ''}`}
-                  onClick={() => setAddPlatform('Canada')}
+                  className={`exc-country-btn${addMarketplace === 'Canada' ? ' active ca' : ''}`}
+                  onClick={() => setAddMarketplace('Canada')}
+                  disabled={addLocked}
                 >
                   Canada
                 </button>
               </div>
-              <button type="button" onClick={addRow}>
-                Add
+              <button type="button" onClick={() => void addRow()} disabled={adding || addLocked}>
+                {adding ? 'Checking…' : 'Add'}
               </button>
             </div>
 
@@ -193,28 +520,29 @@ export function ExclusivesEditorPage() {
                 <span className="exc-asin-c-plat">Platform</span>
                 <span className="exc-asin-c-x" />
               </div>
-              {asins.length === 0 ? (
+              {loading ? (
+                <div className="exc-asin-empty muted">Loading…</div>
+              ) : rows.length === 0 ? (
                 <div className="exc-asin-empty muted">No ASINs yet — add one above.</div>
               ) : (
-                asins.map((a, i) => (
-                  <div className="exc-asin-trow" key={`${a.asin}-${i}`}>
-                    <span className="exc-asin-c-asin mono">{a.asin}</span>
+                rows.map((r) => (
+                  <div className="exc-asin-trow" key={rowKey(r)}>
+                    <span className="exc-asin-c-asin mono">{r.asin}</span>
                     <span className="exc-asin-c-title">
-                      {a.title || <span className="muted">Fetching from Amazon…</span>}
+                      {r.title ?? <span className="muted">No title yet</span>}
+                      {r.problem && <span className="exc-log-detail error"> {r.problem}</span>}
+                      {r.ownerName && (
+                        <span className="exc-log-detail"> Moving from “{r.ownerName}”</span>
+                      )}
+                    </span>
+                    <span className="exc-asin-c-plat">
+                      <Flag platform={r.marketplace} />
                     </span>
                     <button
                       type="button"
-                      className="exc-asin-c-plat exc-plat-toggle"
-                      onClick={() => togglePlatform(i)}
-                      title="Toggle marketplace"
-                    >
-                      <Flag platform={a.platform} />
-                    </button>
-                    <button
-                      type="button"
                       className="exc-asin-c-x exc-asin-remove"
-                      onClick={() => removeRow(i)}
-                      aria-label={`Remove ${a.asin}`}
+                      onClick={() => removeRow(rowKey(r))}
+                      aria-label={`Remove ${r.asin}`}
                     >
                       ×
                     </button>
@@ -248,7 +576,11 @@ export function ExclusivesEditorPage() {
               const dot = mode === 'off' ? 'var(--border-dashed)' : alertTone(t).dot;
               return (
                 <div className="exc-settings-row" key={t}>
-                  <span className="exc-settings-dot" style={{ background: dot }} aria-hidden="true" />
+                  <span
+                    className="exc-settings-dot"
+                    style={{ background: dot }}
+                    aria-hidden="true"
+                  />
                   <span className="exc-settings-name">{EXCLUSIVES_ALERT_TYPE_LABELS[t]}</span>
                   <Segmented
                     ariaLabel={EXCLUSIVES_ALERT_TYPE_LABELS[t]}
@@ -264,6 +596,30 @@ export function ExclusivesEditorPage() {
           </div>
         </section>
       </div>
+
+      {importing && (
+        <BulkImportModal
+          groupId={groupId}
+          current={rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace }))}
+          onCancel={() => setImporting(false)}
+          onImport={applyImport}
+        />
+      )}
+
+      {notice && (
+        <NoticeModal
+          title={notice.title}
+          message={notice.message}
+          autoCloseMs={notice.autoCloseMs}
+          onClose={() => {
+            const done = notice.onDone;
+            setNotice(null);
+            done?.();
+          }}
+        />
+      )}
+
+      <Toast toast={toast} onClose={clearToast} />
     </div>
   );
 }

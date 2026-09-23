@@ -547,7 +547,9 @@ textarea:focus-visible {
   font-size: 13.5px;
   color: var(--ink-3);
   text-decoration: none;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
 }
 .side-nav-item:hover {
   background: var(--canvas-deep);
@@ -819,7 +821,9 @@ textarea:focus-visible {
   padding: 12px 8px;
   border-radius: 9px;
   cursor: pointer;
-  transition: background var(--dur) var(--ease), opacity var(--dur-slow) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    opacity var(--dur-slow) var(--ease);
 }
 .mday-row + .mday-row {
   border-top: 1px solid var(--row-line);
@@ -871,7 +875,10 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
 }
 .mday-check:hover {
   border-color: var(--ok);
@@ -981,7 +988,9 @@ textarea:focus-visible {
   border: 1px solid var(--border-soft);
   cursor: pointer;
   text-align: left;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .mday-team-card:hover {
   background: var(--canvas-deep);
@@ -1072,7 +1081,9 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
 .tasks-stat:hover {
   border-color: var(--border-dashed);
@@ -1965,7 +1976,9 @@ textarea:focus-visible {
   border-radius: var(--radius-full);
   background: var(--canvas-deep);
   border: 1px solid var(--border);
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .switch-track::after {
   content: '';
@@ -3855,7 +3868,9 @@ button.dash-stat:hover {
   color: var(--ink-3);
   cursor: pointer;
   box-shadow: none;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease);
 }
 .notif-pill:hover {
@@ -4157,7 +4172,6 @@ button.dash-stat:hover {
   }
 }
 
-
 .notif-foot {
   margin-top: 0.85rem;
   font-size: 0.8rem;
@@ -4456,12 +4470,7 @@ td.empty-cell:hover {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.6),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
   animation: shimmer 1.4s infinite;
 }
 .skeleton-row {
@@ -5400,7 +5409,9 @@ tr.just-completed > td {
   box-shadow: var(--shadow-frame);
   padding: 0.85rem 0.95rem;
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
 }
 .goal-card:hover {
   border-color: var(--accent-mid);
@@ -6820,4 +6831,152 @@ tr.just-completed > td {
   50% {
     opacity: 1;
   }
+}
+
+/* --- Exclusives: brief toast (HLAI-71 Chunk 8c) -------------------------- */
+.exc-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 28rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+  font-size: 0.9rem;
+}
+.exc-toast.error {
+  border-left: 4px solid var(--danger, #c0392b);
+}
+.exc-toast.success {
+  border-left: 4px solid var(--accent, #0f7b6c);
+}
+.exc-toast.info {
+  border-left: 4px solid var(--border-strong, #888);
+}
+.exc-toast-x {
+  padding: 0 0.25rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* --- Exclusives: bulk import preview (HLAI-71 Chunk 8d) ------------------ */
+.modal.exc-import {
+  /* The base .modal caps every dialog at 460px; the four-column preview needs
+     the width the screen already has. */
+  width: min(1800px, 96vw);
+  max-width: none;
+  max-height: 90vh;
+  padding: 1.1rem 1.4rem 0;
+  overflow: auto;
+}
+/* The file chooser sits alone in the middle: there is nothing else to do here. */
+.exc-import-choose {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  min-height: 16rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+.exc-import-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.exc-import-file-btn {
+  padding: 0.7rem 1.4rem;
+  border: 1px solid var(--border-strong, #333);
+  border-radius: 8px;
+  background: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+.exc-import-file-btn:hover {
+  background: var(--surface-alt, #f4f4f4);
+}
+.exc-import-file-btn:focus-within {
+  outline: 2px solid var(--accent, #0f7b6c);
+}
+.exc-import-hint {
+  max-width: 34rem;
+  margin: 0;
+}
+.exc-import-file-name {
+  margin: 0;
+}
+.exc-import-progress {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  padding: 2rem 0;
+}
+.exc-progress {
+  width: min(420px, 100%);
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.exc-progress-bar {
+  height: 100%;
+  background: var(--accent, #0f7b6c);
+  transition: width 120ms linear;
+}
+.exc-import-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--border-strong, #333);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.exc-import-col + .exc-import-col {
+  border-left: 1px solid var(--border-strong, #333);
+}
+.exc-import-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+.exc-import-col.danger .exc-import-col-head {
+  color: var(--danger, #c0392b);
+}
+.exc-import-col-body {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  min-height: 16rem;
+  max-height: 52vh;
+  padding: 0.6rem 0.7rem;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+.exc-import-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.exc-import-foot {
+  margin: 0.75rem 0 0;
+  font-weight: 600;
 }

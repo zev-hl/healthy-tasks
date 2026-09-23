@@ -3,11 +3,17 @@
  * Small 15×10 rounded swatch matching the design; US = navy canton over red/
  * white stripes, CA = red maple leaf.
  */
-import type { Marketplace } from '../../lib/exclusivesMock';
+import type { ExclusivesMarketplace } from '@healthy-tasks/shared';
 
-const CODE: Record<Marketplace, string> = { USA: 'US', Canada: 'CA' };
+const CODE: Record<ExclusivesMarketplace, string> = { USA: 'US', Canada: 'CA' };
 
-export function Flag({ platform, code = true }: { platform: Marketplace; code?: boolean }) {
+export function Flag({
+  platform,
+  code = true,
+}: {
+  platform: ExclusivesMarketplace;
+  code?: boolean;
+}) {
   return (
     <span className="exc-flag-wrap">
       {platform === 'Canada' ? (
