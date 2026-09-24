@@ -214,7 +214,7 @@ describe('BulkImportModal', () => {
   it('refuses anything that is not a .csv', async () => {
     open();
     await choose('B000000001,US', 'asins.txt');
-    expect(screen.getByText(/not a .csv file/i)).toBeInTheDocument();
+    expect(screen.getByText(/upload a .csv file/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Check ASINs' })).toBeDisabled();
   });
 

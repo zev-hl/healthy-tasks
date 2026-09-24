@@ -204,7 +204,7 @@ export function BulkImportModal({
 
   async function chooseFile(file: File) {
     if (!file.name.toLowerCase().endsWith('.csv')) {
-      setError('That is not a .csv file. Save the sheet as CSV and try again.');
+      setError('Please upload a .csv file.');
       setFileName(null);
       setText('');
       return;
@@ -217,7 +217,7 @@ export function BulkImportModal({
   async function check() {
     const { rows: asked, bad } = parseSheet(text);
     if (asked.length === 0 && bad.length === 0) {
-      setError('That file has no rows. Each row should be an ASIN, then US or CA.');
+      setError('That file is empty. Each row should be an ASIN, then US or CA.');
       return;
     }
 
@@ -287,8 +287,7 @@ export function BulkImportModal({
               }}
             />
             <p className="muted exc-import-hint">
-              Two columns, no headings: the ASIN, then <strong>US</strong> or <strong>CA</strong>.
-              The file is read here and never uploaded.
+              Click the button above to upload your file.
             </p>
             {fileName && <p className="mono exc-import-file-name">{fileName}</p>}
           </div>

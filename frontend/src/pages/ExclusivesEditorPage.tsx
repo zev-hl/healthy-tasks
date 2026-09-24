@@ -177,7 +177,7 @@ export function ExclusivesEditorPage() {
     if (rows.some((r) => rowKey(r) === `${addMarketplace}:${asin}`)) {
       setNotice({
         title: 'Already in this group',
-        message: `${asin} is in the list below, so there is nothing to add.`,
+        message: `${asin} is already in the list below.`,
       });
       return;
     }
@@ -191,7 +191,7 @@ export function ExclusivesEditorPage() {
       if (res.invalid.length > 0) {
         setNotice({
           title: 'Not a valid ASIN',
-          message: `“${asin}” is not a valid ASIN. An ASIN is ten characters long.`,
+          message: `An ASIN should be 10 characters long.`,
         });
         return;
       }
@@ -205,11 +205,11 @@ export function ExclusivesEditorPage() {
           result?.status === 'unavailable'
             ? {
                 title: 'Amazon did not answer',
-                message: `Nothing has been added for ${asin}. Try again in a moment.`,
+                message: `Please try adding ${asin} again in a moment.`,
               }
             : {
                 title: 'Not on the seller account',
-                message: `${asin} is not listed on the seller account in ${addMarketplace}, so it cannot be watched.`,
+                message: `${asin} was not found on the seller account in ${addMarketplace}.`,
               },
         );
         return;
@@ -236,7 +236,7 @@ export function ExclusivesEditorPage() {
         message:
           err instanceof ApiError
             ? err.message
-            : `${asin} could not be checked against the seller account. Try again in a moment.`,
+            : `Couldn't check ${asin} right now. Please try again in a moment.`,
       });
     } finally {
       setAdding(false);

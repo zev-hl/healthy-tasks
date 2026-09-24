@@ -154,7 +154,7 @@ describe('ExclusivesEditorPage — a new group', () => {
     await settle();
 
     expect(screen.getByRole('alertdialog')).toHaveTextContent(
-      'is not listed on the seller account',
+      'was not found on the seller account',
     );
     expect(screen.queryByText('B000000002')).not.toBeInTheDocument();
   });
@@ -174,7 +174,7 @@ describe('ExclusivesEditorPage — a new group', () => {
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('Amazon did not answer');
-    expect(dialog).not.toHaveTextContent('not listed on the seller account');
+    expect(dialog).not.toHaveTextContent('not found on the seller account');
   });
 
   it('rejects a malformed code without adding a row', async () => {
@@ -186,7 +186,7 @@ describe('ExclusivesEditorPage — a new group', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await settle();
 
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('is not a valid ASIN');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('An ASIN should be 10 characters long');
   });
 
   it('will not add the same ASIN twice, and does not ask Amazon again', async () => {
