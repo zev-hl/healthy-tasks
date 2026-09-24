@@ -24,18 +24,22 @@ const base: SnapshotView = {
 };
 
 const s = (o: Partial<SnapshotView>): SnapshotView => ({ ...base, ...o });
-const types = (a: SnapshotView, b: SnapshotView) => detectAlerts(a, b, US).map((x) => x.alertType).sort();
+const types = (a: SnapshotView, b: SnapshotView) =>
+  detectAlerts(a, b, US)
+    .map((x) => x.alertType)
+    .sort();
 
 describe('detectAlerts — Buy Box', () => {
   it('fires Buy Box Won when it becomes ours', () => {
-    assert.deepEqual(types(s({ buyboxWinnerSellerId: COMP }), s({ buyboxWinnerSellerId: US })), ['BuyBoxWon']);
+    assert.deepEqual(types(s({ buyboxWinnerSellerId: COMP }), s({ buyboxWinnerSellerId: US })), [
+      'BuyBoxWon',
+    ]);
   });
 
   it('fires Buy Box Lost when a competitor takes it (Buy Box still exists)', () => {
-    assert.deepEqual(
-      types(s({ buyboxWinnerSellerId: US }), s({ buyboxWinnerSellerId: COMP })),
-      ['BuyBoxLost'],
-    );
+    assert.deepEqual(types(s({ buyboxWinnerSellerId: US }), s({ buyboxWinnerSellerId: COMP })), [
+      'BuyBoxLost',
+    ]);
   });
 
   it('does NOT fire Lost when the Buy Box is suppressed (price gone)', () => {
@@ -45,7 +49,10 @@ describe('detectAlerts — Buy Box', () => {
 
   it('does not fire when the holder is unchanged', () => {
     assert.deepEqual(types(base, s({})), []);
-    assert.deepEqual(types(s({ buyboxWinnerSellerId: COMP }), s({ buyboxWinnerSellerId: COMP })), []);
+    assert.deepEqual(
+      types(s({ buyboxWinnerSellerId: COMP }), s({ buyboxWinnerSellerId: COMP })),
+      [],
+    );
   });
 });
 
@@ -55,18 +62,16 @@ describe('detectAlerts — commercial', () => {
     assert.deepEqual(types(s({ listedPrice: null }), s({ listedPrice: 9.99 })), []);
   });
 
-  it('ignores penny/sub-floor price noise (< 1% and < $0.50)', () => {
-    assert.deepEqual(types(base, s({ listedPrice: 34.98 })), []); // $0.01, ~0.03%
-    assert.deepEqual(types(base, s({ listedPrice: 35.0 })), []); // $0.01, ~0.03%
-    assert.deepEqual(types(s({ listedPrice: 10 }), s({ listedPrice: 10.05 })), []); // $0.05, 0.5%
+  // The client asked for no minimum (HLAI-71 §8 #12): a repricer moving a
+  // product by a cent is exactly what they want to see.
+  it('fires on a one-cent move, however small it is in percentage terms', () => {
+    assert.deepEqual(types(base, s({ listedPrice: 34.98 })), ['PriceChanged']); // $0.01
+    assert.deepEqual(types(base, s({ listedPrice: 35.0 })), ['PriceChanged']); // $0.01
+    assert.deepEqual(types(s({ listedPrice: 10 }), s({ listedPrice: 10.05 })), ['PriceChanged']);
   });
 
-  it('fires on the absolute floor even when the relative move is under 1%', () => {
-    assert.deepEqual(types(s({ listedPrice: 100 }), s({ listedPrice: 100.5 })), ['PriceChanged']); // $0.50, 0.5%
-  });
-
-  it('fires on the relative floor even when the absolute move is under $0.50', () => {
-    assert.deepEqual(types(s({ listedPrice: 10 }), s({ listedPrice: 10.15 })), ['PriceChanged']); // $0.15, 1.5%
+  it('still ignores sub-cent float noise, which is not a real move', () => {
+    assert.deepEqual(types(base, s({ listedPrice: 34.990001 })), []);
   });
 
   it('fires Number of Sellers Changed on offer-count change', () => {
@@ -100,6 +105,11 @@ describe('detectAlerts — content', () => {
 describe('detectAlerts — combined', () => {
   it('emits every applicable alert at once', () => {
     const after = s({ listedPrice: 30, offerCount: 5, buyboxWinnerSellerId: COMP, title: 'New' });
-    assert.deepEqual(types(base, after), ['BuyBoxLost', 'NumberOfSellersChanged', 'PriceChanged', 'TitleChanged']);
+    assert.deepEqual(types(base, after), [
+      'BuyBoxLost',
+      'NumberOfSellersChanged',
+      'PriceChanged',
+      'TitleChanged',
+    ]);
   });
 });

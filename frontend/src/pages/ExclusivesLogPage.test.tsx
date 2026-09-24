@@ -5,6 +5,7 @@ import type { ExclusivesAlertRowDto, PaginatedResult } from '@healthy-tasks/shar
 vi.mock('../api/client', () => ({
   api: {
     queryExclusivesAlerts: vi.fn(),
+    listExclusivesGroupOptions: vi.fn(),
     getExclusivesStatus: vi.fn(),
   },
   exportExclusivesAlertsToCsv: vi.fn(),
@@ -25,6 +26,7 @@ const { renderWithRouter } = await import('../test/render');
 
 const queryAlerts = api.queryExclusivesAlerts as unknown as ReturnType<typeof vi.fn>;
 const getStatus = api.getExclusivesStatus as unknown as ReturnType<typeof vi.fn>;
+const listGroups = api.listExclusivesGroupOptions as unknown as ReturnType<typeof vi.fn>;
 const exportCsv = exportExclusivesAlertsToCsv as unknown as ReturnType<typeof vi.fn>;
 
 const alert = (over: Partial<ExclusivesAlertRowDto> = {}): ExclusivesAlertRowDto => ({
@@ -65,6 +67,10 @@ const advance = async (ms: number) => {
 beforeEach(() => {
   vi.useFakeTimers();
   queryAlerts.mockResolvedValue(pageOf([alert()]));
+  listGroups.mockResolvedValue([
+    { id: 2, name: 'Versure Exclusives', groupType: 'GROUP' },
+    { id: 3, name: 'Test 3', groupType: 'GROUP' },
+  ]);
   exportCsv.mockResolvedValue(undefined);
   getStatus.mockReturnValue(new Promise(() => {}));
 });
@@ -112,6 +118,119 @@ describe('ExclusivesLogPage', () => {
     expect(screen.queryByText(/Showing “Versure Exclusives” only/)).not.toBeInTheDocument();
   });
 
+  it('keeps only one filter open at a time, whichever order they are opened', async () => {
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    const dates = screen.getByRole('button', { name: /Filter by date/ });
+    const types = screen.getByRole('button', { name: /Filter by alert type/ });
+    const groups = screen.getByRole('button', { name: /Filter by group/ });
+
+    fireEvent.click(groups);
+    expect(groups).toHaveAttribute('aria-expanded', 'true');
+
+    // Opening another closes the group one — it used to stay open.
+    fireEvent.click(types);
+    expect(groups).toHaveAttribute('aria-expanded', 'false');
+    expect(types).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(dates);
+    expect(types).toHaveAttribute('aria-expanded', 'false');
+    expect(dates).toHaveAttribute('aria-expanded', 'true');
+
+    // And clicking the open one again closes it.
+    fireEvent.click(dates);
+    expect(dates).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('offers every group in a filter of its own', async () => {
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter by group/ }));
+    expect(screen.getByLabelText('Versure Exclusives')).toBeInTheDocument();
+    expect(screen.getByLabelText('Test 3')).toBeInTheDocument();
+  });
+
+  it('narrows the log to the groups ticked, and can hold several at once', async () => {
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter by group/ }));
+    fireEvent.click(screen.getByLabelText('Versure Exclusives'));
+    await settle();
+    expect(queryAlerts).toHaveBeenLastCalledWith(
+      expect.objectContaining({ groupIds: [2], page: 1 }),
+    );
+
+    fireEvent.click(screen.getByLabelText('Test 3'));
+    await settle();
+    expect(queryAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ groupIds: [2, 3] }));
+    expect(screen.getByText(/Showing “Versure Exclusives”, “Test 3” only/)).toBeInTheDocument();
+  });
+
+  it('unticks a group again, and clears them all at once', async () => {
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter by group/ }));
+    fireEvent.click(screen.getByLabelText('Versure Exclusives'));
+    fireEvent.click(screen.getByLabelText('Test 3'));
+    await settle();
+
+    fireEvent.click(screen.getByLabelText('Test 3'));
+    await settle();
+    expect(queryAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ groupIds: [2] }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    await settle();
+    expect(queryAlerts).toHaveBeenLastCalledWith(expect.objectContaining({ groupIds: undefined }));
+  });
+
+  it('shows the filter already ticked when the Groups screen chose it', async () => {
+    renderWithRouter(<ExclusivesLogPage />, [
+      { pathname: '/exclusives/log', state: { gid: 3, gname: 'Test 3' } },
+    ]);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter by group/ }));
+    expect(screen.getByLabelText('Test 3')).toBeChecked();
+    expect(screen.getByLabelText('Versure Exclusives')).not.toBeChecked();
+  });
+
+  it('carries on without the filter if the group list cannot be loaded', async () => {
+    listGroups.mockRejectedValue(new ApiError(500, 'Internal server error'));
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    // The log itself is unaffected; no error banner for a picker.
+    expect(screen.getByText('B0CKM2SSK3')).toBeInTheDocument();
+    expect(screen.queryByText('Internal server error')).not.toBeInTheDocument();
+  });
+
+  it('shows a spinner on Export until the server answers', async () => {
+    let finish = () => {};
+    exportCsv.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    const button = screen.getByRole('button', { name: 'Export' });
+    fireEvent.click(button);
+    await settle();
+
+    const busy = screen.getByRole('button', { name: /Exporting/ });
+    expect(busy).toBeDisabled();
+    expect(busy.querySelector('.spinner')).not.toBeNull();
+
+    finish();
+    await settle();
+    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+  });
+
   it('sends the chosen alert types to the server', async () => {
     renderWithRouter(<ExclusivesLogPage />);
     await settle();
@@ -137,6 +256,37 @@ describe('ExclusivesLogPage', () => {
     expect(sent.from).toMatch(/^2026-09-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
+  it('asks the server for the span a quick range names, open-ended at the top', async () => {
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter by date \/ time/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Past 7 days' }));
+    await settle();
+
+    const sent = queryAlerts.mock.calls.at(-1)?.[0] as { from?: string; to?: string };
+    const days = (Date.now() - new Date(sent.from as string).getTime()) / 86_400_000;
+    expect(days).toBeCloseTo(7, 1);
+    expect(sent.to).toBeUndefined();
+  });
+
+  it('lets the chosen quick range be pressed again to clear it', async () => {
+    renderWithRouter(<ExclusivesLogPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: /Filter by date \/ time/ }));
+    const past24 = screen.getByRole('button', { name: 'Past 24 hours' });
+    fireEvent.click(past24);
+    await settle();
+    expect(past24).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(past24);
+    await settle();
+    expect(past24).toHaveAttribute('aria-pressed', 'false');
+    expect(queryAlerts.mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ from: undefined, to: undefined }),
+    );
+  });
   it('sends the search once, after the debounce', async () => {
     renderWithRouter(<ExclusivesLogPage />);
     await settle();

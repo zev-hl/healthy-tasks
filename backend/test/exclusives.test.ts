@@ -1183,3 +1183,115 @@ describe('exclusives: downloads (HLAI-71 7d)', () => {
     assert.equal(res.status, 404);
   });
 });
+
+// --- ticket 1: one group's alerts by type ----------------------------------
+
+describe("exclusives: a group's recent alerts (HLAI-71 ticket 1)", () => {
+  const stats = async (id: number) =>
+    request(app)
+      .get(`/api/exclusives/groups/${id}/alert-stats`)
+      .set(auth(await token()));
+
+  it('needs a signed-in user', async () => {
+    assert.equal((await request(app).get('/api/exclusives/groups/1/alert-stats')).status, 401);
+  });
+
+  it('counts the last 24 hours, one number per alert type', async () => {
+    const id = await seedGroup({ name: 'Busy', asins: [{ asin: 'B0STATS01', title: 'A' }] });
+    const write = (alertType: string, hours: number) =>
+      seedAlert({ asin: 'B0STATS01', groupId: id, alertType, createdAt: hoursAgo(hours) });
+
+    await write('PriceChanged', 1);
+    await write('PriceChanged', 2);
+    await write('BuyBoxLost', 3);
+    await write('PriceChanged', 30); // outside the window
+
+    const res = await stats(id);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.groupId, id);
+    assert.equal(res.body.windowHours, 24);
+    assert.equal(res.body.total, 3);
+    assert.deepEqual(res.body.byType, { PriceChanged: 2, BuyBoxLost: 1 });
+  });
+
+  it('leaves out the types that had none, rather than sending twelve zeros', async () => {
+    const id = await seedGroup({ name: 'Quiet one', asins: [{ asin: 'B0STATS02', title: 'A' }] });
+    await seedAlert({ asin: 'B0STATS02', groupId: id, alertType: 'TitleChanged' });
+
+    const res = await stats(id);
+    assert.deepEqual(Object.keys(res.body.byType), ['TitleChanged']);
+  });
+
+  it('answers an empty group with zeros rather than an error', async () => {
+    const id = await seedGroup({ name: 'Empty group' });
+    const res = await stats(id);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.total, 0);
+    assert.deepEqual(res.body.byType, {});
+  });
+
+  it('counts only this group, not the whole log', async () => {
+    const mine = await seedGroup({ name: 'Mine' });
+    const other = await seedGroup({ name: 'Theirs' });
+    await seedAlert({ groupId: mine, alertType: 'PriceChanged' });
+    await seedAlert({ groupId: other, alertType: 'PriceChanged' });
+    await seedAlert({ groupId: null, alertType: 'PriceChanged' });
+
+    const res = await stats(mine);
+    assert.equal(res.body.total, 1);
+  });
+
+  it('404s for a group that is not there, 400 for a nonsense id', async () => {
+    const t = await token();
+    assert.equal(
+      (await request(app).get('/api/exclusives/groups/9999/alert-stats').set(auth(t))).status,
+      404,
+    );
+    assert.equal(
+      (await request(app).get('/api/exclusives/groups/abc/alert-stats').set(auth(t))).status,
+      400,
+    );
+  });
+});
+
+// --- ticket 3: the group picker -------------------------------------------
+
+describe('exclusives: group options (HLAI-71 ticket 3)', () => {
+  const options = async () =>
+    request(app)
+      .get('/api/exclusives/groups/options')
+      .set(auth(await token()));
+
+  it('needs a signed-in user', async () => {
+    assert.equal((await request(app).get('/api/exclusives/groups/options')).status, 401);
+  });
+
+  it('lists every group by name, with nothing the picker does not need', async () => {
+    await seedGroup({ name: 'Zulu', asins: [{ asin: 'B0OPT0001', title: 'x' }] });
+    await seedGroup({ name: 'Alpha', groupType: 'INDIVIDUAL' });
+
+    const res = await options();
+    assert.equal(res.status, 200);
+    assert.deepEqual(
+      res.body.map((g: { name: string }) => g.name),
+      ['Alpha', 'Zulu'],
+      'sorted by name',
+    );
+    assert.deepEqual(Object.keys(res.body[0]).sort(), ['groupType', 'id', 'name']);
+    assert.equal(res.body[0].groupType, 'INDIVIDUAL');
+  });
+
+  it('answers an empty list rather than an error when there are no groups', async () => {
+    const res = await options();
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, []);
+  });
+
+  it('is not swallowed by the :id route', async () => {
+    // '/groups/options' must resolve as a literal, not as a group whose id is
+    // 'options' — which would 400.
+    const res = await options();
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body));
+  });
+});

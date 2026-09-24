@@ -1,10 +1,11 @@
 /**
- * Delete-group confirmation dialog (HLAI-71). Reuses the app's modal chrome
- * (.modal-backdrop / .modal, .secondary / .danger buttons) with the design's
- * white body + grey footer split.
+ * Delete-group confirmation dialog (HLAI-71). Wears the shared modal scheme
+ * (see ModalShell): a dot before the title and the consequence spelled out once
+ * — what stops and what survives — with nothing repeated in the footer.
  */
 import { useEffect } from 'react';
 import type { ExclusivesGroupRowDto } from '@healthy-tasks/shared';
+import { ModalShell } from './ModalShell';
 
 export function DeleteGroupModal({
   group,
@@ -26,32 +27,26 @@ export function DeleteGroupModal({
   const n = group.listingCount;
 
   return (
-    <div className="modal-backdrop" onClick={onCancel}>
-      <div
-        className="modal exc-confirm"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="exc-confirm-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="exc-confirm-body">
-          <h2 className="exc-confirm-title" id="exc-confirm-title">
-            Delete “{group.name}”?
-          </h2>
-          <p className="exc-confirm-sub">
-            {n} ASIN{n === 1 ? '' : 's'} stop{n === 1 ? 's' : ''} being monitored. Past alerts stay
-            in the log.
-          </p>
-        </div>
-        <div className="exc-confirm-foot">
+    <ModalShell
+      title={`Delete the group “${group.name}”?`}
+      tone="danger"
+      role="alertdialog"
+      onBackdropClick={onCancel}
+      actions={
+        <>
           <button type="button" className="secondary" onClick={onCancel}>
             Keep it
           </button>
           <button type="button" className="danger" onClick={onConfirm}>
             Delete
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <p className="exc-confirm-sub">
+        {n} ASIN{n === 1 ? '' : 's'} stop{n === 1 ? 's' : ''} being monitored. Past alerts stay in
+        the alert log.
+      </p>
+    </ModalShell>
   );
 }

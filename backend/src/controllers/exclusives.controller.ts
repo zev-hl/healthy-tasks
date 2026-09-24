@@ -1,7 +1,9 @@
 import type { Request, Response } from 'express';
 import type {
   ExclusivesAlertRowDto,
+  ExclusivesGroupAlertStatsDto,
   ExclusivesGroupDto,
+  ExclusivesGroupOptionDto,
   ExclusivesLookupResponseDto,
   ExclusivesGroupRowDto,
   ExclusivesSummaryDto,
@@ -9,8 +11,9 @@ import type {
 } from '@healthy-tasks/shared';
 import { getExclusivesStatus } from '../services/exclusives/status.service.js';
 import { getExclusivesSummary } from '../services/exclusives/summary.service.js';
-import { getGroup, queryGroups } from '../services/exclusives/group.service.js';
+import { getGroup, listGroupOptions, queryGroups } from '../services/exclusives/group.service.js';
 import { queryAlerts } from '../services/exclusives/alert-log.service.js';
+import { groupAlertStats } from '../services/exclusives/alert-stats.service.js';
 import { lookupAsins } from '../services/exclusives/lookup.service.js';
 import {
   createGroup,
@@ -116,4 +119,21 @@ export async function exportExclusivesGroupController(req: Request, res: Respons
   const { timeZone } = req.body as ExclusivesGroupExportInput;
   const id = groupId(req);
   sendCsv(res, await exportGroupCsv(id, timeZone), csvFileName(`exclusives-group-${id}`));
+}
+
+/** One group's alerts by type, for the panel's chips. */
+export async function exclusivesGroupAlertStatsController(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const stats = await groupAlertStats(groupId(req));
+  res.json(stats satisfies ExclusivesGroupAlertStatsDto);
+}
+
+/** Every group's id and name, for the Alert Log's group filter. */
+export async function exclusivesGroupOptionsController(
+  _req: Request,
+  res: Response,
+): Promise<void> {
+  res.json((await listGroupOptions()) satisfies ExclusivesGroupOptionDto[]);
 }

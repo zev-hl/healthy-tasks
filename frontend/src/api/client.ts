@@ -12,7 +12,9 @@ import type {
   ExclusivesAlertExportRequest,
   ExclusivesAlertQueryRequest,
   ExclusivesAlertRowDto,
+  ExclusivesGroupAlertStatsDto,
   ExclusivesGroupDto,
+  ExclusivesGroupOptionDto,
   ExclusivesGroupQueryRequest,
   ExclusivesGroupRowDto,
   ExclusivesGroupWriteRequest,
@@ -168,6 +170,10 @@ export const api = {
   /** Header numbers: alerts in 24h, ASINs monitored, last and next sweep. */
   getExclusivesSummary: () => request<ExclusivesSummaryDto>('/api/exclusives/summary'),
 
+  /** Every group's id and name, for the Alert Log's group filter. */
+  listExclusivesGroupOptions: () =>
+    request<ExclusivesGroupOptionDto[]>('/api/exclusives/groups/options'),
+
   queryExclusivesGroups: (body: ExclusivesGroupQueryRequest) =>
     request<PaginatedResult<ExclusivesGroupRowDto>>('/api/exclusives/groups/query', {
       method: 'POST',
@@ -175,6 +181,10 @@ export const api = {
     }),
 
   getExclusivesGroup: (id: number) => request<ExclusivesGroupDto>(`/api/exclusives/groups/${id}`),
+
+  /** One group's alerts by type over the last 24 hours, for the side panel. */
+  getExclusivesGroupAlertStats: (id: number) =>
+    request<ExclusivesGroupAlertStatsDto>(`/api/exclusives/groups/${id}/alert-stats`),
 
   createExclusivesGroup: (body: ExclusivesGroupWriteRequest) =>
     request<ExclusivesGroupDto>('/api/exclusives/groups', {

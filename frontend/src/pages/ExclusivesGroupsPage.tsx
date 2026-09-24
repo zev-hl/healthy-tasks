@@ -23,6 +23,8 @@ import { ExcPager } from '../components/exclusives/ExcPager';
 import { DeleteGroupModal } from '../components/exclusives/DeleteGroupModal';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { StatusDot } from '../components/exclusives/StatusDot';
+import { GroupAlertsPanel } from '../components/exclusives/GroupAlertsPanel';
+import { NoticeModal } from '../components/exclusives/NoticeModal';
 
 const COLUMNS = 9;
 /** An alert this recent gets the "hot" treatment in the Latest column. */
@@ -65,6 +67,9 @@ export function ExclusivesGroupsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<ExclusivesGroupRowDto | null>(null);
+  const [viewing, setViewing] = useState<ExclusivesGroupRowDto | null>(null);
+  /** Confirmation after a delete; clears itself. */
+  const [deleted, setDeleted] = useState<string | null>(null);
 
   const debouncedSearch = useDebouncedValue(search, 350);
   // Filters can change faster than the server answers; only the newest reply
@@ -110,6 +115,7 @@ export function ExclusivesGroupsPage() {
     if (!deleting) return;
     try {
       await api.deleteExclusivesGroup(deleting.id);
+      setDeleted(deleting.name);
       setDeleting(null);
       // The page may now be past the end; step back rather than showing nothing.
       if (rows.length === 1 && page > 1) setPage(page - 1);
@@ -171,7 +177,7 @@ export function ExclusivesGroupsPage() {
         <div className="exc-card-head">
           <span className="exc-card-title">Alert Groups</span>
           <span className="mono muted">{loading ? '…' : `${total} total`}</span>
-          <span className="mono exc-card-hint">Click a row to open its log</span>
+          <span className="mono exc-card-hint">Click a group name to see its alerts</span>
         </div>
 
         <div className="exc-table-scroll">
@@ -220,15 +226,15 @@ export function ExclusivesGroupsPage() {
                 const hot =
                   g.latestAlertAt !== null && Date.now() - Date.parse(g.latestAlertAt) < HOT_MS;
                 return (
-                  <tr
-                    key={g.id}
-                    className="row-clickable"
-                    onClick={() =>
-                      navigate('/exclusives/log', { state: { gid: g.id, gname: g.name } })
-                    }
-                  >
+                  <tr key={g.id}>
                     <td className="exc-col-name">
-                      <span className="exc-group-name">{g.name}</span>
+                      <button
+                        type="button"
+                        className="exc-group-name exc-group-name-btn"
+                        onClick={() => setViewing(g)}
+                      >
+                        {g.name}
+                      </button>
                     </td>
                     <td>
                       <GroupTypeBadge type={g.groupType} />
@@ -252,7 +258,7 @@ export function ExclusivesGroupsPage() {
                         </span>
                       )}
                     </td>
-                    <td className="exc-row-actions" onClick={(e) => e.stopPropagation()}>
+                    <td className="exc-row-actions">
                       <button
                         type="button"
                         className="exc-act"
@@ -283,11 +289,32 @@ export function ExclusivesGroupsPage() {
         />
       </section>
 
+      {viewing && (
+        <GroupAlertsPanel
+          group={viewing}
+          onClose={() => setViewing(null)}
+          onEdit={() => navigate(`/exclusives/groups/${viewing.id}/edit`)}
+          onOpenLog={() =>
+            navigate('/exclusives/log', { state: { gid: viewing.id, gname: viewing.name } })
+          }
+        />
+      )}
+
       {deleting && (
         <DeleteGroupModal
           group={deleting}
           onCancel={() => setDeleting(null)}
           onConfirm={() => void confirmDelete()}
+        />
+      )}
+
+      {deleted !== null && (
+        <NoticeModal
+          title="Group deleted successfully"
+          tone="accent"
+          message={`“${deleted}” is no longer monitored. Its past alerts stay in the alert log.`}
+          autoCloseMs={2500}
+          onClose={() => setDeleted(null)}
         />
       )}
     </div>

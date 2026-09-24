@@ -34,6 +34,8 @@ const result = (
       title: `Item ${asin}`,
       groupId: null,
       groupName: null,
+      addedAt: null,
+      addedBy: null,
     },
   ],
   ...over,
@@ -233,7 +235,7 @@ describe('BulkImportModal', () => {
     expect(screen.getByText('New ASINs for this group')).toBeInTheDocument();
     expect(screen.getByText('Existing ASINs for this group')).toBeInTheDocument();
     expect(screen.getByText('ASINs that will be dropped from this group')).toBeInTheDocument();
-    expect(screen.getByText('Not listed on amazon as yours')).toBeInTheDocument();
+    expect(screen.getByText('Not listed on Amazon as yours')).toBeInTheDocument();
     expect(
       screen.getByText(
         'This will replace the group list only with the imported ASINs listed as yours on Amazon.',

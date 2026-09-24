@@ -180,7 +180,7 @@ describe('ExclusivesGroupsPage', () => {
     await settle();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    const dialog = screen.getByRole('dialog');
+    const dialog = screen.getByRole('alertdialog');
     expect(within(dialog).getByText(/445 ASINs stop being monitored/)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
@@ -188,6 +188,21 @@ describe('ExclusivesGroupsPage', () => {
 
     expect(deleteGroup).toHaveBeenCalledWith(1);
     expect(queryGroups).toHaveBeenCalledTimes(2);
+  });
+
+  it('confirms the delete by name once it has gone through', async () => {
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
+    );
+    await settle();
+
+    const done = screen.getByRole('alertdialog');
+    expect(within(done).getByText('Group deleted successfully')).toBeInTheDocument();
+    expect(within(done).getByText(/is no longer monitored/)).toBeInTheDocument();
   });
 
   it('shows the server message when loading fails', async () => {

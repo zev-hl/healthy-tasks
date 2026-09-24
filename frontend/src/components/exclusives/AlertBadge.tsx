@@ -27,13 +27,24 @@ const TONE: Record<ExclusivesAlertTone, { bg: string; fg: string; dot: string }>
 /** The `{bg,fg,dot}` triple for an alert type — reused by legend chips, filters. */
 export const alertTone = (type: ExclusivesAlertType) => TONE[EXCLUSIVES_ALERT_TYPE_TONE[type]];
 
-/** Colour-coded pill for one alert type, e.g. "● Buy Box Lost". */
-export function AlertTypeBadge({ type }: { type: ExclusivesAlertType }) {
+/** Colour-coded pill for one alert type, e.g. "● Buy Box Lost" or with a count. */
+export function AlertTypeBadge({
+  type,
+  count,
+  showDot = true,
+}: {
+  type: ExclusivesAlertType;
+  /** Appended as "· 4" — used by the group panel's summary chips. */
+  count?: number;
+  /** Off for the panel's summary chips, where the pill's own colour says enough. */
+  showDot?: boolean;
+}) {
   const c = TONE[EXCLUSIVES_ALERT_TYPE_TONE[type]];
   return (
     <span className="status-pill" style={{ background: c.bg, color: c.fg }}>
-      <span className="status-pill-dot" style={{ background: c.dot }} />
+      {showDot && <span className="status-pill-dot" style={{ background: c.dot }} />}
       {EXCLUSIVES_ALERT_TYPE_LABELS[type]}
+      {count !== undefined && <span className="exc-chip-count"> · {count}</span>}
     </span>
   );
 }

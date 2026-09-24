@@ -127,6 +127,21 @@ describe('ExclusivesEditorPage — a new group', () => {
     expect(screen.getByText('Not yet saved')).toBeInTheDocument();
   });
 
+  it('switches every alert type at once, to any of the three modes', async () => {
+    newEditor();
+    await settle();
+    expect(screen.getByText('0 of 12 on')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All daily' }));
+    expect(screen.getByText('12 of 12 on')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All immediate' }));
+    expect(screen.getByText('12 of 12 on')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'All off' }));
+    expect(screen.getByText('0 of 12 on')).toBeInTheDocument();
+  });
+
   it('checks an ASIN against the seller account before adding it', async () => {
     newEditor();
     await settle();
@@ -186,7 +201,9 @@ describe('ExclusivesEditorPage — a new group', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     await settle();
 
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('An ASIN should be 10 characters long');
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(
+      'An ASIN should be 10 characters long',
+    );
   });
 
   it('will not add the same ASIN twice, and does not ask Amazon again', async () => {
@@ -246,6 +263,112 @@ describe('ExclusivesEditorPage — a new group', () => {
     // Removing it opens them again.
     fireEvent.click(screen.getByRole('button', { name: 'Remove B000000001' }));
     expect(screen.getByLabelText('Add ASIN')).not.toBeDisabled();
+  });
+
+  it('asks before taking an ASIN another group watches, and adds nothing meanwhile', async () => {
+    lookup.mockResolvedValue({
+      results: [
+        {
+          asin: 'B000000010',
+          status: 'already-monitored',
+          listings: [
+            {
+              marketplace: 'USA',
+              sku: 'SOM-1',
+              title: 'A watched product',
+              groupId: 3,
+              groupName: 'Another group',
+              addedAt: '2026-08-19T09:00:00.000Z',
+              addedBy: 'Dana Reyes',
+            },
+          ],
+        },
+      ],
+      invalid: [],
+      amazonCalls: 0,
+    });
+    newEditor();
+    await settle();
+
+    typeAsin('B000000010');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await settle();
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('already monitored');
+    expect(dialog).toHaveTextContent('Another group');
+    // Nothing is added while the question is still open.
+    expect(screen.getByText('No ASINs yet — add one above.')).toBeInTheDocument();
+  });
+
+  it('leaves the ASIN where it is when the insert is cancelled', async () => {
+    lookup.mockResolvedValue({
+      results: [
+        {
+          asin: 'B000000011',
+          status: 'already-monitored',
+          listings: [
+            {
+              marketplace: 'USA',
+              sku: 'SOM-2',
+              title: 'A watched product',
+              groupId: 3,
+              groupName: 'Another group',
+              addedAt: null,
+              addedBy: null,
+            },
+          ],
+        },
+      ],
+      invalid: [],
+      amazonCalls: 0,
+    });
+    newEditor();
+    await settle();
+
+    typeAsin('B000000011');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel insert' }));
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByText('No ASINs yet — add one above.')).toBeInTheDocument();
+  });
+
+  it('adds it, marked as moving, when Move it here is chosen', async () => {
+    lookup.mockResolvedValue({
+      results: [
+        {
+          asin: 'B000000012',
+          status: 'already-monitored',
+          listings: [
+            {
+              marketplace: 'USA',
+              sku: 'SOM-3',
+              title: 'A watched product',
+              groupId: 3,
+              groupName: 'Another group',
+              addedAt: '2026-08-19T09:00:00.000Z',
+              addedBy: 'Dana Reyes',
+            },
+          ],
+        },
+      ],
+      invalid: [],
+      amazonCalls: 0,
+    });
+    newEditor();
+    await settle();
+
+    typeAsin('B000000012');
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Move it here' }));
+
+    expect(screen.getByText('B000000012')).toBeInTheDocument();
+    expect(screen.getByText(/Moving from “Another group”/)).toBeInTheDocument();
+    // And the caution above the list, which is amber rather than a success.
+    expect(screen.getByText(/Saving moves it here/)).toBeInTheDocument();
   });
 
   it('creates the group, sending the whole list', async () => {
@@ -331,7 +454,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     await settle();
 
     const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveTextContent('Saved');
+    expect(dialog).toHaveTextContent('Group saved successfully');
     expect(dialog).toHaveTextContent('now watches 1 ASIN(s)');
     // Still on the editor until it is acknowledged.
     expect(screen.queryByText('Alert Groups screen')).not.toBeInTheDocument();

@@ -1973,6 +1973,14 @@ export interface ExclusivesLookupListingDto {
   /** Set when this listing is already monitored, so the editor can offer a move. */
   groupId: number | null;
   groupName: string | null;
+  /**
+   * When this product was first put under watch, ISO; null when it is not
+   * monitored. Moving a product between groups keeps the same record, so this
+   * is when watching began rather than when it joined its current group.
+   */
+  addedAt: string | null;
+  /** Who first added it, as a display name; null when not monitored. */
+  addedBy: string | null;
 }
 
 export interface ExclusivesLookupResultDto {
@@ -2070,4 +2078,33 @@ export interface ExclusivesGroupWriteRequest {
   settings?: Partial<Record<ExclusivesAlertType, ExclusivesAlertMode>>;
   /** Optimistic concurrency token — the group's `updatedAt` as loaded. */
   expectedUpdatedAt?: string;
+}
+
+// --- Exclusives: one group's recent alerts (HLAI-71 Chunk 9, ticket 1) -----
+
+/** The window the group panel summarises. */
+export const EXCLUSIVES_PANEL_WINDOW_HOURS = 24;
+
+/**
+ * What one group's alerts look like over the window: the total, and the count
+ * per alert type for the panel's chips. Types with no alerts are left out.
+ */
+export interface ExclusivesGroupAlertStatsDto {
+  groupId: number;
+  windowHours: number;
+  total: number;
+  byType: Partial<Record<ExclusivesAlertType, number>>;
+}
+
+// --- Exclusives: the group picker (HLAI-71 Chunk 9, ticket 3) -------------
+
+/**
+ * Just enough of a group to offer it in a filter. Deliberately not the row DTO:
+ * that one carries counts and an ASIN preview which cost several queries a page
+ * and are of no use in a picker.
+ */
+export interface ExclusivesGroupOptionDto {
+  id: number;
+  name: string;
+  groupType: ExclusivesGroupType;
 }

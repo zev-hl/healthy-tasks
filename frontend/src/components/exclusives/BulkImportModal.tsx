@@ -286,9 +286,7 @@ export function BulkImportModal({
                 if (file) void chooseFile(file);
               }}
             />
-            <p className="muted exc-import-hint">
-              Click the button above to upload your file.
-            </p>
+            <p className="muted exc-import-hint">Click the button above to upload your file.</p>
             {fileName && <p className="mono exc-import-file-name">{fileName}</p>}
           </div>
         )}
@@ -327,7 +325,7 @@ export function BulkImportModal({
                 tone="danger"
               />
               <ImportColumn
-                title="Not listed on amazon as yours"
+                title="Not listed on Amazon as yours"
                 rows={preview.notYours.map((n) => ({
                   asin: n.asin,
                   marketplace: n.marketplace,

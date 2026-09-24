@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import {
   DEFAULT_PAGE_SIZE,
   EXCLUSIVES_ASIN_PREVIEW,
+  type ExclusivesGroupOptionDto,
   type ExclusivesGroupRowDto,
   type ExclusivesGroupDto,
   type ExclusivesGroupSortField,
@@ -166,4 +167,21 @@ export async function getGroup(id: number): Promise<ExclusivesGroupDto> {
   });
   if (!group) throw HttpError.notFound('Alert group not found.');
   return toExclusivesGroupDto(group);
+}
+
+/**
+ * Every group, as a picker needs it. `queryGroups` would do the job but runs
+ * six queries a page — counts, the latest alert, the settings tally and a raw
+ * ranking query for the ASIN preview — none of which a list of names wants.
+ */
+export async function listGroupOptions(): Promise<ExclusivesGroupOptionDto[]> {
+  const rows = await prisma.alertGroup.findMany({
+    select: { id: true, name: true, groupType: true },
+    orderBy: [{ name: 'asc' }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    groupType: r.groupType as ExclusivesGroupType,
+  }));
 }

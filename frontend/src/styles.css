@@ -2202,11 +2202,77 @@ button {
     color var(--dur) var(--ease);
 }
 
-button:hover {
+/*
+ * The filled hover belongs to the default variant, not to every button.
+ * Buttons that deliberately clear their background — toolbar toggles,
+ * segmented controls, close crosses — were having it painted back on hover,
+ * which hid their dark text behind the deep accent. They are excluded here,
+ * in one place, rather than each one having to defend itself with a hover of
+ * its own. A new transparent button only needs the `btn-plain` class.
+ */
+button:hover:not(.btn-plain):not(.add-filter):not(.due-chip):not(.rail-clear-time):not(.tag-x):not(
+    .detail-tab
+  ):not(.incomplete-link):not(.password-toggle):not(.rel-x):not(.link-button):not(.col-move):not(
+    .tree-toggle
+  ):not(.dash-toggle):not(.notif-snooze-opt):not(.seg-btn):not(.tpl-collapse):not(
+    .exc-legend-chip
+  ):not(.exc-clear):not(.exc-seg-btn):not(.exc-country-btn):not(.exc-plat-toggle):not(
+    .exc-asin-remove
+  ):not(.exc-quick):not(.exc-toast-x):not(.exc-drawer-x):not(.exc-drawer-open-log):not(
+    .exc-group-name-btn
+  ) {
   background: var(--accent-deep);
 }
-button:active {
+button:active:not(.btn-plain):not(.add-filter):not(.due-chip):not(.rail-clear-time):not(.tag-x):not(
+    .detail-tab
+  ):not(.incomplete-link):not(.password-toggle):not(.rel-x):not(.link-button):not(.col-move):not(
+    .tree-toggle
+  ):not(.dash-toggle):not(.notif-snooze-opt):not(.seg-btn):not(.tpl-collapse):not(
+    .exc-legend-chip
+  ):not(.exc-clear):not(.exc-seg-btn):not(.exc-country-btn):not(.exc-plat-toggle):not(
+    .exc-asin-remove
+  ):not(.exc-quick):not(.exc-toast-x):not(.exc-drawer-x):not(.exc-drawer-open-log):not(
+    .exc-group-name-btn
+  ) {
   background: var(--accent-deep);
+}
+
+/*
+ * A quiet default for those same buttons, at zero specificity (:where), so
+ * any of them that defines its own hover — the red remove cross, the country
+ * toggles — still wins.
+ */
+:where(
+  button.btn-plain:hover,
+  button.add-filter:hover,
+  button.due-chip:hover,
+  button.rail-clear-time:hover,
+  button.tag-x:hover,
+  button.detail-tab:hover,
+  button.incomplete-link:hover,
+  button.password-toggle:hover,
+  button.rel-x:hover,
+  button.link-button:hover,
+  button.col-move:hover,
+  button.tree-toggle:hover,
+  button.dash-toggle:hover,
+  button.notif-snooze-opt:hover,
+  button.seg-btn:hover,
+  button.tpl-collapse:hover,
+  button.exc-legend-chip:hover,
+  button.exc-clear:hover,
+  button.exc-seg-btn:hover,
+  button.exc-country-btn:hover,
+  button.exc-plat-toggle:hover,
+  button.exc-asin-remove:hover,
+  button.exc-quick:hover,
+  button.exc-toast-x:hover,
+  button.exc-drawer-x:hover,
+  button.exc-drawer-open-log:hover,
+  button.exc-group-name-btn:hover
+) {
+  background: var(--canvas-deep);
+  color: var(--ink);
 }
 
 button:disabled {
@@ -6774,6 +6840,40 @@ tr.just-completed > td {
   flex-wrap: wrap;
   gap: 6px;
 }
+/*
+ * Quick ranges above the two date fields. They fill From with "this long ago"
+ * and leave To empty, so the range stays open at the top and newly arriving
+ * alerts keep appearing. `btn-plain` opts out of the filled global hover.
+ */
+.exc-range-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.exc-range-btn {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 6px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.exc-range-btn:hover {
+  background: var(--canvas-deep);
+  border-color: var(--border-dashed);
+  color: var(--ink);
+}
+.exc-range-btn.on,
+.exc-range-btn.on:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
 .exc-date-field {
   display: flex;
   flex-direction: column;
@@ -6979,4 +7079,383 @@ tr.just-completed > td {
 .exc-import-foot {
   margin: 0.75rem 0 0;
   font-weight: 600;
+}
+
+/* --- Exclusives: a group's alerts in a side panel (HLAI-71 ticket 1) ------ */
+.exc-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgb(0 0 0 / 28%);
+}
+.exc-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 94vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 28px rgb(0 0 0 / 14%);
+  animation: exc-drawer-in var(--dur-slow, 200ms) var(--ease, ease) both;
+}
+@keyframes exc-drawer-in {
+  from {
+    transform: translateX(3%);
+    opacity: 0;
+  }
+}
+.exc-drawer-head {
+  padding: 1.1rem 1.25rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.exc-drawer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.exc-drawer-title-row h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.exc-drawer-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.exc-drawer-x {
+  padding: 0 0.35rem;
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.exc-drawer-x:hover {
+  color: var(--ink);
+}
+.exc-drawer-sub {
+  margin: 0.5rem 0 0;
+  font-size: 0.86rem;
+}
+.exc-drawer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+.exc-chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.exc-drawer-body {
+  flex: 1;
+  padding: 0 1.25rem 1rem;
+  overflow-y: auto;
+}
+.exc-drawer-empty,
+.exc-drawer-more {
+  padding: 1.25rem 0;
+  font-size: 0.88rem;
+}
+.exc-drawer-day-head {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  padding: 0.85rem 0 0.4rem;
+  background: var(--surface);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.exc-drawer-alert {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.exc-drawer-dot {
+  /* Centred against the badge beside it. Derived from the badge's own metrics
+     (.status-pill: 11.5px text at line-height 1, plus 4px padding each side)
+     rather than eyeballed, so it stays centred if the badge ever changes. */
+  --exc-badge-height: calc(11.5px + 8px);
+  flex: none;
+  align-self: flex-start;
+  width: 8px;
+  height: 8px;
+  margin-top: calc((var(--exc-badge-height) - 7px) / 1);
+  border-radius: 50%;
+}
+.exc-drawer-alert-main {
+  min-width: 0;
+  flex: 1;
+}
+.exc-drawer-alert-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.exc-drawer-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+.exc-drawer-product {
+  margin: 0.35rem 0 0;
+  font-weight: 600;
+}
+.exc-drawer-message {
+  margin: 0.15rem 0 0;
+  color: var(--muted-2);
+  font-size: 0.88rem;
+}
+.exc-drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunk, var(--canvas-deep));
+}
+.exc-drawer-open-log {
+  border: 0;
+  background: none;
+  color: var(--accent-deep, var(--accent));
+  font-weight: 600;
+  cursor: pointer;
+}
+.exc-drawer-open-log:hover {
+  text-decoration: underline;
+}
+
+/* The group name is now a control, not just text. */
+.exc-group-name-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* .exc-group-name-btn:hover {
+  text-decoration: underline;
+} */
+
+/* --- Exclusives: the shared modal scheme (HLAI-71 Chunk 9, ticket 2) ------ */
+.exc-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.exc-modal-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.exc-modal-foot {
+  justify-content: space-between;
+  align-items: center;
+}
+.exc-modal-hint {
+  font-size: 0.82rem;
+  color: var(--muted-2);
+}
+.exc-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+/* The thing the modal is about, set apart from the prose. */
+.exc-modal-card {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+}
+.exc-modal-card.warn {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+}
+.exc-modal-card.danger {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+.exc-modal-card.accent {
+  background: var(--accent-soft, var(--canvas-deep));
+  color: var(--accent-deep, var(--ink));
+}
+.exc-modal-card.neutral {
+  background: var(--canvas-deep);
+  color: var(--ink-3, var(--ink));
+}
+.exc-modal-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+}
+.exc-modal-card-title {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+}
+.exc-modal-card-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.84rem;
+  opacity: 0.85;
+}
+
+/* A caution, not a failure: amber, with room for the icon. */
+.alert.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+  border-color: #f0dcbb;
+}
+.alert-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* --- Exclusives: the Alert Log's group filter (HLAI-71 Chunk 9, ticket 3) - */
+.exc-group-pop {
+  min-width: 15rem;
+}
+.exc-group-list {
+  display: grid;
+  gap: 0.15rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.exc-group-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.1rem;
+  cursor: pointer;
+}
+.exc-group-opt:hover {
+  background: var(--canvas-deep);
+}
+/* The spinner sits on a button, so it must take the button's colour. */
+.exc-btn-spinner {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.35rem;
+  vertical-align: -1px;
+  border-top-color: currentColor;
+}
+
+/* --- Exclusives: the selected state survives a hover --------------------- */
+/*
+ * The shared plain-button hover (see the global button block) gives these a
+ * quiet wash. A button that is currently selected must keep the colour that
+ * says so, which is what these restate.
+ */
+.exc-country-btn.active.us,
+.exc-country-btn.active.us:hover {
+  background: #2b3a67;
+  color: #fff;
+}
+.exc-country-btn.active.ca,
+.exc-country-btn.active.ca:hover {
+  background: #d52b1e;
+  color: #fff;
+}
+
+.exc-seg-btn.active.tone-ink,
+.exc-seg-btn.active.tone-ink:hover {
+  background: var(--ink);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-accent,
+.exc-seg-btn.active.tone-accent:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-neutral,
+.exc-seg-btn.active.tone-neutral:hover {
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+}
+
+/* Remove-an-ASIN: a round target with the cross in the middle of it, rather
+   than the wide bar the rectangular padding produced. */
+.exc-asin-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+}
+.exc-asin-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* The import preview: room under the closing sentence, and under the footer
+   band, so it is not flush against the bottom edge. */
+.exc-import-foot {
+  margin: 0.75rem 0 1.1rem;
+}
+.modal.exc-import {
+  padding-bottom: 1.1rem;
+}
+
+/*
+ * "Exclusives Alert Log" is a title, not a paragraph — it stays on one line,
+ * with a little room before the line beneath it. `h1` is reset to `margin: 0`
+ * app-wide, so the heading and its sub-line were touching.
+ */
+.exc-head h1 {
+  white-space: nowrap;
+  margin-bottom: 0.35rem;
+}
+
+/* --- Alert Log header: title above, controls on their own line ------------ */
+/*
+ * Matches the supplied design. The Groups header keeps its single row — its
+ * search and "New group" belong beside the title — so this is scoped to the log.
+ */
+.exc-head-log {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.exc-head-log > :first-child {
+  flex: 1 0 100%;
+}
+.exc-head-log .exc-actions {
+  margin-left: auto;
+  /* flex-wrap: wrap; */
+  justify-content: flex-end;
+}
+.exc-head-log .exc-search-log {
+  flex: 1 1 320px;
+  max-width: 420px;
+}
+
+/* A filter that is holding something says so without being opened. */
+.exc-toolbtn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-tint-2, var(--accent-soft));
+  color: var(--accent-deep);
+}
+.exc-toolbtn.on:hover:not(:disabled) {
+  background: var(--accent-tint-2, var(--accent-soft));
+}
+.exc-toolbtn.on .exc-filter-count {
+  background: var(--accent);
+  color: #fff;
 }

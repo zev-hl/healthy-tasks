@@ -40,6 +40,14 @@ interface Monitored {
   title: string | null;
   groupId: number;
   groupName: string;
+  addedAt: string;
+  addedBy: string | null;
+}
+
+/** A person as the editor should name them; falls back to their email. */
+function displayName(user: { firstName: string; lastName: string; email: string }): string {
+  const name = `${user.firstName} ${user.lastName}`.trim();
+  return name || user.email;
 }
 
 /** Upper-case, well-formed and unique, keeping the caller's order. */
@@ -74,6 +82,9 @@ async function loadMonitored(
     include: {
       group: { select: { id: true, name: true } },
       snapshots: { select: { title: true } },
+      // Who put this product under watch, and when — the editor shows both
+      // when it has to ask about taking one from another group.
+      createdBy: { select: { firstName: true, lastName: true, email: true } },
     },
   });
   for (const row of rows) {
@@ -82,6 +93,8 @@ async function loadMonitored(
       title: row.snapshots[0]?.title ?? null,
       groupId: row.group.id,
       groupName: row.group.name,
+      addedAt: row.createdAt.toISOString(),
+      addedBy: row.createdBy ? displayName(row.createdBy) : null,
     });
   }
   return out;
@@ -200,6 +213,8 @@ async function resolve(
           title: mine.title,
           groupId: mine.groupId,
           groupName: mine.groupName,
+          addedAt: mine.addedAt,
+          addedBy: mine.addedBy,
         });
         continue;
       }
@@ -211,6 +226,9 @@ async function resolve(
           title: found.title,
           groupId: null,
           groupName: null,
+          // Not watched yet, so there is nothing to date or attribute.
+          addedAt: null,
+          addedBy: null,
         });
       }
     }

@@ -14,6 +14,7 @@ import {
   type ExclusivesAlertQueryRequest,
   type ExclusivesAlertRowDto,
   type ExclusivesAlertType,
+  type ExclusivesGroupOptionDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError, exportExclusivesAlertsToCsv } from '../api/client';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -31,6 +32,22 @@ const COLUMNS = 5;
 interface LogLinkState {
   gid?: number;
   gname?: string;
+}
+
+/** The spans people ask for by name, so the common case is one click. */
+const QUICK_RANGES: { label: string; hours: number }[] = [
+  { label: 'Past 24 hours', hours: 24 },
+  { label: 'Past 3 days', hours: 24 * 3 },
+  { label: 'Past 7 days', hours: 24 * 7 },
+  { label: 'Past 30 days', hours: 24 * 30 },
+];
+
+/** A moment as the local wall-clock string a `datetime-local` input wants. */
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
 }
 
 /** A `datetime-local` value is local wall-clock; the API wants an instant. */
@@ -53,12 +70,19 @@ export function ExclusivesLogPage() {
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
   const [active, setActive] = useState<Set<ExclusivesAlertType>>(new Set());
-  const [datesOpen, setDatesOpen] = useState(false);
-  const [typesOpen, setTypesOpen] = useState(false);
+  // Which filter is open, if any. Three separate flags let two be open at
+  // once, and each button had to remember to close every other one.
+  const [openFilter, setOpenFilter] = useState<'dates' | 'types' | 'groups' | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  // Which quick range filled the fields in, if any — remembered only so the
+  // chosen one can look chosen. Typing a date by hand forgets it.
+  const [quickRange, setQuickRange] = useState<number | null>(null);
   // Seeded from the Groups screen's row click, and clearable from the chip.
-  const [groupId, setGroupId] = useState<number | null>(link.gid ?? null);
+  // A set, so the log can be narrowed to several groups at once. Seeded from
+  // the Groups screen when someone arrived by clicking a group there.
+  const [groupIds, setGroupIds] = useState<number[]>(link.gid ? [link.gid] : []);
+  const [groupOptions, setGroupOptions] = useState<ExclusivesGroupOptionDto[]>([]);
 
   const [rows, setRows] = useState<ExclusivesAlertRowDto[]>([]);
   const [total, setTotal] = useState(0);
@@ -77,13 +101,13 @@ export function ExclusivesLogPage() {
     (): ExclusivesAlertQueryRequest => ({
       text: debouncedSearch.trim() || undefined,
       alertTypes: active.size > 0 ? [...active] : undefined,
-      groupIds: groupId !== null ? [groupId] : undefined,
+      groupIds: groupIds.length > 0 ? groupIds : undefined,
       from: toIso(dateFrom),
       to: toIso(dateTo),
       page,
       pageSize,
     }),
-    [debouncedSearch, active, groupId, dateFrom, dateTo, page, pageSize],
+    [debouncedSearch, active, groupIds, dateFrom, dateTo, page, pageSize],
   );
 
   const load = useCallback(async () => {
@@ -107,6 +131,23 @@ export function ExclusivesLogPage() {
     void load();
   }, [load]);
 
+  // The names behind the filter. Its own endpoint rather than the groups
+  // query, which runs several aggregates a page that a picker has no use for.
+  useEffect(() => {
+    let alive = true;
+    void api
+      .listExclusivesGroupOptions()
+      .then((opts) => {
+        if (alive) setGroupOptions(opts);
+      })
+      .catch(() => {
+        // A picker that cannot load is not worth an error banner over the log.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   function toggleType(t: ExclusivesAlertType) {
     setPage(1);
     setActive((prev) => {
@@ -117,9 +158,28 @@ export function ExclusivesLogPage() {
     });
   }
 
+  function toggleGroup(id: number) {
+    setPage(1);
+    setGroupIds((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+  }
+
+  /** Fill From with "this long ago", leaving To open so new alerts keep landing. */
+  function applyQuickRange(hours: number) {
+    // Pressing the chosen range again clears it, so there is no dead end.
+    const clearing = quickRange === hours;
+    setQuickRange(clearing ? null : hours);
+    setDateFrom(clearing ? '' : toLocalInput(new Date(Date.now() - hours * 3_600_000)));
+    setDateTo('');
+    setPage(1);
+  }
+
+  /** Open this filter, or close it if it is the one already open. */
+  function toggleFilter(which: 'dates' | 'types' | 'groups') {
+    setOpenFilter((cur) => (cur === which ? null : which));
+  }
+
   function closePopovers() {
-    setDatesOpen(false);
-    setTypesOpen(false);
+    setOpenFilter(null);
   }
 
   async function onExport() {
@@ -138,14 +198,21 @@ export function ExclusivesLogPage() {
   const filtered =
     debouncedSearch.trim().length > 0 ||
     active.size > 0 ||
-    groupId !== null ||
+    groupIds.length > 0 ||
     dateFrom !== '' ||
     dateTo !== '';
-  const groupName = link.gname ?? rows[0]?.groupName ?? 'one group';
+  /** The chosen groups by name, so the chip can say which they are. */
+  const chosenNames = groupIds.map(
+    (id) =>
+      groupOptions.find((g) => g.id === id)?.name ??
+      (id === link.gid ? link.gname : undefined) ??
+      rows.find((r) => r.groupId === id)?.groupName ??
+      'one group',
+  );
 
   return (
     <div className="exc-page">
-      <header className="page-head exc-head">
+      <header className="page-head exc-head exc-head-log">
         <div>
           <h1>
             <StatusDot />
@@ -159,21 +226,20 @@ export function ExclusivesLogPage() {
           <div className="exc-filter-wrap">
             <button
               type="button"
-              className={`exc-toolbtn${datesOpen ? ' open' : ''}`}
-              aria-expanded={datesOpen}
-              onClick={() => {
-                setTypesOpen(false);
-                setDatesOpen((o) => !o);
-              }}
+              className={`exc-toolbtn${openFilter === 'dates' ? ' open' : ''}${
+                dateFrom || dateTo ? ' on' : ''
+              }`}
+              aria-expanded={openFilter === 'dates'}
+              onClick={() => toggleFilter('dates')}
             >
               <span aria-hidden="true">🗓</span>
               Filter by date / time
               {(dateFrom || dateTo) && <span className="exc-filter-count">1</span>}
               <span className="exc-caret" aria-hidden="true">
-                ▾
+                ▲
               </span>
             </button>
-            {datesOpen && (
+            {openFilter === 'dates' && (
               <div className="exc-filter-pop exc-date-pop">
                 <div className="exc-filter-pop-head">
                   <span>Date / time range</span>
@@ -184,12 +250,26 @@ export function ExclusivesLogPage() {
                       onClick={() => {
                         setDateFrom('');
                         setDateTo('');
+                        setQuickRange(null);
                         setPage(1);
                       }}
                     >
                       Clear
                     </button>
                   )}
+                </div>
+                <div className="exc-range-row">
+                  {QUICK_RANGES.map((r) => (
+                    <button
+                      key={r.hours}
+                      type="button"
+                      className={`exc-range-btn btn-plain${quickRange === r.hours ? ' on' : ''}`}
+                      aria-pressed={quickRange === r.hours}
+                      onClick={() => applyQuickRange(r.hours)}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
                 </div>
                 <label className="exc-date-field">
                   <span>From</span>
@@ -198,6 +278,7 @@ export function ExclusivesLogPage() {
                     value={dateFrom}
                     onChange={(e) => {
                       setDateFrom(e.target.value);
+                      setQuickRange(null);
                       setPage(1);
                     }}
                   />
@@ -209,6 +290,7 @@ export function ExclusivesLogPage() {
                     value={dateTo}
                     onChange={(e) => {
                       setDateTo(e.target.value);
+                      setQuickRange(null);
                       setPage(1);
                     }}
                   />
@@ -220,20 +302,23 @@ export function ExclusivesLogPage() {
           <div className="exc-filter-wrap">
             <button
               type="button"
-              className={`exc-toolbtn${typesOpen ? ' open' : ''}`}
-              aria-expanded={typesOpen}
-              onClick={() => {
-                setDatesOpen(false);
-                setTypesOpen((o) => !o);
-              }}
+              className={`exc-toolbtn${openFilter === 'types' ? ' open' : ''}${
+                active.size > 0 ? ' on' : ''
+              }`}
+              aria-expanded={openFilter === 'types'}
+              onClick={() => toggleFilter('types')}
             >
               Filter by alert type
-              {active.size > 0 && <span className="exc-filter-count">{active.size}</span>}
+              {active.size > 0 && (
+                <span className="exc-filter-count">
+                  {active.size} of {EXCLUSIVES_ALERT_TYPES.length}
+                </span>
+              )}
               <span className="exc-caret" aria-hidden="true">
-                ▾
+                ▲
               </span>
             </button>
-            {typesOpen && (
+            {openFilter === 'types' && (
               <div className="exc-filter-pop exc-type-pop">
                 <div className="exc-filter-pop-head">
                   <span>Alert types</span>
@@ -271,6 +356,62 @@ export function ExclusivesLogPage() {
             )}
           </div>
 
+          <div className="exc-filter-wrap">
+            <button
+              type="button"
+              className={`exc-toolbtn${openFilter === 'groups' ? ' open' : ''}${
+                groupIds.length > 0 ? ' on' : ''
+              }`}
+              aria-expanded={openFilter === 'groups'}
+              onClick={() => toggleFilter('groups')}
+            >
+              Filter by group
+              {groupIds.length > 0 && (
+                <span className="exc-filter-count">
+                  {groupIds.length} of {groupOptions.length}
+                </span>
+              )}
+              <span className="exc-caret" aria-hidden="true">
+                ▲
+              </span>
+            </button>
+            {openFilter === 'groups' && (
+              <div className="exc-filter-pop exc-group-pop">
+                <div className="exc-filter-pop-head">
+                  <span>Groups</span>
+                  {groupIds.length > 0 && (
+                    <button
+                      type="button"
+                      className="exc-clear"
+                      onClick={() => {
+                        setGroupIds([]);
+                        setPage(1);
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="exc-group-list">
+                  {groupOptions.length === 0 ? (
+                    <span className="muted">No groups yet.</span>
+                  ) : (
+                    groupOptions.map((g) => (
+                      <label className="exc-group-opt" key={g.id}>
+                        <input
+                          type="checkbox"
+                          checked={groupIds.includes(g.id)}
+                          onChange={() => toggleGroup(g.id)}
+                        />
+                        <span>{g.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <input
             className="exc-search exc-search-log"
             type="search"
@@ -288,7 +429,13 @@ export function ExclusivesLogPage() {
             onClick={() => void onExport()}
             disabled={exporting || total === 0}
           >
-            {exporting ? 'Exporting…' : 'Export'}
+            {exporting ? (
+              <>
+                <span className="spinner exc-btn-spinner" /> Exporting…
+              </>
+            ) : (
+              'Export'
+            )}
           </button>
         </div>
       </header>
@@ -297,16 +444,16 @@ export function ExclusivesLogPage() {
 
       <div className="exc-sortline">
         <span className="mono">Sort: Date / time ↓</span>
-        {groupId !== null && (
+        {groupIds.length > 0 && (
           <button
             type="button"
             className="exc-clear"
             onClick={() => {
-              setGroupId(null);
+              setGroupIds([]);
               setPage(1);
             }}
           >
-            Showing “{groupName}” only — show all ✕
+            Showing {chosenNames.map((n) => `“${n}”`).join(', ')} only — show all ✕
           </button>
         )}
       </div>
@@ -377,7 +524,7 @@ export function ExclusivesLogPage() {
         />
       </section>
 
-      {(datesOpen || typesOpen) && (
+      {openFilter !== null && (
         <div className="exc-pop-backdrop" onClick={closePopovers} aria-hidden="true" />
       )}
     </div>

@@ -18,6 +18,7 @@ import {
   type ExclusivesGroupType,
   type ExclusivesGroupWriteRequest,
   type ExclusivesListingClashDto,
+  type ExclusivesLookupListingDto,
   type ExclusivesListingProblemDto,
   type ExclusivesMarketplace,
 } from '@healthy-tasks/shared';
@@ -31,6 +32,8 @@ import { Segmented } from '../components/exclusives/Segmented';
 import { Flag } from '../components/exclusives/Flag';
 import { Toast, useToast } from '../components/exclusives/Toast';
 import { NoticeModal } from '../components/exclusives/NoticeModal';
+import { AsinTakenModal } from '../components/exclusives/AsinTakenModal';
+import { WarningIcon } from '../components/exclusives/icons';
 import { BulkImportModal, type ImportRow } from '../components/exclusives/BulkImportModal';
 
 type Settings = Record<ExclusivesAlertType, ExclusivesAlertMode>;
@@ -107,6 +110,9 @@ export function ExclusivesEditorPage() {
   const [nameError, setNameError] = useState<string | null>(null);
 
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [taken, setTaken] = useState<{ asin: string; listing: ExclusivesLookupListingDto } | null>(
+    null,
+  );
   const { toast, showToast, clearToast } = useToast();
   const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
 
@@ -215,21 +221,12 @@ export function ExclusivesEditorPage() {
         return;
       }
 
-      const taken = listing.groupId !== null && listing.groupId !== groupId;
-      setRows((prev) => [
-        ...prev,
-        {
-          asin,
-          marketplace: addMarketplace,
-          title: listing.title,
-          ownerId: taken ? listing.groupId : null,
-          ownerName: taken ? listing.groupName : null,
-          problem: null,
-        },
-      ]);
-      setAddAsin('');
-      // Nothing to announce: the row appears below saying where it comes from,
-      // and the banner above the list explains what saving will do.
+      if (listing.groupId !== null && listing.groupId !== groupId) {
+        // Taking a product from another group is a choice, not a side effect.
+        setTaken({ asin, listing });
+        return;
+      }
+      insertRow(asin, listing, false);
     } catch (err) {
       setNotice({
         title: 'Could not check that ASIN',
@@ -241,6 +238,22 @@ export function ExclusivesEditorPage() {
     } finally {
       setAdding(false);
     }
+  }
+
+  /** Put a resolved listing into the list, noting where it is coming from. */
+  function insertRow(asin: string, listing: ExclusivesLookupListingDto, fromGroup: boolean) {
+    setRows((prev) => [
+      ...prev,
+      {
+        asin,
+        marketplace: listing.marketplace,
+        title: listing.title,
+        ownerId: fromGroup ? listing.groupId : null,
+        ownerName: fromGroup ? listing.groupName : null,
+        problem: null,
+      },
+    ]);
+    setAddAsin('');
   }
 
   function removeRow(key: string) {
@@ -263,7 +276,7 @@ export function ExclusivesEditorPage() {
     setNotice({
       title: 'Imported',
       message: `${imported.length} ASIN(s) ready — click Save to apply.`,
-      autoCloseMs: 1_000,
+      autoCloseMs: 3_000,
     });
   }
 
@@ -331,7 +344,7 @@ export function ExclusivesEditorPage() {
           : await api.updateExclusivesGroup(groupId as number, body);
         hydrate(saved);
         setNotice({
-          title: 'Saved',
+          title: 'Group saved successfully',
           message: `“${saved.name}” now watches ${saved.listings.length} ASIN(s).`,
           onDone: () => navigate('/exclusives/groups'),
         });
@@ -401,11 +414,14 @@ export function ExclusivesEditorPage() {
       {bannerShown && <ConflictBanner entity="group" onReview={review} />}
       {error && <div className="alert error">{error}</div>}
       {clashing.length > 0 && (
-        <div className="alert success">
-          {clashing.length} ASIN{clashing.length === 1 ? '' : 's'} listed below{' '}
-          {clashing.length === 1 ? 'is' : 'are'} watched by another group. Saving moves{' '}
-          {clashing.length === 1 ? 'it' : 'them'} here, keeping{' '}
-          {clashing.length === 1 ? 'its' : 'their'} history.
+        <div className="alert warning">
+          <WarningIcon />
+          <span>
+            {clashing.length} ASIN{clashing.length === 1 ? '' : 's'} listed below{' '}
+            {clashing.length === 1 ? 'is' : 'are'} watched by another group. Saving moves{' '}
+            {clashing.length === 1 ? 'it' : 'them'} here, keeping{' '}
+            {clashing.length === 1 ? 'its' : 'their'} history.
+          </span>
         </div>
       )}
 
@@ -565,6 +581,13 @@ export function ExclusivesEditorPage() {
             >
               All immediate
             </button>
+            <button
+              type="button"
+              className="exc-quick accent"
+              onClick={() => setSettings(allMode('daily'))}
+            >
+              All daily
+            </button>
             <button type="button" className="exc-quick" onClick={() => setSettings(allMode('off'))}>
               All off
             </button>
@@ -603,6 +626,19 @@ export function ExclusivesEditorPage() {
           current={rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace }))}
           onCancel={() => setImporting(false)}
           onImport={applyImport}
+        />
+      )}
+
+      {taken && (
+        <AsinTakenModal
+          asin={taken.asin}
+          listing={taken.listing}
+          groupName={name}
+          onCancel={() => setTaken(null)}
+          onMove={() => {
+            insertRow(taken.asin, taken.listing, true);
+            setTaken(null);
+          }}
         />
       )}
 

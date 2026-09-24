@@ -14,6 +14,8 @@ import {
 import {
   createExclusivesGroupController,
   deleteExclusivesGroupController,
+  exclusivesGroupAlertStatsController,
+  exclusivesGroupOptionsController,
   exclusivesStatusController,
   exclusivesSummaryController,
   exportExclusivesAlertsController,
@@ -58,6 +60,8 @@ exclusivesRouter.post(
   asyncHandler(exportExclusivesAlertsController),
 );
 
+exclusivesRouter.get('/groups/options', asyncHandler(exclusivesGroupOptionsController));
+
 exclusivesRouter.post(
   '/groups',
   validateBody(exclusivesGroupCreateSchema),
@@ -71,6 +75,7 @@ exclusivesRouter.post(
   validateBody(exclusivesGroupExportSchema),
   asyncHandler(exportExclusivesGroupController),
 );
+exclusivesRouter.get('/groups/:id/alert-stats', asyncHandler(exclusivesGroupAlertStatsController));
 exclusivesRouter.get('/groups/:id', asyncHandler(getExclusivesGroupController));
 exclusivesRouter.patch(
   '/groups/:id',
