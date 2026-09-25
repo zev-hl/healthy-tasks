@@ -6748,7 +6748,6 @@ tr.just-completed > td {
   gap: 10px;
   padding: 14px 18px;
   background: var(--surface-sunk);
-  border-top: 1px solid var(--border);
 }
 
 /* --- Alert Log header toolbar (HLAI-71) --------------------------------- */
@@ -7077,8 +7076,8 @@ tr.just-completed > td {
   gap: 0.4rem;
 }
 .exc-import-foot {
+  /* Styled by `.alert.warning`; this only owns its spacing in the modal. */
   margin: 0.75rem 0 0;
-  font-weight: 600;
 }
 
 /* --- Exclusives: a group's alerts in a side panel (HLAI-71 ticket 1) ------ */
@@ -7409,6 +7408,13 @@ tr.just-completed > td {
    band, so it is not flush against the bottom edge. */
 .exc-import-foot {
   margin: 0.75rem 0 1.1rem;
+}
+/* The caution shrink-wraps its sentence instead of running the full modal
+   width. Needs `.alert.warning` specificity to beat that rule's display. */
+.alert.warning.exc-import-foot {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
 }
 .modal.exc-import {
   padding-bottom: 1.1rem;

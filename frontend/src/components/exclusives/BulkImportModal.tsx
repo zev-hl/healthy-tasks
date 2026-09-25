@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { type ExclusivesLookupResultDto, type ExclusivesMarketplace } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
 import { Flag } from './Flag';
+import { WarningIcon } from './icons';
 
 /** How many codes go to the server at a time. One batch, one bar step. */
 export const IMPORT_BATCH = 100;
@@ -333,10 +334,13 @@ export function BulkImportModal({
                 }))}
               />
             </div>
-            <p className="exc-import-foot">
-              This will replace the group list only with the imported ASINs listed as yours on
-              Amazon.
-            </p>
+            <div className="alert warning exc-import-foot">
+              <WarningIcon />
+              <span>
+                This will replace the group list only with the imported ASINs listed as yours on
+                Amazon.
+              </span>
+            </div>
           </>
         )}
 
