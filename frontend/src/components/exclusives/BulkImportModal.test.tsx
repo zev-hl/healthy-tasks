@@ -85,6 +85,16 @@ describe('parseSheet', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('reads back a group export, byte-order mark and CRLF included', () => {
+    // Exactly what GET /groups/:id/export writes: BOM, no heading, CRLF.
+    const { rows, bad } = parseSheet('\uFEFFB000000001,US\r\nB000000002,CA\r\n');
+    expect(bad).toEqual([]);
+    expect(rows).toEqual([
+      { asin: 'B000000001', marketplace: 'USA' },
+      { asin: 'B000000002', marketplace: 'Canada' },
+    ]);
+  });
+
   it('reports a line it cannot read rather than dropping it silently', () => {
     const { rows, bad } = parseSheet('NOTANASIN,US\nB000000001,MX\nB000000002');
     expect(rows).toEqual([]);

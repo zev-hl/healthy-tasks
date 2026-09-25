@@ -71,7 +71,9 @@ export function parseSheet(text: string): {
   const seen = new Set<string>();
 
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
+    // A .csv written for Excel starts with a byte-order mark; left in place it
+    // would make the first ASIN one character too long and be rejected.
+    const line = raw.replace(/^\uFEFF/, '').trim();
     if (!line) continue;
 
     const cells = line.split(/[,;\t]/).map((c) => c.replace(/["']/g, '').trim());

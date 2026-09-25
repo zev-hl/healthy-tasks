@@ -1170,9 +1170,10 @@ describe('exclusives: downloads (HLAI-71 7d)', () => {
 
     assert.equal(res.status, 200);
     assert.match(res.headers['content-type'], /text\/csv/);
+    // Written for the bulk importer to read back: two columns, the importer's
+    // marketplace codes, and no heading row.
     const lines = res.text.replace('\uFEFF', '').trim().split('\r\n');
-    assert.equal(lines[0], 'ASIN,Marketplace,Seller SKU,Product,Last checked');
-    assert.equal(lines[1], 'B000000121,United States,SKU-121,A product,2026-09-21 10:00');
+    assert.deepEqual(lines, ['B000000121,US']);
   });
 
   it('404s downloading a group that is not there', async () => {
