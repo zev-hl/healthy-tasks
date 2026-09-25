@@ -263,7 +263,7 @@ export function ExclusivesLogPage() {
                     <button
                       key={r.hours}
                       type="button"
-                      className={`exc-range-btn btn-plain${quickRange === r.hours ? ' on' : ''}`}
+                      className={`exc-range-btn${quickRange === r.hours ? ' on' : ''}`}
                       aria-pressed={quickRange === r.hours}
                       onClick={() => applyQuickRange(r.hours)}
                     >

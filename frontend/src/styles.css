@@ -551,9 +551,14 @@ textarea:focus-visible {
     background var(--dur) var(--ease),
     color var(--dur) var(--ease);
 }
+/*
+ * The whole rail hovers as the palest wash of the accent, a shade lighter
+ * than the solid `.active` item, so hovering hints at where a click lands
+ * without ever looking selected.
+ */
 .side-nav-item:hover {
-  background: var(--canvas-deep);
-  color: var(--ink);
+  background: var(--accent-tint);
+  color: var(--accent-deep);
   text-decoration: none;
 }
 .side-nav-item.active {
@@ -598,8 +603,8 @@ textarea:focus-visible {
   width: 100%;
 }
 .view-item:hover {
-  background: var(--canvas-deep);
-  color: var(--ink);
+  background: var(--accent-tint);
+  color: var(--accent-deep);
 }
 .view-square {
   width: 7px;
@@ -2203,36 +2208,85 @@ button {
 }
 
 /*
- * The filled hover belongs to the default variant, not to every button.
- * Buttons that deliberately clear their background — toolbar toggles,
- * segmented controls, close crosses — were having it painted back on hover,
- * which hid their dark text behind the deep accent. They are excluded here,
- * in one place, rather than each one having to defend itself with a hover of
- * its own. A new transparent button only needs the `btn-plain` class.
+ * The filled hover belongs to the default variant, not to every button. A
+ * button that paints its own background — toolbar toggles, pager chips, the
+ * sidebar's quick views — was having the deep accent painted over it on
+ * hover, which hid its dark label.
+ *
+ * The fix is specificity, not a longer list: the exclusions sit inside
+ * `:where()`, which counts for nothing, so each rule weighs a single class.
+ * That beats the bare `button` background underneath it, and loses to any
+ * `.thing:hover` a component writes for itself. So a button with its own
+ * hover simply keeps it, and nothing new has to be added below.
+ *
+ * The list that remains covers buttons with no hover of their own, which
+ * would otherwise be filled; `btn-plain` is the class for a new one.
  */
-button:hover:not(.btn-plain):not(.add-filter):not(.due-chip):not(.rail-clear-time):not(.tag-x):not(
-    .detail-tab
-  ):not(.incomplete-link):not(.password-toggle):not(.rel-x):not(.link-button):not(.col-move):not(
-    .tree-toggle
-  ):not(.dash-toggle):not(.notif-snooze-opt):not(.seg-btn):not(.tpl-collapse):not(
-    .exc-legend-chip
-  ):not(.exc-clear):not(.exc-seg-btn):not(.exc-country-btn):not(.exc-plat-toggle):not(
-    .exc-asin-remove
-  ):not(.exc-quick):not(.exc-toast-x):not(.exc-drawer-x):not(.exc-drawer-open-log):not(
-    .exc-group-name-btn
+button:hover:where(
+    :not(
+      .btn-plain,
+      .add-filter,
+      .due-chip,
+      .rail-clear-time,
+      .tag-x,
+      .detail-tab,
+      .incomplete-link,
+      .password-toggle,
+      .rel-x,
+      .link-button,
+      .col-move,
+      .tree-toggle,
+      .dash-toggle,
+      .notif-snooze-opt,
+      .seg-btn,
+      .tpl-collapse,
+      .exc-legend-chip,
+      .exc-clear,
+      .exc-seg-btn,
+      .exc-country-btn,
+      .exc-plat-toggle,
+      .exc-asin-remove,
+      .exc-quick,
+      .exc-toast-x,
+      .exc-drawer-x,
+      .exc-drawer-open-log,
+      .exc-group-name-btn,
+      :disabled
+    )
   ) {
   background: var(--accent-deep);
 }
-button:active:not(.btn-plain):not(.add-filter):not(.due-chip):not(.rail-clear-time):not(.tag-x):not(
-    .detail-tab
-  ):not(.incomplete-link):not(.password-toggle):not(.rel-x):not(.link-button):not(.col-move):not(
-    .tree-toggle
-  ):not(.dash-toggle):not(.notif-snooze-opt):not(.seg-btn):not(.tpl-collapse):not(
-    .exc-legend-chip
-  ):not(.exc-clear):not(.exc-seg-btn):not(.exc-country-btn):not(.exc-plat-toggle):not(
-    .exc-asin-remove
-  ):not(.exc-quick):not(.exc-toast-x):not(.exc-drawer-x):not(.exc-drawer-open-log):not(
-    .exc-group-name-btn
+button:active:where(
+    :not(
+      .btn-plain,
+      .add-filter,
+      .due-chip,
+      .rail-clear-time,
+      .tag-x,
+      .detail-tab,
+      .incomplete-link,
+      .password-toggle,
+      .rel-x,
+      .link-button,
+      .col-move,
+      .tree-toggle,
+      .dash-toggle,
+      .notif-snooze-opt,
+      .seg-btn,
+      .tpl-collapse,
+      .exc-legend-chip,
+      .exc-clear,
+      .exc-seg-btn,
+      .exc-country-btn,
+      .exc-plat-toggle,
+      .exc-asin-remove,
+      .exc-quick,
+      .exc-toast-x,
+      .exc-drawer-x,
+      .exc-drawer-open-log,
+      .exc-group-name-btn,
+      :disabled
+    )
   ) {
   background: var(--accent-deep);
 }
@@ -6190,6 +6244,11 @@ tr.just-completed > td {
   border-radius: 8px;
   cursor: pointer;
 }
+/* Same wash as the rail; the chosen size keeps the solid tint below. */
+.exc-size:hover:not(.active) {
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+}
 .exc-size.active {
   background: var(--accent-soft);
   color: var(--accent-deep);
@@ -6205,7 +6264,9 @@ tr.just-completed > td {
   cursor: pointer;
 }
 .exc-page-btn:hover:not(:disabled) {
-  background: var(--canvas-deep);
+  background: var(--accent-tint);
+  border-color: var(--accent-mid);
+  color: var(--accent-deep);
 }
 .exc-page-btn:disabled {
   color: var(--faint-2);
@@ -6221,6 +6282,11 @@ tr.just-completed > td {
   padding: 5px 8px;
   border-radius: 8px;
   cursor: pointer;
+}
+.exc-page-num:hover:not(.active) {
+  background: var(--accent-tint);
+  border-color: var(--accent-mid);
+  color: var(--accent-deep);
 }
 .exc-page-num.active {
   background: var(--ink);
@@ -6766,8 +6832,19 @@ tr.just-completed > td {
   cursor: pointer;
   white-space: nowrap;
 }
+/*
+ * Hover is a light tint of the accent, not the app's filled dark hover: these
+ * buttons keep their dark label, and the fill swallowed it. It is a shade
+ * lighter than the `.on` state below, so "could be chosen" still reads
+ * differently from "is chosen".
+ */
 .exc-toolbtn:hover:not(:disabled) {
-  background: var(--canvas-deep);
+  background: var(--accent-tint);
+  border-color: var(--accent-mid);
+  color: var(--accent-deep);
+}
+.exc-toolbtn:hover:not(:disabled) .exc-caret {
+  color: var(--accent-mid);
 }
 .exc-toolbtn.open {
   border-color: var(--accent);
@@ -7452,8 +7529,11 @@ tr.just-completed > td {
   border-color: var(--accent-tint-2, var(--accent-soft));
   color: var(--accent-deep);
 }
+/* Already holding something: only the edge deepens, so the label stays put. */
 .exc-toolbtn.on:hover:not(:disabled) {
-  background: var(--accent-tint-2, var(--accent-soft));
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
 }
 .exc-toolbtn.on .exc-filter-count {
   background: var(--accent);

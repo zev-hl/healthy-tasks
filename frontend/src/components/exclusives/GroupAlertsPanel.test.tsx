@@ -94,6 +94,9 @@ const open = (props: Partial<Parameters<typeof GroupAlertsPanel>[0]> = {}) =>
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // Pinned to the middle of a day: "an hour ago" has to stay today, and it
+  // does not between midnight and 01:00 on a real clock.
+  vi.setSystemTime(new Date('2026-09-24T12:00:00'));
   queryAlerts.mockResolvedValue(pageOf([alert()]));
   getStats.mockResolvedValue(stats());
 });
