@@ -246,6 +246,29 @@ projects:
                 sync: false
               - key: SEED_ADMIN_PASSWORD
                 sync: false
+              # ----- Exclusives / Amazon SP-API (HLAI-71) ----------------------
+              # Read-only access to ONE seller account. The rate limit belongs to
+              # that account, not to the server, so only one environment should
+              # ever have EXCLUSIVES_SWEEP_ENABLED="true" at a time — otherwise
+              # two sweeps share the same allowance and throttle each other.
+              # All entered in the dashboard (sync: false), including the two
+              # switches, so the sweep can be turned on or off and re-timed
+              # without another Blueprint sync. The sweep also needs
+              # SCHEDULER_ENABLED above to stay "true".
+              - key: SP_API_CLIENT_ID
+                sync: false
+              - key: SP_API_CLIENT_SECRET
+                sync: false
+              - key: SP_API_REFRESH_TOKEN
+                sync: false
+              - key: SP_API_MERCHANT_TOKEN # own Merchant ID; used for Buy Box win/loss
+                sync: false
+              - key: SELLER_STORE_NAME # store name shown in alert wording
+                sync: false
+              - key: EXCLUSIVES_SWEEP_ENABLED # "true" only where alerts should run
+                sync: false
+              - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
+                sync: false
 
           - name: hlcentral-staging
             type: web

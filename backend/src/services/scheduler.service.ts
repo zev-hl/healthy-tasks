@@ -17,6 +17,9 @@ import { materializeDueTaskRecurrences } from './task-recurrence.service.js';
 import { runGoalReviewPass } from './goal.service.js';
 import { getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
+import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
+import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
+import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
 
 /**
  * Recurrence scheduler (Phase 11; reworked in Phase 14).
@@ -695,6 +698,115 @@ async function alertAdminsSchedulerDown(last: Date | null, now: Date): Promise<v
   ]);
 }
 
+// --- Exclusives sweep clock (HLAI-71 Chunk 6f) -----------------------------
+//
+// The Exclusives (Amazon) sweep runs on its OWN timer: started and stopped with
+// the recurrence scheduler, but never inside `runScheduler`. A pass takes about a
+// minute, and while the recurrence timer is mid-pass it reads as disarmed, which
+// the watchdog above reports to admins and every client as "scheduler down". A
+// separate timer leaves recurrences, reminders and that watchdog as they were.
+//
+// Like the recurrence clock, the next run is re-derived from the database every
+// time (`exclusivesDueAt`), so a restart or hot reload never sweeps early and all
+// instances agree on when a sweep is due; the pass's advisory lock stops two from
+// running at once.
+
+/** If working out the next run fails, look again after this long. */
+const EXCLUSIVES_RETRY_MS = 5 * 60 * 1000;
+/** A timer can fire a hair early, and the due time comes from the DB's clock;
+ * treat "due within a second" as due rather than waking again moments later. */
+const EXCLUSIVES_DUE_SLACK_MS = 1000;
+
+let exclusivesTimer: ReturnType<typeof setTimeout> | null = null;
+let exclusivesStarted = false;
+/** When this process last started a pass. In memory on purpose — see exclusivesDueAt. */
+let lastExclusivesAttemptAt: Date | null = null;
+/** Scheduled runs started by this process, numbered in the log. */
+let exclusivesRunCount = 0;
+
+// eslint-disable-next-line no-console
+const logExclusives = (msg: string): void => console.log(msg);
+
+export { exclusivesSweepMode };
+
+/** When the next pass is due — see `exclusives/sweep-clock.ts` for the rule. */
+export async function exclusivesDueAt(
+  now: Date,
+  lastAttemptAt: Date | null = lastExclusivesAttemptAt,
+): Promise<Date> {
+  const lastSuccessAt = await lastSuccessfulSweepAt();
+  return nextSweepDueAt(now, lastSuccessAt, lastAttemptAt, env.amazon.sweepMinutes);
+}
+
+/**
+ * Run a pass if one is due, and say when the next one is. Exposed so tests can
+ * drive the clock deterministically (the timer itself never starts under tests).
+ */
+export async function runExclusivesIfDue(
+  now: Date = new Date(),
+): Promise<{ ran: boolean; nextAt: Date }> {
+  const dueAt = await exclusivesDueAt(now);
+  if (dueAt.getTime() > now.getTime() + EXCLUSIVES_DUE_SLACK_MS) {
+    return { ran: false, nextAt: dueAt };
+  }
+
+  lastExclusivesAttemptAt = now;
+  const run = ++exclusivesRunCount;
+  logExclusives(
+    `[exclusives] ▶ Scheduled sweep #${run} started at ${now.toISOString()} ` +
+      `(runs every ${env.amazon.sweepMinutes} min)`,
+  );
+
+  const report = await runExclusivesPass(logExclusives); // never throws
+  const nextAt = await exclusivesDueAt(new Date());
+
+  const seconds = Math.round((Date.parse(report.finishedAt) - Date.parse(report.startedAt)) / 1000);
+  logExclusives(
+    `[exclusives] ■ Scheduled sweep #${run} ended after ${seconds}s — ${describeOutcome(report)}. ` +
+      `Next sweep${report.status === 'failed' ? ' (the retry)' : ''} at ${nextAt.toISOString()}`,
+  );
+  return { ran: true, nextAt };
+}
+
+// The outcome half of a run's closing log line.
+function describeOutcome(report: ExclusivesPassReport): string {
+  if (report.status === 'failed') return `FAILED: ${report.reason ?? 'no reason given'}`;
+  if (report.status === 'skipped') return `skipped: ${report.reason ?? 'no reason given'}`;
+  const saved = report.detection?.snapshotsSaved ?? 0;
+  const total = report.ingestion?.listingCount ?? 0;
+  return `completed: ${saved}/${total} listings checked, ${report.detection?.alertsWritten ?? 0} alert(s)`;
+}
+
+/** Test seam: forget everything held in memory, as a process restart would. */
+export function __resetExclusivesClock(): void {
+  lastExclusivesAttemptAt = null;
+}
+
+function armExclusives(delayMs: number): void {
+  if (!exclusivesStarted) return; // stopped while a pass was running
+  exclusivesTimer = setTimeout(() => void exclusivesTick(), Math.max(delayMs, 0));
+  exclusivesTimer.unref?.();
+}
+
+async function exclusivesTick(): Promise<void> {
+  exclusivesTimer = null;
+  let nextAt: Date;
+  try {
+    const result = await runExclusivesIfDue();
+    nextAt = result.nextAt;
+    // A run's closing line already names the next sweep; say it only when idle.
+    if (!result.ran) logExclusives(`[exclusives] Next sweep at ${nextAt.toISOString()}`);
+  } catch (err) {
+    // Only the due-time read can throw (the pass never does). Degrade to a
+    // slow retry, never to silence.
+    // eslint-disable-next-line no-console
+    console.error('exclusives: sweep clock failed', err);
+    nextAt = new Date(Date.now() + EXCLUSIVES_RETRY_MS);
+    logExclusives(`[exclusives] Next sweep at ${nextAt.toISOString()} (retrying after an error)`);
+  }
+  armExclusives(nextAt.getTime() - Date.now());
+}
+
 // --- Timer lifecycle (server.ts only; never started under tests) -----------
 
 let handle: ReturnType<typeof setTimeout> | null = null;
@@ -724,6 +836,12 @@ export function startScheduler(): void {
   // Run once at boot so the heartbeat and next wake are fresh immediately, and so
   // module state is rebuilt from the database after every restart.
   void tick();
+
+  // The Exclusives clock rides the same lifecycle, only where it is switched on.
+  if (exclusivesSweepMode().on && !exclusivesStarted) {
+    exclusivesStarted = true;
+    void exclusivesTick();
+  }
 }
 
 export function stopScheduler(): void {
@@ -732,4 +850,10 @@ export function stopScheduler(): void {
     handle = null;
   }
   timerArmed = false;
+
+  exclusivesStarted = false;
+  if (exclusivesTimer) {
+    clearTimeout(exclusivesTimer);
+    exclusivesTimer = null;
+  }
 }

@@ -98,6 +98,16 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       </div>
 
       <div className="side-group">
+        <div className="side-group-label">E-commerce exclusives</div>
+        <NavLink to="/exclusives/groups" className={navItemClass}>
+          Alert Groups
+        </NavLink>
+        <NavLink to="/exclusives/log" className={navItemClass}>
+          Alert Log
+        </NavLink>
+      </div>
+
+      <div className="side-group">
         <div className="side-group-label">Quick Views</div>
         {SAVED_VIEWS.map((v) => (
           <button

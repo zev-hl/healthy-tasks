@@ -9,6 +9,19 @@ import type {
   CreateTaskRequest,
   CreateUserRequest,
   DependencyType,
+  ExclusivesAlertExportRequest,
+  ExclusivesAlertQueryRequest,
+  ExclusivesAlertRowDto,
+  ExclusivesGroupAlertStatsDto,
+  ExclusivesGroupDto,
+  ExclusivesGroupOptionDto,
+  ExclusivesGroupQueryRequest,
+  ExclusivesGroupRowDto,
+  ExclusivesGroupWriteRequest,
+  ExclusivesLookupRequest,
+  ExclusivesLookupResponseDto,
+  ExclusivesStatusDto,
+  ExclusivesSummaryDto,
   LoginResponse,
   MergeUsersRequest,
   PaginatedResult,
@@ -150,6 +163,57 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request<UserDto>('/api/auth/me'),
+
+  // --- Exclusives (HLAI-71) ---
+  getExclusivesStatus: () => request<ExclusivesStatusDto>('/api/exclusives/status'),
+
+  /** Header numbers: alerts in 24h, ASINs monitored, last and next sweep. */
+  getExclusivesSummary: () => request<ExclusivesSummaryDto>('/api/exclusives/summary'),
+
+  /** Every group's id and name, for the Alert Log's group filter. */
+  listExclusivesGroupOptions: () =>
+    request<ExclusivesGroupOptionDto[]>('/api/exclusives/groups/options'),
+
+  queryExclusivesGroups: (body: ExclusivesGroupQueryRequest) =>
+    request<PaginatedResult<ExclusivesGroupRowDto>>('/api/exclusives/groups/query', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  getExclusivesGroup: (id: number) => request<ExclusivesGroupDto>(`/api/exclusives/groups/${id}`),
+
+  /** One group's alerts by type over the last 24 hours, for the side panel. */
+  getExclusivesGroupAlertStats: (id: number) =>
+    request<ExclusivesGroupAlertStatsDto>(`/api/exclusives/groups/${id}/alert-stats`),
+
+  createExclusivesGroup: (body: ExclusivesGroupWriteRequest) =>
+    request<ExclusivesGroupDto>('/api/exclusives/groups', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateExclusivesGroup: (id: number, body: ExclusivesGroupWriteRequest) =>
+    request<ExclusivesGroupDto>(`/api/exclusives/groups/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteExclusivesGroup: (id: number) =>
+    request<void>(`/api/exclusives/groups/${id}`, { method: 'DELETE' }),
+
+  queryExclusivesAlerts: (body: ExclusivesAlertQueryRequest) =>
+    request<PaginatedResult<ExclusivesAlertRowDto>>('/api/exclusives/alerts/query', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Resolve ASINs against the seller account — the only call that reaches Amazon. */
+  lookupExclusivesAsins: (body: ExclusivesLookupRequest) =>
+    request<ExclusivesLookupResponseDto>('/api/exclusives/listings/lookup', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   forgotPassword: (email: string) =>
     request<{ message: string }>('/api/auth/forgot-password', {
       method: 'POST',
@@ -349,8 +413,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   removeReminder: (id: string) => request<void>(`/api/reminders/${id}`, { method: 'DELETE' }),
-  markReminderRead: (id: string) =>
-    request<void>(`/api/reminders/${id}/read`, { method: 'POST' }),
+  markReminderRead: (id: string) => request<void>(`/api/reminders/${id}/read`, { method: 'POST' }),
   markReminderUnread: (id: string) =>
     request<void>(`/api/reminders/${id}/unread`, { method: 'POST' }),
   snoozeReminder: (id: string, minutes: number) =>
@@ -382,8 +445,7 @@ export const api = {
     request<TemplateDto>('/api/templates', { method: 'POST', body: JSON.stringify(body) }),
   updateTemplate: (id: number, body: UpdateTemplateRequest) =>
     request<TemplateDto>(`/api/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteTemplate: (id: number) =>
-    request<void>(`/api/templates/${id}`, { method: 'DELETE' }),
+  deleteTemplate: (id: number) => request<void>(`/api/templates/${id}`, { method: 'DELETE' }),
   // Ghost previews across every active fixed-schedule template (Gantt/Calendar).
   getAllTemplateGhosts: () => request<GhostOccurrenceDto[]>('/api/templates/ghosts'),
   getTemplateGhosts: (id: number) => request<GhostOccurrenceDto[]>(`/api/templates/${id}/ghosts`),
@@ -423,16 +485,25 @@ export const api = {
       body: JSON.stringify({ ...body, expectedUpdatedAt }),
     }),
   submitGoal: (id: number, expectedUpdatedAt?: string) =>
-    request<GoalDto>(`/api/goals/${id}/submit`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
+    request<GoalDto>(`/api/goals/${id}/submit`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedUpdatedAt }),
+    }),
   approveGoal: (id: number, expectedUpdatedAt?: string) =>
-    request<GoalDto>(`/api/goals/${id}/approve`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
+    request<GoalDto>(`/api/goals/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedUpdatedAt }),
+    }),
   rejectGoal: (id: number, body: RejectGoalRequest, expectedUpdatedAt?: string) =>
     request<GoalDto>(`/api/goals/${id}/reject`, {
       method: 'POST',
       body: JSON.stringify({ ...body, expectedUpdatedAt }),
     }),
   finalizeGoal: (id: number, expectedUpdatedAt?: string) =>
-    request<GoalDto>(`/api/goals/${id}/finalize`, { method: 'POST', body: JSON.stringify({ expectedUpdatedAt }) }),
+    request<GoalDto>(`/api/goals/${id}/finalize`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedUpdatedAt }),
+    }),
   resolveGoal: (id: number, body: ResolveGoalRequest, expectedUpdatedAt?: string) =>
     request<GoalDto>(`/api/goals/${id}/resolve`, {
       method: 'POST',
@@ -448,9 +519,10 @@ export const api = {
 /**
  * POST a JSON body and download the binary (.xlsx) response as `filename`. Uses
  * a raw fetch (not request()) because the response is a blob, then triggers a
- * browser download.
+ * browser download. Format-agnostic: it never inspects the content type, so it
+ * serves the Exclusives CSVs as happily as the xlsx exports.
  */
-async function downloadXlsx(path: string, body: unknown, filename: string): Promise<void> {
+async function downloadFile(path: string, body: unknown, filename: string): Promise<void> {
   const token = getToken();
   const res = await fetch(`${API_URL}${path}`, {
     method: 'POST',
@@ -476,17 +548,35 @@ async function downloadXlsx(path: string, body: unknown, filename: string): Prom
 
 /** Export the current filtered/sorted task result set to an .xlsx download. */
 export function exportTasksToExcel(body: TaskSearchRequest): Promise<void> {
-  return downloadXlsx('/api/tasks/export', body, 'tasks.xlsx');
+  return downloadFile('/api/tasks/export', body, 'tasks.xlsx');
 }
 
 /** Export the Due Date Performance Report to an .xlsx download (Phase 13). */
 export function exportDueDateReportToExcel(body: DueDateReportRequest): Promise<void> {
-  return downloadXlsx('/api/reports/due-date/export', body, 'due-date-performance.xlsx');
+  return downloadFile('/api/reports/due-date/export', body, 'due-date-performance.xlsx');
+}
+
+/** The browser's IANA zone, so downloads print dates in the viewer's own time. */
+const localTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Download the Alert Log as CSV, filtered exactly as the screen is. */
+export function exportExclusivesAlertsToCsv(body: ExclusivesAlertQueryRequest): Promise<void> {
+  const payload: ExclusivesAlertExportRequest = { ...body, timeZone: localTimeZone() };
+  return downloadFile('/api/exclusives/alerts/export', payload, 'exclusives-alerts.csv');
+}
+
+/** Download one group's ASIN list as CSV. */
+export function exportExclusivesGroupToCsv(id: number): Promise<void> {
+  return downloadFile(
+    `/api/exclusives/groups/${id}/export`,
+    { timeZone: localTimeZone() },
+    `exclusives-group-${id}.csv`,
+  );
 }
 
 /** Export My Goals to an .xlsx download. */
 export function exportMyGoalsToExcel(): Promise<void> {
-  return downloadXlsx(
+  return downloadFile(
     '/api/goals/mine/export',
     { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     'my-goals.xlsx',
@@ -495,7 +585,7 @@ export function exportMyGoalsToExcel(): Promise<void> {
 
 /** Export Team Goals (with the current filters) to an .xlsx download. */
 export function exportTeamGoalsToExcel(body: GoalTeamRequest = {}): Promise<void> {
-  return downloadXlsx(
+  return downloadFile(
     '/api/goals/team/export',
     { ...body, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     'team-goals.xlsx',
