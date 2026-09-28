@@ -14,9 +14,15 @@ function cell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** A CSV document: CRLF line endings, and the byte-order mark Excel wants. */
+/**
+ * A CSV document: CRLF line endings, and the byte-order mark Excel wants.
+ * An empty `headers` writes no heading row - for files meant to be read back
+ * by a machine (the group list, which the bulk importer re-reads) rather than
+ * by a person.
+ */
 export function toCsv(headers: string[], rows: unknown[][]): string {
-  const lines = [headers.map(cell).join(','), ...rows.map((row) => row.map(cell).join(','))];
+  const body = rows.map((row) => row.map(cell).join(','));
+  const lines = headers.length > 0 ? [headers.map(cell).join(','), ...body] : body;
   return BOM + lines.join('\r\n') + '\r\n';
 }
 

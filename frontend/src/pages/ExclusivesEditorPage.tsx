@@ -275,7 +275,7 @@ export function ExclusivesEditorPage() {
     setImporting(false);
     setNotice({
       title: 'Imported',
-      message: `${imported.length} ASIN(s) ready — click Save to apply.`,
+      message: `${imported.length} ASIN${imported.length === 1 ? '' : 's'} imported successfully.`,
       autoCloseMs: 3_000,
     });
   }

@@ -31,3 +31,6 @@ backend/prisma/*.db
 # Test / coverage
 coverage/
 backend/scripts/data/
+
+# Local-only compose overrides (per-machine image/port tweaks)
+docker-compose.override.yml

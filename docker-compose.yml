@@ -133,7 +133,7 @@ services:
 
   # S3-compatible object storage for attachments (Phase 4).
   minio:
-    image: quay.io/minio/minio:latest
+    image: minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -150,7 +150,7 @@ services:
   # One-shot: wait for MinIO, then create the attachments bucket. Objects are
   # served only through pre-signed URLs, so the bucket stays private.
   minio-setup:
-    image: quay.io/minio/mc:latest
+    image: minio/mc:latest
     depends_on:
       - minio
     restart: 'no'

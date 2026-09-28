@@ -13,6 +13,15 @@ import { buildAlertWhere, type AlertQueryInput } from './alert-log.service.js';
 const marketplaceLabel = (value: string): string =>
   EXCLUSIVES_MARKETPLACE_LABELS[value as ExclusivesMarketplace] ?? value;
 
+/**
+ * The short code the bulk importer's sheet uses. The group export is written to
+ * be handed straight back to that importer, so it speaks the importer's words
+ * rather than the screen's labels.
+ */
+const MARKETPLACE_CODES: Record<ExclusivesMarketplace, string> = { USA: 'US', Canada: 'CA' };
+const marketplaceCode = (value: string): string =>
+  MARKETPLACE_CODES[value as ExclusivesMarketplace] ?? value;
+
 const alertTypeLabel = (value: string): string =>
   EXCLUSIVES_ALERT_TYPE_LABELS[value as ExclusivesAlertType] ?? value;
 
@@ -55,7 +64,12 @@ export async function exportAlertsCsv(
   );
 }
 
-/** A group's ASIN list, as the editor shows it. */
+/**
+ * A group's ASIN list, in exactly the shape the bulk importer reads back: two
+ * columns, ASIN then marketplace code, and no heading row. Exporting a group,
+ * editing the sheet and re-importing it is the round trip this serves, so the
+ * extra columns a reader might like (SKU, product, last checked) are left out.
+ */
 export async function exportGroupCsv(id: number, timeZone?: string): Promise<string> {
   const group = await prisma.alertGroup.findUnique({
     where: { id },
@@ -70,17 +84,8 @@ export async function exportGroupCsv(id: number, timeZone?: string): Promise<str
   if (!group) throw HttpError.notFound('Alert group not found.');
 
   return toCsv(
-    ['ASIN', 'Marketplace', 'Seller SKU', 'Product', 'Last checked'],
-    group.listings.map((l) => {
-      const snapshot = l.snapshots[0];
-      return [
-        l.asin,
-        marketplaceLabel(l.marketplace),
-        l.sku,
-        snapshot?.title ?? '',
-        snapshot ? csvDate(snapshot.capturedAt, timeZone) : '',
-      ];
-    }),
+    [],
+    group.listings.map((l) => [l.asin, marketplaceCode(l.marketplace)]),
   );
 }
 
