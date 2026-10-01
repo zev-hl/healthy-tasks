@@ -28,8 +28,8 @@ function commentIdParam(req: Request): string {
 }
 
 export async function createCommentController(req: Request, res: Response): Promise<void> {
-  const { body } = req.body as CreateCommentInput;
-  const task = await createComment(actor(req), taskIdParam(req), body);
+  const { body, attachments } = req.body as CreateCommentInput;
+  const task = await createComment(actor(req), taskIdParam(req), body ?? '', attachments ?? []);
   res.status(201).json(task satisfies TaskDetailDto);
 }
 

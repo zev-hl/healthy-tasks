@@ -3200,6 +3200,59 @@ th {
   border-color: #c4c9d2;
   color: var(--text-secondary);
 }
+/*
+ * Attach row and the files chosen for a comment that hasn't been posted yet.
+ * Sits between the editor and the Comment button, so the order reads
+ * write → attach → post.
+ */
+.composer-attach {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  /* Breathing room on both sides: the attach row belongs to the editor above
+     it, not to the Comment button below, and without the lower margin the two
+     rows read as one block. */
+  margin: 0.7rem 0 0.9rem;
+}
+.composer-attach-btn {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.7rem;
+}
+.composer-attach-hint {
+  font-size: 0.72rem;
+}
+.composer-files {
+  list-style: none;
+  /* The attach row already carries the gap below it; pull the list up against
+     the button that produced it, and keep the space before the buttons. */
+  margin: -0.4rem 0 0.9rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.composer-files li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+.composer-file-name {
+  /* Long names shorten rather than pushing the size and the remove cross out. */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-file-size {
+  flex: none;
+  font-size: 0.72rem;
+}
 .comment-list {
   list-style: none;
   margin: 0 0 1rem;

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  COMMENT_MAX_ATTACHMENTS,
   ROLES,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -224,7 +225,24 @@ const commentBody = z
   .min(1, 'Comment cannot be empty')
   .max(100000, 'Comment is too large');
 
-export const createCommentSchema = z.object({ body: commentBody });
+/**
+ * Creating a comment: text and files are each optional, but one of them must be
+ * there. An empty submission is rejected here rather than in the service so the
+ * caller gets a 400 that names the actual problem, instead of the "Comment
+ * cannot be empty" that the rich-text check would produce.
+ */
+export const createCommentSchema = z
+  .object({
+    body: z.string().max(100000, 'Comment is too large').optional(),
+    attachments: z
+      .array(confirmAttachmentSchema)
+      .max(COMMENT_MAX_ATTACHMENTS, `A comment can carry at most ${COMMENT_MAX_ATTACHMENTS} files`)
+      .optional(),
+  })
+  .refine((v) => (v.body ?? '').trim() !== '' || (v.attachments?.length ?? 0) > 0, {
+    message: 'Add a comment or attach a file',
+  });
+
 export const updateCommentSchema = z.object({ body: commentBody });
 
 export type PresignAttachmentInput = z.infer<typeof presignAttachmentSchema>;
