@@ -43,6 +43,7 @@ import {
 import {
   presignTaskAttachmentController,
   createTaskAttachmentController,
+  presignCommentDraftController,
 } from '../controllers/attachments.controller.js';
 import { createCommentController } from '../controllers/comments.controller.js';
 import {
@@ -55,7 +56,11 @@ import {
   setTaskRecurrenceController,
   taskGhostsController,
 } from '../controllers/task-recurrence.controller.js';
-import { addReminderSchema, materializeGhostSchema, setTaskRecurrenceSchema } from '../validation/schemas.js';
+import {
+  addReminderSchema,
+  materializeGhostSchema,
+  setTaskRecurrenceSchema,
+} from '../validation/schemas.js';
 
 // All task routes require authentication; any authenticated user may create,
 // read, list, edit, and manage relationships of tasks (no per-user restriction).
@@ -75,7 +80,11 @@ tasksRouter.get('/ghosts', asyncHandler(taskGhostsController));
 tasksRouter.post('/query', validateBody(taskSearchSchema), asyncHandler(queryTasksController));
 tasksRouter.post('/export', validateBody(taskSearchSchema), asyncHandler(exportTasksController));
 // Task Search dashboard (Phase 7): counts for the current filtered result set.
-tasksRouter.post('/dashboard', validateBody(taskDashboardSchema), asyncHandler(dashboardController));
+tasksRouter.post(
+  '/dashboard',
+  validateBody(taskDashboardSchema),
+  asyncHandler(dashboardController),
+);
 
 tasksRouter.get('/:id', asyncHandler(getTaskController));
 tasksRouter.get('/:id/history', asyncHandler(getTaskHistoryController));
@@ -94,7 +103,11 @@ tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));
 // Deleting a task is Admin-only (also enforced in the service).
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
 // Duplicate a task, optionally its whole sub-tree.
-tasksRouter.post('/:id/duplicate', validateBody(duplicateTaskSchema), asyncHandler(duplicateTaskController));
+tasksRouter.post(
+  '/:id/duplicate',
+  validateBody(duplicateTaskSchema),
+  asyncHandler(duplicateTaskController),
+);
 tasksRouter.post(
   '/:id/save-as-template',
   validateBody(saveTaskAsTemplateSchema),
@@ -129,7 +142,15 @@ tasksRouter.post(
   asyncHandler(createTaskAttachmentController),
 );
 
-// Comments (Phase 4): create a comment on the task.
+// Comments (Phase 4): create a comment on the task, optionally with files.
+// The files are already in storage by then — this pre-sign stages them while
+// the comment is still being written, and the create below links them in one
+// transaction.
+tasksRouter.post(
+  '/:id/comments/attachments/presign',
+  validateBody(presignAttachmentSchema),
+  asyncHandler(presignCommentDraftController),
+);
 tasksRouter.post(
   '/:id/comments',
   validateBody(createCommentSchema),

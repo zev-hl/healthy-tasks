@@ -3,6 +3,7 @@ import { HttpError } from '../utils/http-error.js';
 import {
   presignTaskUpload,
   presignCommentUpload,
+  presignCommentDraftUpload,
   createTaskAttachment,
   createCommentAttachment,
   deleteAttachment,
@@ -38,7 +39,11 @@ function idParam(req: Request): string {
 // --- Task attachments ------------------------------------------------------
 
 export async function presignTaskAttachmentController(req: Request, res: Response): Promise<void> {
-  const result = await presignTaskUpload(actor(req), taskIdParam(req), req.body as PresignAttachmentInput);
+  const result = await presignTaskUpload(
+    actor(req),
+    taskIdParam(req),
+    req.body as PresignAttachmentInput,
+  );
   res.status(201).json(result satisfies PresignAttachmentResponse);
 }
 
@@ -52,6 +57,20 @@ export async function createTaskAttachmentController(req: Request, res: Response
 }
 
 // --- Comment attachments ---------------------------------------------------
+
+/**
+ * Pre-sign a file for a comment that is still being written, so text and
+ * attachments can be submitted together. Nested under the TASK, because the
+ * comment it belongs to does not exist yet.
+ */
+export async function presignCommentDraftController(req: Request, res: Response): Promise<void> {
+  const result = await presignCommentDraftUpload(
+    actor(req),
+    taskIdParam(req),
+    req.body as PresignAttachmentInput,
+  );
+  res.status(201).json(result satisfies PresignAttachmentResponse);
+}
 
 export async function presignCommentAttachmentController(
   req: Request,

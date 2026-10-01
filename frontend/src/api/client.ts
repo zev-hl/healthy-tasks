@@ -114,6 +114,23 @@ export class ApiError extends Error {
     this.status = status;
     this.details = details;
   }
+
+  /**
+   * The message with the server's field-level detail folded in.
+   *
+   * A failed Zod check arrives as the bare phrase "Validation failed" plus a
+   * `details` map of field → reasons. On its own that phrase tells a user
+   * nothing and leaves a developer guessing which field was wrong, so anything
+   * useful in `details` is appended.
+   */
+  get fullMessage(): string {
+    const fields = this.details as Record<string, string[] | undefined> | undefined;
+    if (!fields || typeof fields !== 'object') return this.message;
+    const reasons = Object.entries(fields)
+      .flatMap(([field, list]) => (list ?? []).map((reason) => `${field}: ${reason}`))
+      .slice(0, 3);
+    return reasons.length > 0 ? `${this.message} — ${reasons.join('; ')}` : this.message;
+  }
 }
 
 // Called when an authenticated request is rejected with 401 (idle session
@@ -360,6 +377,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  /**
+   * Stage a file for a comment still being written. Nested under the TASK,
+   * because the comment it will belong to does not exist yet.
+   */
+  presignCommentDraftAttachment: (taskId: number, body: PresignAttachmentRequest) =>
+    request<PresignAttachmentResponse>(`/api/tasks/${taskId}/comments/attachments/presign`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   presignCommentAttachment: (commentId: string, body: PresignAttachmentRequest) =>
     request<PresignAttachmentResponse>(`/api/comments/${commentId}/attachments/presign`, {
       method: 'POST',
