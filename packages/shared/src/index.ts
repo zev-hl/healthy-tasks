@@ -54,6 +54,14 @@ export interface LoginRequest {
   password: string;
 }
 
+/**
+ * Sign in with Google. The browser gets this token from Google and passes it
+ * straight through; everything inside it is verified server-side.
+ */
+export interface GoogleLoginRequest {
+  idToken: string;
+}
+
 export interface LoginResponse {
   token: string;
   user: UserDto;

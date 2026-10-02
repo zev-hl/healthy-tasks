@@ -5,6 +5,8 @@ import { HttpError } from '../utils/http-error.js';
 import { signAccessToken } from '../utils/jwt.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { generateResetToken, hashToken, durationToMs } from '../utils/tokens.js';
+import { verifyGoogleIdToken } from './google-auth.service.js';
+import { assertCanSignInWithGoogle } from '../utils/allowed-domain.js';
 
 /** Authenticate by email + password; returns the user and a signed JWT. */
 export async function login(
@@ -24,6 +26,67 @@ export async function login(
   }
   if (!user.isActive) {
     throw HttpError.forbidden('This account has been deactivated');
+  }
+  const token = signAccessToken({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    tv: user.tokenVersion,
+  });
+  return { user, token };
+}
+
+/**
+ * Sign in with a Google ID token.
+ *
+ * Google answers one question — is this really that person — and nothing more.
+ * Being allowed IN is still ours to decide: the account must already exist here
+ * and be active. Signing in with Google never creates an account, which is what
+ * keeps "admins create users, there is no self-registration" true.
+ *
+ * Matching is by Google's permanent subject id first, email second. The first
+ * successful sign-in records that id, so a reused email address can never give
+ * a new hire a leaver's account.
+ */
+export async function loginWithGoogle(idToken: string): Promise<{ user: User; token: string }> {
+  const identity = await verifyGoogleIdToken(idToken);
+
+  // An unverified address proves nothing about who holds it.
+  if (!identity.emailVerified) {
+    throw HttpError.unauthorized('That Google account has no verified email address.');
+  }
+  // Checked on the address Google reported, before any lookup: an outside
+  // Google account is turned away without so much as a query. Note this guards
+  // the Google door ONLY — the same person may still have a password account.
+  assertCanSignInWithGoogle(identity.email);
+
+  const bySub = await prisma.user.findUnique({
+    where: { googleSub: identity.googleSub },
+  });
+  const user = bySub ?? (await prisma.user.findUnique({ where: { email: identity.email } }));
+
+  if (!user) {
+    throw HttpError.unauthorized(
+      'There is no HL Central account for that Google address. Ask an administrator to add you.',
+    );
+  }
+  if (!user.isActive) {
+    throw HttpError.forbidden('This account has been deactivated');
+  }
+  // Found by email, but already tied to a DIFFERENT Google account: the address
+  // has been reused. Refuse rather than hand over the previous holder's account.
+  if (user.googleSub && user.googleSub !== identity.googleSub) {
+    throw HttpError.unauthorized(
+      'That email address belongs to a different Google account here. Ask an administrator.',
+    );
+  }
+
+  // First sign-in: link this account to the Google identity from now on.
+  if (!user.googleSub) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { googleSub: identity.googleSub },
+    });
   }
 
   const token = signAccessToken({

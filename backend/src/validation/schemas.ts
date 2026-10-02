@@ -42,6 +42,11 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+/** The signed statement from Google; everything inside it is verified server-side. */
+export const googleLoginSchema = z.object({
+  idToken: z.string().min(1, 'idToken is required').max(8192),
+});
+
 export const forgotPasswordSchema = z.object({
   email,
 });
@@ -233,6 +238,7 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>;
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>;
 
 export type LoginInput = z.infer<typeof loginSchema>;
+export type GoogleLoginInput = z.infer<typeof googleLoginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;

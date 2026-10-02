@@ -3,6 +3,7 @@ import type { LoginResponse, UserDto } from '@healthy-tasks/shared';
 import { HttpError } from '../utils/http-error.js';
 import {
   login,
+  loginWithGoogle,
   createPasswordReset,
   findResettableUserByEmail,
   resetPassword,
@@ -10,7 +11,12 @@ import {
 import { getUserById } from '../services/user.service.js';
 import { toUserDto } from '../services/user.mapper.js';
 import { sendPasswordResetEmail } from '../utils/mailer.js';
-import type { LoginInput, ForgotPasswordInput, ResetPasswordInput } from '../validation/schemas.js';
+import type {
+  LoginInput,
+  GoogleLoginInput,
+  ForgotPasswordInput,
+  ResetPasswordInput,
+} from '../validation/schemas.js';
 
 export async function loginController(req: Request, res: Response): Promise<void> {
   const { email, password } = req.body as LoginInput;
@@ -23,6 +29,12 @@ export async function loginController(req: Request, res: Response): Promise<void
  * With stateless JWTs there is no server session to destroy — the client
  * discards the token. This endpoint exists for symmetry and future-proofing.
  */
+export async function googleLoginController(req: Request, res: Response): Promise<void> {
+  const { idToken } = req.body as GoogleLoginInput;
+  const { user, token } = await loginWithGoogle(idToken);
+  res.json({ token, user: toUserDto(user) } satisfies LoginResponse);
+}
+
 export async function logoutController(_req: Request, res: Response): Promise<void> {
   res.status(204).send();
 }

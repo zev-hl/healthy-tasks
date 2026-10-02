@@ -14,6 +14,18 @@ let app: Express;
 let prisma: PrismaClient;
 let hashPassword: (plaintext: string) => Promise<string>;
 let resetUnreadCache: () => void;
+/**
+ * Test seams for sign-in, loaded in before() rather than statically.
+ *
+ * Both of their modules import config/env.ts, which reads process.env ONCE at
+ * load time. Importing them at the top of this file would pull env in before
+ * the hook below configures it, and the whole suite would quietly run against
+ * whatever the developer's .env happens to say — a real storage bucket, real
+ * Amazon credentials. That is exactly what happened, and it broke fifteen
+ * tests that had nothing to do with sign-in.
+ */
+let __setGoogleVerifier: typeof import('../src/services/google-auth.service.js').__setGoogleVerifier;
+let __setAllowedDomain: typeof import('../src/utils/allowed-domain.js').__setAllowedDomain;
 
 const ADMIN_EMAIL = 'admin@test.local';
 const ADMIN_PASSWORD = 'AdminPass123!';
@@ -42,16 +54,20 @@ before(async () => {
   process.env.EXCLUSIVES_SWEEP_ENABLED = 'false';
   process.env.EXCLUSIVES_SWEEP_MINUTES = '30';
 
-  const [appMod, prismaMod, pwMod, cacheMod] = await Promise.all([
+  const [appMod, prismaMod, pwMod, cacheMod, googleMod, domainMod] = await Promise.all([
     import('../src/app.js'),
     import('../src/db/prisma.js'),
     import('../src/utils/password.js'),
     import('../src/services/unread-cache.js'),
+    import('../src/services/google-auth.service.js'),
+    import('../src/utils/allowed-domain.js'),
   ]);
   app = appMod.createApp();
   prisma = prismaMod.prisma;
   hashPassword = pwMod.hashPassword;
   resetUnreadCache = cacheMod.__resetUnreadCache;
+  __setGoogleVerifier = googleMod.__setGoogleVerifier;
+  __setAllowedDomain = domainMod.__setAllowedDomain;
 });
 
 after(async () => {
@@ -194,6 +210,321 @@ describe('auth: login', () => {
       .send({ email: 'notanemail', password: '' });
     assert.equal(res.status, 400);
     assert.ok(res.body.details.email);
+  });
+});
+
+describe('sign in with Google (Chunk 1)', () => {
+  /**
+   * A fake Google. The real verifier is never reached: no test may depend on
+   * the network, a live Google project, or a token it has no way to mint.
+   */
+  function fakeGoogle(identity: {
+    googleSub: string;
+    email: string;
+    emailVerified?: boolean;
+    hostedDomain?: string | null;
+  }) {
+    return __setGoogleVerifier(async () => ({
+      googleSub: identity.googleSub,
+      email: identity.email,
+      emailVerified: identity.emailVerified ?? true,
+      hostedDomain: identity.hostedDomain ?? 'healthlifeny.com',
+    }));
+  }
+
+  const signIn = () => request(app).post('/api/auth/google').send({ idToken: 'pretend-token' });
+
+  const googleSubOf = async (email: string) =>
+    (await prisma.user.findUniqueOrThrow({ where: { email }, select: { googleSub: true } }))
+      .googleSub;
+
+  it('signs in an existing user and links the account on the first attempt', async () => {
+    await seedUser({ email: 'gwen@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const restore = fakeGoogle({ googleSub: 'google-111', email: 'gwen@test.local' });
+    try {
+      assert.equal(await googleSubOf('gwen@test.local'), null);
+
+      const res = await signIn();
+
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.ok(res.body.token, 'a session token is issued');
+      assert.equal(res.body.user.email, 'gwen@test.local');
+      assert.equal(await googleSubOf('gwen@test.local'), 'google-111');
+    } finally {
+      restore();
+    }
+  });
+
+  it('issues a session that works on an authenticated endpoint', async () => {
+    await seedUser({ email: 'usable@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const restore = fakeGoogle({ googleSub: 'google-222', email: 'usable@test.local' });
+    try {
+      const token = (await signIn()).body.token as string;
+      const me = await request(app).get('/api/auth/me').set(auth(token));
+      assert.equal(me.status, 200);
+      assert.equal(me.body.email, 'usable@test.local');
+    } finally {
+      restore();
+    }
+  });
+
+  it('matches on the Google id even after the email changes', async () => {
+    const user = await seedUser({
+      email: 'renamed@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const first = fakeGoogle({ googleSub: 'google-333', email: 'renamed@test.local' });
+    await signIn();
+    first();
+
+    // The same Google account, now reporting a different address.
+    const second = fakeGoogle({ googleSub: 'google-333', email: 'new-address@test.local' });
+    try {
+      const res = await signIn();
+      assert.equal(res.status, 200, 'the permanent id wins over the address');
+      assert.equal(res.body.user.id, user.id);
+    } finally {
+      second();
+    }
+  });
+
+  it('refuses an email with no account here, and creates nothing', async () => {
+    const before = await prisma.user.count();
+    const restore = fakeGoogle({ googleSub: 'google-444', email: 'stranger@test.local' });
+    try {
+      const res = await signIn();
+
+      assert.equal(res.status, 401);
+      assert.match(res.body.error as string, /no HL Central account/i);
+      assert.equal(await prisma.user.count(), before, 'signing in must never create a user');
+    } finally {
+      restore();
+    }
+  });
+
+  it('refuses a deactivated user', async () => {
+    await seedUser({
+      email: 'gone@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+      isActive: false,
+    });
+    const restore = fakeGoogle({ googleSub: 'google-555', email: 'gone@test.local' });
+    try {
+      const res = await signIn();
+      assert.equal(res.status, 403);
+      assert.match(res.body.error as string, /deactivated/i);
+    } finally {
+      restore();
+    }
+  });
+
+  it('refuses an unverified Google email address', async () => {
+    await seedUser({ email: 'unverified@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const restore = fakeGoogle({
+      googleSub: 'google-666',
+      email: 'unverified@test.local',
+      emailVerified: false,
+    });
+    try {
+      const res = await signIn();
+      assert.equal(res.status, 401);
+      assert.match(res.body.error as string, /verified email/i);
+    } finally {
+      restore();
+    }
+  });
+
+  it('refuses a second Google account claiming an already-linked address', async () => {
+    await seedUser({ email: 'taken@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const first = fakeGoogle({ googleSub: 'google-777', email: 'taken@test.local' });
+    await signIn();
+    first();
+
+    // A different Google account reporting the same address — the shape of a
+    // reused work address after someone leaves.
+    const second = fakeGoogle({ googleSub: 'google-888', email: 'taken@test.local' });
+    try {
+      const res = await signIn();
+      assert.equal(res.status, 401);
+      assert.match(res.body.error as string, /different Google account/i);
+      assert.equal(await googleSubOf('taken@test.local'), 'google-777', 'the link is unchanged');
+    } finally {
+      second();
+    }
+  });
+
+  it('rejects a request with no token at all', async () => {
+    const res = await request(app).post('/api/auth/google').send({});
+    assert.equal(res.status, 400);
+  });
+
+  it('leaves email and password sign-in working exactly as before', async () => {
+    await seedUser({ email: 'both@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const restore = fakeGoogle({ googleSub: 'google-999', email: 'both@test.local' });
+    try {
+      await signIn(); // link the account
+    } finally {
+      restore();
+    }
+
+    // The same person, same account, coming through the other door.
+    const token = await login('both@test.local', MEMBER_PASSWORD);
+    assert.ok(token, 'the password still works after linking');
+  });
+});
+
+describe('company-domain rule — Google door only (Chunk 3)', () => {
+  const DOMAIN = 'healthlifeny.com';
+  const inside = 'wasif@healthlifeny.com';
+  const outside = 'someone@gmail.com';
+
+  function fakeGoogle(email: string, googleSub = 'google-domain-1') {
+    return __setGoogleVerifier(async () => ({
+      googleSub,
+      email,
+      emailVerified: true,
+      hostedDomain: email.split('@')[1] ?? null,
+    }));
+  }
+
+  const signInWithGoogle = () =>
+    request(app).post('/api/auth/google').send({ idToken: 'pretend-token' });
+
+  it('is inert until a domain is configured', async () => {
+    // The default. Every other test in this file seeds @test.local users and
+    // signs them in, which only works because the rule starts switched off.
+    await seedUser({ email: 'anywhere@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const token = await login('anywhere@test.local', MEMBER_PASSWORD);
+    assert.ok(token);
+  });
+
+  it('lets an outside address in through the password door', async () => {
+    // The rule guards the Google door only. Someone without a company Google
+    // account — a contractor, say — can still be given an account and a
+    // password here, which is the whole point of keeping both ways in.
+    await seedUser({ email: outside, role: 'Member', password: MEMBER_PASSWORD });
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: outside, password: MEMBER_PASSWORD });
+
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+    } finally {
+      restore();
+    }
+  });
+
+  it('refuses an outside address at the Google door', async () => {
+    await seedUser({ email: outside, role: 'Member', password: MEMBER_PASSWORD });
+    const restoreDomain = __setAllowedDomain(DOMAIN);
+    const restoreGoogle = fakeGoogle(outside);
+    try {
+      const res = await signInWithGoogle();
+
+      assert.equal(res.status, 403);
+      assert.match(res.body.error as string, /Only @healthlifeny\.com Google accounts/);
+      // And it points them at the door that IS open to them.
+      assert.match(res.body.error as string, /email and password/i);
+    } finally {
+      restoreGoogle();
+      restoreDomain();
+    }
+  });
+
+  it('lets an inside address through both doors', async () => {
+    await seedUser({ email: inside, role: 'Member', password: MEMBER_PASSWORD });
+    const restoreDomain = __setAllowedDomain(DOMAIN);
+    try {
+      const byPassword = await request(app)
+        .post('/api/auth/login')
+        .send({ email: inside, password: MEMBER_PASSWORD });
+      assert.equal(byPassword.status, 200, JSON.stringify(byPassword.body));
+
+      const restoreGoogle = fakeGoogle(inside, 'google-domain-ok');
+      try {
+        const byGoogle = await signInWithGoogle();
+        assert.equal(byGoogle.status, 200, JSON.stringify(byGoogle.body));
+      } finally {
+        restoreGoogle();
+      }
+    } finally {
+      restoreDomain();
+    }
+  });
+
+  it('still lets an admin create an account on any domain', async () => {
+    // Such an account simply uses the password door; the rule does not reach
+    // account creation at all.
+    const admin = await adminToken();
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).post('/api/users').set(auth(admin)).send({
+        email: 'contractor@outside.com',
+        firstName: 'Out',
+        lastName: 'Sider',
+        role: 'Member',
+      });
+
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      assert.equal(await prisma.user.count({ where: { email: 'contractor@outside.com' } }), 1);
+    } finally {
+      restore();
+    }
+  });
+
+  it('still allows an inside address to be created', async () => {
+    const admin = await adminToken();
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).post('/api/users').set(auth(admin)).send({
+        email: 'newstarter@healthlifeny.com',
+        firstName: 'New',
+        lastName: 'Starter',
+        role: 'Member',
+      });
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+    } finally {
+      restore();
+    }
+  });
+
+  it('gives the same answer to a wrong password whatever the domain', async () => {
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ email: 'ghost@gmail.com', password: 'whatever' });
+      assert.equal(res.status, 401);
+      assert.match(res.body.error as string, /Invalid email or password/);
+    } finally {
+      restore();
+    }
+  });
+
+  it('lets the SAME person use a password here and be refused at the Google door', async () => {
+    // The shape that matters: an outside account is a first-class user here, it
+    // simply cannot arrive via Google.
+    await seedUser({ email: outside, role: 'Member', password: MEMBER_PASSWORD });
+    const restoreDomain = __setAllowedDomain(DOMAIN);
+    try {
+      const byPassword = await request(app)
+        .post('/api/auth/login')
+        .send({ email: outside, password: MEMBER_PASSWORD });
+      assert.equal(byPassword.status, 200);
+
+      const restoreGoogle = fakeGoogle(outside, 'google-outside-1');
+      try {
+        const byGoogle = await signInWithGoogle();
+        assert.equal(byGoogle.status, 403);
+      } finally {
+        restoreGoogle();
+      }
+    } finally {
+      restoreDomain();
+    }
   });
 });
 
@@ -5554,6 +5885,7 @@ describe('production readiness reporting (Phase 14)', () => {
     smtpHost: 'smtp.example.com',
     storageDriver: 's3',
     schedulerEnabled: true,
+    googleClientId: 'fake-client-id.apps.googleusercontent.com',
   };
 
   it('says nothing outside production', () => {
@@ -5581,6 +5913,13 @@ describe('production readiness reporting (Phase 14)', () => {
     assert.equal(found.length, 2);
     assert.ok(found.some((g) => /attachments are lost/.test(g)));
     assert.ok(found.some((g) => /will not materialize/.test(g)));
+  });
+
+  it('flags Google sign-in being unconfigured, and says the other door still works', () => {
+    const found = gaps({ ...ready, googleClientId: '' });
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /GOOGLE_CLIENT_ID is unset/);
+    assert.match(found[0] ?? '', /Email and password sign-in is unaffected/);
   });
 
   it('names the live mail path on every boot', () => {

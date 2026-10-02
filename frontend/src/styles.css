@@ -1784,6 +1784,36 @@ textarea:focus-visible {
   font-size: 13.5px;
   color: var(--muted);
 }
+/*
+ * Google sign-in, above the password form. Google's script renders the button
+ * itself and its look is fixed by their branding rules, so this only places it.
+ */
+.google-signin {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+.google-signin[aria-busy='true'] {
+  /* A sign-in is already running; the button is inert until it settles. */
+  opacity: 0.6;
+  pointer-events: none;
+}
+/* A labelled rule, so the two routes read as alternatives rather than steps. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 2px;
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 .auth-form-col form {
   display: flex;
   flex-direction: column;

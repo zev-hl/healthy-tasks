@@ -33,6 +33,16 @@ model User {
   passwordHash   String
   isActive       Boolean @default(true)
 
+  // Google's permanent id for this account ("sub"), recorded the first time the
+  // person signs in with Google. Null until then, and for anyone who only ever
+  // uses a password.
+  //
+  // Sign-in matches on this FIRST and falls back to email, because email
+  // addresses get reused: if a leaver's address is later given to a new hire,
+  // matching on email alone would hand the newcomer the old account. A Google
+  // subject id is never reissued.
+  googleSub      String? @unique
+
   // Account merge (Phase 5): when two accounts are merged, the non-surviving one
   // is deactivated (never deleted) and points here at the account it was merged
   // into, so historical references still resolve to a labeled, redirected user.
