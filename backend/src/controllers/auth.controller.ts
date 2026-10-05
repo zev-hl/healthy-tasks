@@ -9,6 +9,7 @@ import {
   resetPassword,
 } from '../services/auth.service.js';
 import { getUserById } from '../services/user.service.js';
+import { assertCanRecoverPassword } from '../utils/allowed-domain.js';
 import { toUserDto } from '../services/user.mapper.js';
 import { sendPasswordResetEmail } from '../utils/mailer.js';
 import type {
@@ -51,6 +52,10 @@ export async function meController(req: Request, res: Response): Promise<void> {
  */
 export async function forgotPasswordController(req: Request, res: Response): Promise<void> {
   const { email } = req.body as ForgotPasswordInput;
+  // A company address has no password to forget by default, and self-service
+  // recovery must not quietly create one. An admin can still issue a reset.
+  assertCanRecoverPassword(email);
+
   const user = await findResettableUserByEmail(email);
   if (user) {
     const ticket = await createPasswordReset(user.id);

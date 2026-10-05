@@ -42,6 +42,13 @@ before(async () => {
   process.env.FRONTEND_URL = 'http://localhost:5173';
   process.env.EMAIL_PROVIDER = 'console';
   process.env.NODE_ENV = 'test';
+  // Google sign-in: a fake client id, and NO domain restriction. The dev
+  // container loads .env, so a real GOOGLE_ALLOWED_DOMAIN would otherwise
+  // reach the tests and refuse every @test.local address — the same leak that
+  // the fake SP-API credentials below guard against. Tests that need the rule
+  // switch it on themselves with __setAllowedDomain.
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client.apps.googleusercontent.com';
+  process.env.GOOGLE_ALLOWED_DOMAIN = '';
   // Use the in-memory storage fake so attachment tests need no MinIO/S3.
   process.env.STORAGE_DRIVER = 'memory';
   // Exclusives: fake SP-API credentials, so real ones in the environment (the
@@ -434,15 +441,10 @@ describe('company-domain rule — Google door only (Chunk 3)', () => {
     }
   });
 
-  it('lets an inside address through both doors', async () => {
+  it('lets a company account use Google, and a password if it has been given one', async () => {
     await seedUser({ email: inside, role: 'Member', password: MEMBER_PASSWORD });
     const restoreDomain = __setAllowedDomain(DOMAIN);
     try {
-      const byPassword = await request(app)
-        .post('/api/auth/login')
-        .send({ email: inside, password: MEMBER_PASSWORD });
-      assert.equal(byPassword.status, 200, JSON.stringify(byPassword.body));
-
       const restoreGoogle = fakeGoogle(inside, 'google-domain-ok');
       try {
         const byGoogle = await signInWithGoogle();
@@ -450,8 +452,120 @@ describe('company-domain rule — Google door only (Chunk 3)', () => {
       } finally {
         restoreGoogle();
       }
+
+      // A company account normally has no password at all. This one does,
+      // which is the state an admin-issued reset leaves it in — and the form
+      // then works, so there is a way in when Google cannot be reached.
+      const byPassword = await request(app)
+        .post('/api/auth/login')
+        .send({ email: inside, password: MEMBER_PASSWORD });
+      assert.equal(byPassword.status, 200, JSON.stringify(byPassword.body));
     } finally {
       restoreDomain();
+    }
+  });
+
+  it('refuses "forgot password" for a company address, minting no token', async () => {
+    const user = await seedUser({ email: inside, role: 'Member', password: MEMBER_PASSWORD });
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).post('/api/auth/forgot-password').send({ email: inside });
+
+      assert.equal(res.status, 403);
+      assert.match(res.body.error as string, /sign in with Google/i);
+      assert.equal(
+        await prisma.passwordResetToken.count({ where: { userId: user.id } }),
+        0,
+        'no reset token may exist for an account that has no password',
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it('lets an admin deliberately issue a password to a company account', async () => {
+    // Self-service recovery is closed to them, but an admin can still do it —
+    // that is the way back in when Google is unreachable.
+    const admin = await adminToken();
+    const user = await seedUser({ email: inside, role: 'Member', password: MEMBER_PASSWORD });
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).post(`/api/users/${user.id}/reset-password`).set(auth(admin));
+
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      assert.ok(res.body.resetLink, 'the admin gets a link to hand over');
+      assert.equal(await prisma.passwordResetToken.count({ where: { userId: user.id } }), 1);
+    } finally {
+      restore();
+    }
+  });
+
+  it('reports how each account signs in, so the admin screen can show it', async () => {
+    const admin = await adminToken();
+    await seedUser({ email: inside, role: 'Member', password: MEMBER_PASSWORD });
+    await seedUser({ email: outside, role: 'Member', password: MEMBER_PASSWORD });
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).get('/api/users').set(auth(admin));
+      assert.equal(res.status, 200);
+      const byEmail = new Map(
+        (res.body as { email: string; signInMethod: string }[]).map((u) => [
+          u.email,
+          u.signInMethod,
+        ]),
+      );
+      assert.equal(byEmail.get(inside), 'google');
+      assert.equal(byEmail.get(outside), 'password');
+    } finally {
+      restore();
+    }
+  });
+
+  it('welcomes a company-domain user instead of minting a reset link', async () => {
+    const admin = await adminToken();
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).post('/api/users').set(auth(admin)).send({
+        email: 'newhire@healthlifeny.com',
+        firstName: 'New',
+        lastName: 'Hire',
+        role: 'Member',
+      });
+
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      assert.equal(res.body.signInMethod, 'google');
+      assert.equal(res.body.resetLink, undefined, 'no link is handed over');
+      // And none was created behind the scenes either.
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: 'newhire@healthlifeny.com' },
+        select: { id: true },
+      });
+      assert.equal(
+        await prisma.passwordResetToken.count({ where: { userId: user.id } }),
+        0,
+        'a company-domain account gets no reset token at all',
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it('still sends a reset link to an outside address, which has no Google door', async () => {
+    const admin = await adminToken();
+    const restore = __setAllowedDomain(DOMAIN);
+    try {
+      const res = await request(app).post('/api/users').set(auth(admin)).send({
+        email: 'contractor@outside.com',
+        firstName: 'Out',
+        lastName: 'Sider',
+        role: 'Member',
+      });
+
+      assert.equal(res.status, 201, JSON.stringify(res.body));
+      assert.equal(res.body.signInMethod, 'password');
+      assert.ok(res.body.resetLink, 'a password is their only way in');
+    } finally {
+      restore();
     }
   });
 
@@ -504,9 +618,8 @@ describe('company-domain rule — Google door only (Chunk 3)', () => {
     }
   });
 
-  it('lets the SAME person use a password here and be refused at the Google door', async () => {
-    // The shape that matters: an outside account is a first-class user here, it
-    // simply cannot arrive via Google.
+  it('lets an outside person use a password and be refused at the Google door', async () => {
+    // The mirror image of the test above: each group has exactly one door.
     await seedUser({ email: outside, role: 'Member', password: MEMBER_PASSWORD });
     const restoreDomain = __setAllowedDomain(DOMAIN);
     try {

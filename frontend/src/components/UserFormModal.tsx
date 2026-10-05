@@ -5,7 +5,8 @@ import { api, ApiError } from '../api/client';
 
 interface Props {
   onClose: () => void;
-  onCreated: () => void;
+  /** Reports how the new person signs in, so the caller can say the right thing. */
+  onCreated: (signInMethod: 'google' | 'password') => void;
 }
 
 /** Modal to create a new user. Supervisor list is fetched pre-filtered to
@@ -47,8 +48,8 @@ export function UserFormModal({ onClose, onCreated }: Props) {
       supervisorId: supervisorId || null,
     };
     try {
-      await api.createUser(body);
-      onCreated();
+      const res = await api.createUser(body);
+      onCreated(res.signInMethod);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create user');
     } finally {

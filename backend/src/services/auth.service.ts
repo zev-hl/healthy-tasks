@@ -13,6 +13,10 @@ export async function login(
   email: string,
   password: string,
 ): Promise<{ user: User; token: string }> {
+  // No domain check here. A company account normally has no password, so this
+  // simply fails as "invalid email or password" — but if an admin has issued
+  // one deliberately, it works, which is the way back in when Google cannot be
+  // reached.
   const user = await prisma.user.findUnique({ where: { email } });
 
   // Uniform failure for both "no such user" and "wrong password" to avoid

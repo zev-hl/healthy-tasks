@@ -25,7 +25,9 @@ import {
 } from '../services/user.service.js';
 import { createPasswordReset } from '../services/auth.service.js';
 import { toActiveUserDto, toUserDto, toUserRef } from '../services/user.mapper.js';
-import { sendPasswordResetEmail } from '../utils/mailer.js';
+import { sendGoogleWelcomeEmail, sendPasswordResetEmail } from '../utils/mailer.js';
+import { isCompanyAccount } from '../utils/allowed-domain.js';
+import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
 import type {
   CreateUserInput,
@@ -91,20 +93,35 @@ export async function listSupervisorsController(_req: Request, res: Response): P
 }
 
 /**
- * Create a user, then immediately issue a reset link so they can set their own
- * password. The link is emailed (console in dev) and also returned so the admin
- * UI can display it while no real email provider is configured.
+ * Create a user and tell them how to get in.
+ *
+ * Which message they get depends on whether they can use Sign in with Google:
+ *
+ *   • A company-domain address gets a WELCOME email. No password is set, no
+ *     reset link is minted, and nothing is handed over — they sign in with the
+ *     Google account they already have. Issuing a reset link here would create
+ *     a credential nobody asked for and nobody needs.
+ *   • Any other address gets the reset link as before, because the Google door
+ *     is closed to them and a password is their only way in.
  */
 export async function createUserController(req: Request, res: Response): Promise<void> {
   const input = req.body as CreateUserInput;
   const user = await createUser(input);
+
+  if (isCompanyAccount(user.email) && env.google.clientId) {
+    await sendGoogleWelcomeEmail(user.email, env.frontendUrl);
+    const body: AdminResetLinkResponse = { user: toUserDto(user), signInMethod: 'google' };
+    res.status(201).json(body);
+    return;
+  }
+
   const ticket = await createPasswordReset(user.id);
   await sendPasswordResetEmail(user.email, ticket.resetLink);
-
   const body: AdminResetLinkResponse = {
     user: toUserDto(user),
     resetLink: ticket.resetLink,
     expiresAt: ticket.expiresAt.toISOString(),
+    signInMethod: 'password',
   };
   res.status(201).json(body);
 }
@@ -128,7 +145,14 @@ export async function mergeUsersController(req: Request, res: Response): Promise
   res.json(toUserDto(survivor) satisfies UserDto);
 }
 
-/** Admin-triggered password reset — no current password required. */
+/**
+ * Admin-triggered password reset — no current password required.
+ *
+ * Open for EVERY account, company ones included. A company account has no
+ * password by default, but an admin may deliberately give it one: that is the
+ * way back in if Google is unreachable or someone's Google account is locked.
+ * The difference from an outside account is only what happens automatically.
+ */
 export async function adminResetPasswordController(req: Request, res: Response): Promise<void> {
   const { id } = req.params as { id: string };
   const user = await getUserById(id);
@@ -139,6 +163,7 @@ export async function adminResetPasswordController(req: Request, res: Response):
     user: toUserDto(user),
     resetLink: ticket.resetLink,
     expiresAt: ticket.expiresAt.toISOString(),
+    signInMethod: 'password',
   };
   res.json(body);
 }
