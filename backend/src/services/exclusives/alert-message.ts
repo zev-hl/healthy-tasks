@@ -20,8 +20,13 @@ function pricePct(prev: number, current: number): string {
 
 function describeBullets(category: string | null): string {
   if (!category) return 'Bullet points changed.';
-  const nums = category.split(',').map((c) => c.replace('bullet_', '')).filter(Boolean);
-  return nums.length === 1 ? `Bullet ${nums[0]} rewritten.` : `Bullets ${nums.join(', ')} rewritten.`;
+  const nums = category
+    .split(',')
+    .map((c) => c.replace('bullet_', ''))
+    .filter(Boolean);
+  return nums.length === 1
+    ? `Bullet ${nums[0]} rewritten.`
+    : `Bullets ${nums.join(', ')} rewritten.`;
 }
 
 // Short human line for one detected alert. Pure — no I/O.
@@ -38,12 +43,16 @@ export function describeAlert(
       return `Buy Box lost to a competitor at ${money(current.buyboxPrice)} (we were at ${money(prev.buyboxPrice)}).`;
     case 'PriceChanged':
       return `List price changed from ${money(prev.listedPrice)} to ${money(current.listedPrice)}${
-        prev.listedPrice && current.listedPrice ? ` (${pricePct(prev.listedPrice, current.listedPrice)})` : ''
+        prev.listedPrice && current.listedPrice
+          ? ` (${pricePct(prev.listedPrice, current.listedPrice)})`
+          : ''
       }.`;
     case 'NumberOfSellersChanged':
       return `Offer count went from ${prev.offerCount} to ${current.offerCount}.`;
     case 'ListingSuppressed':
-      return current.suppressionReason ? `Listing suppressed — ${current.suppressionReason}` : 'Listing suppressed.';
+      return current.suppressionReason
+        ? `Listing suppressed — ${current.suppressionReason}`
+        : 'Listing suppressed.';
     case 'CategoryChanged':
       return `Category changed from ${quote(prev.category)} to ${quote(current.category)}.`;
     case 'BrandChanged':
@@ -51,7 +60,9 @@ export function describeAlert(
     case 'DimensionsChanged':
       return `Dimensions changed from ${quote(prev.dimensions)} to ${quote(current.dimensions)}.`;
     case 'TitleChanged':
-      return 'Title changed.';
+      // Reads like the other change messages, and is the ONLY place the two
+      // titles appear now that the Alert Type column shows just the badge.
+      return `Title changed from ${quote(prev.title)} to ${quote(current.title)}.`;
     case 'MainImageChanged':
       return 'Main image replaced.';
     case 'DescriptionChanged':

@@ -750,7 +750,9 @@ textarea:focus-visible {
   transition: filter var(--dur) var(--ease);
 }
 .mday-tile:hover {
-  filter: brightness(0.975);
+  /* Deepens each tile within its OWN colour family rather than replacing it,
+     so Overdue stays red-on-pink and In review stays purple. */
+  filter: brightness(0.96);
 }
 .mday-tile-value {
   font-weight: 700;
@@ -1090,8 +1092,12 @@ textarea:focus-visible {
     border-color var(--dur) var(--ease),
     background var(--dur) var(--ease);
 }
+/* Hover hints, active states. The tiles carry btn-plain so the filled global
+   button hover never paints accent-deep over them — these two rules are the
+   whole of their hover feedback, and both use palette tokens. */
 .tasks-stat:hover {
   border-color: var(--border-dashed);
+  background: var(--surface-sunk);
 }
 .tasks-stat-value {
   font-weight: 700;

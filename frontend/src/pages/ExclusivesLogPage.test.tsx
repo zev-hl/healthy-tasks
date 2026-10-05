@@ -80,7 +80,7 @@ afterEach(() => {
 });
 
 describe('ExclusivesLogPage', () => {
-  it('shows the real alerts, with the message and the before/after values', async () => {
+  it('shows the real alerts, with the message under the product title', async () => {
     renderWithRouter(<ExclusivesLogPage />);
     await settle();
 
@@ -89,7 +89,9 @@ describe('ExclusivesLogPage', () => {
     expect(
       screen.getByText('List price changed from $33.95 to $33.90 (-0.1%).'),
     ).toBeInTheDocument();
-    expect(screen.getByText('$33.95 → $33.90')).toBeInTheDocument();
+    // The Alert Type column carries the badge alone. The before/after used to
+    // repeat under it, which made a changed title fill the cell.
+    expect(screen.queryByText('$33.95 → $33.90')).not.toBeInTheDocument();
     expect(screen.getByText(/1 alert · newest first/)).toBeInTheDocument();
   });
 
