@@ -5,8 +5,10 @@ import { getStorage } from '../storage/index.js';
 import { getTaskDetail } from './task.service.js';
 import { recordHistory } from './task-history.service.js';
 import { assertCanEditTask, requireTaskAccess } from './access-control.service.js';
+import { richTextLength } from '../utils/rich-text.js';
 import {
   ATTACHMENT_MAX_BYTES,
+  COMMENT_MAX_ATTACHMENTS,
   isAllowedAttachmentType,
   TASK_HISTORY_FIELDS,
   type AttachmentDownloadResponse,
@@ -131,6 +133,132 @@ export async function presignCommentUpload(
   return { uploadUrl, storageKey };
 }
 
+/**
+ * The prefix a draft comment's files are uploaded under, before the comment
+ * exists. The comment id can't appear in the path — there is no comment yet —
+ * so the ACTOR id takes its place. That is what lets `prepareCommentAttachments`
+ * prove, with no extra lookup, that a caller is only claiming files they
+ * uploaded themselves; without it anyone could post a comment pointing at
+ * someone else's freshly uploaded object.
+ */
+export function commentDraftPrefix(taskId: number, actorId: string): string {
+  return `comments/${taskId}/${actorId}/`;
+}
+
+/**
+ * Pre-sign an upload for a comment that has not been written yet, so text and
+ * files can be submitted together in one request.
+ *
+ * Access mirrors commenting itself: read-only (tree-inherited) viewers cannot
+ * comment, so they cannot stage files for one either.
+ */
+export async function presignCommentDraftUpload(
+  actor: Actor,
+  taskId: number,
+  input: UploadInput,
+): Promise<PresignAttachmentResponse> {
+  const access = await requireTaskAccess(actor, taskId);
+  if (access.level === 'tree') {
+    throw HttpError.forbidden('You have read-only access to this task and cannot comment on it');
+  }
+  assertValidUpload(input.contentType, input.size);
+  const storageKey = `${commentDraftPrefix(taskId, actor.id)}${randomUUID()}/${safeName(input.filename)}`;
+  const uploadUrl = await getStorage().presignUpload(storageKey, input.contentType, input.size);
+  return { uploadUrl, storageKey };
+}
+
+/** One validated attachment, ready to be written inside the comment's transaction. */
+export interface PreparedAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  storageKey: string;
+}
+
+/**
+ * Check every staged file before a comment is written: that the caller uploaded
+ * it, that it isn't claimed twice, and that its real size and type (read back
+ * from storage, not merely declared) are allowed.
+ *
+ * Ownership is checked FIRST and separately, because the caller cleans up by
+ * deleting these keys when the write fails. A key that failed the prefix check
+ * might belong to someone else, so it must never reach that cleanup — which is
+ * why this throws on a bad prefix before looking at anything else.
+ */
+export async function prepareCommentAttachments(
+  actor: Actor,
+  taskId: number,
+  inputs: ConfirmInput[],
+): Promise<PreparedAttachment[]> {
+  if (inputs.length > COMMENT_MAX_ATTACHMENTS) {
+    throw HttpError.badRequest(
+      `A comment can carry at most ${COMMENT_MAX_ATTACHMENTS} files; ${inputs.length} were sent.`,
+    );
+  }
+  const prefix = commentDraftPrefix(taskId, actor.id);
+  const seen = new Set<string>();
+  for (const input of inputs) {
+    if (!input.storageKey.startsWith(prefix)) {
+      throw HttpError.badRequest('storageKey does not belong to this comment');
+    }
+    if (seen.has(input.storageKey)) {
+      throw HttpError.badRequest('The same file was attached twice');
+    }
+    seen.add(input.storageKey);
+  }
+
+  // A key already on an attachment row is somebody's live file. Accepting it
+  // would both duplicate the row and, worse, put a file the previous comment
+  // still points at into this call's cleanup list.
+  if (inputs.length > 0) {
+    const already = await prisma.attachment.findFirst({
+      where: { storageKey: { in: inputs.map((i) => i.storageKey) } },
+      select: { storageKey: true },
+    });
+    if (already) {
+      throw HttpError.badRequest('That file is already attached');
+    }
+  }
+
+  const prepared: PreparedAttachment[] = [];
+  for (const input of inputs) {
+    // Unlike the two-step confirm path, a missing object here is not something
+    // to shrug at: it means the browser's upload never landed, and writing the
+    // row would leave a comment pointing at nothing. Fail instead.
+    const head = await getStorage().headObject(input.storageKey);
+    if (!head) {
+      throw HttpError.badRequest(`"${input.filename}" was not uploaded; please try again`);
+    }
+    const contentType = head.contentType || input.contentType;
+    assertValidUpload(contentType, head.size);
+    prepared.push({
+      filename: input.filename.slice(0, 255),
+      contentType,
+      size: head.size,
+      storageKey: input.storageKey,
+    });
+  }
+  return prepared;
+}
+
+/**
+ * Best-effort removal of objects whose database write failed. Object storage
+ * can't join a Prisma transaction, so this is the compensating half: the rows
+ * were rolled back, and these bytes would otherwise be orphaned in the bucket.
+ * A failure here is logged, never thrown — the caller is already reporting the
+ * original error, and burying it under a cleanup error would help nobody.
+ */
+export async function discardUploads(storageKeys: string[]): Promise<void> {
+  for (const key of storageKeys) {
+    try {
+      await getStorage().deleteObject(key);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to discard an uploaded object after a failed write', key, err);
+    }
+  }
+}
+
 // --- Confirm / persist metadata (step 2) -----------------------------------
 
 export async function createTaskAttachment(
@@ -148,7 +276,14 @@ export async function createTaskAttachment(
   const filename = input.filename.slice(0, 255);
   await prisma.$transaction(async (tx) => {
     await tx.attachment.create({
-      data: { filename, contentType, size, storageKey: input.storageKey, uploadedById: actor.id, taskId },
+      data: {
+        filename,
+        contentType,
+        size,
+        storageKey: input.storageKey,
+        uploadedById: actor.id,
+        taskId,
+      },
     });
     // History: an attachment was added (identified by filename).
     await recordHistory(tx, {
@@ -179,7 +314,14 @@ export async function createCommentAttachment(
   const filename = input.filename.slice(0, 255);
   await prisma.$transaction(async (tx) => {
     await tx.attachment.create({
-      data: { filename, contentType, size, storageKey: input.storageKey, uploadedById: actor.id, commentId },
+      data: {
+        filename,
+        contentType,
+        size,
+        storageKey: input.storageKey,
+        uploadedById: actor.id,
+        commentId,
+      },
     });
     // History: a comment-level attachment is logged against its parent task too.
     await recordHistory(tx, {
@@ -195,10 +337,7 @@ export async function createCommentAttachment(
 
 // --- Delete & download -----------------------------------------------------
 
-export async function deleteAttachment(
-  actor: Actor,
-  attachmentId: string,
-): Promise<TaskDetailDto> {
+export async function deleteAttachment(actor: Actor, attachmentId: string): Promise<TaskDetailDto> {
   const attachment = await prisma.attachment.findUnique({
     where: { id: attachmentId },
     select: {
@@ -207,7 +346,8 @@ export async function deleteAttachment(
       storageKey: true,
       uploadedById: true,
       taskId: true,
-      comment: { select: { taskId: true } },
+      commentId: true,
+      comment: { select: { taskId: true, body: true } },
     },
   });
   if (!attachment) throw HttpError.notFound('Attachment not found');
@@ -231,6 +371,25 @@ export async function deleteAttachment(
       changeType: 'removed',
       detail: attachment.filename,
     });
+
+    // A comment must always carry text or files — that is checked when one is
+    // created, and removing the last file of a text-less comment is the only
+    // way to break it afterwards. Rather than leave an empty shell in the
+    // thread, the comment goes with its last file.
+    if (attachment.commentId && richTextLength(attachment.comment?.body ?? '') === 0) {
+      const left = await tx.attachment.count({
+        where: { commentId: attachment.commentId },
+      });
+      if (left === 0) {
+        await tx.comment.delete({ where: { id: attachment.commentId } });
+        await recordHistory(tx, {
+          taskId,
+          userId: actor.id,
+          field: TASK_HISTORY_FIELDS.comment,
+          changeType: 'removed',
+        });
+      }
+    }
   });
   return getTaskDetail(taskId, actor);
 }

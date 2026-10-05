@@ -398,6 +398,13 @@ export const MENTION_EVENT_DEBOUNCE_MINUTES = 15;
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 
 /**
+ * How many files one comment may carry. Enough for a handful of screenshots,
+ * low enough that a mis-click can't push a whole folder. Enforced in the
+ * browser and again on the server.
+ */
+export const COMMENT_MAX_ATTACHMENTS = 5;
+
+/**
  * Allowed attachment categories: images, audio, and video (matched by MIME
  * prefix) plus this explicit document allowlist. Used by both the client
  * pre-check and the authoritative server check.
@@ -484,8 +491,19 @@ export interface AttachmentDownloadResponse {
 
 // --- Comment request shapes ------------------------------------------------
 
+/**
+ * A comment may carry files. Both parts are optional on their own, but a
+ * comment with neither text nor files is rejected.
+ *
+ * The bytes are already in object storage by the time this request is sent —
+ * the browser uploads them with pre-signed URLs first, exactly as task
+ * attachments work — so this only carries each file's metadata and the path it
+ * was uploaded to. The server re-checks type, size and ownership of that path
+ * before it writes anything.
+ */
 export interface CreateCommentRequest {
-  body: string;
+  body?: string;
+  attachments?: ConfirmAttachmentRequest[];
 }
 
 export interface UpdateCommentRequest {
@@ -854,7 +872,9 @@ export function formatDueDateResult(bucket: DueDateBucket, daysDelta: number | n
   const label = DUE_DATE_BUCKET_LABELS[bucket];
   const plural = (n: number): string => (n === 1 ? '' : 's');
   if (bucket === 'OnTime' && daysDelta !== null) {
-    return daysDelta > 0 ? `${label} (${daysDelta} day${plural(daysDelta)} early)` : `${label} (same day)`;
+    return daysDelta > 0
+      ? `${label} (${daysDelta} day${plural(daysDelta)} early)`
+      : `${label} (same day)`;
   }
   if (bucket === 'Late' && daysDelta !== null) {
     const late = Math.abs(daysDelta);
@@ -1071,8 +1091,7 @@ export const REMINDER_LEAD_OPTIONS: { minutes: number; label: string }[] = [
 /** Human label for a lead time (falls back to "N minutes before"). */
 export function reminderLeadLabel(minutes: number): string {
   return (
-    REMINDER_LEAD_OPTIONS.find((o) => o.minutes === minutes)?.label ??
-    `${minutes} minutes before`
+    REMINDER_LEAD_OPTIONS.find((o) => o.minutes === minutes)?.label ?? `${minutes} minutes before`
   );
 }
 
@@ -1288,7 +1307,9 @@ export function moveTemplateNode<T extends TemplateTreeNode>(
   if (subtree.has(targetKey)) return nodes.slice();
 
   const newParentKey = pos === 'inside' ? targetKey : target.parentKey;
-  const block = nodes.filter((n) => subtree.has(n.key)).map((n) => (n.key === dragKey ? { ...n, parentKey: newParentKey } : n));
+  const block = nodes
+    .filter((n) => subtree.has(n.key))
+    .map((n) => (n.key === dragKey ? { ...n, parentKey: newParentKey } : n));
   const rest = nodes.filter((n) => !subtree.has(n.key));
   const targetIdx = rest.findIndex((n) => n.key === targetKey);
   if (targetIdx === -1) return nodes.slice();

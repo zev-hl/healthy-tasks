@@ -586,16 +586,13 @@ describe('supervisor role rule', () => {
     const token = await adminToken();
     const member = await seedUser({ email: 'plain@test.local', role: 'Member' });
 
-    const res = await request(app)
-      .post('/api/users')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        email: 'report@test.local',
-        firstName: 'Rep',
-        lastName: 'Ort',
-        role: 'Member',
-        supervisorId: member.id,
-      });
+    const res = await request(app).post('/api/users').set('Authorization', `Bearer ${token}`).send({
+      email: 'report@test.local',
+      firstName: 'Rep',
+      lastName: 'Ort',
+      role: 'Member',
+      supervisorId: member.id,
+    });
 
     assert.equal(res.status, 400);
     assert.match(res.body.error, /Manager or Admin/);
@@ -605,16 +602,13 @@ describe('supervisor role rule', () => {
     const token = await adminToken();
     const mgr = await seedUser({ email: 'boss@test.local', role: 'Manager' });
 
-    const res = await request(app)
-      .post('/api/users')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        email: 'report2@test.local',
-        firstName: 'Rep',
-        lastName: 'Two',
-        role: 'Member',
-        supervisorId: mgr.id,
-      });
+    const res = await request(app).post('/api/users').set('Authorization', `Bearer ${token}`).send({
+      email: 'report2@test.local',
+      firstName: 'Rep',
+      lastName: 'Two',
+      role: 'Member',
+      supervisorId: mgr.id,
+    });
 
     assert.equal(res.status, 201);
     assert.equal(res.body.user.supervisorId, mgr.id);
@@ -1438,10 +1432,298 @@ describe('task attachments (Phase 4)', () => {
   });
 });
 
+describe('comment + attachments in one request (Phase 4)', () => {
+  /**
+   * Stage a file the way the browser does: ask for a pre-signed URL, then put
+   * the bytes in storage. Returns the metadata the create-comment call sends.
+   */
+  async function stage(
+    token: string,
+    taskId: number,
+    over: Partial<{ filename: string; contentType: string; size: number }> = {},
+  ) {
+    const meta = {
+      filename: over.filename ?? 'notes.pdf',
+      contentType: over.contentType ?? 'application/pdf',
+      size: over.size ?? 2048,
+    };
+    const res = await request(app)
+      .post(`/api/tasks/${taskId}/comments/attachments/presign`)
+      .set(auth(token))
+      .send(meta);
+    assert.equal(res.status, 201, `presign failed: ${JSON.stringify(res.body)}`);
+    const storageKey = res.body.storageKey as string;
+    memoryStorage.__put(storageKey, { size: meta.size, contentType: meta.contentType });
+    return { ...meta, storageKey };
+  }
+
+  const counts = async () => ({
+    comments: await prisma.comment.count(),
+    attachments: await prisma.attachment.count(),
+  });
+
+  it('accepts a comment with no files', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Text only');
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>Just words</p>' });
+
+    assert.equal(res.status, 201);
+    assert.equal(res.body.comments.length, 1);
+    assert.equal(res.body.comments[0].attachments.length, 0);
+  });
+
+  it('accepts a file with no comment text', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'File only');
+    const file = await stage(admin, t.id);
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ attachments: [file] });
+
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    const c = res.body.comments[0];
+    assert.equal(c.attachments.length, 1);
+    assert.equal(c.attachments[0].filename, 'notes.pdf');
+  });
+
+  it('accepts text and several files together, in ONE request', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Both');
+    const a = await stage(admin, t.id, { filename: 'one.pdf' });
+    const b = await stage(admin, t.id, { filename: 'two.png', contentType: 'image/png' });
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>See attached</p>', attachments: [a, b] });
+
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    const c = res.body.comments[0];
+    assert.match(c.body, /See attached/);
+    assert.equal(c.attachments.length, 2);
+
+    // Both files are logged against the parent task's history, the same way the
+    // standalone attachment endpoint does it.
+    const hist = await request(app).get(`/api/tasks/${t.id}/history`).set(auth(admin));
+    assert.equal(hist.status, 200);
+    const added = (hist.body as { field: string }[]).filter((h) => h.field === 'attachment');
+    assert.equal(added.length, 2);
+  });
+
+  it('rejects a comment with neither text nor files', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Empty');
+    const before = await counts();
+
+    const res = await request(app).post(`/api/tasks/${t.id}/comments`).set(auth(admin)).send({});
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await counts(), before);
+  });
+
+  it('rejects a file whose upload never landed, and saves nothing', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Upload failed');
+    // Pre-sign WITHOUT putting the bytes: this is the browser's PUT failing.
+    const res0 = await request(app)
+      .post(`/api/tasks/${t.id}/comments/attachments/presign`)
+      .set(auth(admin))
+      .send({ filename: 'ghost.pdf', contentType: 'application/pdf', size: 10 });
+    const ghost = {
+      filename: 'ghost.pdf',
+      contentType: 'application/pdf',
+      size: 10,
+      storageKey: res0.body.storageKey as string,
+    };
+    const before = await counts();
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>With a ghost</p>', attachments: [ghost] });
+
+    assert.equal(res.status, 400);
+    assert.match(res.body.error as string, /was not uploaded/);
+    assert.deepEqual(await counts(), before, 'nothing may be saved');
+  });
+
+  it('deletes the uploaded file when the database write fails', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'DB failure');
+    const file = await stage(admin, t.id, { filename: 'doomed.pdf' });
+    const before = await counts();
+    const deletedBefore = memoryStorage.__deleted.length;
+
+    // Let the real transaction write both rows, then fail inside it — so what
+    // the test exercises is a genuine rollback, not an error raised before any
+    // row existed. Patching prisma.attachment.create would do nothing here: the
+    // service writes through the transaction client, which is a different object.
+    const client = prisma as unknown as { $transaction: unknown };
+    const original = client.$transaction as (cb: unknown) => Promise<unknown>;
+    const runTransaction = original.bind(prisma);
+    client.$transaction = (cb: (tx: unknown) => Promise<unknown>) =>
+      runTransaction(async (tx: unknown) => {
+        await cb(tx);
+        throw new Error('forced database failure');
+      });
+    let res;
+    try {
+      res = await request(app)
+        .post(`/api/tasks/${t.id}/comments`)
+        .set(auth(admin))
+        .send({ body: '<p>Should vanish</p>', attachments: [file] });
+    } finally {
+      client.$transaction = original;
+    }
+
+    assert.equal(res.status, 500);
+    assert.deepEqual(await counts(), before, 'the comment must not survive');
+    assert.ok(
+      memoryStorage.__deleted.slice(deletedBefore).includes(file.storageKey),
+      'the uploaded object must be removed',
+    );
+  });
+
+  it('rejects a disallowed type and an oversized file', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Bad files');
+
+    let res = await request(app)
+      .post(`/api/tasks/${t.id}/comments/attachments/presign`)
+      .set(auth(admin))
+      .send({ filename: 'virus.exe', contentType: 'application/x-msdownload', size: 10 });
+    assert.equal(res.status, 400);
+
+    res = await request(app)
+      .post(`/api/tasks/${t.id}/comments/attachments/presign`)
+      .set(auth(admin))
+      .send({ filename: 'huge.pdf', contentType: 'application/pdf', size: 26 * 1024 * 1024 });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error as string, /too large/i);
+  });
+
+  it('rejects more than five files', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Too many');
+    const files = [];
+    for (let i = 0; i < 6; i += 1) {
+      files.push(await stage(admin, t.id, { filename: `f${i}.pdf` }));
+    }
+    const before = await counts();
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ attachments: files });
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await counts(), before);
+  });
+
+  it('refuses a file staged by someone else, and does NOT delete it', async () => {
+    const admin = await adminToken();
+    const stager = await seedUser({
+      email: 'stager@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
+    const stagerTok = await login('stager@test.local', MEMBER_PASSWORD);
+    // The other user must be able to comment for their own pre-sign to succeed.
+    const t = await makeTask(admin, 'Key theft', { assigneeId: stager.id });
+    const theirs = await stage(stagerTok, t.id, { filename: 'private.pdf' });
+    const deletedBefore = memoryStorage.__deleted.length;
+
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>Mine now</p>', attachments: [theirs] });
+
+    assert.equal(res.status, 400);
+    assert.ok(
+      !memoryStorage.__deleted.slice(deletedBefore).includes(theirs.storageKey),
+      "another user's object must never be swept up by cleanup",
+    );
+  });
+
+  it('removes a text-less comment when its last file is deleted', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Last file');
+    const a = await stage(admin, t.id, { filename: 'only.pdf' });
+    const b = await stage(admin, t.id, { filename: 'second.pdf' });
+
+    const posted = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ attachments: [a, b] });
+    assert.equal(posted.status, 201);
+    const files = posted.body.comments[0].attachments as { id: string }[];
+    assert.equal(files.length, 2);
+
+    // One file left: the comment still has something to show, so it stays.
+    let res = await request(app).delete(`/api/attachments/${files[0].id}`).set(auth(admin));
+    assert.equal(res.status, 200);
+    assert.equal(res.body.comments.length, 1);
+
+    // Last file gone, and no text: the comment goes with it rather than
+    // lingering as an empty row in the thread.
+    res = await request(app).delete(`/api/attachments/${files[1].id}`).set(auth(admin));
+    assert.equal(res.status, 200);
+    assert.equal(res.body.comments.length, 0);
+  });
+
+  it('keeps a comment that still has text when its last file is deleted', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Text survives');
+    const file = await stage(admin, t.id, { filename: 'extra.pdf' });
+
+    const posted = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>Words of my own</p>', attachments: [file] });
+    const att = posted.body.comments[0].attachments[0] as { id: string };
+
+    const res = await request(app).delete(`/api/attachments/${att.id}`).set(auth(admin));
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.comments.length, 1);
+    assert.match(res.body.comments[0].body as string, /Words of my own/);
+    assert.equal(res.body.comments[0].attachments.length, 0);
+  });
+
+  it('refuses a file that is already attached to something', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Reuse');
+    const file = await stage(admin, t.id);
+    const first = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ attachments: [file] });
+    assert.equal(first.status, 201);
+
+    const again = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ attachments: [file] });
+
+    assert.equal(again.status, 400);
+    assert.match(again.body.error as string, /already attached/);
+  });
+});
+
 describe('task comments (Phase 4)', () => {
   it('adds, edits (sets edited), and blocks non-author edit/delete', async () => {
     const admin = await adminToken();
-    const author = await seedUser({ email: 'author@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const author = await seedUser({
+      email: 'author@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     await seedUser({ email: 'other@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const authorTok = await login('author@test.local', MEMBER_PASSWORD);
     const otherTok = await login('other@test.local', MEMBER_PASSWORD);
@@ -1487,7 +1769,11 @@ describe('task comments (Phase 4)', () => {
 
   it('restricts comment attachments to the comment author', async () => {
     const admin = await adminToken();
-    const ca = await seedUser({ email: 'ca@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const ca = await seedUser({
+      email: 'ca@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     await seedUser({ email: 'cb@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const aTok = await login('ca@test.local', MEMBER_PASSWORD);
     const bTok = await login('cb@test.local', MEMBER_PASSWORD);
@@ -1532,7 +1818,11 @@ describe('comment @mentions and mention events (Phase 4)', () => {
       role: 'Member',
       password: MEMBER_PASSWORD,
     });
-    const mauthor = await seedUser({ email: 'mauthor@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const mauthor = await seedUser({
+      email: 'mauthor@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const authorTok = await login('mauthor@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'Mentions', { assigneeId: mauthor.id });
     const span = mention(mentioned.id, 'mentioned');
@@ -1591,7 +1881,11 @@ describe('comment @mentions and mention events (Phase 4)', () => {
       role: 'Member',
       password: MEMBER_PASSWORD,
     });
-    const m3 = await seedUser({ email: 'm3@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const m3 = await seedUser({
+      email: 'm3@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const authorTok = await login('m3@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'MentionsAdd', { assigneeId: m3.id });
 
@@ -1707,15 +2001,12 @@ describe('task change history (Phase 5)', () => {
     const assignee = await seedUser({ email: 'asg@test.local', role: 'Member' });
     const t = await makeTask(tok, 'Hist task');
 
-    await request(app)
-      .patch(`/api/tasks/${t.id}`)
-      .set(auth(tok))
-      .send({
-        status: 'InProgress',
-        priority: 'High',
-        assigneeId: assignee.id,
-        dueAt: '2026-09-01T10:00:00Z',
-      });
+    await request(app).patch(`/api/tasks/${t.id}`).set(auth(tok)).send({
+      status: 'InProgress',
+      priority: 'High',
+      assigneeId: assignee.id,
+      dueAt: '2026-09-01T10:00:00Z',
+    });
 
     const entries = await history(tok, t.id);
     const byField = Object.fromEntries(entries.map((e) => [e.field, e]));
@@ -1807,7 +2098,11 @@ describe('task change history (Phase 5)', () => {
 
   it('logs comment add/edit/delete (by the author) without storing the text', async () => {
     const admin = await adminToken();
-    const cauth = await seedUser({ email: 'cauth@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const cauth = await seedUser({
+      email: 'cauth@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const authorTok = await login('cauth@test.local', MEMBER_PASSWORD);
     const t = await makeTask(admin, 'Cmt hist', { assigneeId: cauth.id });
 
@@ -1832,7 +2127,11 @@ describe('task change history (Phase 5)', () => {
 
   it('is visible to any authenticated user with access to the task', async () => {
     const admin = await adminToken();
-    const viewer = await seedUser({ email: 'viewer@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const viewer = await seedUser({
+      email: 'viewer@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const viewerTok = await login('viewer@test.local', MEMBER_PASSWORD);
     // Phase 13: the viewer needs access — make them the assignee (Admin still edits).
     const t = await makeTask(admin, 'Shared', { assigneeId: viewer.id });
@@ -1849,16 +2148,13 @@ describe('admin user edit in place (Phase 5)', () => {
   it('changes first/last name, title, role, and status', async () => {
     const tok = await adminToken();
     const u = await seedUser({ email: 'edit@test.local', role: 'Member' });
-    const res = await request(app)
-      .patch(`/api/users/${u.id}`)
-      .set(auth(tok))
-      .send({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        title: 'Lead',
-        role: 'Manager',
-        isActive: false,
-      });
+    const res = await request(app).patch(`/api/users/${u.id}`).set(auth(tok)).send({
+      firstName: 'Jane',
+      lastName: 'Doe',
+      title: 'Lead',
+      role: 'Manager',
+      isActive: false,
+    });
     assert.equal(res.status, 200);
     assert.equal(res.body.firstName, 'Jane');
     assert.equal(res.body.lastName, 'Doe');
@@ -2119,7 +2415,11 @@ describe('task search / query (Phase 6)', () => {
     });
     const ids = res.rows.map((r) => r.id);
     assert.ok(ids.includes(todayLate.id), 'due earlier that day is included');
-    assert.equal(ids.includes(nextDay.id), false, 'due the next day is NOT included (no +24h expansion)');
+    assert.equal(
+      ids.includes(nextDay.id),
+      false,
+      'due the next day is NOT included (no +24h expansion)',
+    );
   });
 
   it('defaults to Due ascending with no-due tasks pinned to the top', async () => {
@@ -3185,7 +3485,9 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     assert.equal(res.body.nodes.length, 2);
     assert.equal(res.body.dependencies.length, 1);
     assert.deepEqual([...res.body.roles].sort(), ['Inspector', 'Packer']);
-    const root = res.body.nodes.find((n: { parentNodeId: number | null }) => n.parentNodeId === null);
+    const root = res.body.nodes.find(
+      (n: { parentNodeId: number | null }) => n.parentNodeId === null,
+    );
     assert.ok(root, 'has exactly one root node');
     assert.equal(root.defaultPriority, 'High');
   });
@@ -3247,7 +3549,11 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     assert.equal(rootRes.body.dueAt, new Date('2026-08-12T00:00:00.000Z').toISOString());
     // The child is a real, dependent task under the real parent.
     assert.equal(rootRes.body.children.length, 1);
-    assert.equal(rootRes.body.blocks.length, 1, 'root blocks the child (dependency carried through)');
+    assert.equal(
+      rootRes.body.blocks.length,
+      1,
+      'root blocks the child (dependency carried through)',
+    );
 
     // Instance label is a filterable attribute, not just baked into the name.
     const q = await request(app)
@@ -3299,11 +3605,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     });
     assert.deepEqual(
       occ.map((o) => o.anchorStart.toISOString()),
-      [
-        '2026-08-01T00:00:00.000Z',
-        '2026-08-22T00:00:00.000Z',
-        '2026-09-12T00:00:00.000Z',
-      ],
+      ['2026-08-01T00:00:00.000Z', '2026-08-22T00:00:00.000Z', '2026-09-12T00:00:00.000Z'],
       'occurrences are spaced exactly 3 weeks apart',
     );
   });
@@ -3311,20 +3613,17 @@ describe('task templates / recurring tasks (Phase 11)', () => {
   it('relative-to-completion only schedules the next occurrence after the prior root completes', async () => {
     const admin = await adminToken();
     await setLeadDays(0);
-    const tpl = await createTemplate(
-      admin,
-      {
-        name: 'Relative series',
-        nodes: [{ key: 'root', parentKey: null, name: 'Do the thing', dueOffsetDays: 1 }],
-        recurrence: {
-          recurrenceType: 'RelativeToCompletion',
-          intervalCount: 3,
-          intervalUnit: 'Day',
-          anchorDate: '2026-08-01T00:00:00.000Z',
-          endType: 'Never',
-        },
+    const tpl = await createTemplate(admin, {
+      name: 'Relative series',
+      nodes: [{ key: 'root', parentKey: null, name: 'Do the thing', dueOffsetDays: 1 }],
+      recurrence: {
+        recurrenceType: 'RelativeToCompletion',
+        intervalCount: 3,
+        intervalUnit: 'Day',
+        anchorDate: '2026-08-01T00:00:00.000Z',
+        endType: 'Never',
       },
-    );
+    });
     const scheduledCount = async (): Promise<number> =>
       prisma.templateOccurrence.count({ where: { templateId: tpl.id, origin: 'scheduled' } });
 
@@ -3340,43 +3639,57 @@ describe('task templates / recurring tasks (Phase 11)', () => {
       where: { templateId: tpl.id, seq: 1 },
       select: { rootTaskId: true },
     });
-    await request(app).patch(`/api/tasks/${first!.rootTaskId}`).set(auth(admin)).send({ status: 'Completed' });
+    await request(app)
+      .patch(`/api/tasks/${first!.rootTaskId}`)
+      .set(auth(admin))
+      .send({ status: 'Completed' });
     const root = await prisma.task.findUnique({
       where: { id: first!.rootTaskId! },
       select: { statusChangedAt: true },
     });
     const after = new Date(root!.statusChangedAt!.getTime() + 4 * 24 * 60 * 60 * 1000);
     await runScheduler(after);
-    assert.equal(await scheduledCount(), 2, 'the next occurrence is scheduled only after completion');
+    assert.equal(
+      await scheduledCount(),
+      2,
+      'the next occurrence is scheduled only after completion',
+    );
   });
 
   it('scheduled occurrences auto-assign the same person(s) as the previous instance', async () => {
     const admin = await adminToken();
     await setLeadDays(0);
     const owner = await seedUser({ email: 'owner@test.local', role: 'Member' });
-    const tpl = await createTemplate(
-      admin,
-      {
-        name: 'Owned series',
-        nodes: [
-          { key: 'root', parentKey: null, name: 'Owned task', assigneeRole: 'Owner', startOffsetDays: 0, dueOffsetDays: 1 },
-        ],
-        recurrence: {
-          recurrenceType: 'Fixed',
-          intervalCount: 1,
-          intervalUnit: 'Week',
-          anchorDate: '2026-08-01T00:00:00.000Z',
-          endType: 'AfterOccurrences',
-          maxOccurrences: 5,
+    const tpl = await createTemplate(admin, {
+      name: 'Owned series',
+      nodes: [
+        {
+          key: 'root',
+          parentKey: null,
+          name: 'Owned task',
+          assigneeRole: 'Owner',
+          startOffsetDays: 0,
+          dueOffsetDays: 1,
         },
+      ],
+      recurrence: {
+        recurrenceType: 'Fixed',
+        intervalCount: 1,
+        intervalUnit: 'Week',
+        anchorDate: '2026-08-01T00:00:00.000Z',
+        endType: 'AfterOccurrences',
+        maxOccurrences: 5,
       },
-    );
+    });
 
     // Seed the "previous instance" by manually instantiating with the owner mapped.
     await request(app)
       .post(`/api/templates/${tpl.id}/instantiate`)
       .set(auth(admin))
-      .send({ anchorStart: '2026-07-01T00:00:00.000Z', roleAssignments: [{ role: 'Owner', assigneeId: owner.id }] });
+      .send({
+        anchorStart: '2026-07-01T00:00:00.000Z',
+        roleAssignments: [{ role: 'Owner', assigneeId: owner.id }],
+      });
 
     // The next scheduled fire carries the owner forward automatically.
     await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
@@ -3384,7 +3697,11 @@ describe('task templates / recurring tasks (Phase 11)', () => {
       where: { templateId: tpl.id, seq: 1 },
       include: { rootTask: { select: { assigneeId: true } } },
     });
-    assert.equal(seq1?.rootTask?.assigneeId, owner.id, 'the scheduled root reuses the prior assignee');
+    assert.equal(
+      seq1?.rootTask?.assigneeId,
+      owner.id,
+      'the scheduled root reuses the prior assignee',
+    );
   });
 
   it('computes fixed-schedule ghosts (not persisted) and none for relative-to-completion', async () => {
@@ -3484,7 +3801,10 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     const childId = nodes.find((n) => n.parentNodeId !== null)!.id;
 
     // Materialize seq 1 (a future, not-yet-started instance).
-    await request(app).post(`/api/templates/${tpl.id}/materialize`).set(auth(admin)).send({ seq: 1 });
+    await request(app)
+      .post(`/api/templates/${tpl.id}/materialize`)
+      .set(auth(admin))
+      .send({ seq: 1 });
 
     // Edit the template: rename + re-prioritize the root ("this and following").
     const editRes = await request(app)
@@ -3549,7 +3869,15 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     const admin = await adminToken();
     const tpl = await createTemplate(admin, {
       name: 'Single',
-      nodes: [{ key: 'root', parentKey: null, name: 'Original', defaultPriority: 'Low', dueOffsetDays: 1 }],
+      nodes: [
+        {
+          key: 'root',
+          parentKey: null,
+          name: 'Original',
+          defaultPriority: 'Low',
+          dueOffsetDays: 1,
+        },
+      ],
     });
     const inst = await request(app)
       .post(`/api/templates/${tpl.id}/instantiate`)
@@ -3558,7 +3886,10 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     const rootTaskId = inst.body.rootTaskId;
     const occId = inst.body.occurrence.id;
 
-    await request(app).patch(`/api/tasks/${rootTaskId}`).set(auth(admin)).send({ status: 'Completed' });
+    await request(app)
+      .patch(`/api/tasks/${rootTaskId}`)
+      .set(auth(admin))
+      .send({ status: 'Completed' });
 
     // A completed occurrence is excluded from the future list...
     const future = await request(app).get(`/api/templates/${tpl.id}/future`).set(auth(admin));
@@ -3570,7 +3901,18 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     await request(app)
       .patch(`/api/templates/${tpl.id}`)
       .set(auth(admin))
-      .send({ nodes: [{ id: rootNodeId, key: 'root', parentKey: null, name: 'Changed', defaultPriority: 'Urgent', dueOffsetDays: 1 }] });
+      .send({
+        nodes: [
+          {
+            id: rootNodeId,
+            key: 'root',
+            parentKey: null,
+            name: 'Changed',
+            defaultPriority: 'Urgent',
+            dueOffsetDays: 1,
+          },
+        ],
+      });
     await request(app)
       .post(`/api/templates/${tpl.id}/apply-to-future`)
       .set(auth(admin))
@@ -3657,8 +3999,16 @@ describe('task-level recurrence (Phase 11)', () => {
       where: { recurrenceSourceId: t.id, recurrenceSeq: 2 },
     });
     assert.ok(occ, 'the +1 week occurrence was materialized');
-    assert.equal(occ!.assigneeId, owner.id, 'the assignee is carried forward from the prior instance');
-    assert.equal(occ!.startAt?.toISOString(), '2026-08-08T00:00:00.000Z', 'dates shift by one interval');
+    assert.equal(
+      occ!.assigneeId,
+      owner.id,
+      'the assignee is carried forward from the prior instance',
+    );
+    assert.equal(
+      occ!.startAt?.toISOString(),
+      '2026-08-08T00:00:00.000Z',
+      'dates shift by one interval',
+    );
     assert.equal(occ!.dueAt?.toISOString(), '2026-08-08T02:00:00.000Z');
     // seq 3 (+2 weeks) is not yet due.
     assert.equal(await prisma.task.count({ where: { recurrenceSourceId: t.id } }), 1);
@@ -3674,10 +4024,17 @@ describe('task-level recurrence (Phase 11)', () => {
     });
 
     await runScheduler(new Date('2026-08-30T00:00:00.000Z')); // source still open
-    assert.equal(await prisma.task.count({ where: { recurrenceSourceId: t.id } }), 0, 'nothing while open');
+    assert.equal(
+      await prisma.task.count({ where: { recurrenceSourceId: t.id } }),
+      0,
+      'nothing while open',
+    );
 
     await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Completed' });
-    const src = await prisma.task.findUnique({ where: { id: t.id }, select: { statusChangedAt: true } });
+    const src = await prisma.task.findUnique({
+      where: { id: t.id },
+      select: { statusChangedAt: true },
+    });
     await runScheduler(new Date(src!.statusChangedAt!.getTime() + 4 * 24 * 60 * 60 * 1000));
     assert.equal(
       await prisma.task.count({ where: { recurrenceSourceId: t.id } }),
@@ -3753,7 +4110,11 @@ describe('task-level recurrence (Phase 11)', () => {
 describe('task duplication (Phase 11 follow-on)', () => {
   it('duplicates a single task as a fresh copy (status reset, no descendants)', async () => {
     const tok = await adminToken();
-    const t = await makeTask(tok, 'Original', { priority: 'High', tags: ['x'], dueAt: '2026-09-01T00:00:00.000Z' });
+    const t = await makeTask(tok, 'Original', {
+      priority: 'High',
+      tags: ['x'],
+      dueAt: '2026-09-01T00:00:00.000Z',
+    });
     await request(app).patch(`/api/tasks/${t.id}`).set(auth(tok)).send({ status: 'InProgress' });
 
     const res = await request(app)
@@ -3773,7 +4134,10 @@ describe('task duplication (Phase 11 follow-on)', () => {
     const tok = await adminToken();
     const parent = await makeTask(tok, 'Parent');
     const child = await makeTask(tok, 'Child');
-    await request(app).put(`/api/tasks/${child.id}/parent`).set(auth(tok)).send({ parentId: parent.id });
+    await request(app)
+      .put(`/api/tasks/${child.id}/parent`)
+      .set(auth(tok))
+      .send({ parentId: parent.id });
     await request(app)
       .post(`/api/tasks/${parent.id}/dependencies`)
       .set(auth(tok))
@@ -3836,7 +4200,10 @@ describe('task duplication (Phase 11 follow-on)', () => {
     assert.equal(copied.length, 1, 'attachment cloned');
     assert.equal(copied[0].filename, 'report.pdf');
     assert.notEqual(copied[0].storageKey, srcKey, 'the copy gets its own storage key');
-    assert.ok(copied[0].storageKey.startsWith(`tasks/${copy.body.id}/`), 'key namespaced to new task');
+    assert.ok(
+      copied[0].storageKey.startsWith(`tasks/${copy.body.id}/`),
+      'key namespaced to new task',
+    );
     assert.ok(await memoryStorage.headObject(copied[0].storageKey), 'blob copied into storage');
     assert.ok(await memoryStorage.headObject(srcKey), 'original blob untouched');
   });
@@ -3856,14 +4223,22 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
   // A supervisor (Manager) + one direct report, a second unrelated supervisor +
   // report (to prove visibility/authority isolation), and their tokens.
   async function seedTeam() {
-    const supervisor = await seedUser({ email: 'sup@test.local', role: 'Manager', password: SUP_PW });
+    const supervisor = await seedUser({
+      email: 'sup@test.local',
+      role: 'Manager',
+      password: SUP_PW,
+    });
     const employee = await seedUser({
       email: 'emp@test.local',
       role: 'Member',
       password: EMP_PW,
       supervisorId: supervisor.id,
     });
-    const otherSup = await seedUser({ email: 'sup2@test.local', role: 'Manager', password: SUP_PW });
+    const otherSup = await seedUser({
+      email: 'sup2@test.local',
+      role: 'Manager',
+      password: SUP_PW,
+    });
     const otherEmp = await seedUser({
       email: 'emp2@test.local',
       role: 'Member',
@@ -3897,7 +4272,10 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
   }
 
   const post = (token: string, path: string, body?: unknown) =>
-    request(app).post(path).set(auth(token)).send(body ?? {});
+    request(app)
+      .post(path)
+      .set(auth(token))
+      .send(body ?? {});
 
   it('runs the full Draft→PendingApproval→Approved→UnderReview→Resolved happy path', async () => {
     const t = await seedTeam();
@@ -3982,9 +4360,18 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
     await post(t.empToken, `/api/goals/${goal.id}/finalize`);
 
     const resolveBody = { resolution: 'Met', supervisorComments: 'ok' };
-    assert.equal((await post(t.empToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status, 403);
-    assert.equal((await post(t.otherSupToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status, 403);
-    assert.equal((await post(t.supToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status, 200);
+    assert.equal(
+      (await post(t.empToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status,
+      403,
+    );
+    assert.equal(
+      (await post(t.otherSupToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status,
+      403,
+    );
+    assert.equal(
+      (await post(t.supToken, `/api/goals/${goal.id}/resolve`, resolveBody)).status,
+      200,
+    );
   });
 
   it('rejects a Pending goal back to Draft with required comments, then allows edit & resubmit', async () => {
@@ -4069,8 +4456,12 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
     );
     // And it cannot be resolved again.
     assert.equal(
-      (await post(t.supToken, `/api/goals/${goal.id}/resolve`, { resolution: 'Missed', supervisorComments: 'x' }))
-        .status,
+      (
+        await post(t.supToken, `/api/goals/${goal.id}/resolve`, {
+          resolution: 'Missed',
+          supervisorComments: 'x',
+        })
+      ).status,
       409,
     );
   });
@@ -4119,7 +4510,7 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
     assert.equal((await post(t.empToken, `/api/goals/${goal.id}/finalize`)).status, 409);
   });
 
-  it('scopes Team Goals to a supervisor\'s OWN direct reports only (admin sees all)', async () => {
+  it("scopes Team Goals to a supervisor's OWN direct reports only (admin sees all)", async () => {
     const t = await seedTeam();
     // A goal for each employee under their own supervisor.
     const mine = await createGoal(t.empToken);
@@ -4130,17 +4521,23 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
     assert.equal(supTeam.status, 200);
     const supIds = (supTeam.body as { id: number; ownerId: string }[]).map((g) => g.id);
     assert.deepEqual(supIds, [mine.id]);
-    assert.ok(!supIds.includes(theirs.id), 'must not see another team\'s goal');
+    assert.ok(!supIds.includes(theirs.id), "must not see another team's goal");
 
     // The other supervisor sees only their own report's goal.
     const otherTeam = await post(t.otherSupToken, '/api/goals/team');
-    assert.deepEqual((otherTeam.body as { id: number }[]).map((g) => g.id), [theirs.id]);
+    assert.deepEqual(
+      (otherTeam.body as { id: number }[]).map((g) => g.id),
+      [theirs.id],
+    );
 
     // Admin sees both.
     const admin = await adminToken();
     const adminTeam = await post(admin, '/api/goals/team');
     const adminIds = (adminTeam.body as { id: number }[]).map((g) => g.id).sort((a, b) => a - b);
-    assert.deepEqual(adminIds, [mine.id, theirs.id].sort((a, b) => a - b));
+    assert.deepEqual(
+      adminIds,
+      [mine.id, theirs.id].sort((a, b) => a - b),
+    );
   });
 
   it('filters Team Goals by employee, status, and deadline range', async () => {
@@ -4162,17 +4559,28 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
 
     // Filter by employee.
     const byEmp = await post(t.supToken, '/api/goals/team', { filters: { ownerIds: [emp3.id] } });
-    assert.deepEqual((byEmp.body as { id: number }[]).map((g) => g.id), [g2.id]);
+    assert.deepEqual(
+      (byEmp.body as { id: number }[]).map((g) => g.id),
+      [g2.id],
+    );
 
     // Filter by status.
-    const byStatus = await post(t.supToken, '/api/goals/team', { filters: { statuses: ['Approved'] } });
-    assert.deepEqual((byStatus.body as { id: number }[]).map((g) => g.id), [g2.id]);
+    const byStatus = await post(t.supToken, '/api/goals/team', {
+      filters: { statuses: ['Approved'] },
+    });
+    assert.deepEqual(
+      (byStatus.body as { id: number }[]).map((g) => g.id),
+      [g2.id],
+    );
 
     // Filter by deadline range (only g1's Sept deadline falls before Oct).
     const byRange = await post(t.supToken, '/api/goals/team', {
       filters: { deadlineTo: '2026-10-01T00:00:00.000Z' },
     });
-    assert.deepEqual((byRange.body as { id: number }[]).map((g) => g.id), [g1.id]);
+    assert.deepEqual(
+      (byRange.body as { id: number }[]).map((g) => g.id),
+      [g1.id],
+    );
 
     // A supervisor cannot widen the ownerIds filter past their reports.
     const tryStranger = await post(t.supToken, '/api/goals/team', {
@@ -4181,14 +4589,17 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
     assert.deepEqual(tryStranger.body, []);
   });
 
-  it('enforces My Goals = only the caller\'s own goals, across all statuses', async () => {
+  it("enforces My Goals = only the caller's own goals, across all statuses", async () => {
     const t = await seedTeam();
     const a = await createGoal(t.empToken);
     await createGoal(t.otherEmpToken); // belongs to someone else
 
     const mine = await request(app).get('/api/goals/mine').set(auth(t.empToken));
     assert.equal(mine.status, 200);
-    assert.deepEqual((mine.body as { id: number; ownerId: string }[]).map((g) => g.id), [a.id]);
+    assert.deepEqual(
+      (mine.body as { id: number; ownerId: string }[]).map((g) => g.id),
+      [a.id],
+    );
     assert.ok((mine.body as { ownerId: string }[]).every((g) => g.ownerId === t.employee.id));
   });
 
@@ -4206,8 +4617,14 @@ describe('SMART goals: lifecycle & authorization (Phase 12)', () => {
       403,
     );
     // Owner and supervisor can.
-    assert.equal((await request(app).get(`/api/goals/${goal.id}`).set(auth(t.empToken))).status, 200);
-    assert.equal((await request(app).get(`/api/goals/${goal.id}`).set(auth(t.supToken))).status, 200);
+    assert.equal(
+      (await request(app).get(`/api/goals/${goal.id}`).set(auth(t.empToken))).status,
+      200,
+    );
+    assert.equal(
+      (await request(app).get(`/api/goals/${goal.id}`).set(auth(t.supToken))).status,
+      200,
+    );
   });
 
   it('requires a unit label for a custom (Other) metric', async () => {
@@ -4261,17 +4678,26 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
 
     // A Kanban drop onto the Completed column is a PATCH of `status` — the same
     // endpoint/rule as the Task Detail Status field.
-    const res = await request(app).patch(`/api/tasks/${task.id}`).set(auth(tok)).send({ status: 'Completed' });
+    const res = await request(app)
+      .patch(`/api/tasks/${task.id}`)
+      .set(auth(tok))
+      .send({ status: 'Completed' });
     assert.equal(res.status, 400);
     assert.match(res.body.error, new RegExp(`#${pred1.id}`), 'names the first blocker');
     assert.match(res.body.error, new RegExp(`#${pred2.id}`), 'names the second blocker');
 
     // Completing one predecessor still leaves the other blocking (still named).
     await request(app).patch(`/api/tasks/${pred1.id}`).set(auth(tok)).send({ status: 'Completed' });
-    const still = await request(app).patch(`/api/tasks/${task.id}`).set(auth(tok)).send({ status: 'Completed' });
+    const still = await request(app)
+      .patch(`/api/tasks/${task.id}`)
+      .set(auth(tok))
+      .send({ status: 'Completed' });
     assert.equal(still.status, 400);
     assert.match(still.body.error, new RegExp(`#${pred2.id}`));
-    assert.ok(!new RegExp(`#${pred1.id}\\b`).test(still.body.error), 'the completed predecessor drops off the list');
+    assert.ok(
+      !new RegExp(`#${pred1.id}\\b`).test(still.body.error),
+      'the completed predecessor drops off the list',
+    );
   });
 
   // --- Phase 11: template parent/child ANCESTRY cycle ------------------------
@@ -4319,16 +4745,13 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
       startAt: '2026-08-01T00:00:00.000Z',
       dueAt: '2026-08-01T01:00:00.000Z',
     });
-    await request(app)
-      .put(`/api/tasks/${t.id}/recurrence`)
-      .set(auth(admin))
-      .send({
-        recurrenceType: 'Fixed',
-        intervalCount: 1,
-        intervalUnit: 'Week',
-        endType: 'AfterOccurrences',
-        maxOccurrences: 3,
-      });
+    await request(app).put(`/api/tasks/${t.id}/recurrence`).set(auth(admin)).send({
+      recurrenceType: 'Fixed',
+      intervalCount: 1,
+      intervalUnit: 'Week',
+      endType: 'AfterOccurrences',
+      maxOccurrences: 3,
+    });
 
     // Trigger A: user clicks the seq-2 ghost to materialize it now.
     const click = await request(app)
@@ -4360,7 +4783,9 @@ describe('Phase 10 & 11 addendum coverage (Phase 12)', () => {
     await setLeadDays(40);
     const tpl = await createTemplate(admin, {
       name: 'Monthly audit',
-      nodes: [{ key: 'root', parentKey: null, name: 'Audit', startOffsetDays: 0, dueOffsetDays: 1 }],
+      nodes: [
+        { key: 'root', parentKey: null, name: 'Audit', startOffsetDays: 0, dueOffsetDays: 1 },
+      ],
       recurrence: {
         recurrenceType: 'Fixed',
         intervalCount: 1,
@@ -4411,7 +4836,12 @@ describe('Phase 13: task-level access control', () => {
   it('full access = Admin, current Assignee, or a supervisor above them; others 404', async () => {
     const admin = await adminToken();
     const mgr = await seedUser({ email: 'fa-mgr@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 'fa-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const emp = await seedUser({
+      email: 'fa-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    });
     await seedUser({ email: 'fa-out@test.local', role: 'Member', password: PW });
     const empTok = await login('fa-emp@test.local', PW);
     const mgrTok = await login('fa-mgr@test.local', PW);
@@ -4428,7 +4858,12 @@ describe('Phase 13: task-level access control', () => {
     const admin = await adminToken();
     const mgrA = await seedUser({ email: 'lv-a@test.local', role: 'Manager', password: PW });
     const mgrB = await seedUser({ email: 'lv-b@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 'lv-emp@test.local', role: 'Member', password: PW, supervisorId: mgrA.id });
+    const emp = await seedUser({
+      email: 'lv-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgrA.id,
+    });
     const aTok = await login('lv-a@test.local', PW);
     const bTok = await login('lv-b@test.local', PW);
     const t = await makeTask(admin, 'Live task', { assigneeId: emp.id });
@@ -4437,7 +4872,10 @@ describe('Phase 13: task-level access control', () => {
     assert.equal((await getTask(bTok, t.id)).status, 404, 'the other manager does not');
 
     // Re-parent the employee under mgrB - nothing else changes.
-    const moved = await request(app).patch(`/api/users/${emp.id}`).set(auth(admin)).send({ supervisorId: mgrB.id });
+    const moved = await request(app)
+      .patch(`/api/users/${emp.id}`)
+      .set(auth(admin))
+      .send({ supervisorId: mgrB.id });
     assert.equal(moved.status, 200);
 
     assert.equal((await getTask(aTok, t.id)).status, 404, 'former supervisor lost access');
@@ -4462,14 +4900,25 @@ describe('Phase 13: task-level access control', () => {
     assert.equal(seen.status, 200, 'mentioned user can now see it');
     assert.equal(seen.body.access, 'comment', 'access is comment-only');
     // The outsider CANNOT edit task fields, but CAN comment.
-    assert.equal((await request(app).patch(`/api/tasks/${t.id}`).set(auth(outTok)).send({ priority: 'High' })).status, 403);
+    assert.equal(
+      (await request(app).patch(`/api/tasks/${t.id}`).set(auth(outTok)).send({ priority: 'High' }))
+        .status,
+      403,
+    );
     assert.equal((await addComment(outTok, t.id, '<p>replying</p>')).status, 201);
 
     // Edit the mention out of the only comment -> access removed immediately.
     const commentId = added.body.comments[0].id as string;
-    const edited = await request(app).patch(`/api/comments/${commentId}`).set(auth(empTok)).send({ body: '<p>no more mention</p>' });
+    const edited = await request(app)
+      .patch(`/api/comments/${commentId}`)
+      .set(auth(empTok))
+      .send({ body: '<p>no more mention</p>' });
     assert.equal(edited.status, 200);
-    assert.equal((await getTask(outTok, t.id)).status, 404, 'access removed when mention edited out');
+    assert.equal(
+      (await getTask(outTok, t.id)).status,
+      404,
+      'access removed when mention edited out',
+    );
   });
 
   it('multi-task search flags mention-only rows and honours the includeReadOnly toggle', async () => {
@@ -4500,10 +4949,30 @@ describe('Phase 13: task-level access control', () => {
     // mgr -> {a, b, subMgr}; subMgr -> c. (Members can't be supervisors, so the
     // deep report c hangs off a Manager, not off Member a.)
     const mgr = await seedUser({ email: 'ar-mgr@test.local', role: 'Manager', password: PW });
-    const subMgr = await seedUser({ email: 'ar-sub@test.local', role: 'Manager', password: PW, supervisorId: mgr.id });
-    const a = await seedUser({ email: 'ar-a@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
-    const b = await seedUser({ email: 'ar-b@test.local', role: 'Member', password: PW, supervisorId: mgr.id }); // peer of a
-    const c = await seedUser({ email: 'ar-c@test.local', role: 'Member', password: PW, supervisorId: subMgr.id }); // deep downline of mgr
+    const subMgr = await seedUser({
+      email: 'ar-sub@test.local',
+      role: 'Manager',
+      password: PW,
+      supervisorId: mgr.id,
+    });
+    const a = await seedUser({
+      email: 'ar-a@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    });
+    const b = await seedUser({
+      email: 'ar-b@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    }); // peer of a
+    const c = await seedUser({
+      email: 'ar-c@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: subMgr.id,
+    }); // deep downline of mgr
     const outsider = await seedUser({ email: 'ar-out@test.local', role: 'Member', password: PW });
     const aTok = await login('ar-a@test.local', PW);
     const mgrTok = await login('ar-mgr@test.local', PW);
@@ -4515,7 +4984,11 @@ describe('Phase 13: task-level access control', () => {
     assert.equal((await create(aTok, a.id)).status, 201, 'member -> self ok');
     assert.equal((await create(aTok, mgr.id)).status, 201, 'member -> supervisor ok');
     assert.equal((await create(aTok, b.id)).status, 201, 'member -> peer ok');
-    assert.equal((await create(aTok, c.id)).status, 403, 'member -> outside immediate team rejected');
+    assert.equal(
+      (await create(aTok, c.id)).status,
+      403,
+      'member -> outside immediate team rejected',
+    );
     assert.equal((await create(aTok, outsider.id)).status, 403, 'member -> outsider rejected');
 
     // Manager: entire downline (a, b, subMgr, c) OK.
@@ -4529,7 +5002,12 @@ describe('Phase 13: task-level access control', () => {
   it('Private task: suspends mention-only access and restricts @mention candidates', async () => {
     const admin = await adminToken();
     const mgr = await seedUser({ email: 'pv-mgr@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 'pv-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const emp = await seedUser({
+      email: 'pv-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    });
     const out = await seedUser({ email: 'pv-out@test.local', role: 'Member', password: PW });
     const empTok = await login('pv-emp@test.local', PW);
     const mgrTok = await login('pv-mgr@test.local', PW);
@@ -4539,13 +5017,28 @@ describe('Phase 13: task-level access control', () => {
     assert.equal((await getTask(outTok, t.id)).status, 200, 'outsider sees it via mention first');
 
     // The assignee cannot toggle privacy; their supervisor can.
-    assert.equal((await request(app).patch(`/api/tasks/${t.id}/private`).set(auth(empTok)).send({ isPrivate: true })).status, 403);
-    const made = await request(app).patch(`/api/tasks/${t.id}/private`).set(auth(mgrTok)).send({ isPrivate: true });
+    assert.equal(
+      (
+        await request(app)
+          .patch(`/api/tasks/${t.id}/private`)
+          .set(auth(empTok))
+          .send({ isPrivate: true })
+      ).status,
+      403,
+    );
+    const made = await request(app)
+      .patch(`/api/tasks/${t.id}/private`)
+      .set(auth(mgrTok))
+      .send({ isPrivate: true });
     assert.equal(made.status, 200);
     assert.equal(made.body.isPrivate, true);
 
     // Mention-only access is suspended the moment it goes private.
-    assert.equal((await getTask(outTok, t.id)).status, 404, 'mention-only access suspended while private');
+    assert.equal(
+      (await getTask(outTok, t.id)).status,
+      404,
+      'mention-only access suspended while private',
+    );
     assert.equal((await getTask(empTok, t.id)).status, 200, 'assignee still sees it');
 
     // The mention-candidate pool excludes the outsider now.
@@ -4557,14 +5050,28 @@ describe('Phase 13: task-level access control', () => {
 
     // A new comment mentioning the outsider does not grant them access (mention dropped).
     await addComment(mgrTok, t.id, `<p>${mentionSpan(out.id, 'out')}</p>`);
-    assert.equal((await getTask(outTok, t.id)).status, 404, 'restricted mention cannot reach outside the private set');
+    assert.equal(
+      (await getTask(outTok, t.id)).status,
+      404,
+      'restricted mention cannot reach outside the private set',
+    );
   });
 
   it('reviewer-selection pool and Reviewed-button permission are two distinct checks', async () => {
     const admin = await adminToken();
     const top = await seedUser({ email: 'rv-top@test.local', role: 'Manager', password: PW });
-    const reviewer = await seedUser({ email: 'rv-rev@test.local', role: 'Manager', password: PW, supervisorId: top.id });
-    const worker = await seedUser({ email: 'rv-wrk@test.local', role: 'Member', password: PW, supervisorId: reviewer.id });
+    const reviewer = await seedUser({
+      email: 'rv-rev@test.local',
+      role: 'Manager',
+      password: PW,
+      supervisorId: top.id,
+    });
+    const worker = await seedUser({
+      email: 'rv-wrk@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: reviewer.id,
+    });
     const stranger = await seedUser({ email: 'rv-str@test.local', role: 'Member', password: PW });
     const revTok = await login('rv-rev@test.local', PW);
     const t = await makeTask(admin, 'Review pool', { assigneeId: worker.id, status: 'InProgress' });
@@ -4577,11 +5084,17 @@ describe('Phase 13: task-level access control', () => {
     assert.equal(poolIds.has(worker.id), false, 'the assignee is not their own reviewer');
 
     // Picking a stranger as reviewer is rejected (pool check).
-    const bad = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Review', reviewerId: stranger.id });
+    const bad = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(admin))
+      .send({ status: 'Review', reviewerId: stranger.id });
     assert.equal(bad.status, 403, 'reviewer outside the pool is rejected');
 
     // Picking a chain supervisor works; they become the current assignee.
-    const ok = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Review', reviewerId: reviewer.id });
+    const ok = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(admin))
+      .send({ status: 'Review', reviewerId: reviewer.id });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
 
     // The Reviewed-BUTTON check is DIFFERENT: the current assignee (the reviewer)
@@ -4598,12 +5111,18 @@ describe('Phase 13: task-level access control', () => {
       const t = await makeTask(admin, `Lock ${terminal}`, { assigneeId: a.id });
       await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: terminal });
       // Even Admin cannot reassign a terminal task.
-      const blocked = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: b.id });
+      const blocked = await request(app)
+        .patch(`/api/tasks/${t.id}`)
+        .set(auth(admin))
+        .send({ assigneeId: b.id });
       assert.equal(blocked.status, 400, `${terminal}: assignee change rejected`);
       assert.match(blocked.body.error, /Completed or Canceled/);
       // Reopen -> assignee editable again.
       await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ status: 'Open' });
-      const reassigned = await request(app).patch(`/api/tasks/${t.id}`).set(auth(admin)).send({ assigneeId: b.id });
+      const reassigned = await request(app)
+        .patch(`/api/tasks/${t.id}`)
+        .set(auth(admin))
+        .send({ assigneeId: b.id });
       assert.equal(reassigned.status, 200, `${terminal}: assignee editable after reopen`);
     }
   });
@@ -4615,8 +5134,18 @@ describe('Phase 13: Goals downline visibility vs direct-supervisor authority', (
   it('Team Goals shows the full downline, but only the DIRECT supervisor may approve', async () => {
     await adminToken();
     const top = await seedUser({ email: 'g-top@test.local', role: 'Manager', password: PW });
-    const mid = await seedUser({ email: 'g-mid@test.local', role: 'Manager', password: PW, supervisorId: top.id });
-    const emp = await seedUser({ email: 'g-emp@test.local', role: 'Member', password: PW, supervisorId: mid.id });
+    const mid = await seedUser({
+      email: 'g-mid@test.local',
+      role: 'Manager',
+      password: PW,
+      supervisorId: top.id,
+    });
+    const emp = await seedUser({
+      email: 'g-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mid.id,
+    });
     const topTok = await login('g-top@test.local', PW);
     const midTok = await login('g-mid@test.local', PW);
     const empTok = await login('g-emp@test.local', PW);
@@ -4634,12 +5163,21 @@ describe('Phase 13: Goals downline visibility vs direct-supervisor authority', (
     // Top (two levels up) SEES the goal via broadened downline visibility.
     const team = await request(app).post('/api/goals/team').set(auth(topTok)).send({});
     assert.equal(team.status, 200);
-    assert.ok((team.body as { id: number }[]).some((g) => g.id === goalId), 'top sees the deep report goal');
+    assert.ok(
+      (team.body as { id: number }[]).some((g) => g.id === goalId),
+      'top sees the deep report goal',
+    );
 
     // ...but Top may NOT approve it - only the DIRECT supervisor (mid) can.
-    const topApprove = await request(app).post(`/api/goals/${goalId}/approve`).set(auth(topTok)).send({});
+    const topApprove = await request(app)
+      .post(`/api/goals/${goalId}/approve`)
+      .set(auth(topTok))
+      .send({});
     assert.equal(topApprove.status, 403, 'non-direct supervisor cannot approve');
-    const midApprove = await request(app).post(`/api/goals/${goalId}/approve`).set(auth(midTok)).send({});
+    const midApprove = await request(app)
+      .post(`/api/goals/${goalId}/approve`)
+      .set(auth(midTok))
+      .send({});
     assert.equal(midApprove.status, 200, 'direct supervisor approves');
   });
 });
@@ -4648,7 +5186,10 @@ describe('Phase 13: Due Date Performance Report bucketing', () => {
   const NOW = new Date('2026-08-15T12:00:00.000Z');
   const day = 24 * 60 * 60 * 1000;
   const runReport = (token: string, body: Record<string, unknown> = {}) =>
-    request(app).post('/api/reports/due-date').set(auth(token)).send({ now: NOW.toISOString(), ...body });
+    request(app)
+      .post('/api/reports/due-date')
+      .set(auth(token))
+      .send({ now: NOW.toISOString(), ...body });
   // Build a task with precisely-controlled current fields via Prisma.
   const mk = async (token: string, name: string, data: Record<string, unknown>) => {
     const t = await makeTask(token, name);
@@ -4660,22 +5201,55 @@ describe('Phase 13: Due Date Performance Report bucketing', () => {
 
   it('places each task in exactly one of the seven buckets (due==completion = On Time)', async () => {
     const admin = await adminToken();
-    const onTime = await mk(admin, 'onTime', { status: 'Completed', dueAt: new Date(NOW.getTime() + 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
-    const boundary = await mk(admin, 'boundary', { status: 'Completed', dueAt: NOW, statusChangedAt: NOW }); // equal -> On Time
-    const late = await mk(admin, 'late', { status: 'Completed', dueAt: new Date(NOW.getTime() - 2 * day), statusChangedAt: new Date(NOW.getTime() - day) });
-    const overdue = await mk(admin, 'overdue', { status: 'InProgress', dueAt: new Date(NOW.getTime() - day) });
+    const onTime = await mk(admin, 'onTime', {
+      status: 'Completed',
+      dueAt: new Date(NOW.getTime() + 2 * day),
+      statusChangedAt: new Date(NOW.getTime() - day),
+    });
+    const boundary = await mk(admin, 'boundary', {
+      status: 'Completed',
+      dueAt: NOW,
+      statusChangedAt: NOW,
+    }); // equal -> On Time
+    const late = await mk(admin, 'late', {
+      status: 'Completed',
+      dueAt: new Date(NOW.getTime() - 2 * day),
+      statusChangedAt: new Date(NOW.getTime() - day),
+    });
+    const overdue = await mk(admin, 'overdue', {
+      status: 'InProgress',
+      dueAt: new Date(NOW.getTime() - day),
+    });
     // Open, future due, no start date yet -> Not Started.
-    const notStarted = await mk(admin, 'notStarted', { status: 'Open', dueAt: new Date(NOW.getTime() + day), startAt: null });
+    const notStarted = await mk(admin, 'notStarted', {
+      status: 'Open',
+      dueAt: new Date(NOW.getTime() + day),
+      startAt: null,
+    });
     // In Progress, future due -> Not Completed (work has begun).
-    const notCompleted = await mk(admin, 'notCompleted', { status: 'InProgress', dueAt: new Date(NOW.getTime() + day) });
-    const cancelled = await mk(admin, 'cancelled', { status: 'Canceled', dueAt: new Date(NOW.getTime() - day) });
-    const noDue = await mk(admin, 'noDue', { status: 'Completed', dueAt: null, statusChangedAt: new Date(NOW.getTime() - day) });
+    const notCompleted = await mk(admin, 'notCompleted', {
+      status: 'InProgress',
+      dueAt: new Date(NOW.getTime() + day),
+    });
+    const cancelled = await mk(admin, 'cancelled', {
+      status: 'Canceled',
+      dueAt: new Date(NOW.getTime() - day),
+    });
+    const noDue = await mk(admin, 'noDue', {
+      status: 'Completed',
+      dueAt: null,
+      statusChangedAt: new Date(NOW.getTime() - day),
+    });
 
     const res = await runReport(admin);
     assert.equal(res.status, 200, JSON.stringify(res.body));
     const bucketById = bucketsById(res);
     assert.equal(bucketById.get(onTime), 'OnTime');
-    assert.equal(bucketById.get(boundary), 'OnTime', 'due exactly equal to completion counts as On Time');
+    assert.equal(
+      bucketById.get(boundary),
+      'OnTime',
+      'due exactly equal to completion counts as On Time',
+    );
     assert.equal(bucketById.get(late), 'Late');
     assert.equal(bucketById.get(overdue), 'Overdue');
     assert.equal(bucketById.get(notStarted), 'NotStarted');
@@ -4702,8 +5276,15 @@ describe('Phase 13: Due Date Performance Report bucketing', () => {
     // Completed candidates are filtered out — and both buckets require a future
     // due date, so no task in the DB can populate them under this filter.
     await mk(admin, 'overduePast', { status: 'InProgress', dueAt: new Date(NOW.getTime() - day) });
-    await mk(admin, 'notStartedFuture', { status: 'Open', dueAt: new Date(NOW.getTime() + day), startAt: null });
-    await mk(admin, 'notCompletedFuture', { status: 'InProgress', dueAt: new Date(NOW.getTime() + day) });
+    await mk(admin, 'notStartedFuture', {
+      status: 'Open',
+      dueAt: new Date(NOW.getTime() + day),
+      startAt: null,
+    });
+    await mk(admin, 'notCompletedFuture', {
+      status: 'InProgress',
+      dueAt: new Date(NOW.getTime() + day),
+    });
 
     const res = await runReport(admin, {
       filters: {
@@ -4722,17 +5303,41 @@ describe('Phase 13: Due Date Performance Report bucketing', () => {
     const admin = await adminToken();
     // Not Started is reserved for the Open status; any other non-terminal status
     // lands in Not Completed regardless of Start Date.
-    const unsetStart = await mk(admin, 'ipUnsetStart', { status: 'InProgress', dueAt: new Date(NOW.getTime() + day), startAt: null });
-    const futureStart = await mk(admin, 'ipFutureStart', { status: 'InProgress', dueAt: new Date(NOW.getTime() + 3 * day), startAt: new Date(NOW.getTime() + day) });
+    const unsetStart = await mk(admin, 'ipUnsetStart', {
+      status: 'InProgress',
+      dueAt: new Date(NOW.getTime() + day),
+      startAt: null,
+    });
+    const futureStart = await mk(admin, 'ipFutureStart', {
+      status: 'InProgress',
+      dueAt: new Date(NOW.getTime() + 3 * day),
+      startAt: new Date(NOW.getTime() + day),
+    });
     const bucketById = bucketsById(await runReport(admin));
-    assert.equal(bucketById.get(unsetStart), 'NotCompleted', 'In Progress is never Not Started (unset start)');
-    assert.equal(bucketById.get(futureStart), 'NotCompleted', 'In Progress is never Not Started (future start)');
+    assert.equal(
+      bucketById.get(unsetStart),
+      'NotCompleted',
+      'In Progress is never Not Started (unset start)',
+    );
+    assert.equal(
+      bucketById.get(futureStart),
+      'NotCompleted',
+      'In Progress is never Not Started (future start)',
+    );
   });
 
   it('an Open task whose Start Date has passed (Due has not) lands in Not Completed, not Not Started', async () => {
     const admin = await adminToken();
-    const id = await mk(admin, 'openStarted', { status: 'Open', startAt: new Date(NOW.getTime() - day), dueAt: new Date(NOW.getTime() + day) });
-    assert.equal(bucketsById(await runReport(admin)).get(id), 'NotCompleted', 'a started Open task is Not Completed');
+    const id = await mk(admin, 'openStarted', {
+      status: 'Open',
+      startAt: new Date(NOW.getTime() - day),
+      dueAt: new Date(NOW.getTime() + day),
+    });
+    assert.equal(
+      bucketsById(await runReport(admin)).get(id),
+      'NotCompleted',
+      'a started Open task is Not Completed',
+    );
   });
 });
 
@@ -4751,7 +5356,12 @@ describe('Parent/Child tree access inheritance', () => {
   async function team() {
     const admin = await adminToken();
     const mgr = await seedUser({ email: 't-mgr@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 't-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const emp = await seedUser({
+      email: 't-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    });
     const out = await seedUser({ email: 't-out@test.local', role: 'Member', password: PW });
     return {
       admin,
@@ -4808,7 +5418,11 @@ describe('Parent/Child tree access inheritance', () => {
     await setParent(t.admin, c1.id, p.id);
     await setParent(t.admin, c2.id, c1.id);
 
-    assert.equal((await getTask(t.mgrTok, c1.id)).body.access, 'full', 'independent full access wins over tree');
+    assert.equal(
+      (await getTask(t.mgrTok, c1.id)).body.access,
+      'full',
+      'independent full access wins over tree',
+    );
     assert.equal((await patch(t.mgrTok, c1.id, { priority: 'High' })).status, 200);
     assert.equal((await getTask(t.mgrTok, c2.id)).body.access, 'tree');
     assert.equal((await patch(t.mgrTok, c2.id, { priority: 'High' })).status, 403);
@@ -4820,15 +5434,29 @@ describe('Parent/Child tree access inheritance', () => {
     const p = await makeTask(t.admin, 'PP', { assigneeId: t.emp.id });
     const cPriv = await makeTask(t.admin, 'PC', { assigneeId: t.out.id });
     await setParent(t.admin, cPriv.id, p.id);
-    await request(app).patch(`/api/tasks/${cPriv.id}/private`).set(auth(t.admin)).send({ isPrivate: true });
-    assert.equal((await getTask(t.mgrTok, cPriv.id)).status, 404, 'Private descendant not inherited downward');
+    await request(app)
+      .patch(`/api/tasks/${cPriv.id}/private`)
+      .set(auth(t.admin))
+      .send({ isPrivate: true });
+    assert.equal(
+      (await getTask(t.mgrTok, cPriv.id)).status,
+      404,
+      'Private descendant not inherited downward',
+    );
 
     // Upward: P-private (outsider) → C (emp). emp accesses C but must NOT see P.
     const pPriv = await makeTask(t.admin, 'UPP', { assigneeId: t.out.id });
     const c = await makeTask(t.admin, 'UPC', { assigneeId: t.emp.id });
     await setParent(t.admin, c.id, pPriv.id);
-    await request(app).patch(`/api/tasks/${pPriv.id}/private`).set(auth(t.admin)).send({ isPrivate: true });
-    assert.equal((await getTask(t.empTok, pPriv.id)).status, 404, 'Private ancestor not inherited upward');
+    await request(app)
+      .patch(`/api/tasks/${pPriv.id}/private`)
+      .set(auth(t.admin))
+      .send({ isPrivate: true });
+    assert.equal(
+      (await getTask(t.empTok, pPriv.id)).status,
+      404,
+      'Private ancestor not inherited upward',
+    );
   });
 
   it('degrades an inaccessible task reference to Id + lock + Status (no name), and updates live', async () => {
@@ -4837,10 +5465,15 @@ describe('Parent/Child tree access inheritance', () => {
     // inherit — so mgr cannot see X and the reference degrades.
     const task = await makeTask(t.admin, 'DEP-T', { assigneeId: t.emp.id });
     const x = await makeTask(t.admin, 'SecretBlocker', { assigneeId: t.out.id });
-    await request(app).post(`/api/tasks/${task.id}/dependencies`).set(auth(t.admin)).send({ type: 'blockedBy', otherTaskId: x.id });
+    await request(app)
+      .post(`/api/tasks/${task.id}/dependencies`)
+      .set(auth(t.admin))
+      .send({ type: 'blockedBy', otherTaskId: x.id });
 
     const before = await getTask(t.mgrTok, task.id);
-    const ref = (before.body.isBlockedBy as { id: number; name: string; status: string; accessible: boolean }[])[0];
+    const ref = (
+      before.body.isBlockedBy as { id: number; name: string; status: string; accessible: boolean }[]
+    )[0];
     assert.equal(ref.id, x.id);
     assert.equal(ref.accessible, false, 'invisible blocker is not accessible');
     assert.equal(ref.name, '', 'name is blanked, never leaked');
@@ -4858,13 +5491,20 @@ describe('Parent/Child tree access inheritance', () => {
     const t = await team();
     const task = await makeTask(t.admin, 'BLK-T', { assigneeId: t.emp.id });
     const x = await makeTask(t.admin, 'HiddenPred', { assigneeId: t.out.id, status: 'InProgress' });
-    await request(app).post(`/api/tasks/${task.id}/dependencies`).set(auth(t.admin)).send({ type: 'blockedBy', otherTaskId: x.id });
+    await request(app)
+      .post(`/api/tasks/${task.id}/dependencies`)
+      .set(auth(t.admin))
+      .send({ type: 'blockedBy', otherTaskId: x.id });
 
     // mgr (full on task, cannot see the outsider's blocker) still cannot complete it.
     const res = await patch(t.mgrTok, task.id, { status: 'Completed' });
     assert.equal(res.status, 400, 'blocked rule fires regardless of visibility');
     assert.match(res.body.error, new RegExp(`#${x.id}`));
-    assert.equal(res.body.error.includes('HiddenPred'), false, 'the unseen blocker name is not leaked');
+    assert.equal(
+      res.body.error.includes('HiddenPred'),
+      false,
+      'the unseen blocker name is not leaked',
+    );
   });
 
   it('relationship picker only returns visible tasks; removing a link never needs access to the other side', async () => {
@@ -4879,7 +5519,10 @@ describe('Parent/Child tree access inheritance', () => {
 
     // Create a dependency to a currently-visible task, then make it invisible, then remove the link.
     const dep = await makeTask(t.admin, 'DepVisible', { assigneeId: t.emp.id });
-    await request(app).post(`/api/tasks/${mine.id}/dependencies`).set(auth(t.empTok)).send({ type: 'blockedBy', otherTaskId: dep.id });
+    await request(app)
+      .post(`/api/tasks/${mine.id}/dependencies`)
+      .set(auth(t.empTok))
+      .send({ type: 'blockedBy', otherTaskId: dep.id });
     await patch(t.admin, dep.id, { assigneeId: t.out.id }); // now invisible to emp
     assert.equal((await getTask(t.empTok, dep.id)).status, 404, 'the linked task is now invisible');
     const removed = await request(app)
@@ -4926,7 +5569,11 @@ describe('Excel export renders dates in the requester timezone', () => {
 describe('notifications: manual mark-as-unread (follow-up)', () => {
   it('re-marks a read notification as unread and the bell count reflects it', async () => {
     const admin = await adminToken();
-    const u = await seedUser({ email: 'unread-mem@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const u = await seedUser({
+      email: 'unread-mem@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     const uTok = await login('unread-mem@test.local', MEMBER_PASSWORD);
 
     // An assignment to the member creates one unread "assigned" notification.
@@ -4951,10 +5598,16 @@ describe('notifications: manual mark-as-unread (follow-up)', () => {
     assert.equal((await getNotifs(uTok)).assigned[0]!.read, false);
 
     // A different user cannot flip someone else's notification.
-    const other = await seedUser({ email: 'unread-other@test.local', role: 'Member', password: MEMBER_PASSWORD });
+    const other = await seedUser({
+      email: 'unread-other@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+    });
     void other;
     const otherTok = await login('unread-other@test.local', MEMBER_PASSWORD);
-    const forbidden = await request(app).post(`/api/notifications/${notifId}/unread`).set(auth(otherTok));
+    const forbidden = await request(app)
+      .post(`/api/notifications/${notifId}/unread`)
+      .set(auth(otherTok));
     assert.equal(forbidden.status, 404, "cannot touch another user's notification");
   });
 
@@ -4963,7 +5616,10 @@ describe('notifications: manual mark-as-unread (follow-up)', () => {
     // Future Start (so Add is allowed) + an already-elapsed lead => due now.
     const startSoon = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const t = await makeTask(admin, 'Due reminder task', { startAt: startSoon });
-    const rem = await request(app).post(`/api/tasks/${t.id}/reminders`).set(auth(admin)).send({ leadMinutes: 60 });
+    const rem = await request(app)
+      .post(`/api/tasks/${t.id}/reminders`)
+      .set(auth(admin))
+      .send({ leadMinutes: 60 });
     assert.equal(rem.status, 201);
     assert.equal((await unread(admin)).reminders, 1);
 
@@ -4985,7 +5641,9 @@ describe('global materialization lead time (follow-up)', () => {
   function weeklyTemplate(name: string) {
     return {
       name,
-      nodes: [{ key: 'root', parentKey: null, name: 'Do it', startOffsetDays: 0, dueOffsetDays: 1 }],
+      nodes: [
+        { key: 'root', parentKey: null, name: 'Do it', startOffsetDays: 0, dueOffsetDays: 1 },
+      ],
       recurrence: {
         recurrenceType: 'Fixed',
         intervalCount: 1,
@@ -5001,7 +5659,10 @@ describe('global materialization lead time (follow-up)', () => {
     const admin = await adminToken();
 
     async function create(name: string): Promise<number> {
-      const res = await request(app).post('/api/templates').set(auth(admin)).send(weeklyTemplate(name));
+      const res = await request(app)
+        .post('/api/templates')
+        .set(auth(admin))
+        .send(weeklyTemplate(name));
       assert.equal(res.status, 201, JSON.stringify(res.body));
       // The lead time is no longer part of the template payload/DTO.
       assert.ok(!('leadTimeDays' in res.body), 'no per-template lead override remains');
@@ -5033,15 +5694,28 @@ describe('global materialization lead time (follow-up)', () => {
     assert.equal(get.status, 200);
     assert.equal(get.body.materializeLeadDays, 14, 'defaults to 14');
 
-    await seedUser({ email: 'settings-mgr@test.local', role: 'Manager', password: MEMBER_PASSWORD });
+    await seedUser({
+      email: 'settings-mgr@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
     const mgr = await login('settings-mgr@test.local', MEMBER_PASSWORD);
-    const forbidden = await request(app).put('/api/settings').set(auth(mgr)).send({ materializeLeadDays: 7 });
+    const forbidden = await request(app)
+      .put('/api/settings')
+      .set(auth(mgr))
+      .send({ materializeLeadDays: 7 });
     assert.equal(forbidden.status, 403, 'only an admin may change global settings');
 
-    const put = await request(app).put('/api/settings').set(auth(admin)).send({ materializeLeadDays: 21 });
+    const put = await request(app)
+      .put('/api/settings')
+      .set(auth(admin))
+      .send({ materializeLeadDays: 21 });
     assert.equal(put.status, 200);
     assert.equal(put.body.materializeLeadDays, 21);
-    assert.equal((await request(app).get('/api/settings').set(auth(mgr))).body.materializeLeadDays, 21);
+    assert.equal(
+      (await request(app).get('/api/settings').set(auth(mgr))).body.materializeLeadDays,
+      21,
+    );
   });
 });
 
@@ -5082,8 +5756,16 @@ describe('template tree editor: subtree drag helpers (follow-up)', () => {
   });
 
   it('never drops a node into its own descendant, and never moves the root', () => {
-    assert.deepEqual(moveTemplateNode(tree(), 'A', 'A1', 'inside'), tree(), 'no-op into own subtree');
-    assert.deepEqual(moveTemplateNode(tree(), 'root', 'A', 'after'), tree(), 'root cannot be moved');
+    assert.deepEqual(
+      moveTemplateNode(tree(), 'A', 'A1', 'inside'),
+      tree(),
+      'no-op into own subtree',
+    );
+    assert.deepEqual(
+      moveTemplateNode(tree(), 'root', 'A', 'after'),
+      tree(),
+      'root cannot be moved',
+    );
   });
 });
 
@@ -5091,8 +5773,17 @@ describe('task -> template conversion (follow-up)', () => {
   async function seedManagerWithMember() {
     // A manager who supervises a member (so the manager has full access to the
     // member's tasks), plus an unrelated member the manager cannot reach.
-    const mgr = await seedUser({ email: 'conv-mgr@test.local', role: 'Manager', password: MEMBER_PASSWORD });
-    const emp = await seedUser({ email: 'conv-emp@test.local', role: 'Member', password: MEMBER_PASSWORD, supervisorId: mgr.id });
+    const mgr = await seedUser({
+      email: 'conv-mgr@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
+    const emp = await seedUser({
+      email: 'conv-emp@test.local',
+      role: 'Member',
+      password: MEMBER_PASSWORD,
+      supervisorId: mgr.id,
+    });
     return { mgr, emp };
   }
 
@@ -5110,7 +5801,11 @@ describe('task -> template conversion (follow-up)', () => {
     assert.equal(roleBlocked.status, 403, 'a Member cannot convert even with full access');
 
     // A Manager with NO relationship to an admin-owned task has no access at all.
-    const strangerMgr = await seedUser({ email: 'conv-stranger@test.local', role: 'Manager', password: MEMBER_PASSWORD });
+    const strangerMgr = await seedUser({
+      email: 'conv-stranger@test.local',
+      role: 'Manager',
+      password: MEMBER_PASSWORD,
+    });
     void strangerMgr;
     const strangerTok = await login('conv-stranger@test.local', MEMBER_PASSWORD);
     const adminTask = await makeTask(admin, 'Admin-only task');
@@ -5155,7 +5850,12 @@ describe('task -> template conversion (follow-up)', () => {
     const conv = await request(app)
       .post(`/api/tasks/${root.id}/save-as-template`)
       .set(auth(admin))
-      .send({ name: 'From tree', includeDescendants: true, includeAttachments: false, rootRoleLabel: 'Owner' });
+      .send({
+        name: 'From tree',
+        includeDescendants: true,
+        includeAttachments: false,
+        rootRoleLabel: 'Owner',
+      });
     assert.equal(conv.status, 201, JSON.stringify(conv.body));
 
     const nodes = conv.body.nodes as {
@@ -5204,7 +5904,11 @@ describe('task -> template conversion (follow-up)', () => {
       startAt: '2026-08-01T00:00:00.000Z',
       dueAt: '2026-08-02T00:00:00.000Z',
     });
-    const att = await attachToTask(admin, t.id, { filename: 'spec.pdf', contentType: 'application/pdf', size: 2048 });
+    const att = await attachToTask(admin, t.id, {
+      filename: 'spec.pdf',
+      contentType: 'application/pdf',
+      size: 2048,
+    });
     assert.equal(att.status, 201, JSON.stringify(att.body));
     const src = await prisma.attachment.findFirst({ where: { taskId: t.id, commentId: null } });
     assert.ok(src, 'the source task has a task-level attachment');
@@ -5218,13 +5922,26 @@ describe('task -> template conversion (follow-up)', () => {
       .send({ name: 'Template with file', includeDescendants: false, includeAttachments: true });
     assert.equal(conv.status, 201, JSON.stringify(conv.body));
     const rootNodeId = conv.body.nodes[0].id as number;
-    assert.equal(conv.body.nodes[0].attachmentCount, 1, 'the node carries the copied default attachment');
+    assert.equal(
+      conv.body.nodes[0].attachmentCount,
+      1,
+      'the node carries the copied default attachment',
+    );
 
-    const tplAtt = await prisma.taskTemplateNodeAttachment.findFirst({ where: { templateNodeId: rootNodeId } });
+    const tplAtt = await prisma.taskTemplateNodeAttachment.findFirst({
+      where: { templateNodeId: rootNodeId },
+    });
     assert.ok(tplAtt, 'a template-scoped attachment row exists');
-    assert.notEqual(tplAtt!.storageKey, src!.storageKey, 'it is a COPY (new key), not a reference to the original');
+    assert.notEqual(
+      tplAtt!.storageKey,
+      src!.storageKey,
+      'it is a COPY (new key), not a reference to the original',
+    );
     assert.match(tplAtt!.storageKey, /^templates\//, 'stored under template-scoped storage');
-    assert.ok(await memoryStorage.headObject(tplAtt!.storageKey), 'the template blob exists independently');
+    assert.ok(
+      await memoryStorage.headObject(tplAtt!.storageKey),
+      'the template blob exists independently',
+    );
 
     // Instantiate → the generated task gets its OWN fresh copy (independent again).
     const inst = await request(app)
@@ -5233,9 +5950,15 @@ describe('task -> template conversion (follow-up)', () => {
       .send({ anchorStart: '2026-09-01T00:00:00.000Z' });
     assert.equal(inst.status, 201, JSON.stringify(inst.body));
     const newRoot = inst.body.rootTaskId as number;
-    const genAtt = await prisma.attachment.findFirst({ where: { taskId: newRoot, commentId: null } });
+    const genAtt = await prisma.attachment.findFirst({
+      where: { taskId: newRoot, commentId: null },
+    });
     assert.ok(genAtt, 'the instantiated task received the default attachment');
-    assert.notEqual(genAtt!.storageKey, tplAtt!.storageKey, 'a fresh copy, independent of the template blob');
+    assert.notEqual(
+      genAtt!.storageKey,
+      tplAtt!.storageKey,
+      'a fresh copy, independent of the template blob',
+    );
     assert.notEqual(genAtt!.storageKey, src!.storageKey);
     assert.match(genAtt!.storageKey, new RegExp(`^tasks/${newRoot}/`));
     assert.ok(await memoryStorage.headObject(genAtt!.storageKey), 'the generated task blob exists');
@@ -5334,7 +6057,12 @@ describe('Reminders overhaul (A/B/C/D)', () => {
   // mgr -> emp (assignee); an unrelated member with no access to emp's task.
   async function seedAccessTeam() {
     const mgr = await seedUser({ email: 'rm-mgr@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 'rm-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const emp = await seedUser({
+      email: 'rm-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    });
     const out = await seedUser({ email: 'rm-out@test.local', role: 'Member', password: PW });
     return {
       mgr,
@@ -5350,7 +6078,10 @@ describe('Reminders overhaul (A/B/C/D)', () => {
   it('A1: a user with no access cannot add a reminder (404, not 201) — closes the IDOR', async () => {
     const admin = await adminToken();
     const t = await seedAccessTeam();
-    const task = await makeTask(admin, 'Private-ish task', { assigneeId: t.emp.id, startAt: futureStart() });
+    const task = await makeTask(admin, 'Private-ish task', {
+      assigneeId: t.emp.id,
+      startAt: futureStart(),
+    });
 
     // The unrelated member can't even see the task, so adding a reminder 404s
     // (indistinguishable from missing — no metadata leaks).
@@ -5365,13 +6096,25 @@ describe('Reminders overhaul (A/B/C/D)', () => {
     const admin = await adminToken();
     const mgrA = await seedUser({ email: 'a2-a@test.local', role: 'Manager', password: PW });
     const mgrB = await seedUser({ email: 'a2-b@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 'a2-emp@test.local', role: 'Member', password: PW, supervisorId: mgrA.id });
+    const emp = await seedUser({
+      email: 'a2-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgrA.id,
+    });
     const mgrATok = await login('a2-a@test.local', PW);
-    const task = await makeTask(admin, 'Live-access task', { assigneeId: emp.id, startAt: futureStart() });
+    const task = await makeTask(admin, 'Live-access task', {
+      assigneeId: emp.id,
+      startAt: futureStart(),
+    });
 
     // mgrA (supervisor of the assignee) adds a due reminder and sees it.
     assert.equal((await addReminder(mgrATok, task.id, 60)).status, 201);
-    assert.equal((await getNotifs(mgrATok)).reminders.length, 1, 'supervisor sees the due reminder');
+    assert.equal(
+      (await getNotifs(mgrATok)).reminders.length,
+      1,
+      'supervisor sees the due reminder',
+    );
 
     // Re-parent the employee under mgrB — mgrA loses access; the reminder is gone
     // from mgrA's feed even though the row still exists.
@@ -5410,7 +6153,10 @@ describe('Reminders overhaul (A/B/C/D)', () => {
   it('C: clearing the Start Date removes reminders — actor hard-deleted, others soft-canceled + dismissible', async () => {
     const admin = await adminToken();
     const t = await seedAccessTeam();
-    const task = await makeTask(admin, 'Start-clear task', { assigneeId: t.emp.id, startAt: futureStart() });
+    const task = await makeTask(admin, 'Start-clear task', {
+      assigneeId: t.emp.id,
+      startAt: futureStart(),
+    });
 
     // Both the assignee (actor) and their supervisor hold a due reminder.
     const empRem = await addReminder(t.empTok, task.id, 60);
@@ -5434,7 +6180,9 @@ describe('Reminders overhaul (A/B/C/D)', () => {
     assert.equal(mgrFeed.reminders[0]?.canceledReason, 'start-date-removed');
 
     // Dismiss (Remove) hard-deletes the notice — the only cleanup path.
-    const del = await request(app).delete(`/api/reminders/${mgrFeed.reminders[0]!.id}`).set(auth(t.mgrTok));
+    const del = await request(app)
+      .delete(`/api/reminders/${mgrFeed.reminders[0]!.id}`)
+      .set(auth(t.mgrTok));
     assert.equal(del.status, 204);
     assert.equal((await getNotifs(t.mgrTok)).reminders.length, 0);
     assert.equal(await prisma.reminder.count({ where: { taskId: task.id } }), 0, 'no rows remain');
@@ -5445,10 +6193,18 @@ describe('Reminders overhaul (A/B/C/D)', () => {
     const admin = await adminToken();
     const mgr = await seedUser({ email: 'c2-mgr@test.local', role: 'Manager', password: PW });
     const mgr2 = await seedUser({ email: 'c2-mgr2@test.local', role: 'Manager', password: PW });
-    const emp = await seedUser({ email: 'c2-emp@test.local', role: 'Member', password: PW, supervisorId: mgr.id });
+    const emp = await seedUser({
+      email: 'c2-emp@test.local',
+      role: 'Member',
+      password: PW,
+      supervisorId: mgr.id,
+    });
     const mgrTok = await login('c2-mgr@test.local', PW);
     const empTok = await login('c2-emp@test.local', PW);
-    const task = await makeTask(admin, 'Cancel task', { assigneeId: emp.id, startAt: futureStart() });
+    const task = await makeTask(admin, 'Cancel task', {
+      assigneeId: emp.id,
+      startAt: futureStart(),
+    });
 
     assert.equal((await addReminder(empTok, task.id, 60)).status, 201);
     assert.equal((await addReminder(mgrTok, task.id, 60)).status, 201);
@@ -5466,7 +6222,11 @@ describe('Reminders overhaul (A/B/C/D)', () => {
     // Re-parent the employee away from mgr — mgr loses access, so the cancel
     // notice is suppressed (A2 gate applies to notices too).
     assert.equal((await reparent(admin, emp.id, mgr2.id)).status, 200);
-    assert.equal((await getNotifs(mgrTok)).reminders.length, 0, 'notice suppressed once access is lost');
+    assert.equal(
+      (await getNotifs(mgrTok)).reminders.length,
+      0,
+      'notice suppressed once access is lost',
+    );
   });
 
   // D ------------------------------------------------------------------------
@@ -5644,7 +6404,10 @@ describe('scheduler: next-wake derivation (Phase 14)', () => {
 
     const wake = await S.computeNextWakeAt(now);
     const expected = new Date(startAt.getTime() - 60 * 60_000);
-    assert.ok(approx(wake, expected), `expected ${expected.toISOString()}, got ${wake.toISOString()}`);
+    assert.ok(
+      approx(wake, expected),
+      `expected ${expected.toISOString()}, got ${wake.toISOString()}`,
+    );
   });
 
   it('takes the soonest across every source', async () => {
@@ -5659,7 +6422,10 @@ describe('scheduler: next-wake derivation (Phase 14)', () => {
     await seedApprovedGoal(deadline);
 
     const wake = await S.computeNextWakeAt(now);
-    assert.ok(approx(wake, deadline), `expected the sooner goal deadline, got ${wake.toISOString()}`);
+    assert.ok(
+      approx(wake, deadline),
+      `expected the sooner goal deadline, got ${wake.toISOString()}`,
+    );
   });
 
   it('never sleeps less than the floor, however soon the next item is', async () => {
@@ -5826,13 +6592,23 @@ describe('scheduler: server-side reminder dispatch (Phase 14 / S4a)', () => {
     const id = await dueReminder(admin);
 
     await S.runScheduler(new Date());
-    const first = await prisma.reminder.findUnique({ where: { id }, select: { emailSentAt: true } });
+    const first = await prisma.reminder.findUnique({
+      where: { id },
+      select: { emailSentAt: true },
+    });
     M.__resetSentEmails();
 
     await S.runScheduler(new Date());
-    const second = await prisma.reminder.findUnique({ where: { id }, select: { emailSentAt: true } });
+    const second = await prisma.reminder.findUnique({
+      where: { id },
+      select: { emailSentAt: true },
+    });
 
-    assert.equal(second?.emailSentAt?.getTime(), first?.emailSentAt?.getTime(), 'claim is terminal');
+    assert.equal(
+      second?.emailSentAt?.getTime(),
+      first?.emailSentAt?.getTime(),
+      'claim is terminal',
+    );
     assert.equal(reminderMail().length, 0, 'no duplicate email');
   });
 
@@ -6503,7 +7279,6 @@ describe('exclusives: last successful check (HLAI-71 6g)', () => {
     assert.equal(res.body.lastSweepAt, snapshot.capturedAt.toISOString());
   });
 });
-
 
 describe('exclusives: scheduled sweep log lines (HLAI-71 6g)', () => {
   before(loadSchedulerMods);

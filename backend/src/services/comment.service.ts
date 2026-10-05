@@ -3,12 +3,13 @@ import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { getStorage } from '../storage/index.js';
 import { getTaskDetail } from './task.service.js';
-import {
-  sanitizeAndValidate,
-  richTextLength,
-  extractMentionUserIds,
-} from '../utils/rich-text.js';
+import { sanitizeAndValidate, richTextLength, extractMentionUserIds } from '../utils/rich-text.js';
 import { recordHistory } from './task-history.service.js';
+import {
+  discardUploads,
+  prepareCommentAttachments,
+  type ConfirmInput,
+} from './attachment.service.js';
 import { createMentionNotifications } from './notification.service.js';
 import { getMentionCandidateIds, requireTaskAccess } from './access-control.service.js';
 import {
@@ -112,6 +113,7 @@ export async function createComment(
   actor: Actor,
   taskId: number,
   body: string,
+  attachments: ConfirmInput[] = [],
 ): Promise<TaskDetailDto> {
   // Commenting requires FULL or mention (comment) access. A user with no access
   // gets 404 (existence hidden); a purely tree-inherited (read-only) viewer gets
@@ -120,7 +122,22 @@ export async function createComment(
   if (access.level === 'tree') {
     throw HttpError.forbidden('You have read-only access to this task and cannot comment on it');
   }
-  const clean = prepareBody(body);
+
+  // Text and files are each optional, but a comment must carry one of them.
+  const hasText = richTextLength(body ?? '') > 0;
+  if (!hasText && attachments.length === 0) {
+    throw HttpError.badRequest('Add a comment or attach a file');
+  }
+  // An attachment-only comment stores an empty body rather than being rejected
+  // by prepareBody, which exists to stop a *text* comment being blank.
+  const clean = hasText ? prepareBody(body) : '';
+
+  // Ownership of every staged key is proven here, BEFORE anything is written.
+  // Only once this returns may the keys be passed to discardUploads — a key
+  // that failed this check could belong to another user.
+  const prepared = await prepareCommentAttachments(actor, taskId, attachments);
+  const ownedKeys = prepared.map((a) => a.storageKey);
+
   const mentionIds = await restrictMentionsForTask(
     await activeUserIds(extractMentionUserIds(clean)),
     access,
@@ -128,21 +145,42 @@ export async function createComment(
 
   let commentId = '';
   let fired: string[] = [];
-  await prisma.$transaction(async (tx) => {
-    const comment = await tx.comment.create({
-      data: { taskId, authorId: actor.id, body: clean },
-      select: { id: true },
+  try {
+    await prisma.$transaction(async (tx) => {
+      const comment = await tx.comment.create({
+        data: { taskId, authorId: actor.id, body: clean },
+        select: { id: true },
+      });
+      commentId = comment.id;
+      // History: a comment was added (the text itself is never stored in history).
+      await recordHistory(tx, {
+        taskId,
+        userId: actor.id,
+        field: TASK_HISTORY_FIELDS.comment,
+        changeType: 'added',
+      });
+      for (const file of prepared) {
+        await tx.attachment.create({
+          data: { ...file, uploadedById: actor.id, commentId: comment.id },
+        });
+        // A comment-level attachment is logged against its parent task too, the
+        // same way the standalone attachment endpoint does it.
+        await recordHistory(tx, {
+          taskId,
+          userId: actor.id,
+          field: TASK_HISTORY_FIELDS.attachment,
+          changeType: 'added',
+          detail: file.filename,
+        });
+      }
+      fired = await reconcileMentionsAndEvents(tx, comment.id, taskId, [], mentionIds);
     });
-    commentId = comment.id;
-    // History: a comment was added (the text itself is never stored in history).
-    await recordHistory(tx, {
-      taskId,
-      userId: actor.id,
-      field: TASK_HISTORY_FIELDS.comment,
-      changeType: 'added',
-    });
-    fired = await reconcileMentionsAndEvents(tx, comment.id, taskId, [], mentionIds);
-  });
+  } catch (err) {
+    // All-or-nothing. The rows are already rolled back; the bytes are not, so
+    // remove them rather than leaving files nothing points at.
+    await discardUploads(ownedKeys);
+    throw err;
+  }
 
   // Notifications (+ any "also email me" emails) are a post-commit side effect.
   await createMentionNotifications(taskId, commentId, fired, actor.id);

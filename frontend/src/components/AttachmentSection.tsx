@@ -1,13 +1,9 @@
 import { useRef, useState } from 'react';
-import {
-  ATTACHMENT_MAX_BYTES,
-  isAllowedAttachmentType,
-  type AttachmentDto,
-  type TaskDetailDto,
-  type UserDto,
-} from '@healthy-tasks/shared';
+import type { AttachmentDto, TaskDetailDto, UserDto } from '@healthy-tasks/shared';
 import { api, ApiError, uploadToStorage } from '../api/client';
+import { attachmentProblem, fileIcon, humanSize } from '../lib/attachmentFile';
 import { UserChip } from './ui/Avatar';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 
 type Target = { kind: 'task'; taskId: number } | { kind: 'comment'; commentId: string };
 
@@ -17,19 +13,6 @@ interface Props {
   canUpload: boolean;
   currentUser: UserDto;
   onChanged: (task: TaskDetailDto) => void;
-}
-
-function humanSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function fileIcon(contentType: string): string {
-  if (contentType.startsWith('image/')) return '🖼️';
-  if (contentType.startsWith('audio/')) return '🎵';
-  if (contentType.startsWith('video/')) return '🎬';
-  return '📄';
 }
 
 export function AttachmentSection({
@@ -42,6 +25,8 @@ export function AttachmentSection({
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** The attachment awaiting confirmation, if the delete dialog is open. */
+  const [confirming, setConfirming] = useState<AttachmentDto | null>(null);
 
   // The API also allows an org-superior of the uploader to delete; the button is
   // shown for the clear cases (uploader or Admin) and the server enforces the rest.
@@ -50,12 +35,9 @@ export function AttachmentSection({
 
   async function handleFile(file: File) {
     setError(null);
-    if (!file.type || !isAllowedAttachmentType(file.type)) {
-      setError('Unsupported file type. Allowed: images, documents, audio, and video.');
-      return;
-    }
-    if (file.size > ATTACHMENT_MAX_BYTES) {
-      setError(`"${file.name}" is too large (${humanSize(file.size)}). The maximum is 25 MB.`);
+    const problem = attachmentProblem(file);
+    if (problem) {
+      setError(problem);
       return;
     }
     setBusy(true);
@@ -89,12 +71,13 @@ export function AttachmentSection({
   }
 
   async function handleDelete(att: AttachmentDto) {
-    if (!window.confirm(`Delete "${att.filename}"?`)) return;
     setError(null);
     setBusy(true);
     try {
       onChanged(await api.deleteAttachment(att.id));
+      setConfirming(null);
     } catch (err) {
+      setConfirming(null);
       setError(err instanceof ApiError ? err.message : 'Could not delete attachment');
     } finally {
       setBusy(false);
@@ -135,7 +118,7 @@ export function AttachmentSection({
                   className="rel-x"
                   aria-label={`Delete ${att.filename}`}
                   disabled={busy}
-                  onClick={() => handleDelete(att)}
+                  onClick={() => setConfirming(att)}
                 >
                   ×
                 </button>
@@ -166,6 +149,16 @@ export function AttachmentSection({
             {busy ? 'Uploading…' : '+ Attach file'}
           </button>
         </div>
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title={`Delete "${confirming.filename}"?`}
+          message="The file is removed from storage as well, so this cannot be undone."
+          busy={busy}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => void handleDelete(confirming)}
+        />
       )}
     </div>
   );
