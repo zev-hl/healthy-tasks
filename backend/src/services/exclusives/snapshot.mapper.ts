@@ -1,9 +1,5 @@
 import type { ExclusivesMarketplace } from '@healthy-tasks/shared';
-import type {
-  ListingAttributes,
-  ListingIssue,
-  ListingItem,
-} from './sp-api/listings.js';
+import type { ListingAttributes, ListingIssue, ListingItem } from './sp-api/listings.js';
 import type { CatalogItem } from './sp-api/catalog.js';
 
 // The listing half of a snapshot. Buy Box winner/price and offer count come
@@ -39,11 +35,35 @@ function first(attrs: ListingAttributes, key: string): string | undefined {
   return typeof raw === 'string' ? raw : raw != null ? String(raw) : undefined;
 }
 
+/**
+ * Amazon spells units out in full — "centimeters", "inches". Three of those in
+ * one line makes a dimension string hard to read, and it ends up quoted inside
+ * an alert message, so it is shortened at the point it is built rather than
+ * patched up later in the UI.
+ *
+ * An unrecognised unit is kept as Amazon sent it: better an odd-looking line
+ * than a measurement with no unit at all.
+ */
+const SHORT_UNIT: Record<string, string> = {
+  centimeters: 'cm',
+  centimeter: 'cm',
+  millimeters: 'mm',
+  millimeter: 'mm',
+  meters: 'm',
+  meter: 'm',
+  inches: 'in',
+  inch: 'in',
+  feet: 'ft',
+  foot: 'ft',
+};
+
 function dimension(dim: Record<string, unknown> | undefined): string | undefined {
   if (!dim) return undefined;
   const part = (k: string) => {
     const d = dim[k] as { value?: unknown; unit?: string } | undefined;
-    return d?.value != null ? `${d.value}${d.unit ?? ''}` : null;
+    if (d?.value == null) return null;
+    const unit = d.unit ? (SHORT_UNIT[d.unit.toLowerCase()] ?? d.unit) : '';
+    return `${d.value}${unit}`;
   };
   const lwh = ['length', 'width', 'height'].map(part).filter(Boolean);
   return lwh.length ? lwh.join(' x ') : undefined;
@@ -68,7 +88,9 @@ function extractPrice(item: ListingItem): { amount?: number; currency?: string }
     return { amount: Number(offer.price.amount), currency: offer.price.currencyCode };
   }
   const attr = values(item.attributes ?? {}, 'purchasable_offer')[0];
-  const schedule = (attr?.our_price as Array<{ schedule?: Array<{ value_with_tax?: number }> }>)?.[0];
+  const schedule = (
+    attr?.our_price as Array<{ schedule?: Array<{ value_with_tax?: number }> }>
+  )?.[0];
   const amount = schedule?.schedule?.[0]?.value_with_tax;
   const currency = typeof attr?.currency === 'string' ? attr.currency : undefined;
   return { amount: amount != null ? Number(amount) : undefined, currency };
