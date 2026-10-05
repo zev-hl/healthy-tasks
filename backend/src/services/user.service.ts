@@ -34,7 +34,9 @@ export async function assertValidSupervisor(
     throw HttpError.badRequest('A user cannot be their own supervisor');
   }
 
-  const supervisor = await prisma.user.findUnique({ where: { id: supervisorId } });
+  const supervisor = await prisma.user.findUnique({
+    where: { id: supervisorId },
+  });
   if (!supervisor) {
     throw HttpError.badRequest('Selected supervisor does not exist');
   }
@@ -49,12 +51,17 @@ export async function assertValidSupervisor(
 }
 
 export async function listUsers(): Promise<User[]> {
-  return prisma.user.findMany({ orderBy: [{ isActive: 'desc' }, { email: 'asc' }] });
+  return prisma.user.findMany({
+    orderBy: [{ isActive: 'desc' }, { email: 'asc' }],
+  });
 }
 
 // --- Users screen: filter + multi-sort + pagination (Phase 6) ---------------
 
-function mapUserSort(field: UserSortField, dir: SortDirection): Prisma.UserOrderByWithRelationInput {
+function mapUserSort(
+  field: UserSortField,
+  dir: SortDirection,
+): Prisma.UserOrderByWithRelationInput {
   switch (field) {
     case 'firstName':
       return { firstName: dir };
@@ -78,7 +85,8 @@ function buildUserOrderBy(
 ): Prisma.UserOrderByWithRelationInput[] {
   const orderBy = sort.map((s) => mapUserSort(s.field, s.dir));
   // Default: alphabetical by Last Name (then First, then email).
-  if (orderBy.length === 0) orderBy.push({ lastName: 'asc' }, { firstName: 'asc' }, { email: 'asc' });
+  if (orderBy.length === 0)
+    orderBy.push({ lastName: 'asc' }, { firstName: 'asc' }, { email: 'asc' });
   orderBy.push({ id: 'asc' }); // stable tiebreaker
   return orderBy;
 }
@@ -113,14 +121,22 @@ export async function searchUsers(input: UserSearchInput): Promise<PaginatedResu
   const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE;
 
   const [rows, total] = await prisma.$transaction([
-    prisma.user.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.user.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
     prisma.user.count({ where }),
   ]);
   return { rows, total, page, pageSize };
 }
 
 /** Roster-wide active/inactive tallies for the Users header (ignores filters). */
-export async function getUserCounts(): Promise<{ active: number; inactive: number }> {
+export async function getUserCounts(): Promise<{
+  active: number;
+  inactive: number;
+}> {
   const [active, inactive] = await prisma.$transaction([
     prisma.user.count({ where: { isActive: true } }),
     prisma.user.count({ where: { isActive: false } }),
@@ -149,7 +165,11 @@ export async function getUserFilterOptions(): Promise<{
       select: { lastName: true },
       orderBy: { lastName: 'asc' },
     }),
-    prisma.user.findMany({ distinct: ['email'], select: { email: true }, orderBy: { email: 'asc' } }),
+    prisma.user.findMany({
+      distinct: ['email'],
+      select: { email: true },
+      orderBy: { email: 'asc' },
+    }),
     prisma.user.findMany({
       where: { title: { not: null } },
       distinct: ['title'],
@@ -157,7 +177,10 @@ export async function getUserFilterOptions(): Promise<{
       orderBy: { title: 'asc' },
     }),
     // Users who supervise at least one person = the distinct supervisor values.
-    prisma.user.findMany({ where: { reports: { some: {} } }, orderBy: { email: 'asc' } }),
+    prisma.user.findMany({
+      where: { reports: { some: {} } },
+      orderBy: { email: 'asc' },
+    }),
   ]);
   return {
     firstName: firstNames.map((r) => r.firstName),
@@ -170,7 +193,10 @@ export async function getUserFilterOptions(): Promise<{
 
 /** All active users — used by the task assignee picker (any authenticated user). */
 export async function listActiveUsers(): Promise<User[]> {
-  return prisma.user.findMany({ where: { isActive: true }, orderBy: { email: 'asc' } });
+  return prisma.user.findMany({
+    where: { isActive: true },
+    orderBy: { email: 'asc' },
+  });
 }
 
 /** Users eligible to be selected as a supervisor: active Managers and Admins. */
@@ -243,7 +269,9 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Us
   // leave those reports pointing at a Member, violating the invariant. Require
   // the reports to be reassigned first.
   if (input.role !== undefined && !isSupervisorRole(input.role)) {
-    const reportCount = await prisma.user.count({ where: { supervisorId: id } });
+    const reportCount = await prisma.user.count({
+      where: { supervisorId: id },
+    });
     if (reportCount > 0) {
       throw HttpError.badRequest(
         `Cannot change this user to ${input.role}: they are still the supervisor of ` +
@@ -274,7 +302,10 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Us
 
   const [updated] = await prisma.$transaction([
     prisma.user.update({ where: { id }, data }),
-    prisma.user.updateMany({ where: { supervisorId: id }, data: { supervisorId: null } }),
+    prisma.user.updateMany({
+      where: { supervisorId: id },
+      data: { supervisorId: null },
+    }),
   ]);
   return updated;
 }
@@ -355,7 +386,10 @@ export async function mergeUsers(actorId: string, input: MergeUsersInput): Promi
   // reports (plus keeps its own). If anyone ends up supervised by the survivor,
   // the survivor's chosen role must be a supervisor role.
   const superviseeCount = await prisma.user.count({
-    where: { supervisorId: { in: [survivingId, mergedId] }, id: { notIn: [survivingId, mergedId] } },
+    where: {
+      supervisorId: { in: [survivingId, mergedId] },
+      id: { notIn: [survivingId, mergedId] },
+    },
   });
   if (superviseeCount > 0 && !isSupervisorRole(fieldChoices.role)) {
     throw HttpError.badRequest(
@@ -384,31 +418,65 @@ export async function mergeUsers(actorId: string, input: MergeUsersInput): Promi
     //    we can log the merge on each of them afterward.
     const taskIds = new Set<number>();
     const add = (rows: { taskId: number }[]) => rows.forEach((r) => taskIds.add(r.taskId));
-    (await tx.task.findMany({
-      where: { OR: [{ creatorId: mergedId }, { assigneeId: mergedId }] },
-      select: { id: true },
-    })).forEach((t) => taskIds.add(t.id));
-    add(await tx.comment.findMany({ where: { authorId: mergedId }, select: { taskId: true } }));
-    add(await tx.mentionEvent.findMany({ where: { userId: mergedId }, select: { taskId: true } }));
-    add(await tx.taskHistory.findMany({ where: { userId: mergedId }, select: { taskId: true } }));
-    (await tx.attachment.findMany({
-      where: { uploadedById: mergedId },
-      select: { taskId: true, comment: { select: { taskId: true } } },
-    })).forEach((a) => {
+    (
+      await tx.task.findMany({
+        where: { OR: [{ creatorId: mergedId }, { assigneeId: mergedId }] },
+        select: { id: true },
+      })
+    ).forEach((t) => taskIds.add(t.id));
+    add(
+      await tx.comment.findMany({
+        where: { authorId: mergedId },
+        select: { taskId: true },
+      }),
+    );
+    add(
+      await tx.mentionEvent.findMany({
+        where: { userId: mergedId },
+        select: { taskId: true },
+      }),
+    );
+    add(
+      await tx.taskHistory.findMany({
+        where: { userId: mergedId },
+        select: { taskId: true },
+      }),
+    );
+    (
+      await tx.attachment.findMany({
+        where: { uploadedById: mergedId },
+        select: { taskId: true, comment: { select: { taskId: true } } },
+      })
+    ).forEach((a) => {
       const tid = a.taskId ?? a.comment?.taskId;
       if (tid != null) taskIds.add(tid);
     });
 
     // 3. Reassign all references from the merged account to the survivor.
-    await tx.task.updateMany({ where: { creatorId: mergedId }, data: { creatorId: survivingId } });
-    await tx.task.updateMany({ where: { assigneeId: mergedId }, data: { assigneeId: survivingId } });
-    await tx.comment.updateMany({ where: { authorId: mergedId }, data: { authorId: survivingId } });
+    await tx.task.updateMany({
+      where: { creatorId: mergedId },
+      data: { creatorId: survivingId },
+    });
+    await tx.task.updateMany({
+      where: { assigneeId: mergedId },
+      data: { assigneeId: survivingId },
+    });
+    await tx.comment.updateMany({
+      where: { authorId: mergedId },
+      data: { authorId: survivingId },
+    });
     await tx.attachment.updateMany({
       where: { uploadedById: mergedId },
       data: { uploadedById: survivingId },
     });
-    await tx.mentionEvent.updateMany({ where: { userId: mergedId }, data: { userId: survivingId } });
-    await tx.taskHistory.updateMany({ where: { userId: mergedId }, data: { userId: survivingId } });
+    await tx.mentionEvent.updateMany({
+      where: { userId: mergedId },
+      data: { userId: survivingId },
+    });
+    await tx.taskHistory.updateMany({
+      where: { userId: mergedId },
+      data: { userId: survivingId },
+    });
 
     // CommentMention has a (commentId, userId) primary key, so drop the merged
     // account's rows that would collide with the survivor's before reassigning.

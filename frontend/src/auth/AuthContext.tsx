@@ -20,6 +20,8 @@ interface AuthState {
   /** Renew the session (resets the idle clock) and dismiss the warning. */
   extendSession: () => Promise<void>;
   login: (email: string, password: string) => Promise<UserDto>;
+  /** Sign in with a Google ID token. Lands in the same session as `login`. */
+  loginWithGoogle: (idToken: string) => Promise<UserDto>;
   logout: () => void;
 }
 
@@ -116,6 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       extendSession,
       async login(email, password) {
         const res = await api.login(email, password);
+        setToken(res.token);
+        setUser(res.user);
+        setSessionExpired(false);
+        setExpiryWarning(false);
+        return res.user;
+      },
+      async loginWithGoogle(idToken) {
+        const res = await api.googleLogin(idToken);
         setToken(res.token);
         setUser(res.user);
         setSessionExpired(false);

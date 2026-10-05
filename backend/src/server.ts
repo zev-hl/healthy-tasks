@@ -26,6 +26,7 @@ const server = app.listen(env.port, () => {
     smtpHost: env.email.smtpHost,
     storageDriver: env.storage.driver,
     schedulerEnabled: env.schedulerEnabled,
+    googleClientId: env.google.clientId,
   });
   for (const gap of gaps) {
     // eslint-disable-next-line no-console

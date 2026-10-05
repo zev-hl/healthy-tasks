@@ -55,7 +55,9 @@ export const env = {
   },
 
   seed: {
-    adminEmail: optional('SEED_ADMIN_EMAIL', 'admin@healthy-tasks.local'),
+    // Must satisfy GOOGLE_ALLOWED_DOMAIN, or a fresh environment seeds an
+    // admin who cannot sign in through either door.
+    adminEmail: optional('SEED_ADMIN_EMAIL', 'admin-local@healthlifeny.com'),
     adminPassword: optional('SEED_ADMIN_PASSWORD', 'ChangeMe123!'),
   },
 
@@ -73,6 +75,20 @@ export const env = {
     accessKey: optional('S3_ACCESS_KEY', 'minioadmin'),
     secretKey: optional('S3_SECRET_KEY', 'minioadmin'),
     forcePathStyle: optional('S3_FORCE_PATH_STYLE', 'true') === 'true',
+  },
+
+  // Google sign-in. Left optional rather than required() so the app still boots
+  // where it is not wired up yet — the same treatment as the SP-API block
+  // below. The Google endpoint refuses clearly when clientId is blank, and
+  // startup-checks warns about it in production.
+  google: {
+    // Identifies THIS app to Google. Public by design: it ends up in the page
+    // source. The backend checks every incoming token was issued for it.
+    clientId: optional('GOOGLE_CLIENT_ID', ''),
+    // Only addresses in this domain may sign in. Checked by us regardless of
+    // how the Google consent screen is configured; blank disables the check.
+    // Used from Chunk 3 onward.
+    allowedDomain: optional('GOOGLE_ALLOWED_DOMAIN', '').trim().toLowerCase(),
   },
 
   // Amazon SP-API (Exclusives). Undefined until Amazon is wired up so the app

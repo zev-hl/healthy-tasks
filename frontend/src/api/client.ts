@@ -179,6 +179,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  /**
+   * Sign in with the token Google handed the browser. The server verifies it
+   * and answers with the same session a password login returns — from here on
+   * the two ways in are indistinguishable.
+   */
+  googleLogin: (idToken: string) =>
+    request<LoginResponse>('/api/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ idToken }),
+    }),
   me: () => request<UserDto>('/api/auth/me'),
 
   // --- Exclusives (HLAI-71) ---
@@ -258,9 +268,14 @@ export const api = {
   deactivateUser: (id: string) =>
     request<UserDto>(`/api/users/${id}/deactivate`, { method: 'POST' }),
   mergeUsers: (body: MergeUsersRequest) =>
-    request<UserDto>('/api/users/merge', { method: 'POST', body: JSON.stringify(body) }),
+    request<UserDto>('/api/users/merge', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   adminResetPassword: (id: string) =>
-    request<AdminResetLinkResponse>(`/api/users/${id}/reset-password`, { method: 'POST' }),
+    request<AdminResetLinkResponse>(`/api/users/${id}/reset-password`, {
+      method: 'POST',
+    }),
 
   searchUsers: (body: UserSearchRequest) =>
     request<PaginatedResult<UserDto>>('/api/users/search', {
@@ -306,7 +321,10 @@ export const api = {
   getTask: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}`),
   getTaskHistory: (id: number) => request<TaskHistoryEntryDto[]>(`/api/tasks/${id}/history`),
   createTask: (body: CreateTaskRequest) =>
-    request<TaskDto>('/api/tasks', { method: 'POST', body: JSON.stringify(body) }),
+    request<TaskDto>('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   updateTask: (id: number, body: UpdateTaskRequest, expectedUpdatedAt?: string) =>
     request<TaskDetailDto>(`/api/tasks/${id}`, {
       method: 'PATCH',
@@ -315,7 +333,9 @@ export const api = {
   // Review workflow (Phase 10): leave Review, restoring prior assignee + status.
   reviewed: (id: number) => request<TaskDetailDto>(`/api/tasks/${id}/reviewed`, { method: 'POST' }),
   recallReview: (id: number) =>
-    request<TaskDetailDto>(`/api/tasks/${id}/recall-review`, { method: 'POST' }),
+    request<TaskDetailDto>(`/api/tasks/${id}/recall-review`, {
+      method: 'POST',
+    }),
 
   // --- Access control (Phase 13) ---
   setTaskPrivate: (id: number, isPrivate: boolean) =>
@@ -398,7 +418,9 @@ export const api = {
       body: JSON.stringify(body),
     }),
   deleteAttachment: (attachmentId: string) =>
-    request<TaskDetailDto>(`/api/attachments/${attachmentId}`, { method: 'DELETE' }),
+    request<TaskDetailDto>(`/api/attachments/${attachmentId}`, {
+      method: 'DELETE',
+    }),
   getAttachmentDownloadUrl: (attachmentId: string) =>
     request<AttachmentDownloadResponse>(`/api/attachments/${attachmentId}/download`),
 
@@ -458,7 +480,9 @@ export const api = {
       body: JSON.stringify(body),
     }),
   clearTaskRecurrence: (taskId: number) =>
-    request<TaskDetailDto>(`/api/tasks/${taskId}/recurrence`, { method: 'DELETE' }),
+    request<TaskDetailDto>(`/api/tasks/${taskId}/recurrence`, {
+      method: 'DELETE',
+    }),
   materializeTaskOccurrence: (taskId: number, seq: number) =>
     request<TaskDetailDto>(`/api/tasks/${taskId}/recurrence/materialize`, {
       method: 'POST',
@@ -469,9 +493,15 @@ export const api = {
   listTemplates: () => request<TemplateSummaryDto[]>('/api/templates'),
   getTemplate: (id: number) => request<TemplateDto>(`/api/templates/${id}`),
   createTemplate: (body: CreateTemplateRequest) =>
-    request<TemplateDto>('/api/templates', { method: 'POST', body: JSON.stringify(body) }),
+    request<TemplateDto>('/api/templates', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   updateTemplate: (id: number, body: UpdateTemplateRequest) =>
-    request<TemplateDto>(`/api/templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    request<TemplateDto>(`/api/templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   deleteTemplate: (id: number) => request<void>(`/api/templates/${id}`, { method: 'DELETE' }),
   // Ghost previews across every active fixed-schedule template (Gantt/Calendar).
   getAllTemplateGhosts: () => request<GhostOccurrenceDto[]>('/api/templates/ghosts'),
@@ -496,10 +526,16 @@ export const api = {
   // --- SMART Goals (Phase 12) ---
   listMyGoals: () => request<GoalDto[]>('/api/goals/mine'),
   listTeamGoals: (body: GoalTeamRequest = {}) =>
-    request<GoalDto[]>('/api/goals/team', { method: 'POST', body: JSON.stringify(body) }),
+    request<GoalDto[]>('/api/goals/team', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   getGoal: (id: number) => request<GoalDto>(`/api/goals/${id}`),
   createGoal: (body: CreateGoalRequest) =>
-    request<GoalDto>('/api/goals', { method: 'POST', body: JSON.stringify(body) }),
+    request<GoalDto>('/api/goals', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   updateGoal: (id: number, body: UpdateGoalRequest, expectedUpdatedAt?: string) =>
     request<GoalDto>(`/api/goals/${id}`, {
       method: 'PATCH',
@@ -540,7 +576,10 @@ export const api = {
   // --- Global app settings (Admin) ---
   getAppSettings: () => request<AppSettingsDto>('/api/settings'),
   updateAppSettings: (body: UpdateAppSettingsRequest) =>
-    request<AppSettingsDto>('/api/settings', { method: 'PUT', body: JSON.stringify(body) }),
+    request<AppSettingsDto>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 };
 
 /**
@@ -588,7 +627,10 @@ const localTimeZone = (): string => Intl.DateTimeFormat().resolvedOptions().time
 
 /** Download the Alert Log as CSV, filtered exactly as the screen is. */
 export function exportExclusivesAlertsToCsv(body: ExclusivesAlertQueryRequest): Promise<void> {
-  const payload: ExclusivesAlertExportRequest = { ...body, timeZone: localTimeZone() };
+  const payload: ExclusivesAlertExportRequest = {
+    ...body,
+    timeZone: localTimeZone(),
+  };
   return downloadFile('/api/exclusives/alerts/export', payload, 'exclusives-alerts.csv');
 }
 

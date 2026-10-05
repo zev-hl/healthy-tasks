@@ -43,6 +43,14 @@ export interface UserDto {
   mergedIntoId: string | null;
   createdAt: string; // ISO-8601
   updatedAt: string; // ISO-8601
+  /**
+   * The ONE way this person signs in, decided by their email domain.
+   *
+   * Server-computed rather than stored, so it can never drift from the rule.
+   * The admin screens use it to show the truth — a Google account has no reset
+   * button, because there is no password to reset.
+   */
+  signInMethod: 'google' | 'password';
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +60,14 @@ export interface UserDto {
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+/**
+ * Sign in with Google. The browser gets this token from Google and passes it
+ * straight through; everything inside it is verified server-side.
+ */
+export interface GoogleLoginRequest {
+  idToken: string;
 }
 
 export interface LoginResponse {
@@ -138,10 +154,20 @@ export type MergeField = (typeof MERGE_FIELDS)[number];
  * also printed to the server console via the mailer; it is surfaced here so the
  * admin UI can display/copy it while no real email provider is configured.
  */
+/**
+ * The answer to creating a user, or to an admin asking for a reset link.
+ *
+ * `resetLink` is absent when the new account is expected to sign in with
+ * Google: there is no password to set, so no link is minted and the person is
+ * sent a welcome message instead. The admin UI should show the welcome state
+ * rather than a link to copy.
+ */
 export interface AdminResetLinkResponse {
   user: UserDto;
-  resetLink: string;
-  expiresAt: string;
+  resetLink?: string;
+  expiresAt?: string;
+  /** How this person is expected to sign in, so the UI can say so plainly. */
+  signInMethod: 'google' | 'password';
 }
 
 // ---------------------------------------------------------------------------

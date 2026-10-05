@@ -79,6 +79,28 @@ export const mailer: Mailer =
   env.email.provider === 'smtp' ? new SmtpMailer() : new ConsoleMailer();
 
 /** Convenience helper for the password-reset email. */
+/**
+ * Sent instead of a reset link when the new account can use Sign in with
+ * Google. There is no password to set, so a reset link would only confuse —
+ * and would hand out a credential nobody needs.
+ */
+export async function sendGoogleWelcomeEmail(to: string, signInUrl: string): Promise<void> {
+  await mailer.send({
+    to,
+    subject: 'Your HL Central account is ready',
+    text: [
+      'An HL Central account has been created for you.',
+      '',
+      'Open the app and choose "Sign in with Google", using this same work',
+      'account. There is no password to set up.',
+      '',
+      signInUrl,
+      '',
+      'If you cannot sign in, ask an administrator.',
+    ].join('\n'),
+  });
+}
+
 export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
   await mailer.send({
     to,

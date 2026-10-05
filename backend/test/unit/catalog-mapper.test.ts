@@ -9,7 +9,7 @@ describe('mapCatalogContent', () => {
     assert.equal(c.brand, 'Walden Farms');
     assert.equal(c.bulletPoints?.length, 2);
     assert.ok(c.description?.startsWith('A calorie-free'));
-    assert.equal(c.dimensions, '3inches x 3inches x 5inches');
+    assert.equal(c.dimensions, '3in x 3in x 5in');
     assert.equal(c.mainImageUrl, 'https://m.media-amazon.com/images/I/51chypizJCL.jpg');
   });
 

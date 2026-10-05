@@ -25,6 +25,7 @@ export interface ReadinessInput {
   smtpHost?: string | undefined;
   storageDriver: string;
   schedulerEnabled: boolean;
+  googleClientId: string;
 }
 
 /**
@@ -42,6 +43,13 @@ export function productionReadinessGaps(cfg: ReadinessInput): string[] {
     );
   } else if (!cfg.smtpHost) {
     gaps.push('EMAIL_PROVIDER is "smtp" but SMTP_HOST is unset: sending will fail.');
+  }
+
+  if (!cfg.googleClientId) {
+    gaps.push(
+      'GOOGLE_CLIENT_ID is unset: "Sign in with Google" will refuse every attempt. ' +
+        'Email and password sign-in is unaffected.',
+    );
   }
 
   if (cfg.storageDriver === 'memory') {

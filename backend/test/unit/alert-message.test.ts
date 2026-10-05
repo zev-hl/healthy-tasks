@@ -22,7 +22,8 @@ const base: SnapshotView = {
 };
 const s = (o: Partial<SnapshotView>): SnapshotView => ({ ...base, ...o });
 const ctx = { storeName: 'Health Life' };
-const msg = (a: DetectedAlert, prev: SnapshotView, cur: SnapshotView) => describeAlert(a, prev, cur, ctx);
+const msg = (a: DetectedAlert, prev: SnapshotView, cur: SnapshotView) =>
+  describeAlert(a, prev, cur, ctx);
 
 const alert = (o: Partial<DetectedAlert> & Pick<DetectedAlert, 'alertType'>): DetectedAlert => ({
   category: null,
@@ -64,7 +65,11 @@ describe('describeAlert', () => {
   it('Listing suppressed uses the reason when present', () => {
     assert.equal(msg(alert({ alertType: 'ListingSuppressed' }), base, base), 'Listing suppressed.');
     assert.equal(
-      msg(alert({ alertType: 'ListingSuppressed' }), base, s({ suppressionReason: 'Image missing' })),
+      msg(
+        alert({ alertType: 'ListingSuppressed' }),
+        base,
+        s({ suppressionReason: 'Image missing' }),
+      ),
       'Listing suppressed — Image missing',
     );
   });
@@ -80,14 +85,23 @@ describe('describeAlert', () => {
     );
   });
 
-  it('Title/Image/Description use short fixed lines', () => {
-    assert.equal(msg(alert({ alertType: 'TitleChanged' }), base, base), 'Title changed.');
+  it('Title names both titles; Image and Description stay short fixed lines', () => {
+    assert.equal(
+      msg(alert({ alertType: 'TitleChanged' }), base, s({ title: 'Widget Pro' })),
+      'Title changed from "Widget" to "Widget Pro".',
+    );
     assert.equal(msg(alert({ alertType: 'MainImageChanged' }), base, base), 'Main image replaced.');
-    assert.equal(msg(alert({ alertType: 'DescriptionChanged' }), base, base), 'Description changed.');
+    assert.equal(
+      msg(alert({ alertType: 'DescriptionChanged' }), base, base),
+      'Description changed.',
+    );
   });
 
   it('Bullets read from the category', () => {
-    assert.equal(msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2' }), base, base), 'Bullet 2 rewritten.');
+    assert.equal(
+      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2' }), base, base),
+      'Bullet 2 rewritten.',
+    );
     assert.equal(
       msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2,bullet_4' }), base, base),
       'Bullets 2, 4 rewritten.',

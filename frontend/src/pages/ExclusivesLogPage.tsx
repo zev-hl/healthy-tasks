@@ -57,12 +57,6 @@ function toIso(local: string): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
-/** "$33.95 → $33.90", when the alert carries both sides of the change. */
-function beforeAfter(row: ExclusivesAlertRowDto): string | null {
-  if (row.previousValue === null && row.newValue === null) return null;
-  return `${row.previousValue ?? '—'} → ${row.newValue ?? '—'}`;
-}
-
 export function ExclusivesLogPage() {
   const link = (useLocation().state ?? {}) as LogLinkState;
 
@@ -483,7 +477,6 @@ export function ExclusivesLogPage() {
                 </TableEmptyRow>
               )}
               {rows.map((row) => {
-                const change = beforeAfter(row);
                 return (
                   <tr key={row.id}>
                     <td className="exc-col-asin">
@@ -498,8 +491,12 @@ export function ExclusivesLogPage() {
                     </td>
                     <td className="exc-muted">{row.groupName}</td>
                     <td>
+                      {/* The badge alone. The before/after used to sit under it,
+                          which turned a one-word column into a paragraph for
+                          long values — a changed title filled the cell. Every
+                          alert's message already says what changed, under the
+                          ASIN title, so this was a second copy of it. */}
                       <AlertTypeBadge type={row.alertType} />
-                      {change && <span className="mono exc-log-detail">{change}</span>}
                     </td>
                     <td>
                       <span className="exc-latest">{formatAgo(row.createdAt)}</span>

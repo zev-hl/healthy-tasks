@@ -18,7 +18,7 @@ describe('mapListingSnapshot', () => {
     assert.equal(s.mainImageUrl, 'https://m.media-amazon.com/images/I/71fIlObcgPL.jpg');
     assert.equal(s.listedPrice, 14.49);
     assert.equal(s.currency, 'USD');
-    assert.equal(s.dimensions, '2.5inches x 2.5inches x 2inches');
+    assert.equal(s.dimensions, '2.5in x 2.5in x 2in');
     assert.equal(s.bulletPoints.length, 2);
     assert.ok(s.description?.startsWith('Sombra MAX'));
     assert.equal(s.isSuppressed, false);

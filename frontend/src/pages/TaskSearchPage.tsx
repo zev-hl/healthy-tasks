@@ -79,7 +79,15 @@ interface PersistedState {
 
 const UNASSIGNED = '__unassigned__';
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
-const FILTERABLE: TaskColumnKey[] = ['status', 'priority', 'assignee', 'tags', 'startAt', 'dueAt', 'statusChangedAt'];
+const FILTERABLE: TaskColumnKey[] = [
+  'status',
+  'priority',
+  'assignee',
+  'tags',
+  'startAt',
+  'dueAt',
+  'statusChangedAt',
+];
 
 const defaultFilters: TaskSearchFilters = { includeNoStart: true, includeNoDue: true };
 const defaultColumns = (): ColumnState[] =>
@@ -181,25 +189,40 @@ export function TaskSearchPage() {
   useEffect(() => {
     if (hydratedOnce.current) return;
     hydratedOnce.current = true;
-    void api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
-    void api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
-    void api.getUserHierarchy().then(setHierarchy).catch(() => setHierarchy([]));
+    void api
+      .listActiveUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
+    void api
+      .listTaskTags()
+      .then(setAllTags)
+      .catch(() => setAllTags([]));
+    void api
+      .getUserHierarchy()
+      .then(setHierarchy)
+      .catch(() => setHierarchy([]));
     void api
       .getPreference('task-search')
       .then(({ state }) => {
         const s = state as Partial<PersistedState> | null;
         if (s && typeof s === 'object') {
           if (typeof s.searchText === 'string') setSearchText(s.searchText);
-          if (s.filters && typeof s.filters === 'object') setFilters({ ...defaultFilters, ...s.filters });
+          if (s.filters && typeof s.filters === 'object')
+            setFilters({ ...defaultFilters, ...s.filters });
           if (Array.isArray(s.sort)) setSort(s.sort);
           setColumns(reconcileColumns(s.columns));
           if (typeof s.page === 'number' && s.page >= 1) setPage(s.page);
           if (typeof s.pageSize === 'number') setPageSize(s.pageSize);
           if (typeof s.nestGlobal === 'boolean') setNestGlobal(s.nestGlobal);
           if (s.view && TASK_VIEWS.some((v) => v.key === s.view)) setView(s.view);
-          if (s.calendarScale === 'month' || s.calendarScale === 'week' || s.calendarScale === 'day')
+          if (
+            s.calendarScale === 'month' ||
+            s.calendarScale === 'week' ||
+            s.calendarScale === 'day'
+          )
             setCalendarScale(s.calendarScale);
-          if (s.calendarMode === 'range' || s.calendarMode === 'marker') setCalendarMode(s.calendarMode);
+          if (s.calendarMode === 'range' || s.calendarMode === 'marker')
+            setCalendarMode(s.calendarMode);
           if (typeof s.includeReadOnly === 'boolean') setIncludeReadOnly(s.includeReadOnly);
         }
       })
@@ -229,8 +252,32 @@ export function TaskSearchPage() {
 
   // --- Persist state (debounced) after hydration ---------------------------
   const snapshot = useMemo<PersistedState>(
-    () => ({ searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode, includeReadOnly }),
-    [searchText, filters, sort, columns, page, pageSize, nestGlobal, view, calendarScale, calendarMode, includeReadOnly],
+    () => ({
+      searchText,
+      filters,
+      sort,
+      columns,
+      page,
+      pageSize,
+      nestGlobal,
+      view,
+      calendarScale,
+      calendarMode,
+      includeReadOnly,
+    }),
+    [
+      searchText,
+      filters,
+      sort,
+      columns,
+      page,
+      pageSize,
+      nestGlobal,
+      view,
+      calendarScale,
+      calendarMode,
+      includeReadOnly,
+    ],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -286,7 +333,12 @@ export function TaskSearchPage() {
     if (!hydrated) return;
     let cancelled = false;
     void api
-      .getTaskDashboard({ text: debouncedText.trim() || undefined, filters: effectiveFilters(filters), includeReadOnly, ...nowContext() })
+      .getTaskDashboard({
+        text: debouncedText.trim() || undefined,
+        filters: effectiveFilters(filters),
+        includeReadOnly,
+        ...nowContext(),
+      })
       .then((d) => {
         if (!cancelled) setDash(d);
       })
@@ -392,20 +444,78 @@ export function TaskSearchPage() {
   const chips: { id: string; label: string; clear: Partial<TaskSearchFilters> }[] = [];
   {
     const assignN = (filters.assigneeIds?.length ?? 0) + (filters.includeUnassigned ? 1 : 0);
-    if (assignN > 0) chips.push({ id: 'assignee', label: `Assignee · ${assignN}`, clear: { assigneeIds: [], includeUnassigned: false } });
-    if (filters.hierarchyUserIds?.length) chips.push({ id: 'team', label: `Team · ${filters.hierarchyUserIds.length} selected`, clear: { hierarchyUserIds: undefined } });
-    if (filters.statuses?.length) chips.push({ id: 'status', label: `Status · ${filters.statuses.length}`, clear: { statuses: [] } });
-    if (filters.priorities?.length) chips.push({ id: 'priority', label: `Priority · ${filters.priorities.length}`, clear: { priorities: [] } });
-    if (filters.tags?.length) chips.push({ id: 'tags', label: `Tags · ${filters.tags.length}`, clear: { tags: [] } });
-    if (filters.overdue) chips.push({ id: 'overdue', label: 'Overdue', clear: { overdue: undefined } });
-    if (filters.completedToday) chips.push({ id: 'completedToday', label: 'Completed today', clear: { completedToday: undefined } });
-    if (filters.blocked) chips.push({ id: 'blocked', label: 'Blocked', clear: { blocked: undefined } });
-    if (filters.instanceLabel) chips.push({ id: 'instanceLabel', label: `Label · ${filters.instanceLabel}`, clear: { instanceLabel: undefined } });
-    if (filters.creatorIds?.length) chips.push({ id: 'creator', label: `Created by · ${filters.creatorIds.length}`, clear: { creatorIds: [] } });
-    if (filters.relation) chips.push({ id: 'relation', label: `Relation · ${filters.relation}`, clear: { relation: undefined } });
-    if (filters.statusChangedFrom || filters.statusChangedTo) chips.push({ id: 'sc', label: 'Status changed', clear: { statusChangedFrom: null, statusChangedTo: null } });
-    if (filters.startFrom || filters.startTo || filters.includeNoStart === false) chips.push({ id: 'start', label: (filters.startFrom || filters.startTo) ? 'Start date' : 'Has start date', clear: { startFrom: null, startTo: null, includeNoStart: true } });
-    if (filters.dueFrom || filters.dueTo || filters.includeNoDue === false) chips.push({ id: 'due', label: (filters.dueFrom || filters.dueTo) ? 'Due date' : 'Has due date', clear: { dueFrom: null, dueTo: null, includeNoDue: true } });
+    if (assignN > 0)
+      chips.push({
+        id: 'assignee',
+        label: `Assignee · ${assignN}`,
+        clear: { assigneeIds: [], includeUnassigned: false },
+      });
+    if (filters.hierarchyUserIds?.length)
+      chips.push({
+        id: 'team',
+        label: `Team · ${filters.hierarchyUserIds.length} selected`,
+        clear: { hierarchyUserIds: undefined },
+      });
+    if (filters.statuses?.length)
+      chips.push({
+        id: 'status',
+        label: `Status · ${filters.statuses.length}`,
+        clear: { statuses: [] },
+      });
+    if (filters.priorities?.length)
+      chips.push({
+        id: 'priority',
+        label: `Priority · ${filters.priorities.length}`,
+        clear: { priorities: [] },
+      });
+    if (filters.tags?.length)
+      chips.push({ id: 'tags', label: `Tags · ${filters.tags.length}`, clear: { tags: [] } });
+    if (filters.overdue)
+      chips.push({ id: 'overdue', label: 'Overdue', clear: { overdue: undefined } });
+    if (filters.completedToday)
+      chips.push({
+        id: 'completedToday',
+        label: 'Completed today',
+        clear: { completedToday: undefined },
+      });
+    if (filters.blocked)
+      chips.push({ id: 'blocked', label: 'Blocked', clear: { blocked: undefined } });
+    if (filters.instanceLabel)
+      chips.push({
+        id: 'instanceLabel',
+        label: `Label · ${filters.instanceLabel}`,
+        clear: { instanceLabel: undefined },
+      });
+    if (filters.creatorIds?.length)
+      chips.push({
+        id: 'creator',
+        label: `Created by · ${filters.creatorIds.length}`,
+        clear: { creatorIds: [] },
+      });
+    if (filters.relation)
+      chips.push({
+        id: 'relation',
+        label: `Relation · ${filters.relation}`,
+        clear: { relation: undefined },
+      });
+    if (filters.statusChangedFrom || filters.statusChangedTo)
+      chips.push({
+        id: 'sc',
+        label: 'Status changed',
+        clear: { statusChangedFrom: null, statusChangedTo: null },
+      });
+    if (filters.startFrom || filters.startTo || filters.includeNoStart === false)
+      chips.push({
+        id: 'start',
+        label: filters.startFrom || filters.startTo ? 'Start date' : 'Has start date',
+        clear: { startFrom: null, startTo: null, includeNoStart: true },
+      });
+    if (filters.dueFrom || filters.dueTo || filters.includeNoDue === false)
+      chips.push({
+        id: 'due',
+        label: filters.dueFrom || filters.dueTo ? 'Due date' : 'Has due date',
+        clear: { dueFrom: null, dueTo: null, includeNoDue: true },
+      });
   }
   const filtersActive = chips.length > 0;
 
@@ -431,8 +541,15 @@ export function TaskSearchPage() {
     switch (key) {
       case 'assignee':
         return (
-          <FilterPopover label="Assignee" active={(filters.assigneeIds?.length ?? 0) > 0 || !!filters.includeUnassigned}>
-            <MultiSelect options={assigneeOptions} selected={assigneeSelected} onChange={onAssigneeChange} />
+          <FilterPopover
+            label="Assignee"
+            active={(filters.assigneeIds?.length ?? 0) > 0 || !!filters.includeUnassigned}
+          >
+            <MultiSelect
+              options={assigneeOptions}
+              selected={assigneeSelected}
+              onChange={onAssigneeChange}
+            />
           </FilterPopover>
         );
       case 'status':
@@ -467,33 +584,59 @@ export function TaskSearchPage() {
         );
       case 'statusChangedAt':
         return (
-          <FilterPopover label="Status changed" active={!!filters.statusChangedFrom || !!filters.statusChangedTo}>
+          <FilterPopover
+            label="Status changed"
+            active={!!filters.statusChangedFrom || !!filters.statusChangedTo}
+          >
             <div className="pop-range">
               <label>
                 From
-                <input type="datetime-local" value={filters.statusChangedFrom ?? ''} onChange={(e) => patchFilters({ statusChangedFrom: e.target.value || null })} />
+                <input
+                  type="datetime-local"
+                  value={filters.statusChangedFrom ?? ''}
+                  onChange={(e) => patchFilters({ statusChangedFrom: e.target.value || null })}
+                />
               </label>
               <label>
                 To
-                <input type="datetime-local" value={filters.statusChangedTo ?? ''} onChange={(e) => patchFilters({ statusChangedTo: e.target.value || null })} />
+                <input
+                  type="datetime-local"
+                  value={filters.statusChangedTo ?? ''}
+                  onChange={(e) => patchFilters({ statusChangedTo: e.target.value || null })}
+                />
               </label>
             </div>
           </FilterPopover>
         );
       case 'startAt':
         return (
-          <FilterPopover label="Start" active={!!filters.startFrom || !!filters.startTo || filters.includeNoStart === false}>
+          <FilterPopover
+            label="Start"
+            active={!!filters.startFrom || !!filters.startTo || filters.includeNoStart === false}
+          >
             <div className="pop-range">
               <label>
                 From
-                <input type="date" value={filters.startFrom ?? ''} onChange={(e) => patchFilters({ startFrom: e.target.value || null })} />
+                <input
+                  type="date"
+                  value={filters.startFrom ?? ''}
+                  onChange={(e) => patchFilters({ startFrom: e.target.value || null })}
+                />
               </label>
               <label>
                 To
-                <input type="date" value={filters.startTo ?? ''} onChange={(e) => patchFilters({ startTo: e.target.value || null })} />
+                <input
+                  type="date"
+                  value={filters.startTo ?? ''}
+                  onChange={(e) => patchFilters({ startTo: e.target.value || null })}
+                />
               </label>
               <label className="check-inline">
-                <input type="checkbox" checked={filters.includeNoStart ?? true} onChange={(e) => patchFilters({ includeNoStart: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={filters.includeNoStart ?? true}
+                  onChange={(e) => patchFilters({ includeNoStart: e.target.checked })}
+                />
                 <span>Include tasks without a Start Date</span>
               </label>
             </div>
@@ -501,18 +644,33 @@ export function TaskSearchPage() {
         );
       case 'dueAt':
         return (
-          <FilterPopover label="Due" active={!!filters.dueFrom || !!filters.dueTo || filters.includeNoDue === false}>
+          <FilterPopover
+            label="Due"
+            active={!!filters.dueFrom || !!filters.dueTo || filters.includeNoDue === false}
+          >
             <div className="pop-range">
               <label>
                 From
-                <input type="date" value={filters.dueFrom ?? ''} onChange={(e) => patchFilters({ dueFrom: e.target.value || null })} />
+                <input
+                  type="date"
+                  value={filters.dueFrom ?? ''}
+                  onChange={(e) => patchFilters({ dueFrom: e.target.value || null })}
+                />
               </label>
               <label>
                 To
-                <input type="date" value={filters.dueTo ?? ''} onChange={(e) => patchFilters({ dueTo: e.target.value || null })} />
+                <input
+                  type="date"
+                  value={filters.dueTo ?? ''}
+                  onChange={(e) => patchFilters({ dueTo: e.target.value || null })}
+                />
               </label>
               <label className="check-inline">
-                <input type="checkbox" checked={filters.includeNoDue ?? true} onChange={(e) => patchFilters({ includeNoDue: e.target.checked })} />
+                <input
+                  type="checkbox"
+                  checked={filters.includeNoDue ?? true}
+                  onChange={(e) => patchFilters({ includeNoDue: e.target.checked })}
+                />
                 <span>Include tasks without a Due Date</span>
               </label>
             </div>
@@ -546,14 +704,22 @@ export function TaskSearchPage() {
                 🌳
               </span>
             )}
-            <Link to={`/tasks/${row.id}`} className="mono task-id-link" onClick={(e) => e.stopPropagation()}>
+            <Link
+              to={`/tasks/${row.id}`}
+              className="mono task-id-link"
+              onClick={(e) => e.stopPropagation()}
+            >
               #{row.id}
             </Link>
           </span>
         );
       case 'name':
         return (
-          <Link to={`/tasks/${row.id}`} className="task-name-link" onClick={(e) => e.stopPropagation()}>
+          <Link
+            to={`/tasks/${row.id}`}
+            className="task-name-link"
+            onClick={(e) => e.stopPropagation()}
+          >
             {row.name}
           </Link>
         );
@@ -579,11 +745,17 @@ export function TaskSearchPage() {
       case 'startAt':
         return <DueDate iso={row.startAt} status={row.status} completedAt={row.statusChangedAt} />;
       case 'dueAt':
-        return <DueDate iso={row.dueAt} status={row.status} completedAt={row.statusChangedAt} isDue />;
+        return (
+          <DueDate iso={row.dueAt} status={row.status} completedAt={row.statusChangedAt} isDue />
+        );
       case 'parentChild':
         if (row.parentId != null)
           return (
-            <Link to={`/tasks/${row.parentId}`} className="mono" onClick={(e) => e.stopPropagation()}>
+            <Link
+              to={`/tasks/${row.parentId}`}
+              className="mono"
+              onClick={(e) => e.stopPropagation()}
+            >
               ↑ #{row.parentId}
             </Link>
           );
@@ -599,9 +771,24 @@ export function TaskSearchPage() {
     ? [
         { key: OVERDUE_STAT, label: 'Overdue', value: dash.overdue, cls: 'ts-danger' },
         { key: DUE_TODAY_STAT, label: 'Due today', value: dash.dueToday, cls: 'ts-warn' },
-        { key: statusStat('InProgress'), label: 'In progress', value: dash.byStatus.InProgress ?? 0, cls: 'ts-accent' },
-        { key: statusStat('Review'), label: 'In review', value: dash.byStatus.Review ?? 0, cls: 'ts-review' },
-        { key: COMPLETED_TODAY_STAT, label: 'Completed today', value: dash.completedToday, cls: 'ts-ok' },
+        {
+          key: statusStat('InProgress'),
+          label: 'In progress',
+          value: dash.byStatus.InProgress ?? 0,
+          cls: 'ts-accent',
+        },
+        {
+          key: statusStat('Review'),
+          label: 'In review',
+          value: dash.byStatus.Review ?? 0,
+          cls: 'ts-review',
+        },
+        {
+          key: COMPLETED_TODAY_STAT,
+          label: 'Completed today',
+          value: dash.completedToday,
+          cls: 'ts-ok',
+        },
       ]
     : [];
   const activeStats = dashboardActiveStats(filters);
@@ -646,7 +833,9 @@ export function TaskSearchPage() {
           <button
             key={t.key}
             type="button"
-            className={`tasks-stat ${t.cls}${activeStats.has(t.key) ? ' active' : ''}`}
+            // btn-plain opts out of the filled global button hover, which would
+            // otherwise paint accent-deep over each tile's own colour.
+            className={`tasks-stat btn-plain ${t.cls}${activeStats.has(t.key) ? ' active' : ''}`}
             aria-pressed={activeStats.has(t.key)}
             onClick={() => onSelectStat(t.key)}
           >
@@ -675,14 +864,23 @@ export function TaskSearchPage() {
         </div>
         <span className="chip-divider" />
         {chips.map((c) => (
-          <button key={c.id} type="button" className="filter-chip" onClick={() => patchFilters(c.clear)}>
+          <button
+            key={c.id}
+            type="button"
+            className="filter-chip"
+            onClick={() => patchFilters(c.clear)}
+          >
             {c.label}
             <span className="chip-x" aria-hidden="true">
               ×
             </span>
           </button>
         ))}
-        <button type="button" className={`add-filter${showFilters ? ' open' : ''}`} onClick={() => setShowFilters((v) => !v)}>
+        <button
+          type="button"
+          className={`add-filter${showFilters ? ' open' : ''}`}
+          onClick={() => setShowFilters((v) => !v)}
+        >
           + Filter
         </button>
         {filtersActive && (
@@ -741,7 +939,11 @@ export function TaskSearchPage() {
                 <p className="muted hierarchy-pop-hint">
                   Select a supervisor to include their whole downline; toggle individuals within.
                 </p>
-                <HierarchyTree nodes={hierarchy} selected={hierarchySelected} onToggle={toggleHierarchy} />
+                <HierarchyTree
+                  nodes={hierarchy}
+                  selected={hierarchySelected}
+                  onToggle={toggleHierarchy}
+                />
               </div>
             </FilterPopover>
           </div>
@@ -774,14 +976,24 @@ export function TaskSearchPage() {
           <ul className="columns-list">
             {columns.map((c, i) => (
               <li key={c.key} className="col-chip">
-                <button className="col-move" disabled={i === 0} aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} left`} onClick={() => moveColumn(i, -1)}>
+                <button
+                  className="col-move"
+                  disabled={i === 0}
+                  aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} left`}
+                  onClick={() => moveColumn(i, -1)}
+                >
                   ←
                 </button>
                 <label>
                   <input type="checkbox" checked={c.visible} onChange={() => toggleColumn(c.key)} />
                   {TASK_COLUMN_LABELS[c.key]}
                 </label>
-                <button className="col-move" disabled={i === columns.length - 1} aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} right`} onClick={() => moveColumn(i, 1)}>
+                <button
+                  className="col-move"
+                  disabled={i === columns.length - 1}
+                  aria-label={`Move ${TASK_COLUMN_LABELS[c.key]} right`}
+                  onClick={() => moveColumn(i, 1)}
+                >
                   →
                 </button>
               </li>
@@ -792,105 +1004,126 @@ export function TaskSearchPage() {
 
       {/* Results — List view */}
       {view === 'list' && (
-      <>
-      <div className="table-scroll tasks-table-wrap">
-        <table className="results-table tasks-table">
-          <thead>
-            <tr>
-              <th style={{ width: 24 }} />
-              {visibleColumns.map((c) => (
-                <SortHeader
-                  key={c.key}
-                  label={TASK_COLUMN_LABELS[c.key]}
-                  sortable={isSortable(c.key)}
-                  multi={sort.length > 1}
-                  state={isSortable(c.key) ? sortState(sort, c.key) : null}
-                  onSort={(additive) => onSort(c.key, additive)}
-                />
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {displayRows.map(({ row, depth, hasChildrenHere }) => (
-              <tr key={row.id} className={`row-clickable${depth > 0 ? ' tree-child-enter' : ''}`} onClick={() => navigate(`/tasks/${row.id}`)}>
-                <td style={{ textAlign: 'center' }}>
-                  {hasChildrenHere ? (
-                    <button
-                      className={`tree-toggle${collapsed.has(row.id) ? '' : ' expanded'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleCollapse(row.id);
-                      }}
-                      aria-label={collapsed.has(row.id) ? 'Expand sub-tasks' : 'Collapse sub-tasks'}
-                    >
-                      <span className="caret" aria-hidden="true">
-                        ▸
-                      </span>
-                    </button>
-                  ) : null}
-                </td>
-                {visibleColumns.map((c, ci) => (
-                  <td key={c.key} className={`col-${c.key}${depth > 0 && ci === 0 ? ' is-child' : ''}`} style={ci === 0 ? { paddingLeft: `${10 + depth * 22}px` } : undefined}>
-                    {renderCell(c.key, row)}
-                  </td>
+        <>
+          <div className="table-scroll tasks-table-wrap">
+            <table className="results-table tasks-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 24 }} />
+                  {visibleColumns.map((c) => (
+                    <SortHeader
+                      key={c.key}
+                      label={TASK_COLUMN_LABELS[c.key]}
+                      sortable={isSortable(c.key)}
+                      multi={sort.length > 1}
+                      state={isSortable(c.key) ? sortState(sort, c.key) : null}
+                      onSort={(additive) => onSort(c.key, additive)}
+                    />
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {displayRows.map(({ row, depth, hasChildrenHere }) => (
+                  <tr
+                    key={row.id}
+                    className={`row-clickable${depth > 0 ? ' tree-child-enter' : ''}`}
+                    onClick={() => navigate(`/tasks/${row.id}`)}
+                  >
+                    <td style={{ textAlign: 'center' }}>
+                      {hasChildrenHere ? (
+                        <button
+                          className={`tree-toggle${collapsed.has(row.id) ? '' : ' expanded'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCollapse(row.id);
+                          }}
+                          aria-label={
+                            collapsed.has(row.id) ? 'Expand sub-tasks' : 'Collapse sub-tasks'
+                          }
+                        >
+                          <span className="caret" aria-hidden="true">
+                            ▸
+                          </span>
+                        </button>
+                      ) : null}
+                    </td>
+                    {visibleColumns.map((c, ci) => (
+                      <td
+                        key={c.key}
+                        className={`col-${c.key}${depth > 0 && ci === 0 ? ' is-child' : ''}`}
+                        style={ci === 0 ? { paddingLeft: `${10 + depth * 22}px` } : undefined}
+                      >
+                        {renderCell(c.key, row)}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-            {loading && displayRows.length === 0 && (
-              <tr>
-                <td className="empty-cell" colSpan={visibleColumns.length + 1}>
-                  <div className="empty-state compact">
-                    <span className="loading-inline">
-                      <span className="mono">Loading…</span>
-                    </span>
-                  </div>
-                </td>
-              </tr>
-            )}
-            {!loading && displayRows.length === 0 && (
-              <TableEmptyRow colSpan={visibleColumns.length + 1} title={filtersActive || searchText ? 'No tasks match' : 'No tasks yet'}>
-                {filtersActive || searchText
-                  ? 'Clear a filter to see the tasks it hid.'
-                  : 'Create your first task to get started.'}
-              </TableEmptyRow>
-            )}
-          </tbody>
-        </table>
-      </div>
+                {loading && displayRows.length === 0 && (
+                  <tr>
+                    <td className="empty-cell" colSpan={visibleColumns.length + 1}>
+                      <div className="empty-state compact">
+                        <span className="loading-inline">
+                          <span className="mono">Loading…</span>
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {!loading && displayRows.length === 0 && (
+                  <TableEmptyRow
+                    colSpan={visibleColumns.length + 1}
+                    title={filtersActive || searchText ? 'No tasks match' : 'No tasks yet'}
+                  >
+                    {filtersActive || searchText
+                      ? 'Clear a filter to see the tasks it hid.'
+                      : 'Create your first task to get started.'}
+                  </TableEmptyRow>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-      {/* Pager */}
-      <div className="pager">
-        <span className="mono muted">
-          {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
-        </span>
-        <div className="spacer" />
-        <label className="mono">
-          Rows{' '}
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-          >
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button className="secondary btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-          ← Prev
-        </button>
-        <span className="mono">
-          Page {page} of {totalPages}
-        </span>
-        <button className="secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-          Next →
-        </button>
-      </div>
-      </>
+          {/* Pager */}
+          <div className="pager">
+            <span className="mono muted">
+              {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
+            </span>
+            <div className="spacer" />
+            <label className="mono">
+              Rows{' '}
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="secondary btn-sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              ← Prev
+            </button>
+            <span className="mono">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              className="secondary btn-sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next →
+            </button>
+          </div>
+        </>
       )}
 
       {/* Kanban / Calendar / Gantt views (Phase 10) share the same rows/filters. */}

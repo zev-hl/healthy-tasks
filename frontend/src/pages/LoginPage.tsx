@@ -3,15 +3,33 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { AuthShell } from '../components/AuthShell';
+import { GoogleSignInButton, googleSignInAvailable } from '../components/GoogleSignInButton';
 
 export function LoginPage() {
-  const { login, sessionExpired } = useAuth();
+  const { login, loginWithGoogle, sessionExpired } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  /**
+   * Both doors lead to the same place: the server returns the same session
+   * either way, so there is nothing different to do once we are through.
+   */
+  async function onGoogleToken(idToken: string) {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await loginWithGoogle(idToken);
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Google sign-in failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -45,6 +63,21 @@ export function LoginPage() {
         </div>
       )}
       {error && <div className="alert error">{error}</div>}
+
+      {googleSignInAvailable && (
+        <>
+          <GoogleSignInButton
+            onToken={(t) => void onGoogleToken(t)}
+            onError={setError}
+            disabled={submitting}
+          />
+          {/* Not decoration: it says the two are alternatives, not steps. */}
+          <div className="auth-divider">
+            <span>or sign in with your password</span>
+          </div>
+        </>
+      )}
+
       <form onSubmit={onSubmit}>
         <div className="field">
           <label htmlFor="email">Email</label>
