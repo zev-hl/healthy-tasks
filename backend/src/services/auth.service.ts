@@ -6,17 +6,18 @@ import { signAccessToken } from '../utils/jwt.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { generateResetToken, hashToken, durationToMs } from '../utils/tokens.js';
 import { verifyGoogleIdToken } from './google-auth.service.js';
-import { assertCanSignInWithGoogle } from '../utils/allowed-domain.js';
+import { assertCanSignInWithGoogle, assertCanUsePassword } from '../utils/allowed-domain.js';
 
 /** Authenticate by email + password; returns the user and a signed JWT. */
 export async function login(
   email: string,
   password: string,
 ): Promise<{ user: User; token: string }> {
-  // No domain check here. A company account normally has no password, so this
-  // simply fails as "invalid email or password" — but if an admin has issued
-  // one deliberately, it works, which is the way back in when Google cannot be
-  // reached.
+  // Company accounts do not use this door at all. Checked first, before the
+  // password is even looked at, so someone typing a password that IS correct is
+  // told to use the button rather than being told it is wrong.
+  assertCanUsePassword(email);
+
   const user = await prisma.user.findUnique({ where: { email } });
 
   // Uniform failure for both "no such user" and "wrong password" to avoid

@@ -441,7 +441,7 @@ describe('company-domain rule — Google door only (Chunk 3)', () => {
     }
   });
 
-  it('lets a company account use Google, and a password if it has been given one', async () => {
+  it('gives a company account the Google door, and refuses the form even with a correct password', async () => {
     await seedUser({ email: inside, role: 'Member', password: MEMBER_PASSWORD });
     const restoreDomain = __setAllowedDomain(DOMAIN);
     try {
@@ -453,13 +453,14 @@ describe('company-domain rule — Google door only (Chunk 3)', () => {
         restoreGoogle();
       }
 
-      // A company account normally has no password at all. This one does,
-      // which is the state an admin-issued reset leaves it in — and the form
-      // then works, so there is a way in when Google cannot be reached.
+      // Even with a correct password in the database, the form refuses them
+      // and names the button instead — the message someone needs when their
+      // password is right but no longer the way in.
       const byPassword = await request(app)
         .post('/api/auth/login')
         .send({ email: inside, password: MEMBER_PASSWORD });
-      assert.equal(byPassword.status, 200, JSON.stringify(byPassword.body));
+      assert.equal(byPassword.status, 403);
+      assert.match(byPassword.body.error as string, /Sign in with Google/i);
     } finally {
       restoreDomain();
     }

@@ -5,18 +5,18 @@
  * addresses inside the domain. Everyone else is refused at that door and uses
  * email and password.
  *
- * Company accounts are Google-FIRST, not Google-only:
+ * Company accounts sign in with Google and ONLY with Google:
  *
+ *   • The email/password form refuses them outright and points at the button —
+ *     including accounts that already have a working password from before the
+ *     rule existed.
  *   • Created with no password, and told so in a welcome message rather than
  *     being sent a reset link nobody needs.
- *   • "Forgot password" is refused for them — there is nothing to forget, and
- *     it would quietly mint a credential the policy did not ask for.
- *   • But an ADMIN may still send them a reset link deliberately, and once they
- *     have a password it works at the form like anyone else's. That is the way
- *     back in when Google is unreachable or an account is locked out there.
+ *   • "Forgot password" is refused: there is nothing to forget.
  *
- * So the difference between the two groups is what happens by DEFAULT, not what
- * is possible: nobody is left without a route in.
+ * An admin can still send one a reset link, but note what that now means: the
+ * password it produces cannot be used at the form while this rule is on. The
+ * link is only useful if the rule is later switched off for them.
  *
  * On the Google side this sits alongside an Internal consent screen rather than
  * instead of it. Google's own restriction depends on how the Cloud project is
@@ -86,12 +86,24 @@ export function assertCanSignInWithGoogle(email: string): void {
 }
 
 /**
- * Refuses SELF-SERVICE password recovery for a company account.
+ * Refuses the email/password form to a company account.
  *
- * Used by "forgot password" only. Not by sign-in, because an admin may have
- * deliberately issued a password; and not by the admin's own reset button,
- * which is exactly how that happens. The point is that a company account never
- * acquires a password by accident — only because someone decided it should.
+ * Checked BEFORE the password is looked at, so the person is told what to do
+ * rather than being left with "invalid email or password" for a password that
+ * is, in fact, correct. Which domain uses Google is a policy rather than a
+ * secret, so saying it plainly leaks nothing.
+ */
+export function assertCanUsePassword(email: string): void {
+  if (!isCompanyAccount(email)) return;
+  throw HttpError.forbidden(
+    `@${allowedDomain()} accounts sign in with Google. ` +
+      'Please use the "Sign in with Google" button above.',
+  );
+}
+
+/**
+ * Refuses SELF-SERVICE password recovery for a company account. Same rule,
+ * separate function so the two messages can differ.
  */
 export function assertCanRecoverPassword(email: string): void {
   if (!isCompanyAccount(email)) return;
