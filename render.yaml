@@ -275,6 +275,20 @@ projects:
                 sync: false
               - key: S3_FORCE_PATH_STYLE
                 sync: false
+              # ----- Sign in with Google ---------------------------------------
+              # Staging gets its OWN OAuth client, not Production's: an origin
+              # added for testing must never widen what Production accepts. The
+              # client must list https://hlcentral-staging.onrender.com as an
+              # authorised JavaScript origin, or Google answers origin_mismatch
+              # before any sign-in happens.
+              - key: GOOGLE_CLIENT_ID
+                sync: false
+              # With this set, @healthlifeny.com addresses sign in with Google
+              # ONLY — no password, and no self-service reset. Confirm Google
+              # sign-in actually works here before syncing, and keep the staging
+              # seed admin on a non-company address, or there is no way back in.
+              - key: GOOGLE_ALLOWED_DOMAIN
+                value: healthlifeny.com
               - key: SEED_ADMIN_EMAIL
                 sync: false
               - key: SEED_ADMIN_PASSWORD
@@ -319,6 +333,11 @@ projects:
                 destination: /index.html
             envVars:
               - key: VITE_API_URL # https URL of hlcentral-api-staging
+                sync: false
+              # Baked into the bundle at build time, like VITE_API_URL. Same
+              # value as this environment's API GOOGLE_CLIENT_ID; without it the
+              # Google button does not render and only the password form shows.
+              - key: VITE_GOOGLE_CLIENT_ID
                 sync: false
 
 # =============================================================================
