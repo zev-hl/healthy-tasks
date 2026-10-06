@@ -90,21 +90,43 @@ describe('describeAlert', () => {
       msg(alert({ alertType: 'TitleChanged' }), base, s({ title: 'Widget Pro' })),
       'Title changed from "Widget" to "Widget Pro".',
     );
-    assert.equal(msg(alert({ alertType: 'MainImageChanged' }), base, base), 'Main image replaced.');
+    assert.equal(
+      msg(alert({ alertType: 'MainImageChanged' }), base, s({ mainImageUrl: 'http://img/b.jpg' })),
+      'Main image changed from "http://img/a.jpg" to "http://img/b.jpg".',
+    );
     assert.equal(
       msg(alert({ alertType: 'DescriptionChanged' }), base, base),
       'Description changed.',
     );
   });
 
-  it('Bullets read from the category', () => {
+  it('Bullets quote what changed, not just which number', () => {
+    const after = s({ bulletPoints: ['one', 'TWO', 'three'] });
     assert.equal(
-      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2' }), base, base),
-      'Bullet 2 rewritten.',
+      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2' }), base, after),
+      'Bullet 2 changed from "two" to "TWO".',
     );
+  });
+
+  it('Bullets name every one that changed, in one line', () => {
+    const after = s({ bulletPoints: ['one', 'TWO', 'THREE'] });
     assert.equal(
-      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2,bullet_4' }), base, base),
-      'Bullets 2, 4 rewritten.',
+      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_2,bullet_3' }), base, after),
+      'Bullet 2 changed from "two" to "TWO". Bullet 3 changed from "three" to "THREE".',
+    );
+  });
+
+  it('Bullets say whether one was added or removed, rather than quoting nothing', () => {
+    const added = s({ bulletPoints: ['one', 'two', 'three', 'four'] });
+    assert.equal(
+      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_4' }), base, added),
+      'Bullet 4 added: "four".',
+    );
+
+    const removed = s({ bulletPoints: ['one', 'two'] });
+    assert.equal(
+      msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_3' }), base, removed),
+      'Bullet 3 removed (was "three").',
     );
   });
 });

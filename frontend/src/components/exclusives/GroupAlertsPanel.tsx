@@ -16,6 +16,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
 import { absoluteShort, formatAgo } from '../../lib/datetime';
+import { ClampedText } from './ClampedText';
 import { AlertTypeBadge, GroupTypeBadge, alertTone } from './AlertBadge';
 import { Flag } from './Flag';
 
@@ -181,7 +182,7 @@ export function GroupAlertsPanel({
                       </span>
                     </div>
                     <p className="exc-drawer-product">{row.title}</p>
-                    <p className="exc-drawer-message">{row.message}</p>
+                    <ClampedText className="exc-drawer-message" text={row.message} lines={3} />
                   </div>
                 </article>
               ))}

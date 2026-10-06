@@ -343,4 +343,29 @@ describe('ExclusivesLogPage', () => {
     await settle();
     expect(screen.getByText('Internal server error')).toBeInTheDocument();
   });
+
+  it('clamps a long Detail message and offers to expand it', async () => {
+    // jsdom has no layout, so the measurement the component makes is faked:
+    // scrollHeight above clientHeight is exactly what it checks.
+    const proto = window.HTMLElement.prototype;
+    const scroll = Object.getOwnPropertyDescriptor(proto, 'scrollHeight');
+    const client = Object.getOwnPropertyDescriptor(proto, 'clientHeight');
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 90 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 40 });
+    try {
+      renderWithRouter(<ExclusivesLogPage />);
+      await settle();
+
+      // Only the Detail column clamps. The product title is shown in full.
+      const more = screen.getByRole('button', { name: 'Show more' });
+      expect(more).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(more);
+      await settle();
+      expect(screen.getByRole('button', { name: 'Show less' })).toBeInTheDocument();
+    } finally {
+      if (scroll) Object.defineProperty(proto, 'scrollHeight', scroll);
+      if (client) Object.defineProperty(proto, 'clientHeight', client);
+    }
+  });
 });

@@ -20,6 +20,7 @@ import { api, ApiError, exportExclusivesAlertsToCsv } from '../api/client';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { absoluteShort, formatAgo } from '../lib/datetime';
 import { TableEmptyRow } from '../components/ui/EmptyState';
+import { ClampedText } from '../components/exclusives/ClampedText';
 import { AlertTypeBadge } from '../components/exclusives/AlertBadge';
 import { ExcPager } from '../components/exclusives/ExcPager';
 import { Flag } from '../components/exclusives/Flag';
@@ -460,8 +461,12 @@ export function ExclusivesLogPage() {
                 <th className="exc-col-asin">ASIN</th>
                 <th className="exc-col-name">ASIN title</th>
                 <th>Group</th>
-                <th>Alert type</th>
-                <th>Date / time ↓</th>
+                {/* Date/time lives under the badge rather than in a column of
+                    its own: both describe the same event, and splitting them
+                    left two narrow columns where one does. The sort arrow stays
+                    here because the list is still ordered by time. */}
+                <th>Alert type ↓</th>
+                <th className="exc-col-detail">Detail</th>
               </tr>
             </thead>
             <tbody>
@@ -487,20 +492,18 @@ export function ExclusivesLogPage() {
                     </td>
                     <td className="exc-col-name">
                       <span className="exc-log-title">{row.title}</span>
-                      <span className="exc-log-detail">{row.message}</span>
                     </td>
                     <td className="exc-muted">{row.groupName}</td>
-                    <td>
-                      {/* The badge alone. The before/after used to sit under it,
-                          which turned a one-word column into a paragraph for
-                          long values — a changed title filled the cell. Every
-                          alert's message already says what changed, under the
-                          ASIN title, so this was a second copy of it. */}
+                    <td className="exc-col-when">
                       <AlertTypeBadge type={row.alertType} />
-                    </td>
-                    <td>
                       <span className="exc-latest">{formatAgo(row.createdAt)}</span>
                       <span className="mono exc-latest-abs">{absoluteShort(row.createdAt)}</span>
+                    </td>
+                    {/* What changed, in its own column. It used to sit under the
+                        product title, where a long message pushed the title
+                        around and made the rows uneven. */}
+                    <td className="exc-col-detail">
+                      <ClampedText className="exc-log-detail" text={row.message} lines={3} />
                     </td>
                   </tr>
                 );
