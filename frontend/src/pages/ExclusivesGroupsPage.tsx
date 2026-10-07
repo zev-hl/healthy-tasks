@@ -259,16 +259,24 @@ export function ExclusivesGroupsPage() {
                       )}
                     </td>
                     <td className="exc-row-actions">
-                      <button
-                        type="button"
-                        className="exc-act"
-                        onClick={() => navigate(`/exclusives/groups/${g.id}/edit`)}
-                      >
-                        Edit
-                      </button>
-                      <button type="button" className="exc-act del" onClick={() => setDeleting(g)}>
-                        Delete
-                      </button>
+                      {/* The flex row lives here, not on the td — see the note
+                          in styles.css. */}
+                      <div className="exc-row-actions-inner">
+                        <button
+                          type="button"
+                          className="exc-act"
+                          onClick={() => navigate(`/exclusives/groups/${g.id}/edit`)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="exc-act del"
+                          onClick={() => setDeleting(g)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

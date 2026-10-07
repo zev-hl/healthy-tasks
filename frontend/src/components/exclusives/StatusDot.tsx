@@ -1,18 +1,20 @@
 import { useExclusivesStatus } from '../../lib/useExclusivesStatus';
-import { formatTimestamp } from '../../lib/datetime';
 
-/** SP-API health light shown left of the page heading — green = connected,
- *  red = down, grey = still checking. The tooltip also says when Amazon was
- *  last checked successfully, i.e. how current the alerts are. */
+/**
+ * SP-API health light shown left of the page heading — green = connected,
+ * red = down, grey = still checking.
+ *
+ * The tooltip says only whether Amazon is reachable. It used to append the time
+ * of the last successful check, which both pages already print in full beneath
+ * the heading — the same fact twice, once where it could not be read without
+ * hovering.
+ */
 export function StatusDot() {
   const { status, loading } = useExclusivesStatus();
   const state = loading || !status ? 'checking' : status.connected ? 'up' : 'down';
 
   const word = state === 'checking' ? 'Checking…' : status?.connected ? 'Online' : 'Offline';
-  const lastCheck = status
-    ? ` · Last Amazon check: ${status.lastSweepAt ? formatTimestamp(status.lastSweepAt) : 'never'}`
-    : '';
-  const title = `SP-API Status: ${word}${lastCheck}`;
+  const title = `SP-API Status: ${word}`;
 
   return <span className={`exc-status-dot ${state}`} role="img" aria-label={title} title={title} />;
 }

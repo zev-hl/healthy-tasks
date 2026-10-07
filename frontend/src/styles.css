@@ -6452,7 +6452,18 @@ tr.just-completed > td {
   font-size: 0.66rem;
   color: var(--faint);
 }
+/*
+ * The actions cell stays a TABLE CELL; the flex row lives in a wrapper inside
+ * it. A td set to display:flex stops participating in the table layout — it no
+ * longer stretches to the row height or honours vertical-align, so the buttons
+ * sat high while the two-line date beside them ran on, and the row dividers
+ * did not line up.
+ */
 .exc-row-actions {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.exc-row-actions-inner {
   display: flex;
   gap: 7px;
   justify-content: flex-end;
@@ -7409,6 +7420,13 @@ tr.just-completed > td {
 }
 /* The Show more / Show less toggle under a clamped message. Reads as a link
    rather than a button, because it reveals text rather than doing anything. */
+/* The group name, under the ASIN it belongs to. Quiet, because the ASIN is
+   what identifies the row and the group is context for it. */
+.exc-log-group {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+}
 /* Alert type and when it happened, stacked in one cell. Two narrow columns
    side by side wasted width and read as unrelated; the badge and the time
    describe the same event. */

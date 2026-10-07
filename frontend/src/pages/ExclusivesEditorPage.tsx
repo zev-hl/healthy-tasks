@@ -408,9 +408,11 @@ export function ExclusivesEditorPage() {
           >
             Cancel
           </button>
-          {/* A group with neither a name nor an ASIN is nothing at all. The
-              server rejects it, so Save is dead until one exists, and its
-              title says why rather than leaving someone clicking at it. */}
+          {/* Save needs BOTH something to save and something to have changed.
+              A group with no name and no ASIN is nothing at all; an edit that
+              changed nothing is a round trip that would bump the record and
+              show a success message for no reason. The dirty check covers the name,
+              the ASIN list and the alert settings alike. */}
           {conflict ? (
             <button type="button" onClick={() => void refreshAfterConflict()}>
               Refresh
@@ -419,8 +421,14 @@ export function ExclusivesEditorPage() {
             <button
               type="button"
               onClick={() => void save(false)}
-              disabled={saving || loading || !canSave}
-              title={canSave ? undefined : 'Add a group name or an ASIN first'}
+              disabled={saving || loading || !canSave || !dirty}
+              title={
+                !canSave
+                  ? 'Add a group name or an ASIN first'
+                  : !dirty
+                    ? 'Nothing has changed yet'
+                    : undefined
+              }
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
