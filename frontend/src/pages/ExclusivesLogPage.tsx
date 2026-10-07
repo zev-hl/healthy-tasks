@@ -27,7 +27,7 @@ import { Flag } from '../components/exclusives/Flag';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { StatusDot } from '../components/exclusives/StatusDot';
 
-const COLUMNS = 5;
+const COLUMNS = 4;
 
 /** The Groups screen hands us a group to filter by when a row is clicked. */
 interface LogLinkState {
@@ -458,14 +458,15 @@ export function ExclusivesLogPage() {
           <table className="results-table exc-table exc-log-table">
             <thead>
               <tr>
-                <th className="exc-col-asin">ASIN</th>
+                {/* ASIN and its group in one column: the group never varies
+                    per row the way a value does, and two narrow columns side by
+                    side used width the title and detail need more. */}
+                <th className="exc-col-asin">ASIN / Group</th>
                 <th className="exc-col-name">ASIN title</th>
-                <th>Group</th>
                 {/* Date/time lives under the badge rather than in a column of
                     its own: both describe the same event, and splitting them
-                    left two narrow columns where one does. The sort arrow stays
-                    here because the list is still ordered by time. */}
-                <th className="exc-col-when">Alert type ↓</th>
+                    left two narrow columns where one does. */}
+                <th className="exc-col-when">Alert type</th>
                 <th className="exc-col-detail">Detail</th>
               </tr>
             </thead>
@@ -489,11 +490,11 @@ export function ExclusivesLogPage() {
                         <Flag platform={row.marketplace} />
                         <span className="mono">{row.asin}</span>
                       </span>
+                      <span className="exc-muted exc-log-group">{row.groupName}</span>
                     </td>
                     <td className="exc-col-name">
                       <span className="exc-log-title">{row.title}</span>
                     </td>
-                    <td className="exc-muted">{row.groupName}</td>
                     <td className="exc-col-when">
                       <AlertTypeBadge type={row.alertType} />
                       <span className="exc-latest">{formatAgo(row.createdAt)}</span>
