@@ -6298,6 +6298,18 @@ tr.just-completed > td {
   width: 28%;
   min-width: 16rem;
 }
+/* The Alert Log only. Its title column would otherwise inherit the `width:100%`
+   above and swallow every spare pixel, leaving Group, Alert type and Detail to
+   wrap in a few characters. Capping the title at a share of the table hands the
+   slack back to them; the title still wraps onto a second line when it needs to.
+   The groups table keeps the greedy rule, where the name IS the content. */
+.exc-table.exc-log-table .exc-col-name {
+  width: 42%;
+  min-width: 14rem;
+}
+.exc-table.exc-log-table .exc-col-detail {
+  width: 32%;
+}
 .exc-table td.exc-col-detail {
   white-space: normal;
   vertical-align: top;
@@ -7406,6 +7418,11 @@ tr.just-completed > td {
      tall, and the badge pinned to the top looked detached from the message it
      belongs to. This matches the Group cell beside it. */
   vertical-align: middle;
+  /* The badge is the widest thing here, so it sets the column's width; the two
+     time lines under it are centred on the same axis rather than hanging off
+     its left edge. The heading carries this class too, so it lines up with the
+     column it names. */
+  text-align: center;
 }
 .exc-col-when .exc-latest {
   display: block;

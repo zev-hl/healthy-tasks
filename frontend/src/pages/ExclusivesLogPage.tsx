@@ -465,7 +465,7 @@ export function ExclusivesLogPage() {
                     its own: both describe the same event, and splitting them
                     left two narrow columns where one does. The sort arrow stays
                     here because the list is still ordered by time. */}
-                <th>Alert type ↓</th>
+                <th className="exc-col-when">Alert type ↓</th>
                 <th className="exc-col-detail">Detail</th>
               </tr>
             </thead>
