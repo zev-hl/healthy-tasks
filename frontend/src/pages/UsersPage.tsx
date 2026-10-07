@@ -491,17 +491,18 @@ export function UsersPage() {
                         >
                           <PencilIcon />
                         </button>
-                        <button
-                          className="secondary btn-sm"
-                          onClick={() => handleReset(u)}
-                          title={
-                            u.signInMethod === 'google'
-                              ? 'This account signs in with Google. Sending a reset link gives it a password as well — useful if Google cannot be reached.'
-                              : 'Send this user a link to set a password'
-                          }
-                        >
-                          Reset password
-                        </button>
+                        {/* A company account has no password, so a reset link
+                            would lead nowhere. The server refuses it too; this
+                            just stops an admin reaching for a dead button. */}
+                        {u.signInMethod === 'password' && (
+                          <button
+                            className="secondary btn-sm"
+                            onClick={() => handleReset(u)}
+                            title="Send this user a link to set a password"
+                          >
+                            Reset password
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

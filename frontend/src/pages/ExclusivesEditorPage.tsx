@@ -167,6 +167,15 @@ export function ExclusivesEditorPage() {
   );
   useUnsavedChangesWarning(dirty && !saving);
 
+  /**
+   * A group is worth saving once it has a name OR at least one ASIN.
+   *
+   * Either on its own is a real thing: a named group waiting for products, or
+   * a list of products waiting to be named. Neither is nothing, and the server
+   * rejects it — so the button is dead until one of them exists.
+   */
+  const canSave = name.trim() !== '' || rows.length > 0;
+
   // A save error is about the attempt just made, not a standing condition,
   // so it steps out of the way rather than needing to be dismissed.
   useEffect(() => {
@@ -399,12 +408,20 @@ export function ExclusivesEditorPage() {
           >
             Cancel
           </button>
+          {/* A group with neither a name nor an ASIN is nothing at all. The
+              server rejects it, so Save is dead until one exists, and its
+              title says why rather than leaving someone clicking at it. */}
           {conflict ? (
             <button type="button" onClick={() => void refreshAfterConflict()}>
               Refresh
             </button>
           ) : (
-            <button type="button" onClick={() => void save(false)} disabled={saving || loading}>
+            <button
+              type="button"
+              onClick={() => void save(false)}
+              disabled={saving || loading || !canSave}
+              title={canSave ? undefined : 'Add a group name or an ASIN first'}
+            >
               {saving ? 'Saving…' : 'Save'}
             </button>
           )}
@@ -524,7 +541,13 @@ export function ExclusivesEditorPage() {
                   Canada
                 </button>
               </div>
-              <button type="button" onClick={() => void addRow()} disabled={adding || addLocked}>
+              {/* Nothing typed, nothing to add. Pressing Add with an empty box
+                  used to start a lookup that could only fail. */}
+              <button
+                type="button"
+                onClick={() => void addRow()}
+                disabled={adding || addLocked || addAsin.trim() === ''}
+              >
                 {adding ? 'Checking…' : 'Add'}
               </button>
             </div>

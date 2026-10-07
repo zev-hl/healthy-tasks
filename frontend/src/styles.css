@@ -6291,6 +6291,29 @@ tr.just-completed > td {
 .exc-table td.exc-col-name {
   white-space: normal;
 }
+/* What changed, in its own column. Given a share of the width so a long
+   message wraps inside the cell rather than stretching the row, and so the
+   product title beside it keeps a stable shape. */
+.exc-table .exc-col-detail {
+  width: 28%;
+  min-width: 16rem;
+}
+/* The Alert Log only. Its title column would otherwise inherit the `width:100%`
+   above and swallow every spare pixel, leaving Group, Alert type and Detail to
+   wrap in a few characters. Capping the title at a share of the table hands the
+   slack back to them; the title still wraps onto a second line when it needs to.
+   The groups table keeps the greedy rule, where the name IS the content. */
+.exc-table.exc-log-table .exc-col-name {
+  width: 42%;
+  min-width: 14rem;
+}
+.exc-table.exc-log-table .exc-col-detail {
+  width: 32%;
+}
+.exc-table td.exc-col-detail {
+  white-space: normal;
+  vertical-align: top;
+}
 .exc-table .exc-num {
   text-align: right;
 }
@@ -7383,6 +7406,59 @@ tr.just-completed > td {
   margin: 0.15rem 0 0;
   color: var(--muted-2);
   font-size: 0.88rem;
+}
+/* The Show more / Show less toggle under a clamped message. Reads as a link
+   rather than a button, because it reveals text rather than doing anything. */
+/* Alert type and when it happened, stacked in one cell. Two narrow columns
+   side by side wasted width and read as unrelated; the badge and the time
+   describe the same event. */
+.exc-table .exc-col-when {
+  white-space: nowrap;
+  /* Centred, not top-aligned: when the Detail column is expanded the row grows
+     tall, and the badge pinned to the top looked detached from the message it
+     belongs to. This matches the Group cell beside it. */
+  vertical-align: middle;
+  /* The badge is the widest thing here, so it sets the column's width; the two
+     time lines under it are centred on the same axis rather than hanging off
+     its left edge. The heading carries this class too, so it lines up with the
+     column it names. */
+  text-align: center;
+}
+.exc-col-when .exc-latest {
+  display: block;
+  margin-top: 0.3rem;
+}
+/* The clamped block: the paragraph keeps a right gutter free, and the chevron
+   sits in it at the end of the last line. Reserving space beats painting a
+   background behind the arrow, which would have to match whatever the row
+   happens to be — including its hover colour. */
+.exc-clamp {
+  position: relative;
+  display: block;
+}
+.exc-clamp > p {
+  padding-right: 1.25rem;
+}
+/* A chevron, not a word: the message beside it is already the content, and a
+   "Show more" label competed with it for attention. Sized to a comfortable
+   target even though the arrow itself is small. */
+.exc-clamp-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+.exc-clamp-toggle:hover {
+  background: var(--canvas-deep);
+  color: var(--accent);
 }
 .exc-drawer-foot {
   display: flex;

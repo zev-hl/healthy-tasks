@@ -98,11 +98,20 @@ export function detectAlerts(
 
   if (changed.has('bulletPoints')) {
     const idx = changedBulletIndices(prev.bulletPoints, current.bulletPoints);
+    // The WORDING, not a count. Snapshots are one row per listing and are
+    // overwritten each sweep, so this is the only moment the old text still
+    // exists — a count can be recomputed later, the words cannot.
+    //
+    // Only the bullets that actually moved: a listing where four of five
+    // changed would otherwise carry ten versions, and the difference would be
+    // harder to find rather than easier.
+    const numbered = (list: string[]) =>
+      idx.map((i) => `${i + 1}. ${list[i] ?? '(none)'}`).join('\n') || null;
     alerts.push({
       alertType: 'BulletPointsChanged',
       category: idx.map((i) => `bullet_${i + 1}`).join(',') || null,
-      previousValue: `${prev.bulletPoints.length} bullets`,
-      newValue: `${current.bulletPoints.length} bullets`,
+      previousValue: numbered(prev.bulletPoints),
+      newValue: numbered(current.bulletPoints),
     });
   }
 

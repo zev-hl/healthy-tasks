@@ -240,4 +240,29 @@ describe('GroupAlertsPanel', () => {
     await settle();
     expect(screen.getByText('Internal server error')).toBeInTheDocument();
   });
+
+  it('offers to expand a message that is cut off, and to collapse it again', async () => {
+    // jsdom reports no layout, so clamping is simulated: scrollHeight above
+    // clientHeight is exactly what the component measures to decide.
+    const proto = window.HTMLElement.prototype;
+    const scroll = Object.getOwnPropertyDescriptor(proto, 'scrollHeight');
+    const client = Object.getOwnPropertyDescriptor(proto, 'clientHeight');
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 90 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 40 });
+    try {
+      open();
+      await settle();
+
+      // findBy* polls on real timers, and this file runs with fake ones.
+      const more = screen.getAllByRole('button', { name: 'Show more' })[0]!;
+      expect(more).toHaveAttribute('aria-expanded', 'false');
+
+      fireEvent.click(more);
+      await settle();
+      expect(screen.getAllByRole('button', { name: 'Show less' }).length).toBeGreaterThan(0);
+    } finally {
+      if (scroll) Object.defineProperty(proto, 'scrollHeight', scroll);
+      if (client) Object.defineProperty(proto, 'clientHeight', client);
+    }
+  });
 });

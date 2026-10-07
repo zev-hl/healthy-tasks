@@ -100,6 +100,15 @@ describe('detectAlerts — content', () => {
     assert.equal(alerts[0]?.alertType, 'BulletPointsChanged');
     assert.equal(alerts[0]?.category, 'bullet_2,bullet_4');
   });
+
+  it('keeps the wording of the changed bullets, which nothing else retains', () => {
+    // The snapshot is overwritten on the next sweep, so if the alert does not
+    // capture the old text here it is gone for good.
+    const alerts = detectAlerts(base, s({ bulletPoints: ['one', 'TWO', 'three', 'four'] }), US);
+
+    assert.equal(alerts[0]?.previousValue, '2. two\n4. (none)');
+    assert.equal(alerts[0]?.newValue, '2. TWO\n4. four');
+  });
 });
 
 describe('detectAlerts — combined', () => {

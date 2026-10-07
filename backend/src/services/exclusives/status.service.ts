@@ -10,26 +10,25 @@ import {
 import { lastSuccessfulSweepAt } from './health.service.js';
 
 // Cache the health result so page loads never trigger an Amazon call: the
-// connection probe runs on demand at most once per TTL. Alongside it we report
-// the sweep's last successful check, so the dot says whether alerts are current.
+// connection probe runs on demand at most once per TTL.
+//
+// ONLY the probe is cached. `lastSweepAt` is read fresh on every request, even
+// on a cache hit: it is one cheap aggregate over snapshots, with no Amazon call
+// in it, and it is the same value the summary endpoint computes for the page
+// heading. Caching it alongside the probe left the status dot's tooltip showing
+// a sweep time up to TTL_MS older than the heading right beside it.
 const TTL_MS = 5 * 60 * 1000;
 
-let cache: { value: ExclusivesStatusDto; at: number } | null = null;
+let cache: { value: Connection; checkedAt: string; at: number } | null = null;
 
 export async function getExclusivesStatus(force = false): Promise<ExclusivesStatusDto> {
   const now = Date.now();
-  if (!force && cache && now - cache.at < TTL_MS) return cache.value;
-  const value = await computeStatus();
-  cache = { value, at: now };
-  return value;
-}
-
-async function computeStatus(): Promise<ExclusivesStatusDto> {
-  const checkedAt = new Date().toISOString();
-  const [connection, lastSweep] = await Promise.all([
-    probeConnection(),
-    lastSuccessfulSweepAt().catch(() => null),
-  ]);
+  const fresh = !force && cache && now - cache.at < TTL_MS;
+  if (!fresh) {
+    cache = { value: await probeConnection(), checkedAt: new Date().toISOString(), at: now };
+  }
+  const { value: connection, checkedAt } = cache!;
+  const lastSweep = await lastSuccessfulSweepAt().catch(() => null);
   return { ...connection, checkedAt, lastSweepAt: lastSweep?.toISOString() ?? null };
 }
 

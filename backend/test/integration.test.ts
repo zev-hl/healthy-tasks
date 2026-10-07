@@ -7392,6 +7392,50 @@ describe('exclusives: last successful check (HLAI-71 6g)', () => {
     });
     assert.equal(res.body.lastSweepAt, snapshot.capturedAt.toISOString());
   });
+
+  // Regression: the status endpoint caches its Amazon probe for minutes. It used
+  // to cache `lastSweepAt` in the same object, so after a sweep the dot's
+  // tooltip still named the PREVIOUS check while the page heading beside it —
+  // served by /summary, computed fresh — already named the new one. The probe
+  // may be cached; the sweep time may not.
+  it('reports the newest check even while the connection probe is cached', async () => {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: { name: 'Health B', groupType: 'GROUP', createdById: admin.id },
+    });
+    const listing = await prisma.listing.create({
+      data: { groupId: group.id, marketplace: 'USA', asin: 'B0B', sku: 'B', createdById: admin.id },
+    });
+    await prisma.listingSnapshot.create({
+      data: {
+        listingId: listing.id,
+        bulletPoints: [],
+        capturedAt: new Date(Date.now() - 30 * MINUTE_MS),
+      },
+    });
+    fakeAmazon({ items: [] });
+    const token = auth(await adminToken());
+
+    const before = await request(app).get('/api/exclusives/status').set(token);
+    assert.equal(before.status, 200);
+
+    // A sweep lands, well inside the probe's cache window.
+    const fresh = new Date(Date.now() - MINUTE_MS);
+    await prisma.listingSnapshot.create({
+      data: { listingId: listing.id, bulletPoints: [], capturedAt: fresh },
+    });
+
+    const after = await request(app).get('/api/exclusives/status').set(token);
+    const summary = await request(app).get('/api/exclusives/summary').set(token);
+
+    assert.equal(after.body.lastSweepAt, fresh.toISOString(), 'the dot moved with the sweep');
+    assert.notEqual(after.body.lastSweepAt, before.body.lastSweepAt);
+    assert.equal(
+      after.body.lastSweepAt,
+      summary.body.lastSweepAt,
+      'the dot and the page heading name the same check',
+    );
+  });
 });
 
 describe('exclusives: scheduled sweep log lines (HLAI-71 6g)', () => {
