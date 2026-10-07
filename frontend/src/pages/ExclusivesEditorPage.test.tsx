@@ -107,6 +107,16 @@ const editEditor = () =>
 const typeAsin = (value: string) =>
   fireEvent.change(screen.getByLabelText('Add ASIN'), { target: { value } });
 
+/**
+ * Make an unchanged form dirty.
+ *
+ * Save is disabled until something actually changes, so a test that loads an
+ * existing group and clicks Save straight away is clicking a dead button. This
+ * edits the name, which no assertion in this file depends on.
+ */
+const makeDirty = () =>
+  fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Edited name' } });
+
 beforeEach(() => {
   vi.useFakeTimers();
   getGroup.mockResolvedValue(group());
@@ -416,10 +426,25 @@ describe('ExclusivesEditorPage — an existing group', () => {
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
   });
 
+  it('keeps Save switched off until something actually changes', async () => {
+    editEditor();
+    await settle();
+
+    // Opening an existing group changes nothing, so there is nothing to save.
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute('title', 'Nothing has changed yet');
+
+    makeDirty();
+    await settle();
+    expect(save).toBeEnabled();
+  });
+
   it('sends the concurrency token so a stale edit can be caught', async () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 
@@ -438,6 +463,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 
@@ -450,6 +476,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 
@@ -471,6 +498,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
     expect(
@@ -494,6 +522,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 
@@ -515,6 +544,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
     // The row says where it is coming from, and the banner explains it.
@@ -522,6 +552,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     expect(screen.getByText(/Moving from “Another group”/)).toBeInTheDocument();
     expect(screen.getByText(/Saving moves it here/)).toBeInTheDocument();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 
@@ -541,6 +572,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 
@@ -557,6 +589,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     editEditor();
     await settle();
 
+    makeDirty();
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await settle();
 

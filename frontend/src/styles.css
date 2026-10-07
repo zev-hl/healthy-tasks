@@ -6452,7 +6452,18 @@ tr.just-completed > td {
   font-size: 0.66rem;
   color: var(--faint);
 }
+/*
+ * The actions cell stays a TABLE CELL; the flex row lives in a wrapper inside
+ * it. A td set to display:flex stops participating in the table layout — it no
+ * longer stretches to the row height or honours vertical-align, so the buttons
+ * sat high while the two-line date beside them ran on, and the row dividers
+ * did not line up.
+ */
 .exc-row-actions {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.exc-row-actions-inner {
   display: flex;
   gap: 7px;
   justify-content: flex-end;
