@@ -547,11 +547,18 @@ textarea:focus-visible {
   font-size: 13.5px;
   color: var(--ink-3);
   text-decoration: none;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
 }
+/*
+ * The whole rail hovers as the palest wash of the accent, a shade lighter
+ * than the solid `.active` item, so hovering hints at where a click lands
+ * without ever looking selected.
+ */
 .side-nav-item:hover {
-  background: var(--canvas-deep);
-  color: var(--ink);
+  background: var(--accent-tint);
+  color: var(--accent-deep);
   text-decoration: none;
 }
 .side-nav-item.active {
@@ -596,8 +603,8 @@ textarea:focus-visible {
   width: 100%;
 }
 .view-item:hover {
-  background: var(--canvas-deep);
-  color: var(--ink);
+  background: var(--accent-tint);
+  color: var(--accent-deep);
 }
 .view-square {
   width: 7px;
@@ -743,7 +750,9 @@ textarea:focus-visible {
   transition: filter var(--dur) var(--ease);
 }
 .mday-tile:hover {
-  filter: brightness(0.975);
+  /* Deepens each tile within its OWN colour family rather than replacing it,
+     so Overdue stays red-on-pink and In review stays purple. */
+  filter: brightness(0.96);
 }
 .mday-tile-value {
   font-weight: 700;
@@ -819,7 +828,9 @@ textarea:focus-visible {
   padding: 12px 8px;
   border-radius: 9px;
   cursor: pointer;
-  transition: background var(--dur) var(--ease), opacity var(--dur-slow) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    opacity var(--dur-slow) var(--ease);
 }
 .mday-row + .mday-row {
   border-top: 1px solid var(--row-line);
@@ -871,7 +882,10 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
 }
 .mday-check:hover {
   border-color: var(--ok);
@@ -981,7 +995,9 @@ textarea:focus-visible {
   border: 1px solid var(--border-soft);
   cursor: pointer;
   text-align: left;
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .mday-team-card:hover {
   background: var(--canvas-deep);
@@ -1072,10 +1088,16 @@ textarea:focus-visible {
   border: 1px solid var(--border);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
 }
+/* Hover hints, active states. The tiles carry btn-plain so the filled global
+   button hover never paints accent-deep over them — these two rules are the
+   whole of their hover feedback, and both use palette tokens. */
 .tasks-stat:hover {
   border-color: var(--border-dashed);
+  background: var(--surface-sunk);
 }
 .tasks-stat-value {
   font-weight: 700;
@@ -1768,6 +1790,36 @@ textarea:focus-visible {
   font-size: 13.5px;
   color: var(--muted);
 }
+/*
+ * Google sign-in, above the password form. Google's script renders the button
+ * itself and its look is fixed by their branding rules, so this only places it.
+ */
+.google-signin {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+.google-signin[aria-busy='true'] {
+  /* A sign-in is already running; the button is inert until it settles. */
+  opacity: 0.6;
+  pointer-events: none;
+}
+/* A labelled rule, so the two routes read as alternatives rather than steps. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 2px;
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 .auth-form-col form {
   display: flex;
   flex-direction: column;
@@ -1965,7 +2017,9 @@ textarea:focus-visible {
   border-radius: var(--radius-full);
   background: var(--canvas-deep);
   border: 1px solid var(--border);
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .switch-track::after {
   content: '';
@@ -2189,11 +2243,126 @@ button {
     color var(--dur) var(--ease);
 }
 
-button:hover {
+/*
+ * The filled hover belongs to the default variant, not to every button. A
+ * button that paints its own background — toolbar toggles, pager chips, the
+ * sidebar's quick views — was having the deep accent painted over it on
+ * hover, which hid its dark label.
+ *
+ * The fix is specificity, not a longer list: the exclusions sit inside
+ * `:where()`, which counts for nothing, so each rule weighs a single class.
+ * That beats the bare `button` background underneath it, and loses to any
+ * `.thing:hover` a component writes for itself. So a button with its own
+ * hover simply keeps it, and nothing new has to be added below.
+ *
+ * The list that remains covers buttons with no hover of their own, which
+ * would otherwise be filled; `btn-plain` is the class for a new one.
+ */
+button:hover:where(
+    :not(
+      .btn-plain,
+      .add-filter,
+      .due-chip,
+      .rail-clear-time,
+      .tag-x,
+      .detail-tab,
+      .incomplete-link,
+      .password-toggle,
+      .rel-x,
+      .link-button,
+      .col-move,
+      .tree-toggle,
+      .dash-toggle,
+      .notif-snooze-opt,
+      .seg-btn,
+      .tpl-collapse,
+      .exc-legend-chip,
+      .exc-clear,
+      .exc-seg-btn,
+      .exc-country-btn,
+      .exc-plat-toggle,
+      .exc-asin-remove,
+      .exc-quick,
+      .exc-toast-x,
+      .exc-drawer-x,
+      .exc-drawer-open-log,
+      .exc-group-name-btn,
+      :disabled
+    )
+  ) {
   background: var(--accent-deep);
 }
-button:active {
+button:active:where(
+    :not(
+      .btn-plain,
+      .add-filter,
+      .due-chip,
+      .rail-clear-time,
+      .tag-x,
+      .detail-tab,
+      .incomplete-link,
+      .password-toggle,
+      .rel-x,
+      .link-button,
+      .col-move,
+      .tree-toggle,
+      .dash-toggle,
+      .notif-snooze-opt,
+      .seg-btn,
+      .tpl-collapse,
+      .exc-legend-chip,
+      .exc-clear,
+      .exc-seg-btn,
+      .exc-country-btn,
+      .exc-plat-toggle,
+      .exc-asin-remove,
+      .exc-quick,
+      .exc-toast-x,
+      .exc-drawer-x,
+      .exc-drawer-open-log,
+      .exc-group-name-btn,
+      :disabled
+    )
+  ) {
   background: var(--accent-deep);
+}
+
+/*
+ * A quiet default for those same buttons, at zero specificity (:where), so
+ * any of them that defines its own hover — the red remove cross, the country
+ * toggles — still wins.
+ */
+:where(
+  button.btn-plain:hover,
+  button.add-filter:hover,
+  button.due-chip:hover,
+  button.rail-clear-time:hover,
+  button.tag-x:hover,
+  button.detail-tab:hover,
+  button.incomplete-link:hover,
+  button.password-toggle:hover,
+  button.rel-x:hover,
+  button.link-button:hover,
+  button.col-move:hover,
+  button.tree-toggle:hover,
+  button.dash-toggle:hover,
+  button.notif-snooze-opt:hover,
+  button.seg-btn:hover,
+  button.tpl-collapse:hover,
+  button.exc-legend-chip:hover,
+  button.exc-clear:hover,
+  button.exc-seg-btn:hover,
+  button.exc-country-btn:hover,
+  button.exc-plat-toggle:hover,
+  button.exc-asin-remove:hover,
+  button.exc-quick:hover,
+  button.exc-toast-x:hover,
+  button.exc-drawer-x:hover,
+  button.exc-drawer-open-log:hover,
+  button.exc-group-name-btn:hover
+) {
+  background: var(--canvas-deep);
+  color: var(--ink);
 }
 
 button:disabled {
@@ -3067,6 +3236,59 @@ th {
   border-color: #c4c9d2;
   color: var(--text-secondary);
 }
+/*
+ * Attach row and the files chosen for a comment that hasn't been posted yet.
+ * Sits between the editor and the Comment button, so the order reads
+ * write → attach → post.
+ */
+.composer-attach {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  /* Breathing room on both sides: the attach row belongs to the editor above
+     it, not to the Comment button below, and without the lower margin the two
+     rows read as one block. */
+  margin: 0.7rem 0 0.9rem;
+}
+.composer-attach-btn {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.7rem;
+}
+.composer-attach-hint {
+  font-size: 0.72rem;
+}
+.composer-files {
+  list-style: none;
+  /* The attach row already carries the gap below it; pull the list up against
+     the button that produced it, and keep the space before the buttons. */
+  margin: -0.4rem 0 0.9rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.composer-files li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+}
+.composer-file-name {
+  /* Long names shorten rather than pushing the size and the remove cross out. */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-file-size {
+  flex: none;
+  font-size: 0.72rem;
+}
 .comment-list {
   list-style: none;
   margin: 0 0 1rem;
@@ -3855,7 +4077,9 @@ button.dash-stat:hover {
   color: var(--ink-3);
   cursor: pointer;
   box-shadow: none;
-  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+  transition:
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease);
 }
 .notif-pill:hover {
@@ -4157,7 +4381,6 @@ button.dash-stat:hover {
   }
 }
 
-
 .notif-foot {
   margin-top: 0.85rem;
   font-size: 0.8rem;
@@ -4456,12 +4679,7 @@ td.empty-cell:hover {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.6),
-    transparent
-  );
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
   animation: shimmer 1.4s infinite;
 }
 .skeleton-row {
@@ -5400,7 +5618,9 @@ tr.just-completed > td {
   box-shadow: var(--shadow-frame);
   padding: 0.85rem 0.95rem;
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
 }
 .goal-card:hover {
   border-color: var(--accent-mid);
@@ -5918,4 +6138,1593 @@ tr.just-completed > td {
 .hierarchy-pop-hint {
   margin: 0 0 0.4rem;
   font-size: 0.72rem;
+}
+
+/* =========================================================================
+   Exclusives — Amazon Seller Alerts (HLAI-71)
+   Scoped styles for the E-commerce exclusives screens. Built on the app's
+   existing design tokens/primitives (.page-head, .card, .results-table,
+   .status-pill, .pager) — the design mockup uses this same palette.
+   ========================================================================= */
+
+/* --- Sidebar tab dot ---------------------------------------------------- */
+.side-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  margin-right: 2px;
+}
+
+/* --- Full-bleed page (design uses 26/32/40 padding, not the 980px cap) --- */
+.exc-page {
+  padding: 26px 32px 40px;
+}
+
+/* --- Page header + actions --------------------------------------------- */
+.exc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: nowrap;
+}
+.exc-head > :first-child {
+  min-width: 0;
+}
+.exc-head h1 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 33px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.exc-runline {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--muted-2);
+}
+.exc-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+}
+.exc-search {
+  width: 290px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  padding: 11px 13px;
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+/* "New group" primary button — exact design sizing; never wrap/shrink. */
+.exc-actions > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-size: 12.5px;
+  padding: 9px 14px;
+  border-radius: 10px;
+}
+
+/* --- Stat cards --------------------------------------------------------- */
+.exc-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 0;
+}
+.exc-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 12px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.exc-stat.accent {
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.exc-stat.accent .exc-stat-value,
+.exc-stat.accent .exc-stat-label {
+  color: var(--accent-deep);
+}
+.exc-stat.accent .exc-stat-sub {
+  color: var(--accent-deep);
+  opacity: 0.75;
+}
+.exc-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.exc-stat-label {
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.exc-stat-sub {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  margin-left: 2px;
+}
+
+/* --- Table card --------------------------------------------------------- */
+.exc-table-card {
+  padding: 0;
+  overflow: hidden;
+}
+.exc-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--border);
+}
+.exc-card-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.exc-card-hint {
+  margin-left: auto;
+  color: var(--faint);
+  font-size: 0.72rem;
+}
+.exc-table-scroll {
+  overflow-x: auto;
+}
+.exc-table.results-table {
+  min-width: 0;
+}
+.exc-table thead th {
+  background: var(--surface-sunk);
+}
+.exc-table .exc-col-name {
+  width: 100%;
+}
+.exc-table td.exc-col-name {
+  white-space: normal;
+}
+/* What changed, in its own column. Given a share of the width so a long
+   message wraps inside the cell rather than stretching the row, and so the
+   product title beside it keeps a stable shape. */
+.exc-table .exc-col-detail {
+  width: 28%;
+  min-width: 16rem;
+}
+/* The Alert Log only. Its title column would otherwise inherit the `width:100%`
+   above and swallow every spare pixel, leaving Group, Alert type and Detail to
+   wrap in a few characters. Capping the title at a share of the table hands the
+   slack back to them; the title still wraps onto a second line when it needs to.
+   The groups table keeps the greedy rule, where the name IS the content. */
+.exc-table.exc-log-table .exc-col-name {
+  width: 42%;
+  min-width: 14rem;
+}
+.exc-table.exc-log-table .exc-col-detail {
+  width: 32%;
+}
+.exc-table td.exc-col-detail {
+  white-space: normal;
+  vertical-align: top;
+}
+.exc-table .exc-num {
+  text-align: right;
+}
+.exc-log-table {
+  min-width: 60rem;
+}
+.exc-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 11px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunk);
+}
+.exc-pager-range {
+  font-size: 11.5px;
+}
+.exc-pager-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.exc-pager-rows-label {
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+.exc-sizes {
+  display: inline-flex;
+  gap: 2px;
+}
+.exc-size {
+  background: var(--surface);
+  border: 0;
+  color: var(--muted-2);
+  font-weight: 600;
+  font-size: 11.5px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+/* Same wash as the rail; the chosen size keeps the solid tint below. */
+.exc-size:hover:not(.active) {
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+}
+.exc-size.active {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.exc-page-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+  font-weight: 600;
+  font-size: 11.5px;
+  padding: 5px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.exc-page-btn:hover:not(:disabled) {
+  background: var(--accent-tint);
+  border-color: var(--accent-mid);
+  color: var(--accent-deep);
+}
+.exc-page-btn:disabled {
+  color: var(--faint-2);
+  cursor: default;
+}
+.exc-page-num {
+  min-width: 26px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.exc-page-num:hover:not(.active) {
+  background: var(--accent-tint);
+  border-color: var(--accent-mid);
+  color: var(--accent-deep);
+}
+.exc-page-num.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+/* --- Dashboard row cells ------------------------------------------------ */
+.exc-group-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.exc-asins {
+  font-size: 0.68rem;
+  color: var(--ink-3);
+  line-height: 1.35;
+}
+.exc-muted {
+  color: var(--muted-2);
+  font-size: 0.78rem;
+}
+.exc-count {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.exc-count.warm {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+}
+.exc-count.hot {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+.exc-latest {
+  display: block;
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+.exc-latest.hot {
+  color: var(--danger-deep);
+}
+.exc-latest-abs {
+  display: block;
+  font-size: 0.66rem;
+  color: var(--faint);
+}
+/*
+ * The actions cell stays a TABLE CELL; the flex row lives in a wrapper inside
+ * it. A td set to display:flex stops participating in the table layout — it no
+ * longer stretches to the row height or honours vertical-align, so the buttons
+ * sat high while the two-line date beside them ran on, and the row dividers
+ * did not line up.
+ */
+.exc-row-actions {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.exc-row-actions-inner {
+  display: flex;
+  gap: 7px;
+  justify-content: flex-end;
+}
+/* Borderless light-grey action pills (Edit / Delete) per the design. */
+.exc-act {
+  background: var(--canvas-deep);
+  border: 0;
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.exc-act:hover {
+  background: var(--border);
+}
+.exc-act.del {
+  color: var(--danger);
+}
+.exc-act.del:hover {
+  background: var(--danger-soft);
+}
+
+/* --- Log rows: flag + ASIN + title/detail ------------------------------ */
+.exc-col-asin {
+  width: 9rem;
+}
+.exc-asin-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--ink-3);
+}
+.exc-flag-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.exc-flag {
+  width: 15px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid #c6bdb0;
+  display: block;
+}
+.exc-flag-code {
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.exc-log-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+.exc-log-detail {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted-2);
+  white-space: normal;
+}
+
+/* --- Alert-type legend / filter chips ---------------------------------- */
+.exc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin: 0 0 1.1rem;
+}
+.exc-legend-chip {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: var(--radius-full);
+  opacity: 0.55;
+  transition: opacity var(--dur) var(--ease);
+}
+.exc-legend-chip:hover,
+.exc-legend-chip.active {
+  opacity: 1;
+}
+.exc-clear {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-2);
+  background: none;
+  border: 0;
+  padding: 0 0.3rem;
+}
+.exc-clear:hover {
+  color: var(--danger);
+  background: none;
+}
+
+/* --- Segmented control -------------------------------------------------- */
+.exc-seg {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px;
+}
+.exc-seg-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted-2);
+  font-weight: 600;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.exc-seg-md .exc-seg-btn {
+  padding: 6px 14px;
+  font-size: 0.78rem;
+}
+.exc-seg-sm .exc-seg-btn {
+  padding: 4px 9px;
+  font-size: 0.68rem;
+}
+.exc-seg-btn.active.tone-ink {
+  background: var(--ink);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-accent {
+  background: var(--accent);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-neutral {
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+}
+
+/* --- Editor: crumb bar -------------------------------------------------- */
+.exc-editor .exc-crumbbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+}
+.exc-crumb-link {
+  font-size: 0.75rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.exc-crumb-sep {
+  font-size: 0.75rem;
+  color: var(--faint-2);
+}
+.exc-crumb {
+  font-size: 0.75rem;
+  color: var(--muted-2);
+}
+.exc-crumb-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.exc-crumb-meta {
+  font-size: 0.72rem;
+  color: var(--muted-2);
+}
+.exc-crumb-div {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+.exc-crumb-hint {
+  font-size: 0.72rem;
+  color: var(--faint);
+}
+
+/* --- Editor: layout + panels ------------------------------------------- */
+.exc-editor-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+.exc-editor-left {
+  flex: 1 1 600px;
+  min-width: min(100%, 600px);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.exc-panel {
+  padding: 1.25rem 1.4rem;
+}
+.exc-panel-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+.exc-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.exc-panel-head-right {
+  margin-left: auto;
+}
+
+/* --- Editor: name field ------------------------------------------------- */
+.exc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.exc-field-label {
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--ink-2);
+}
+.exc-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.8rem;
+  font-family: inherit;
+  font-size: 0.84rem;
+  color: var(--ink);
+  width: 100%;
+}
+.exc-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.exc-field-help {
+  font-size: 0.72rem;
+  color: var(--muted-2);
+}
+
+/* --- Editor: ASINs panel ------------------------------------------------ */
+.exc-asin-panel {
+  padding: 0;
+  overflow: hidden;
+}
+.exc-asin-head {
+  padding: 1rem 1.25rem;
+  margin: 0;
+  flex-wrap: wrap;
+}
+.exc-asin-head-btns {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+}
+.exc-add-row {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0 1.25rem 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.exc-add-asin {
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.8rem;
+}
+.exc-country {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+.exc-country-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ink-3);
+  font-weight: 600;
+  font-size: 0.72rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.exc-country-btn.active.us {
+  background: #2b3a67;
+  color: #fff;
+}
+.exc-country-btn.active.ca {
+  background: #d52b1e;
+  color: #fff;
+}
+
+/* --- Editor: ASIN table ------------------------------------------------- */
+.exc-asin-thead,
+.exc-asin-trow {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.6rem 1.25rem;
+  min-width: 34rem;
+}
+.exc-asin-thead {
+  background: var(--surface-sunk);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+}
+.exc-asin-trow {
+  border-bottom: 1px solid var(--row-line);
+  font-size: 0.78rem;
+}
+.exc-asin-trow:hover {
+  background: var(--surface-sunk);
+}
+.exc-asin-c-asin {
+  width: 7.4rem;
+  flex: 0 0 auto;
+}
+.exc-asin-c-title {
+  flex: 1;
+  min-width: 10rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exc-asin-c-plat {
+  width: 6.5rem;
+  flex: 0 0 auto;
+}
+.exc-asin-c-x {
+  width: 3rem;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+}
+.exc-plat-toggle {
+  background: none;
+  border: 0;
+  padding: 2px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+}
+.exc-plat-toggle:hover {
+  background: var(--canvas-deep);
+}
+.exc-asin-remove {
+  background: none;
+  border: 0;
+  color: var(--muted-2);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.exc-asin-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.exc-asin-empty {
+  padding: 1.25rem;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* --- Editor: Alert settings panel -------------------------------------- */
+.exc-settings {
+  flex: 1 1 340px;
+  min-width: min(100%, 340px);
+  max-width: 26rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.exc-settings-sub {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-2);
+}
+.exc-settings-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+.exc-settings-count {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+}
+.exc-quick {
+  background: none;
+  border: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-2);
+  cursor: pointer;
+  padding: 0;
+}
+.exc-quick.accent {
+  color: var(--accent);
+  margin-left: auto;
+}
+.exc-quick:hover {
+  text-decoration: underline;
+  background: none;
+}
+.exc-settings-rows {
+  display: flex;
+  flex-direction: column;
+}
+.exc-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+.exc-settings-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  flex: 0 0 auto;
+}
+.exc-settings-name {
+  flex: 1;
+  font-weight: 500;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+/* --- GROUP / INDIVIDUAL kind badge ------------------------------------- */
+.exc-kind {
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* --- Delete-group confirm modal (HLAI-71) ------------------------------- */
+.exc-confirm {
+  padding: 0;
+  max-width: 480px;
+  overflow: hidden;
+}
+.exc-confirm-body {
+  padding: 22px 24px;
+}
+.exc-confirm-title {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.exc-confirm-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted-2);
+}
+.exc-confirm-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--surface-sunk);
+}
+
+/* --- Alert Log header toolbar (HLAI-71) --------------------------------- */
+.exc-toolbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/*
+ * Hover is a light tint of the accent, not the app's filled dark hover: these
+ * buttons keep their dark label, and the fill swallowed it. It is a shade
+ * lighter than the `.on` state below, so "could be chosen" still reads
+ * differently from "is chosen".
+ */
+.exc-toolbtn:hover:not(:disabled) {
+  background: var(--accent-tint);
+  border-color: var(--accent-mid);
+  color: var(--accent-deep);
+}
+.exc-toolbtn:hover:not(:disabled) .exc-caret {
+  color: var(--accent-mid);
+}
+.exc-toolbtn.open {
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+.exc-toolbtn:disabled {
+  color: var(--muted-2);
+  cursor: default;
+}
+.exc-caret {
+  font-size: 10px;
+  color: var(--muted-2);
+}
+.exc-filter-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.exc-search-log {
+  width: 240px;
+  flex: 1 1 180px;
+  min-width: 150px;
+}
+
+/* --- Filter popovers ---------------------------------------------------- */
+.exc-pop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.exc-filter-wrap {
+  position: relative;
+  z-index: 45;
+}
+.exc-filter-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 46;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  padding: 14px 16px;
+}
+.exc-type-pop {
+  width: 360px;
+  max-width: 82vw;
+}
+.exc-date-pop {
+  width: 300px;
+  max-width: 82vw;
+}
+.exc-filter-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--muted-2);
+  margin-bottom: 8px;
+}
+.exc-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/*
+ * Quick ranges above the two date fields. They fill From with "this long ago"
+ * and leave To empty, so the range stays open at the top and newly arriving
+ * alerts keep appearing. `btn-plain` opts out of the filled global hover.
+ */
+.exc-range-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.exc-range-btn {
+  background: var(--canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 6px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.exc-range-btn:hover {
+  background: var(--canvas-deep);
+  border-color: var(--border-dashed);
+  color: var(--ink);
+}
+.exc-range-btn.on,
+.exc-range-btn.on:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+.exc-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+.exc-date-field > span {
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.exc-date-field input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 8px 11px;
+}
+
+/* --- Sort line above the log table -------------------------------------- */
+.exc-sortline {
+  display: flex;
+  justify-content: flex-end;
+  margin: 12px 0 8px;
+}
+.exc-sortline .mono {
+  font-size: 11.5px;
+  color: var(--muted-2);
+}
+
+/* --- SP-API status light (HLAI-71, Chunk 3b) ---------------------------- */
+.exc-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: var(--faint-2);
+}
+.exc-status-dot.up {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+.exc-status-dot.down {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+.exc-status-dot.checking {
+  animation: exc-status-pulse 1.1s ease-in-out infinite;
+}
+@keyframes exc-status-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* --- Exclusives: brief toast (HLAI-71 Chunk 8c) -------------------------- */
+.exc-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 28rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+  font-size: 0.9rem;
+}
+.exc-toast.error {
+  border-left: 4px solid var(--danger, #c0392b);
+}
+.exc-toast.success {
+  border-left: 4px solid var(--accent, #0f7b6c);
+}
+.exc-toast.info {
+  border-left: 4px solid var(--border-strong, #888);
+}
+.exc-toast-x {
+  padding: 0 0.25rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* --- Exclusives: bulk import preview (HLAI-71 Chunk 8d) ------------------ */
+.modal.exc-import {
+  /* The base .modal caps every dialog at 460px; the four-column preview needs
+     the width the screen already has. */
+  width: min(1800px, 96vw);
+  max-width: none;
+  max-height: 90vh;
+  padding: 1.1rem 1.4rem 0;
+  overflow: auto;
+}
+/* The file chooser sits alone in the middle: there is nothing else to do here. */
+.exc-import-choose {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  min-height: 16rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+.exc-import-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.exc-import-file-btn {
+  padding: 0.7rem 1.4rem;
+  border: 1px solid var(--border-strong, #333);
+  border-radius: 8px;
+  background: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+.exc-import-file-btn:hover {
+  background: var(--surface-alt, #f4f4f4);
+}
+.exc-import-file-btn:focus-within {
+  outline: 2px solid var(--accent, #0f7b6c);
+}
+.exc-import-hint {
+  max-width: 34rem;
+  margin: 0;
+}
+.exc-import-file-name {
+  margin: 0;
+}
+.exc-import-progress {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  padding: 2rem 0;
+}
+.exc-progress {
+  width: min(420px, 100%);
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.exc-progress-bar {
+  height: 100%;
+  background: var(--accent, #0f7b6c);
+  transition: width 120ms linear;
+}
+.exc-import-cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--border-strong, #333);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.exc-import-col + .exc-import-col {
+  border-left: 1px solid var(--border-strong, #333);
+}
+.exc-import-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+.exc-import-col.danger .exc-import-col-head {
+  color: var(--danger, #c0392b);
+}
+.exc-import-col-body {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  min-height: 16rem;
+  max-height: 52vh;
+  padding: 0.6rem 0.7rem;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+.exc-import-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.exc-import-foot {
+  /* Styled by `.alert.warning`; this only owns its spacing in the modal. */
+  margin: 0.75rem 0 0;
+}
+
+/* --- Exclusives: a group's alerts in a side panel (HLAI-71 ticket 1) ------ */
+.exc-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgb(0 0 0 / 28%);
+}
+.exc-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 56;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 94vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 28px rgb(0 0 0 / 14%);
+  animation: exc-drawer-in var(--dur-slow, 200ms) var(--ease, ease) both;
+}
+@keyframes exc-drawer-in {
+  from {
+    transform: translateX(3%);
+    opacity: 0;
+  }
+}
+.exc-drawer-head {
+  padding: 1.1rem 1.25rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.exc-drawer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.exc-drawer-title-row h2 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.exc-drawer-head-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.exc-drawer-x {
+  padding: 0 0.35rem;
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.exc-drawer-x:hover {
+  color: var(--ink);
+}
+.exc-drawer-sub {
+  margin: 0.5rem 0 0;
+  font-size: 0.86rem;
+}
+.exc-drawer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+.exc-chip-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.exc-drawer-body {
+  flex: 1;
+  padding: 0 1.25rem 1rem;
+  overflow-y: auto;
+}
+.exc-drawer-empty,
+.exc-drawer-more {
+  padding: 1.25rem 0;
+  font-size: 0.88rem;
+}
+.exc-drawer-day-head {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  padding: 0.85rem 0 0.4rem;
+  background: var(--surface);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.exc-drawer-alert {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.exc-drawer-dot {
+  /* Centred against the badge beside it. Derived from the badge's own metrics
+     (.status-pill: 11.5px text at line-height 1, plus 4px padding each side)
+     rather than eyeballed, so it stays centred if the badge ever changes. */
+  --exc-badge-height: calc(11.5px + 8px);
+  flex: none;
+  align-self: flex-start;
+  width: 8px;
+  height: 8px;
+  margin-top: calc((var(--exc-badge-height) - 7px) / 1);
+  border-radius: 50%;
+}
+.exc-drawer-alert-main {
+  min-width: 0;
+  flex: 1;
+}
+.exc-drawer-alert-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.exc-drawer-when {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+  text-align: right;
+  white-space: nowrap;
+}
+.exc-drawer-product {
+  margin: 0.35rem 0 0;
+  font-weight: 600;
+}
+.exc-drawer-message {
+  margin: 0.15rem 0 0;
+  color: var(--muted-2);
+  font-size: 0.88rem;
+}
+/* The Show more / Show less toggle under a clamped message. Reads as a link
+   rather than a button, because it reveals text rather than doing anything. */
+/* The group name, under the ASIN it belongs to. Quiet, because the ASIN is
+   what identifies the row and the group is context for it. */
+.exc-log-group {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+}
+/* Alert type and when it happened, stacked in one cell. Two narrow columns
+   side by side wasted width and read as unrelated; the badge and the time
+   describe the same event. */
+.exc-table .exc-col-when {
+  white-space: nowrap;
+  /* Centred, not top-aligned: when the Detail column is expanded the row grows
+     tall, and the badge pinned to the top looked detached from the message it
+     belongs to. This matches the Group cell beside it. */
+  vertical-align: middle;
+  /* The badge is the widest thing here, so it sets the column's width; the two
+     time lines under it are centred on the same axis rather than hanging off
+     its left edge. The heading carries this class too, so it lines up with the
+     column it names. */
+  text-align: center;
+}
+.exc-col-when .exc-latest {
+  display: block;
+  margin-top: 0.3rem;
+}
+/* The clamped block: the paragraph keeps a right gutter free, and the chevron
+   sits in it at the end of the last line. Reserving space beats painting a
+   background behind the arrow, which would have to match whatever the row
+   happens to be — including its hover colour. */
+.exc-clamp {
+  position: relative;
+  display: block;
+}
+.exc-clamp > p {
+  padding-right: 1.25rem;
+}
+/* A chevron, not a word: the message beside it is already the content, and a
+   "Show more" label competed with it for attention. Sized to a comfortable
+   target even though the arrow itself is small. */
+.exc-clamp-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+.exc-clamp-toggle:hover {
+  background: var(--canvas-deep);
+  color: var(--accent);
+}
+.exc-drawer-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunk, var(--canvas-deep));
+}
+.exc-drawer-open-log {
+  border: 0;
+  background: none;
+  color: var(--accent-deep, var(--accent));
+  font-weight: 600;
+  cursor: pointer;
+}
+.exc-drawer-open-log:hover {
+  text-decoration: underline;
+}
+
+/* The group name is now a control, not just text. */
+.exc-group-name-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* .exc-group-name-btn:hover {
+  text-decoration: underline;
+} */
+
+/* --- Exclusives: the shared modal scheme (HLAI-71 Chunk 9, ticket 2) ------ */
+.exc-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.exc-modal-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.exc-modal-foot {
+  justify-content: space-between;
+  align-items: center;
+}
+.exc-modal-hint {
+  font-size: 0.82rem;
+  color: var(--muted-2);
+}
+.exc-modal-actions {
+  display: flex;
+  gap: 10px;
+}
+/* The thing the modal is about, set apart from the prose. */
+.exc-modal-card {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius);
+}
+.exc-modal-card.warn {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+}
+.exc-modal-card.danger {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+.exc-modal-card.accent {
+  background: var(--accent-soft, var(--canvas-deep));
+  color: var(--accent-deep, var(--ink));
+}
+.exc-modal-card.neutral {
+  background: var(--canvas-deep);
+  color: var(--ink-3, var(--ink));
+}
+.exc-modal-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+}
+.exc-modal-card-title {
+  margin: 0.2rem 0 0;
+  font-weight: 700;
+}
+.exc-modal-card-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.84rem;
+  opacity: 0.85;
+}
+
+/* A caution, not a failure: amber, with room for the icon. */
+.alert.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+  border-color: #f0dcbb;
+}
+.alert-icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* --- Exclusives: the Alert Log's group filter (HLAI-71 Chunk 9, ticket 3) - */
+.exc-group-pop {
+  min-width: 15rem;
+}
+.exc-group-list {
+  display: grid;
+  gap: 0.15rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+.exc-group-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.1rem;
+  cursor: pointer;
+}
+.exc-group-opt:hover {
+  background: var(--canvas-deep);
+}
+/* The spinner sits on a button, so it must take the button's colour. */
+.exc-btn-spinner {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.35rem;
+  vertical-align: -1px;
+  border-top-color: currentColor;
+}
+
+/* --- Exclusives: the selected state survives a hover --------------------- */
+/*
+ * The shared plain-button hover (see the global button block) gives these a
+ * quiet wash. A button that is currently selected must keep the colour that
+ * says so, which is what these restate.
+ */
+.exc-country-btn.active.us,
+.exc-country-btn.active.us:hover {
+  background: #2b3a67;
+  color: #fff;
+}
+.exc-country-btn.active.ca,
+.exc-country-btn.active.ca:hover {
+  background: #d52b1e;
+  color: #fff;
+}
+
+.exc-seg-btn.active.tone-ink,
+.exc-seg-btn.active.tone-ink:hover {
+  background: var(--ink);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-accent,
+.exc-seg-btn.active.tone-accent:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-neutral,
+.exc-seg-btn.active.tone-neutral:hover {
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+}
+
+/* Remove-an-ASIN: a round target with the cross in the middle of it, rather
+   than the wide bar the rectangular padding produced. */
+.exc-asin-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+}
+.exc-asin-remove:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* The import preview: room under the closing sentence, and under the footer
+   band, so it is not flush against the bottom edge. */
+.exc-import-foot {
+  margin: 0.75rem 0 1.1rem;
+}
+/* The caution shrink-wraps its sentence instead of running the full modal
+   width. Needs `.alert.warning` specificity to beat that rule's display. */
+.alert.warning.exc-import-foot {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+}
+.modal.exc-import {
+  padding-bottom: 1.1rem;
+}
+
+/*
+ * "Exclusives Alert Log" is a title, not a paragraph — it stays on one line,
+ * with a little room before the line beneath it. `h1` is reset to `margin: 0`
+ * app-wide, so the heading and its sub-line were touching.
+ */
+.exc-head h1 {
+  white-space: nowrap;
+  margin-bottom: 0.35rem;
+}
+
+/* --- Alert Log header: title above, controls on their own line ------------ */
+/*
+ * Matches the supplied design. The Groups header keeps its single row — its
+ * search and "New group" belong beside the title — so this is scoped to the log.
+ */
+.exc-head-log {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.exc-head-log > :first-child {
+  flex: 1 0 100%;
+}
+.exc-head-log .exc-actions {
+  margin-left: auto;
+  /* flex-wrap: wrap; */
+  justify-content: flex-end;
+}
+.exc-head-log .exc-search-log {
+  flex: 1 1 320px;
+  max-width: 420px;
+}
+
+/* A filter that is holding something says so without being opened. */
+.exc-toolbtn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-tint-2, var(--accent-soft));
+  color: var(--accent-deep);
+}
+/* Already holding something: only the edge deepens, so the label stays put. */
+.exc-toolbtn.on:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-deep);
+}
+.exc-toolbtn.on .exc-filter-count {
+  background: var(--accent);
+  color: #fff;
 }

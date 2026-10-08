@@ -38,7 +38,17 @@ const SORT_LABELS: Record<UserSortField, string> = {
 
 function PencilIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
@@ -79,16 +89,25 @@ export function UsersPage() {
   const debouncedFilters = useDebouncedValue(filters, 350);
 
   const loadOptions = useCallback(() => {
-    void api.userFilterOptions().then(setOptions).catch(() => setOptions(null));
+    void api
+      .userFilterOptions()
+      .then(setOptions)
+      .catch(() => setOptions(null));
   }, []);
   const loadCounts = useCallback(() => {
-    void api.userCounts().then(setCounts).catch(() => {});
+    void api
+      .userCounts()
+      .then(setCounts)
+      .catch(() => {});
   }, []);
   // Eligible-supervisor list for the edit dropdown. Kept in a callback so it can
   // be refreshed after any user mutation (create/edit/merge) — otherwise a newly
   // added Manager won't appear until a full page reload.
   const loadSupervisors = useCallback(() => {
-    void api.listSupervisors().then(setSupervisors).catch(() => setSupervisors([]));
+    void api
+      .listSupervisors()
+      .then(setSupervisors)
+      .catch(() => setSupervisors([]));
   }, []);
 
   useEffect(() => {
@@ -146,11 +165,15 @@ export function UsersPage() {
     setPage(1);
   }
 
+  /**
+   * Google users have no password, so a reset would only fail. Say what they
+   * use instead of offering a button that cannot work.
+   */
   async function handleReset(user: UserDto) {
     try {
       const res = await api.adminResetPassword(user.id);
       setNotice(`Reset link generated for ${user.email} (also emailed / logged to the console).`);
-      setResetLink(res.resetLink);
+      setResetLink(res.resetLink ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to generate reset link');
     }
@@ -177,14 +200,36 @@ export function UsersPage() {
 
   // Active-filter chips (removable), mirroring the Tasks screen.
   const chips: { id: string; label: string; clear: Partial<UserSearchFilters> }[] = [];
-  if (filters.roles?.length) chips.push({ id: 'roles', label: `Role · ${filters.roles.length}`, clear: { roles: [] } });
+  if (filters.roles?.length)
+    chips.push({ id: 'roles', label: `Role · ${filters.roles.length}`, clear: { roles: [] } });
   if (filters.status && filters.status !== 'all')
-    chips.push({ id: 'status', label: `Status · ${filters.status === 'active' ? 'Active' : 'Deactivated'}`, clear: { status: 'all' } });
-  if (filters.supervisorIds?.length) chips.push({ id: 'supervisor', label: `Supervisor · ${filters.supervisorIds.length}`, clear: { supervisorIds: [] } });
-  if (filters.title?.length) chips.push({ id: 'title', label: `Title · ${filters.title.length}`, clear: { title: [] } });
-  if (filters.firstName?.length) chips.push({ id: 'firstName', label: `First name · ${filters.firstName.length}`, clear: { firstName: [] } });
-  if (filters.lastName?.length) chips.push({ id: 'lastName', label: `Last name · ${filters.lastName.length}`, clear: { lastName: [] } });
-  if (filters.email?.length) chips.push({ id: 'email', label: `Email · ${filters.email.length}`, clear: { email: [] } });
+    chips.push({
+      id: 'status',
+      label: `Status · ${filters.status === 'active' ? 'Active' : 'Deactivated'}`,
+      clear: { status: 'all' },
+    });
+  if (filters.supervisorIds?.length)
+    chips.push({
+      id: 'supervisor',
+      label: `Supervisor · ${filters.supervisorIds.length}`,
+      clear: { supervisorIds: [] },
+    });
+  if (filters.title?.length)
+    chips.push({ id: 'title', label: `Title · ${filters.title.length}`, clear: { title: [] } });
+  if (filters.firstName?.length)
+    chips.push({
+      id: 'firstName',
+      label: `First name · ${filters.firstName.length}`,
+      clear: { firstName: [] },
+    });
+  if (filters.lastName?.length)
+    chips.push({
+      id: 'lastName',
+      label: `Last name · ${filters.lastName.length}`,
+      clear: { lastName: [] },
+    });
+  if (filters.email?.length)
+    chips.push({ id: 'email', label: `Email · ${filters.email.length}`, clear: { email: [] } });
   const filtersActive = chips.length > 0;
 
   const sortSummary = sort.length
@@ -266,18 +311,34 @@ export function UsersPage() {
       {/* Chip row: active filters + "+ Filter" + sort caption */}
       <div className="tasks-chiprow">
         {chips.map((c) => (
-          <button key={c.id} type="button" className="filter-chip" onClick={() => patchFilters(c.clear)}>
+          <button
+            key={c.id}
+            type="button"
+            className="filter-chip"
+            onClick={() => patchFilters(c.clear)}
+          >
             {c.label}
             <span className="chip-x" aria-hidden="true">
               ×
             </span>
           </button>
         ))}
-        <button type="button" className={`add-filter${showFilters ? ' open' : ''}`} onClick={() => setShowFilters((v) => !v)}>
+        <button
+          type="button"
+          className={`add-filter${showFilters ? ' open' : ''}`}
+          onClick={() => setShowFilters((v) => !v)}
+        >
           + Filter
         </button>
         {filtersActive && (
-          <button type="button" className="link-button" onClick={() => { setFilters({}); setPage(1); }}>
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setFilters({});
+              setPage(1);
+            }}
+          >
             Clear all
           </button>
         )}
@@ -348,11 +409,36 @@ export function UsersPage() {
         <table className="users-table">
           <thead>
             <tr>
-              <SortHeader label="Person" multi={sort.length > 1} state={sortState(sort, 'lastName')} onSort={(a) => onSort('lastName', a)} />
-              <SortHeader label="Role" multi={sort.length > 1} state={sortState(sort, 'role')} onSort={(a) => onSort('role', a)} />
-              <SortHeader label="Title" multi={sort.length > 1} state={sortState(sort, 'title')} onSort={(a) => onSort('title', a)} />
-              <SortHeader label="Supervisor" multi={sort.length > 1} state={sortState(sort, 'supervisor')} onSort={(a) => onSort('supervisor', a)} />
-              <SortHeader label="Status" multi={sort.length > 1} state={sortState(sort, 'status')} onSort={(a) => onSort('status', a)} />
+              <SortHeader
+                label="Person"
+                multi={sort.length > 1}
+                state={sortState(sort, 'lastName')}
+                onSort={(a) => onSort('lastName', a)}
+              />
+              <SortHeader
+                label="Role"
+                multi={sort.length > 1}
+                state={sortState(sort, 'role')}
+                onSort={(a) => onSort('role', a)}
+              />
+              <SortHeader
+                label="Title"
+                multi={sort.length > 1}
+                state={sortState(sort, 'title')}
+                onSort={(a) => onSort('title', a)}
+              />
+              <SortHeader
+                label="Supervisor"
+                multi={sort.length > 1}
+                state={sortState(sort, 'supervisor')}
+                onSort={(a) => onSort('supervisor', a)}
+              />
+              <SortHeader
+                label="Status"
+                multi={sort.length > 1}
+                state={sortState(sort, 'status')}
+                onSort={(a) => onSort('status', a)}
+              />
               <th className="col-user-actions" />
             </tr>
           </thead>
@@ -378,7 +464,10 @@ export function UsersPage() {
                   </td>
                   <td>
                     {merged ? (
-                      <span className="badge inactive" title={`Merged into ${usersById.get(u.mergedIntoId!)?.email ?? 'another account'}`}>
+                      <span
+                        className="badge inactive"
+                        title={`Merged into ${usersById.get(u.mergedIntoId!)?.email ?? 'another account'}`}
+                      >
                         Merged
                       </span>
                     ) : (
@@ -394,12 +483,26 @@ export function UsersPage() {
                       </span>
                     ) : (
                       <div className="user-actions">
-                        <button className="icon-btn" title={`Edit ${u.email}`} aria-label={`Edit ${u.email}`} onClick={() => setEditing(u)}>
+                        <button
+                          className="icon-btn"
+                          title={`Edit ${u.email}`}
+                          aria-label={`Edit ${u.email}`}
+                          onClick={() => setEditing(u)}
+                        >
                           <PencilIcon />
                         </button>
-                        <button className="secondary btn-sm" onClick={() => handleReset(u)}>
-                          Reset password
-                        </button>
+                        {/* A company account has no password, so a reset link
+                            would lead nowhere. The server refuses it too; this
+                            just stops an admin reaching for a dead button. */}
+                        {u.signInMethod === 'password' && (
+                          <button
+                            className="secondary btn-sm"
+                            onClick={() => handleReset(u)}
+                            title="Send this user a link to set a password"
+                          >
+                            Reset password
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>
@@ -436,13 +539,21 @@ export function UsersPage() {
             ))}
           </select>
         </label>
-        <button className="secondary btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+        <button
+          className="secondary btn-sm"
+          disabled={page <= 1}
+          onClick={() => setPage((p) => p - 1)}
+        >
           ← Prev
         </button>
         <span className="mono">
           Page {page} of {totalPages}
         </span>
-        <button className="secondary btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+        <button
+          className="secondary btn-sm"
+          disabled={page >= totalPages}
+          onClick={() => setPage((p) => p + 1)}
+        >
           Next →
         </button>
       </div>
@@ -466,9 +577,14 @@ export function UsersPage() {
       {showCreate && (
         <UserFormModal
           onClose={() => setShowCreate(false)}
-          onCreated={() => {
+          onCreated={(signInMethod) => {
             setShowCreate(false);
-            setNotice('User created. A password-reset link was emailed / logged to the console.');
+            setNotice(
+              signInMethod === 'google'
+                ? 'User created. They were sent a welcome message and sign in with Google — ' +
+                    'there is no password to hand over.'
+                : 'User created. A password-reset link was emailed / logged to the console.',
+            );
             void load();
             loadSupervisors();
             loadOptions();

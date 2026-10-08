@@ -13,7 +13,8 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "lint": "eslint src --ext .ts",
-    "test": "node --import tsx --test test/integration.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
+    "test:unit": "node --import tsx --test test/unit/*.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -29,6 +30,7 @@
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
     "express": "^4.21.1",
+    "google-auth-library": "^10.9.1",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.16",
     "sanitize-html": "^2.17.6",

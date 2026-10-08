@@ -112,29 +112,57 @@ projects:
               - key: SMTP_PASS
                 sync: false
               # ----- Object storage for attachments (Phase 4) ------------------
-              # Use a real S3-compatible bucket (AWS S3, Cloudflare R2, Backblaze
-              # B2, etc.) — NOT the local MinIO container. For a real cloud bucket
-              # the server endpoint and the browser (public) endpoint are the same
-              # https URL, and path-style is usually false (AWS S3) — verify per
-              # provider. Use a SEPARATE bucket from Staging.
+              # Cloudflare R2. Attachment bytes never pass through this service:
+              # the browser uploads and downloads straight to the bucket with
+              # pre-signed URLs, so the bucket needs a CORS rule naming the
+              # production site, or every upload is blocked in the browser.
+              #
+              # Its own bucket and its own API token, never Staging's — that
+              # separation is the point of having two.
               - key: STORAGE_DRIVER
                 value: s3
-              - key: S3_BUCKET # e.g. healthy-tasks-prod
-                sync: false
+              - key: S3_BUCKET
+                value: hl-storage
+              # R2 ignores the region but the AWS SDK insists on one.
               - key: S3_REGION
+                value: auto
+              # Both endpoints are the SAME public https address for R2, and must
+              # STOP at .r2.cloudflarestorage.com — the "S3 API" field on the
+              # bucket page appends /<bucket>, and leaving that on doubles the
+              # bucket in every path. Uploads still appear to work; copying files
+              # (task duplication, templates) silently breaks.
+              - key: S3_ENDPOINT # https://<account-id>.r2.cloudflarestorage.com
                 sync: false
-              - key: S3_ENDPOINT # server-side ops (e.g. https://s3.us-east-1.amazonaws.com)
+              - key: S3_PUBLIC_ENDPOINT # the same address again
                 sync: false
-              - key: S3_PUBLIC_ENDPOINT # URL the browser is signed against (same as above for cloud S3)
-                sync: false
+              # From an Account API token scoped to hl-storage only, with
+              # Object Read & Write. Not Staging's token.
               - key: S3_ACCESS_KEY
                 sync: false
               - key: S3_SECRET_KEY
                 sync: false
-              - key: S3_FORCE_PATH_STYLE # "false" for AWS S3; "true" for MinIO/R2/B2-style
+              # R2 puts the bucket in the path, so this stays "true".
+              - key: S3_FORCE_PATH_STYLE
+                value: "true"
+              # ----- Google sign-in --------------------------------------------
+              # Two doors, and each account gets exactly one of them:
+              #   • @healthlifeny.com → Sign in with Google ONLY. No password,
+              #     no reset link, no "forgot password".
+              #   • anyone else       → email + password ONLY.
+              # The client id is public (it ends up in the page source) but is
+              # entered per environment so each has its own OAuth client.
+              # Production's client must have its consent screen set to INTERNAL,
+              # so Google itself admits only company accounts.
+              - key: GOOGLE_CLIENT_ID
                 sync: false
+              - key: GOOGLE_ALLOWED_DOMAIN
+                value: healthlifeny.com
               # ----- One-time admin seed (only needed to bootstrap the first
               #       admin via a manual `db:seed` run — see DEPLOY_RENDER.md) ----
+              #
+              # NOTE: with GOOGLE_ALLOWED_DOMAIN set, a company-domain seed admin
+              # has NO password — it must be a real Google Workspace account and
+              # signs in with the button. SEED_ADMIN_PASSWORD is then unused.
               - key: SEED_ADMIN_EMAIL
                 sync: false
               - key: SEED_ADMIN_PASSWORD
@@ -163,6 +191,11 @@ projects:
                 destination: /index.html
             envVars:
               - key: VITE_API_URL # https URL of hlcentral-api
+                sync: false
+              # Baked into the bundle at build time, like VITE_API_URL. Without
+              # it the Google button does not render and only the password form
+              # is shown.
+              - key: VITE_GOOGLE_CLIENT_ID # same value as the API's GOOGLE_CLIENT_ID
                 sync: false
 
       # =======================================================================
@@ -242,9 +275,58 @@ projects:
                 sync: false
               - key: S3_FORCE_PATH_STYLE
                 sync: false
+              # ----- Sign in with Google ---------------------------------------
+              # Staging gets its OWN OAuth client, not Production's: an origin
+              # added for testing must never widen what Production accepts. The
+              # client must list https://hlcentral-staging.onrender.com as an
+              # authorised JavaScript origin, or Google answers origin_mismatch
+              # before any sign-in happens.
+              - key: GOOGLE_CLIENT_ID
+                sync: false
+              # With this set, @healthlifeny.com addresses sign in with Google
+              # ONLY — no password, and no self-service reset. Confirm Google
+              # sign-in actually works here before syncing, and keep the staging
+              # seed admin on a non-company address, or there is no way back in.
+              - key: GOOGLE_ALLOWED_DOMAIN
+                value: healthlifeny.com
               - key: SEED_ADMIN_EMAIL
                 sync: false
               - key: SEED_ADMIN_PASSWORD
+                sync: false
+              # ----- Google sign-in --------------------------------------------
+              # Staging's OWN OAuth client, not production's: an origin list is
+              # per client, and staging's site is a different address.
+              #
+              # Same domain rule as production, so staging behaves identically:
+              # a @healthlifeny.com account signs in with Google and has no
+              # password, and everyone else uses the form. Testing here with a
+              # personal Gmail therefore needs a real Workspace address instead.
+              - key: GOOGLE_CLIENT_ID
+                sync: false
+              - key: GOOGLE_ALLOWED_DOMAIN
+                value: healthlifeny.com
+              # ----- Exclusives / Amazon SP-API (HLAI-71) ----------------------
+              # Read-only access to ONE seller account. The rate limit belongs to
+              # that account, not to the server, so only one environment should
+              # ever have EXCLUSIVES_SWEEP_ENABLED="true" at a time — otherwise
+              # two sweeps share the same allowance and throttle each other.
+              # All entered in the dashboard (sync: false), including the two
+              # switches, so the sweep can be turned on or off and re-timed
+              # without another Blueprint sync. The sweep also needs
+              # SCHEDULER_ENABLED above to stay "true".
+              - key: SP_API_CLIENT_ID
+                sync: false
+              - key: SP_API_CLIENT_SECRET
+                sync: false
+              - key: SP_API_REFRESH_TOKEN
+                sync: false
+              - key: SP_API_MERCHANT_TOKEN # own Merchant ID; used for Buy Box win/loss
+                sync: false
+              - key: SELLER_STORE_NAME # store name shown in alert wording
+                sync: false
+              - key: EXCLUSIVES_SWEEP_ENABLED # "true" only where alerts should run
+                sync: false
+              - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
                 sync: false
 
           - name: hlcentral-staging
@@ -263,6 +345,10 @@ projects:
                 destination: /index.html
             envVars:
               - key: VITE_API_URL # https URL of hlcentral-api-staging
+                sync: false
+              # Baked into the bundle at build time. Without it the Google button
+              # does not render and staging shows only the password form.
+              - key: VITE_GOOGLE_CLIENT_ID # same value as the API's GOOGLE_CLIENT_ID
                 sync: false
 
 # =============================================================================

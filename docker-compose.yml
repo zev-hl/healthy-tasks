@@ -67,6 +67,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+    # Local dev only: load extra vars (e.g. SP_API_*) from the root .env. The
+    # inline `environment:` below still wins for anything it sets.
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
       PORT: '4000'
@@ -81,17 +85,28 @@ services:
       EMAIL_FROM: 'HL Central <no-reply@healthy-tasks.local>'
       SEED_ADMIN_EMAIL: 'admin@healthy-tasks.local'
       SEED_ADMIN_PASSWORD: 'ChangeMe123!'
+      # Google sign-in. Taken from .env so the client id is not committed, with
+      # blank defaults so a checkout without it still boots — the Google
+      # endpoint then refuses clearly and password sign-in carries on.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-}
       # Object storage (Phase 4). Server-side ops use the compose-internal
       # endpoint; pre-signed URLs are signed against the browser-reachable public
       # endpoint (localhost) so the browser can PUT/GET directly.
-      STORAGE_DRIVER: 's3'
-      S3_ENDPOINT: 'http://minio:9000'
-      S3_PUBLIC_ENDPOINT: 'http://localhost:9000'
-      S3_BUCKET: 'healthy-tasks'
-      S3_REGION: 'us-east-1'
-      S3_ACCESS_KEY: 'minioadmin'
-      S3_SECRET_KEY: 'minioadmin'
-      S3_FORCE_PATH_STYLE: 'true'
+      #
+      # Each falls back to the compose MinIO container, so a checkout with no
+      # storage settings in .env behaves exactly as before. Set any of them in
+      # .env to point this container at a real bucket instead (see the Cloudflare
+      # R2 block in .env.example) — without the fallbacks, the literals here
+      # would override .env and the switch would silently do nothing.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      S3_BUCKET: ${S3_BUCKET:-healthy-tasks}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
       # Windows bind mounts don't deliver file-change events into the container,
       # so make the file watchers poll instead (backend uses tsx/chokidar).
       CHOKIDAR_USEPOLLING: 'true'
@@ -101,6 +116,11 @@ services:
     volumes:
       # Bind-mount source for hot reload; keep container-managed node_modules.
       - ./backend:/app/backend
+      # Lint/format config lives at the repo root, which is NOT otherwise
+      # mounted — without these, prettier and eslint run inside the container
+      # with their own defaults and silently reformat to the wrong style.
+      - ./.prettierrc.json:/app/.prettierrc.json:ro
+      - ./.eslintrc.cjs:/app/.eslintrc.cjs:ro
       # Live shared package (dist kept fresh by the `shared` watcher service).
       - ./packages/shared:/app/packages/shared
       - /app/backend/node_modules
@@ -116,12 +136,19 @@ services:
     environment:
       # The browser (on the host) reaches the API via the published host port.
       VITE_API_URL: 'http://localhost:4000'
+      # Taken from .env. This service has no env_file, so without this line the
+      # browser never receives the client id and the Google button cannot load.
+      VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # Belt-and-suspenders with vite.config.ts's watch.usePolling for Windows.
       CHOKIDAR_USEPOLLING: 'true'
     ports:
       - '5173:5173'
     volumes:
       - ./frontend:/app/frontend
+      # See the backend service: the root lint/format config is not otherwise
+      # visible inside the container.
+      - ./.prettierrc.json:/app/.prettierrc.json:ro
+      - ./.eslintrc.cjs:/app/.eslintrc.cjs:ro
       # Live shared package (dist kept fresh by the `shared` watcher service).
       - ./packages/shared:/app/packages/shared
       - /app/frontend/node_modules

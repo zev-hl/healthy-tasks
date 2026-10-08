@@ -19,6 +19,13 @@ function makeClient(endpoint: string): S3Client {
     // Required for MinIO and most S3-compatible servers (bucket in the path,
     // not the host).
     forcePathStyle: env.storage.forcePathStyle,
+    // From aws-sdk v3.729 the client defaults to WHEN_SUPPORTED, which bakes
+    // the CRC32 of an EMPTY body into every pre-signed PutObject URL. The
+    // browser then PUTs the real file, the checksums disagree, and Cloudflare
+    // R2 rejects the upload. WHEN_REQUIRED leaves the signed URL clean; it is
+    // Cloudflare's documented setting for this SDK and is a no-op for MinIO.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
     credentials: {
       accessKeyId: env.storage.accessKey,
       secretAccessKey: env.storage.secretKey,

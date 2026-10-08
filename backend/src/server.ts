@@ -1,7 +1,11 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './db/prisma.js';
-import { startScheduler, stopScheduler } from './services/scheduler.service.js';
+import {
+  exclusivesSweepMode,
+  startScheduler,
+  stopScheduler,
+} from './services/scheduler.service.js';
 import { mailerSummary, productionReadinessGaps } from './config/startup-checks.js';
 
 const app = createApp();
@@ -22,6 +26,7 @@ const server = app.listen(env.port, () => {
     smtpHost: env.email.smtpHost,
     storageDriver: env.storage.driver,
     schedulerEnabled: env.schedulerEnabled,
+    googleClientId: env.google.clientId,
   });
   for (const gap of gaps) {
     // eslint-disable-next-line no-console
@@ -32,9 +37,13 @@ const server = app.listen(env.port, () => {
   // is watched by the notifications endpoint, which alerts admins if it stops.
   if (env.schedulerEnabled) {
     startScheduler();
+    // eslint-disable-next-line no-console
+    console.log(`   Exclusives sweep: ${exclusivesSweepMode().summary}`);
   } else {
     // eslint-disable-next-line no-console
     console.log('⏸  Recurrence scheduler disabled (SCHEDULER_ENABLED=false)');
+    // eslint-disable-next-line no-console
+    console.log('   Exclusives sweep: off (SCHEDULER_ENABLED=false)');
   }
 });
 

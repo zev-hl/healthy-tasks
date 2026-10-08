@@ -16,6 +16,15 @@ function optional(name: string, fallback: string): string {
   return value && value.length > 0 ? value : fallback;
 }
 
+/** A whole number of minutes within [min, max]; a typo fails loudly at boot. */
+function minutes(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(optional(name, String(fallback)));
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} must be a whole number of minutes from ${min} to ${max}`);
+  }
+  return value;
+}
+
 export const env = {
   nodeEnv: optional('NODE_ENV', 'development'),
   isProduction: optional('NODE_ENV', 'development') === 'production',
@@ -46,7 +55,9 @@ export const env = {
   },
 
   seed: {
-    adminEmail: optional('SEED_ADMIN_EMAIL', 'admin@healthy-tasks.local'),
+    // Must satisfy GOOGLE_ALLOWED_DOMAIN, or a fresh environment seeds an
+    // admin who cannot sign in through either door.
+    adminEmail: optional('SEED_ADMIN_EMAIL', 'admin-local@healthlifeny.com'),
     adminPassword: optional('SEED_ADMIN_PASSWORD', 'ChangeMe123!'),
   },
 
@@ -64,5 +75,35 @@ export const env = {
     accessKey: optional('S3_ACCESS_KEY', 'minioadmin'),
     secretKey: optional('S3_SECRET_KEY', 'minioadmin'),
     forcePathStyle: optional('S3_FORCE_PATH_STYLE', 'true') === 'true',
+  },
+
+  // Google sign-in. Left optional rather than required() so the app still boots
+  // where it is not wired up yet — the same treatment as the SP-API block
+  // below. The Google endpoint refuses clearly when clientId is blank, and
+  // startup-checks warns about it in production.
+  google: {
+    // Identifies THIS app to Google. Public by design: it ends up in the page
+    // source. The backend checks every incoming token was issued for it.
+    clientId: optional('GOOGLE_CLIENT_ID', ''),
+    // Only addresses in this domain may sign in. Checked by us regardless of
+    // how the Google consent screen is configured; blank disables the check.
+    // Used from Chunk 3 onward.
+    allowedDomain: optional('GOOGLE_ALLOWED_DOMAIN', '').trim().toLowerCase(),
+  },
+
+  // Amazon SP-API (Exclusives). Undefined until Amazon is wired up so the app
+  // still boots; merchantToken is the own-seller id used for Buy Box detection.
+  amazon: {
+    clientId: process.env.SP_API_CLIENT_ID,
+    clientSecret: process.env.SP_API_CLIENT_SECRET,
+    refreshToken: process.env.SP_API_REFRESH_TOKEN,
+    merchantToken: process.env.SP_API_MERCHANT_TOKEN,
+    storeName: optional('SELLER_STORE_NAME', 'HL Central'),
+    // Whether THIS process polls Amazon on a timer (needs SCHEDULER_ENABLED
+    // too). Off unless set to "true", so staging and dev machines never sweep
+    // the seller's account — and share its rate limit — by accident.
+    sweepEnabled: optional('EXCLUSIVES_SWEEP_ENABLED', 'false') === 'true',
+    // A sweep takes ~1 min; one a day is the slowest that still makes sense.
+    sweepMinutes: minutes('EXCLUSIVES_SWEEP_MINUTES', 30, 5, 24 * 60),
   },
 } as const;

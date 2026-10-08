@@ -29,7 +29,9 @@ export function ProfilePage() {
     void api
       .getNotificationPreferences()
       .then(setPrefs)
-      .catch((err) => setError(err instanceof ApiError ? err.message : 'Failed to load preferences'));
+      .catch((err) =>
+        setError(err instanceof ApiError ? err.message : 'Failed to load preferences'),
+      );
   }, []);
 
   // Resolve the supervisor's display name (existing endpoint, no new data).
@@ -52,7 +54,10 @@ export function ProfilePage() {
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to save preferences');
-      void api.getNotificationPreferences().then(setPrefs).catch(() => {});
+      void api
+        .getNotificationPreferences()
+        .then(setPrefs)
+        .catch(() => {});
     }
   };
 
@@ -99,9 +104,17 @@ export function ProfilePage() {
           </div>
 
           <div className="profile-actions">
-            <button type="button" className="secondary" onClick={() => navigate('/forgot-password')}>
-              Change password
-            </button>
+            {/* Signing in with Google means there is no password of ours to
+                change — the one that matters is held by Google. */}
+            {user?.signInMethod === 'password' && (
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => navigate('/forgot-password')}
+              >
+                Change password
+              </button>
+            )}
             <button
               type="button"
               className="secondary"

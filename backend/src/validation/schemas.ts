@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  COMMENT_MAX_ATTACHMENTS,
   ROLES,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -17,6 +18,13 @@ import {
   GOAL_SPECIFIC_MIN_LENGTH,
   MATERIALIZE_LEAD_DAYS_MIN,
   MATERIALIZE_LEAD_DAYS_MAX,
+  EXCLUSIVES_GROUP_TYPES,
+  EXCLUSIVES_GROUP_SORT_FIELDS,
+  EXCLUSIVES_ALERT_TYPES,
+  EXCLUSIVES_MARKETPLACES,
+  EXCLUSIVES_LOOKUP_MAX_ASINS,
+  EXCLUSIVES_ALERT_MODES,
+  EXCLUSIVES_LISTINGS_MODES,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -33,6 +41,11 @@ const password = z
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, 'Password is required'),
+});
+
+/** The signed statement from Google; everything inside it is verified server-side. */
+export const googleLoginSchema = z.object({
+  idToken: z.string().min(1, 'idToken is required').max(8192),
 });
 
 export const forgotPasswordSchema = z.object({
@@ -93,7 +106,12 @@ export const mergeUsersSchema = z.object({
     title: optionalText,
     jobDescription: optionalText,
     role: roleSchema,
-    supervisorId: z.string().uuid().nullable().optional().transform((v) => v ?? null),
+    supervisorId: z
+      .string()
+      .uuid()
+      .nullable()
+      .optional()
+      .transform((v) => v ?? null),
   }),
 });
 
@@ -212,7 +230,24 @@ const commentBody = z
   .min(1, 'Comment cannot be empty')
   .max(100000, 'Comment is too large');
 
-export const createCommentSchema = z.object({ body: commentBody });
+/**
+ * Creating a comment: text and files are each optional, but one of them must be
+ * there. An empty submission is rejected here rather than in the service so the
+ * caller gets a 400 that names the actual problem, instead of the "Comment
+ * cannot be empty" that the rich-text check would produce.
+ */
+export const createCommentSchema = z
+  .object({
+    body: z.string().max(100000, 'Comment is too large').optional(),
+    attachments: z
+      .array(confirmAttachmentSchema)
+      .max(COMMENT_MAX_ATTACHMENTS, `A comment can carry at most ${COMMENT_MAX_ATTACHMENTS} files`)
+      .optional(),
+  })
+  .refine((v) => (v.body ?? '').trim() !== '' || (v.attachments?.length ?? 0) > 0, {
+    message: 'Add a comment or attach a file',
+  });
+
 export const updateCommentSchema = z.object({ body: commentBody });
 
 export type PresignAttachmentInput = z.infer<typeof presignAttachmentSchema>;
@@ -221,6 +256,7 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>;
 export type UpdateCommentInput = z.infer<typeof updateCommentSchema>;
 
 export type LoginInput = z.infer<typeof loginSchema>;
+export type GoogleLoginInput = z.infer<typeof googleLoginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -272,7 +308,10 @@ const taskFiltersSchema = z.object({
 export const taskSearchSchema = z.object({
   text: z.string().trim().max(200).optional(),
   filters: taskFiltersSchema.optional(),
-  sort: z.array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir })).max(12).optional(),
+  sort: z
+    .array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir }))
+    .max(12)
+    .optional(),
   page,
   pageSize,
   nest: z.boolean().optional(),
@@ -302,7 +341,10 @@ export const taskDashboardSchema = z.object({
 export const dueDateReportSchema = z.object({
   text: z.string().trim().max(200).optional(),
   filters: taskFiltersSchema.optional(),
-  sort: z.array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir })).max(12).optional(),
+  sort: z
+    .array(z.object({ field: z.enum(TASK_SORT_FIELDS), dir: sortDir }))
+    .max(12)
+    .optional(),
   now: dateBound,
   todayStart: dateBound,
   todayEnd: dateBound,
@@ -326,7 +368,10 @@ export const userSearchSchema = z.object({
       status: z.enum(['active', 'inactive', 'all']).optional(),
     })
     .optional(),
-  sort: z.array(z.object({ field: z.enum(USER_SORT_FIELDS), dir: sortDir })).max(7).optional(),
+  sort: z
+    .array(z.object({ field: z.enum(USER_SORT_FIELDS), dir: sortDir }))
+    .max(7)
+    .optional(),
   page,
   pageSize,
 });
@@ -415,11 +460,19 @@ const recurrenceInputSchema = z
         ctx.addIssue({ code: 'custom', path: ['intervalCount'], message: 'Interval is required' });
       }
       if (!r.intervalUnit) {
-        ctx.addIssue({ code: 'custom', path: ['intervalUnit'], message: 'Interval unit is required' });
+        ctx.addIssue({
+          code: 'custom',
+          path: ['intervalUnit'],
+          message: 'Interval unit is required',
+        });
       }
     }
     if (r.endType === 'AfterOccurrences' && !r.maxOccurrences) {
-      ctx.addIssue({ code: 'custom', path: ['maxOccurrences'], message: 'A maximum occurrence count is required' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['maxOccurrences'],
+        message: 'A maximum occurrence count is required',
+      });
     }
     if (r.endType === 'OnDate' && !r.endDate) {
       ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'An end date is required' });
@@ -530,7 +583,11 @@ export const setTaskRecurrenceSchema = z
   })
   .superRefine((r, ctx) => {
     if (r.endType === 'AfterOccurrences' && !r.maxOccurrences) {
-      ctx.addIssue({ code: 'custom', path: ['maxOccurrences'], message: 'A maximum occurrence count is required' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['maxOccurrences'],
+        message: 'A maximum occurrence count is required',
+      });
     }
     if (r.endType === 'OnDate' && !r.endDate) {
       ctx.addIssue({ code: 'custom', path: ['endDate'], message: 'An end date is required' });
@@ -544,7 +601,10 @@ export type SetTaskRecurrenceInput = z.infer<typeof setTaskRecurrenceSchema>;
 const goalSpecific = z
   .string()
   .trim()
-  .min(GOAL_SPECIFIC_MIN_LENGTH, `Describe the goal in at least ${GOAL_SPECIFIC_MIN_LENGTH} characters`)
+  .min(
+    GOAL_SPECIFIC_MIN_LENGTH,
+    `Describe the goal in at least ${GOAL_SPECIFIC_MIN_LENGTH} characters`,
+  )
   .max(4000, 'Too long');
 
 // A finite (non-NaN/Infinity) numeric target/result value.
@@ -577,7 +637,11 @@ export const createGoalSchema = z
   })
   .superRefine((g, ctx) => {
     if (g.metricType === 'Other' && !g.unitLabel) {
-      ctx.addIssue({ code: 'custom', path: ['unitLabel'], message: 'A unit label is required for a custom metric' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['unitLabel'],
+        message: 'A unit label is required for a custom metric',
+      });
     }
   });
 
@@ -668,3 +732,76 @@ export type TemplateNodeInputParsed = z.infer<typeof templateNodeInputSchema>;
 export type InstantiateTemplateInput = z.infer<typeof instantiateTemplateSchema>;
 export type MaterializeGhostInput = z.infer<typeof materializeGhostSchema>;
 export type ApplyToFutureInput = z.infer<typeof applyToFutureSchema>;
+
+// --- Exclusives (HLAI-71 Chunk 7) ------------------------------------------
+
+// The Groups list, like the task and user grids: a POST body, because there is
+// no validateQuery in this codebase.
+export const exclusivesGroupQuerySchema = z.object({
+  text: z.string().trim().max(200).optional(),
+  groupTypes: z.array(z.enum(EXCLUSIVES_GROUP_TYPES)).max(2).optional(),
+  sort: z
+    .array(z.object({ field: z.enum(EXCLUSIVES_GROUP_SORT_FIELDS), dir: sortDir }))
+    .max(4)
+    .optional(),
+  page,
+  pageSize,
+});
+export type ExclusivesGroupQueryInput = z.infer<typeof exclusivesGroupQuerySchema>;
+
+// The Alert Log. Every filter matches a column on the alert row itself, so the
+// query needs no joins (see alert-log.service.ts).
+export const exclusivesAlertQuerySchema = z.object({
+  text: z.string().trim().max(200).optional(),
+  alertTypes: z.array(z.enum(EXCLUSIVES_ALERT_TYPES)).max(12).optional(),
+  groupIds: z.array(z.coerce.number().int().positive()).max(200).optional(),
+  marketplaces: z.array(z.enum(EXCLUSIVES_MARKETPLACES)).max(2).optional(),
+  from: dateBound,
+  to: dateBound,
+  page,
+  pageSize,
+});
+export type ExclusivesAlertQueryInput = z.infer<typeof exclusivesAlertQuerySchema>;
+
+// Resolving typed or imported ASINs against the seller account. The cap is
+// enforced again in the service, which knows the count after de-duplication.
+export const exclusivesLookupSchema = z.object({
+  asins: z.array(z.string().trim().max(20)).min(1).max(EXCLUSIVES_LOOKUP_MAX_ASINS),
+  marketplaces: z.array(z.enum(EXCLUSIVES_MARKETPLACES)).max(2).optional(),
+});
+export type ExclusivesLookupInput = z.infer<typeof exclusivesLookupSchema>;
+
+const exclusivesGroupListing = z.object({
+  asin: z.string().trim().min(1).max(20),
+  marketplace: z.enum(EXCLUSIVES_MARKETPLACES),
+});
+
+// Creating or editing a group. The listings are resolved against Amazon before
+// anything is written (see group-write.service.ts).
+const exclusivesGroupBody = {
+  name: z.string().trim().max(200).optional(),
+  groupType: z.enum(EXCLUSIVES_GROUP_TYPES),
+  listings: z.array(exclusivesGroupListing).max(EXCLUSIVES_LOOKUP_MAX_ASINS).default([]),
+  listingsMode: z.enum(EXCLUSIVES_LISTINGS_MODES).optional(),
+  moveExisting: z.boolean().optional(),
+  settings: z.record(z.enum(EXCLUSIVES_ALERT_TYPES), z.enum(EXCLUSIVES_ALERT_MODES)).optional(),
+};
+
+export const exclusivesGroupCreateSchema = z.object(exclusivesGroupBody);
+export const exclusivesGroupUpdateSchema = z.object({
+  ...exclusivesGroupBody,
+  expectedUpdatedAt: z.string().optional(),
+});
+export type ExclusivesGroupCreateInput = z.infer<typeof exclusivesGroupCreateSchema>;
+export type ExclusivesGroupUpdateInput = z.infer<typeof exclusivesGroupUpdateSchema>;
+
+// Downloads: the alert log takes the log screen's own filters, so the file
+// matches what is on screen.
+export const exclusivesAlertExportSchema = exclusivesAlertQuerySchema.extend({
+  timeZone: z.string().trim().max(64).optional(),
+});
+export const exclusivesGroupExportSchema = z.object({
+  timeZone: z.string().trim().max(64).optional(),
+});
+export type ExclusivesAlertExportInput = z.infer<typeof exclusivesAlertExportSchema>;
+export type ExclusivesGroupExportInput = z.infer<typeof exclusivesGroupExportSchema>;

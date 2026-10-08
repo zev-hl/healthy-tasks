@@ -31,7 +31,11 @@ function isToday(iso: string | null): boolean {
   if (!iso) return false;
   const d = new Date(iso);
   const n = new Date();
-  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  return (
+    d.getFullYear() === n.getFullYear() &&
+    d.getMonth() === n.getMonth() &&
+    d.getDate() === n.getDate()
+  );
 }
 
 interface WaitingItem {
@@ -77,9 +81,7 @@ function buildWaiting(n: NotificationsDto): WaitingItem[] {
       text: `Reminder · ${r.taskName}`,
     });
   }
-  return items
-    .sort((x, y) => (y.time ?? '').localeCompare(x.time ?? ''))
-    .slice(0, 5);
+  return items.sort((x, y) => (y.time ?? '').localeCompare(x.time ?? '')).slice(0, 5);
 }
 
 export function HomePage() {
@@ -109,7 +111,11 @@ export function HomePage() {
       const [dashboard, todayRes, notifs, rightRes, users] = await Promise.all([
         api.getTaskDashboard({ filters: {}, ...ctx }),
         api.queryTasks({
-          filters: effectiveFilters({ dueTo: dateStr(t), includeNoDue: false, statuses: ACTIVE_STATUSES }),
+          filters: effectiveFilters({
+            dueTo: dateStr(t),
+            includeNoDue: false,
+            statuses: ACTIVE_STATUSES,
+          }),
           sort: [{ field: 'dueAt', dir: 'asc' }],
           page: 1,
           pageSize: 50,
@@ -149,13 +155,11 @@ export function HomePage() {
       if (isManager && directReports.length > 0) {
         const stats = await Promise.all(
           directReports.map((r) =>
-            api
-              .getTaskDashboard({ filters: { assigneeIds: [r.id] }, ...ctx })
-              .then((d) => ({
-                id: r.id,
-                open: d.total - (d.byStatus.Completed ?? 0) - (d.byStatus.Canceled ?? 0),
-                late: d.overdue,
-              })),
+            api.getTaskDashboard({ filters: { assigneeIds: [r.id] }, ...ctx }).then((d) => ({
+              id: r.id,
+              open: d.total - (d.byStatus.Completed ?? 0) - (d.byStatus.Canceled ?? 0),
+              late: d.overdue,
+            })),
           ),
         );
         setReportStats(stats);
@@ -201,11 +205,50 @@ export function HomePage() {
 
   const tiles = dash
     ? [
-        { key: 'overdue', label: 'Overdue', sub: 'Past due, still open', value: dash.overdue, cls: 'tile-danger', f: { overdue: true } as TaskSearchFilters },
-        { key: 'today', label: 'Due today', sub: 'On your plate today', value: dash.dueToday, cls: 'tile-warn', f: { dueFrom: dateStr(new Date()), dueTo: dateStr(new Date()), includeNoDue: false } as TaskSearchFilters },
-        { key: 'wip', label: 'In progress', sub: 'Currently active', value: dash.byStatus.InProgress ?? 0, cls: 'tile-accent', f: { statuses: ['InProgress'] } as TaskSearchFilters },
-        { key: 'review', label: 'In review', sub: 'Awaiting review', value: dash.byStatus.Review ?? 0, cls: 'tile-review', f: { statuses: ['Review'] } as TaskSearchFilters },
-        { key: 'done', label: 'Completed today', sub: 'Nice work', value: dash.completedToday, cls: 'tile-plain', f: { completedToday: true } as TaskSearchFilters },
+        {
+          key: 'overdue',
+          label: 'Overdue',
+          sub: 'Past due, still open',
+          value: dash.overdue,
+          cls: 'tile-danger',
+          f: { overdue: true } as TaskSearchFilters,
+        },
+        {
+          key: 'today',
+          label: 'Due today',
+          sub: 'On your plate today',
+          value: dash.dueToday,
+          cls: 'tile-warn',
+          f: {
+            dueFrom: dateStr(new Date()),
+            dueTo: dateStr(new Date()),
+            includeNoDue: false,
+          } as TaskSearchFilters,
+        },
+        {
+          key: 'wip',
+          label: 'In progress',
+          sub: 'Currently active',
+          value: dash.byStatus.InProgress ?? 0,
+          cls: 'tile-accent',
+          f: { statuses: ['InProgress'] } as TaskSearchFilters,
+        },
+        {
+          key: 'review',
+          label: 'In review',
+          sub: 'Awaiting review',
+          value: dash.byStatus.Review ?? 0,
+          cls: 'tile-review',
+          f: { statuses: ['Review'] } as TaskSearchFilters,
+        },
+        {
+          key: 'done',
+          label: 'Completed today',
+          sub: 'Nice work',
+          value: dash.completedToday,
+          cls: 'tile-plain',
+          f: { completedToday: true } as TaskSearchFilters,
+        },
       ]
     : [];
 
@@ -231,7 +274,12 @@ export function HomePage() {
 
       <div className="mday-tiles">
         {tiles.map((t) => (
-          <button key={t.key} type="button" className={`mday-tile ${t.cls}`} onClick={() => mergeFilter(t.f)}>
+          <button
+            key={t.key}
+            type="button"
+            className={`mday-tile btn-plain ${t.cls}`}
+            onClick={() => mergeFilter(t.f)}
+          >
             <span className="mday-tile-value">{t.value}</span>
             <span className="mday-tile-label">{t.label}</span>
             <span className="mday-tile-sub">{t.sub}</span>
@@ -315,7 +363,9 @@ export function HomePage() {
           ) : today.length === 0 ? (
             <div className="empty-state compact">
               <div className="empty-state-title">Nothing due today. Nice.</div>
-              <div className="empty-state-text">Enjoy the clear runway, or get ahead on this week.</div>
+              <div className="empty-state-text">
+                Enjoy the clear runway, or get ahead on this week.
+              </div>
             </div>
           ) : (
             <ul className="mday-list">
@@ -329,7 +379,10 @@ export function HomePage() {
                   >
                     <PriorityRamp priority={r.priority} />
                     <span className="mday-row-title">{r.name}</span>
-                    <span className="mday-row-assignee" title={r.assignee ? userLabel(r.assignee) : 'Unassigned'}>
+                    <span
+                      className="mday-row-assignee"
+                      title={r.assignee ? userLabel(r.assignee) : 'Unassigned'}
+                    >
                       {r.assignee ? (
                         <Avatar user={r.assignee} px={22} decorative />
                       ) : (
@@ -340,7 +393,13 @@ export function HomePage() {
                       </span>
                     </span>
                     <div className="spacer" />
-                    <DueDate iso={r.dueAt} status={r.status} completedAt={r.statusChangedAt} isDue inline />
+                    <DueDate
+                      iso={r.dueAt}
+                      status={r.status}
+                      completedAt={r.statusChangedAt}
+                      isDue
+                      inline
+                    />
                   </li>
                 );
               })}
@@ -361,11 +420,17 @@ export function HomePage() {
             ) : (
               <ul className="mday-waiting">
                 {waiting.map((w) => (
-                  <li key={w.key} className="mday-waiting-item" onClick={() => navigate(`/tasks/${w.taskId}`)}>
+                  <li
+                    key={w.key}
+                    className="mday-waiting-item"
+                    onClick={() => navigate(`/tasks/${w.taskId}`)}
+                  >
                     {w.kind === 'mention' && w.user ? (
                       <Avatar user={w.user} px={24} decorative />
                     ) : (
-                      <span className={`mday-notif-badge ${w.kind}`}>{w.kind === 'reminder' ? 'REM' : 'ASN'}</span>
+                      <span className={`mday-notif-badge ${w.kind}`}>
+                        {w.kind === 'reminder' ? 'REM' : 'ASN'}
+                      </span>
                     )}
                     <span className="mday-waiting-text">{w.text}</span>
                     <AgoDate iso={w.time} />
@@ -389,7 +454,11 @@ export function HomePage() {
             ) : (
               <ul className="mday-next">
                 {rightList.map((r) => (
-                  <li key={r.id} className="mday-next-item" onClick={() => navigate(`/tasks/${r.id}`)}>
+                  <li
+                    key={r.id}
+                    className="mday-next-item"
+                    onClick={() => navigate(`/tasks/${r.id}`)}
+                  >
                     {isManager ? (
                       <span className="mono mday-next-id">#{r.id}</span>
                     ) : (
@@ -404,7 +473,11 @@ export function HomePage() {
                     {isManager && r.assignee ? (
                       <Avatar user={r.assignee} px={22} decorative />
                     ) : (
-                      <span className="mday-status-sq" style={{ background: statusColor(r.status) }} aria-hidden="true" />
+                      <span
+                        className="mday-status-sq"
+                        style={{ background: statusColor(r.status) }}
+                        aria-hidden="true"
+                      />
                     )}
                   </li>
                 ))}
