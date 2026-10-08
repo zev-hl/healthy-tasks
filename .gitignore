@@ -34,3 +34,7 @@ backend/scripts/data/
 
 # Local-only compose overrides (per-machine image/port tweaks)
 docker-compose.override.yml
+
+# Departments/Duties prototype — kept LOCAL by request. Remove this line if it
+# should start being versioned alongside the other docs/design files.
+docs/design/Department Duties Prototype.html

@@ -3,10 +3,12 @@ import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { sanitizeAndValidate } from '../utils/rich-text.js';
 import { getStorage } from '../storage/index.js';
-import { addDays } from './recurrence.js';
+import { offsetFromAnchor } from '../utils/business-time.js';
 import { recordHistory } from './task-history.service.js';
 import { createAssignedNotification } from './notification.service.js';
 import {
+  DEFAULT_DUE_HOUR,
+  DEFAULT_START_HOUR,
   TASK_HISTORY_FIELDS,
   type TaskPriority,
   type TemplateOccurrenceOrigin,
@@ -116,8 +118,17 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
     for (const node of ordered) {
       const parentTaskId = node.parentNodeId ? (nodeIdToTaskId.get(node.parentNodeId) ?? null) : null;
       const assigneeId = assigneeByNodeId.get(node.id) ?? null;
-      const startAt = node.startOffsetDays != null ? addDays(anchorStart, node.startOffsetDays) : null;
-      const dueAt = node.dueOffsetDays != null ? addDays(anchorStart, node.dueOffsetDays) : null;
+      // Business-zone calendar days, then the default hour — so offsets 0 and 1
+      // land on consecutive days at 7:00 AM / 7:00 PM, not at midnight UTC
+      // (which reads as the previous evening anywhere west of UTC).
+      const startAt =
+        node.startOffsetDays != null
+          ? offsetFromAnchor(anchorStart, node.startOffsetDays, DEFAULT_START_HOUR)
+          : null;
+      const dueAt =
+        node.dueOffsetDays != null
+          ? offsetFromAnchor(anchorStart, node.dueOffsetDays, DEFAULT_DUE_HOUR)
+          : null;
 
       const task = await tx.task.create({
         data: {
