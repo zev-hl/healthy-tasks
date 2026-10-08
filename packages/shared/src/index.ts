@@ -1260,6 +1260,17 @@ export interface UpdateAppSettingsRequest {
  */
 export const GHOST_HORIZON_OCCURRENCES = 24;
 
+/**
+ * The time of day a date-only entry means, when nobody specified one.
+ *
+ * Shared because BOTH sides need them and they must agree. The browser applies
+ * them in the user's own zone when someone types a date into a task form; the
+ * server applies them in the BUSINESS zone when it expands a template's relative
+ * day offsets, where no user's browser is available to ask.
+ */
+export const DEFAULT_START_HOUR = 7; // 7:00 AM
+export const DEFAULT_DUE_HOUR = 19; // 7:00 PM
+
 // --- Template tree editing (pure helpers, shared with the editor) -----------
 
 /** Minimal shape the template-tree editing helpers operate on. The template

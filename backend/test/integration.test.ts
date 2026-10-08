@@ -3583,7 +3583,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
       request(app)
         .post(`/api/templates/${tpl.id}/instantiate`)
         .set(auth(mem))
-        .send({ anchorStart: '2026-08-10T00:00:00.000Z' }),
+        .send({ anchorStart: '2026-08-10' }),
     ]) {
       const res = await call;
       assert.equal(res.status, 403, 'Members must not access template management');
@@ -3647,7 +3647,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
       .set(auth(admin))
       .send({
         instanceLabel: 'PO-4521',
-        anchorStart: '2026-08-10T00:00:00.000Z',
+        anchorStart: '2026-08-10',
         roleAssignments: [{ role: 'Inspector', assigneeId: inspector.id }],
       });
     assert.equal(res.status, 201, JSON.stringify(res.body));
@@ -3659,8 +3659,12 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     assert.equal(rootRes.body.name, 'PO-4521: Inspect');
     assert.equal(rootRes.body.instanceLabel, 'PO-4521');
     assert.equal(rootRes.body.assigneeId, inspector.id);
-    assert.equal(rootRes.body.startAt, new Date('2026-08-10T00:00:00.000Z').toISOString());
-    assert.equal(rootRes.body.dueAt, new Date('2026-08-12T00:00:00.000Z').toISOString());
+    // Offsets resolve in the BUSINESS timezone at the default hours: offset 0
+    // start => Aug 10 07:00 New York, offset 2 due => Aug 12 19:00 New York.
+    // (August is EDT, UTC-4.) These used to come out at midnight UTC, which
+    // displays as the PREVIOUS evening for anyone west of UTC.
+    assert.equal(rootRes.body.startAt, '2026-08-10T11:00:00.000Z');
+    assert.equal(rootRes.body.dueAt, '2026-08-12T23:00:00.000Z');
     // The child is a real, dependent task under the real parent.
     assert.equal(rootRes.body.children.length, 1);
     assert.equal(
@@ -3801,7 +3805,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
       .post(`/api/templates/${tpl.id}/instantiate`)
       .set(auth(admin))
       .send({
-        anchorStart: '2026-07-01T00:00:00.000Z',
+        anchorStart: '2026-07-01',
         roleAssignments: [{ role: 'Owner', assigneeId: owner.id }],
       });
 
@@ -3827,7 +3831,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
           recurrenceType: 'Fixed',
           intervalCount: 2,
           intervalUnit: 'Week',
-          anchorDate: '2026-08-01T00:00:00.000Z',
+          anchorDate: '2026-08-01',
           endType: 'AfterOccurrences',
           maxOccurrences: 4,
         },
@@ -3839,7 +3843,11 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     assert.equal(ghosts.body.length, 4, 'all four bounded occurrences are previewed as ghosts');
     assert.equal(ghosts.body[0].seq, 1);
     assert.equal(ghosts.body[0].sourceType, 'template');
-    assert.equal(ghosts.body[0].startAt, new Date('2026-08-01T00:00:00.000Z').toISOString());
+    // 7:00 AM New York on the anchor day (August is EDT, UTC-4). The fixture
+    // above now sends a bare calendar date, which is what the date picker sends;
+    // as a midnight-UTC instant it meant Jul 31 in business time, and the ghost
+    // correctly said so.
+    assert.equal(ghosts.body[0].startAt, '2026-08-01T11:00:00.000Z');
     // Ghosts are computed, never rows.
     assert.equal(await prisma.templateOccurrence.count({ where: { templateId: fixed.id } }), 0);
 
@@ -3850,7 +3858,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
         recurrenceType: 'RelativeToCompletion',
         intervalCount: 3,
         intervalUnit: 'Day',
-        anchorDate: '2026-08-01T00:00:00.000Z',
+        anchorDate: '2026-08-01',
         endType: 'Never',
       },
     });
@@ -3996,7 +4004,7 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     const inst = await request(app)
       .post(`/api/templates/${tpl.id}/instantiate`)
       .set(auth(admin))
-      .send({ anchorStart: '2026-08-10T00:00:00.000Z' });
+      .send({ anchorStart: '2026-08-10' });
     const rootTaskId = inst.body.rootTaskId;
     const occId = inst.body.occurrence.id;
 
@@ -6061,7 +6069,7 @@ describe('task -> template conversion (follow-up)', () => {
     const inst = await request(app)
       .post(`/api/templates/${conv.body.id}/instantiate`)
       .set(auth(admin))
-      .send({ anchorStart: '2026-09-01T00:00:00.000Z' });
+      .send({ anchorStart: '2026-09-01' });
     assert.equal(inst.status, 201, JSON.stringify(inst.body));
     const newRoot = inst.body.rootTaskId as number;
     const genAtt = await prisma.attachment.findFirst({
@@ -7496,5 +7504,139 @@ describe('exclusives: scheduled sweep log lines (HLAI-71 6g)', () => {
       },
       { timeout: 30_000 },
     );
+  });
+});
+
+// --- Template anchoring in the business timezone ---------------------------
+// A date picked on a calendar is a LABEL, not an instant. `new Date('2026-10-08')`
+// resolves it to midnight UTC, which is 8:00 PM on Oct 7 in New York — so every
+// template-generated task landed a day early and at a nonsense hour. Offsets are
+// now resolved as business-zone calendar days at the default start/due hours.
+
+describe('template anchoring: business-timezone calendar helpers', () => {
+  let bt: typeof import('../src/utils/business-time.js');
+  before(async () => {
+    bt = await import('../src/utils/business-time.js');
+  });
+
+  const NY = 'America/New_York';
+
+  it('reads the calendar date an instant falls on in the business zone', () => {
+    // The bug, stated directly: midnight UTC is still the previous evening in
+    // New York, so a date picked as "Oct 8" was being stored as Oct 7.
+    assert.equal(bt.toBusinessDate(new Date('2026-10-08T00:00:00.000Z'), NY), '2026-10-07');
+    assert.equal(bt.toBusinessDate(new Date('2026-10-08T12:00:00.000Z'), NY), '2026-10-08');
+  });
+
+  it('adds whole calendar days across month, year and leap boundaries', () => {
+    assert.equal(bt.addCalendarDays('2026-10-08', 0), '2026-10-08');
+    assert.equal(bt.addCalendarDays('2026-10-08', 1), '2026-10-09');
+    assert.equal(bt.addCalendarDays('2026-10-31', 1), '2026-11-01');
+    assert.equal(bt.addCalendarDays('2026-12-31', 1), '2027-01-01');
+    assert.equal(bt.addCalendarDays('2028-02-28', 1), '2028-02-29');
+    assert.equal(bt.addCalendarDays('2026-01-01', -1), '2025-12-31');
+  });
+
+  it('resolves a calendar date and hour to the right instant on both sides of DST', () => {
+    // October is EDT (UTC-4) ...
+    assert.equal(bt.fromBusinessDate('2026-10-08', 19, NY).toISOString(), '2026-10-08T23:00:00.000Z');
+    // ... December is EST (UTC-5).
+    assert.equal(bt.fromBusinessDate('2026-12-08', 19, NY).toISOString(), '2026-12-09T00:00:00.000Z');
+  });
+
+  it('keeps the wall-clock hour when an offset crosses a DST boundary', () => {
+    // US DST ends Nov 1 2026. Anchor Oct 25 (EDT) + 10 days lands Nov 4 (EST).
+    const anchor = bt.fromBusinessDate('2026-10-25', 19, NY);
+    const tenDaysOn = bt.offsetFromAnchor(anchor, 10, 19, NY);
+
+    assert.equal(bt.toBusinessDate(tenDaysOn, NY), '2026-11-04');
+    assert.equal(tenDaysOn.toISOString(), '2026-11-05T00:00:00.000Z', '7:00 PM EST, not 6:00 PM');
+
+    // Adding 24-hour blocks — what the old code did — lands an hour early.
+    const naive = new Date(anchor.getTime() + 10 * 24 * 60 * 60 * 1000);
+    assert.notEqual(naive.toISOString(), tenDaysOn.toISOString());
+  });
+
+  it('places offsets 0 and 1 on consecutive calendar days', () => {
+    const anchor = bt.fromBusinessDate('2026-10-08', 7, NY);
+    assert.equal(bt.toBusinessDate(bt.offsetFromAnchor(anchor, 0, 19, NY), NY), '2026-10-08');
+    assert.equal(bt.toBusinessDate(bt.offsetFromAnchor(anchor, 1, 19, NY), NY), '2026-10-09');
+  });
+});
+
+describe('template anchoring: instantiation end to end', () => {
+  async function createTemplate(token: string, body: Record<string, unknown>) {
+    const res = await request(app).post('/api/templates').set(auth(token)).send(body);
+    assert.equal(res.status, 201, `create template failed: ${JSON.stringify(res.body)}`);
+    return res.body;
+  }
+
+  it('a due offset of 0 lands on the anchor day, not the evening before', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(admin, {
+      name: 'ASIN 54321',
+      nodes: [
+        {
+          key: 'root',
+          parentKey: null,
+          name: 'Report a Violation',
+          startOffsetDays: 0,
+          dueOffsetDays: 0,
+        },
+        {
+          key: 'buy',
+          parentKey: 'root',
+          name: 'Buy a test purchase',
+          startOffsetDays: 0,
+          dueOffsetDays: 0,
+        },
+        {
+          key: 'cd',
+          parentKey: 'root',
+          name: 'Coordinate cease and desist letter',
+          startOffsetDays: 0,
+          dueOffsetDays: 1,
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2026-10-08', roleAssignments: [] });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+
+    const dueByName = new Map<string, string | null>();
+    for (const id of res.body.taskIds as number[]) {
+      const t = await request(app).get(`/api/tasks/${id}`).set(auth(admin));
+      dueByName.set(t.body.name as string, (t.body.dueAt as string | null) ?? null);
+    }
+
+    // 7:00 PM New York on the intended days (October is EDT, UTC-4). Before the
+    // fix these were 2026-10-08T00:00Z and 2026-10-09T00:00Z — i.e. "Oct 7,
+    // 8:00 PM" and "Oct 8, 8:00 PM" on screen, so offset 0 read as overdue.
+    assert.equal(dueByName.get('Report a Violation'), '2026-10-08T23:00:00.000Z');
+    assert.equal(dueByName.get('Buy a test purchase'), '2026-10-08T23:00:00.000Z');
+    assert.equal(dueByName.get('Coordinate cease and desist letter'), '2026-10-09T23:00:00.000Z');
+  });
+
+  it('starts default to 7:00 AM and dues to 7:00 PM business time', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(admin, {
+      name: 'Hours check',
+      nodes: [
+        { key: 'root', parentKey: null, name: 'Only', startOffsetDays: 0, dueOffsetDays: 3 },
+      ],
+    });
+
+    const res = await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2026-10-08', roleAssignments: [] });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+
+    const t = await request(app).get(`/api/tasks/${res.body.rootTaskId}`).set(auth(admin));
+    assert.equal(t.body.startAt, '2026-10-08T11:00:00.000Z', '7:00 AM New York');
+    assert.equal(t.body.dueAt, '2026-10-11T23:00:00.000Z', '7:00 PM New York, three days on');
   });
 });

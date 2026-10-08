@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { CALENDAR_DATE_RE, fromBusinessDate } from '../utils/business-time.js';
 import {
   COMMENT_MAX_ATTACHMENTS,
+  DEFAULT_START_HOUR,
   ROLES,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -138,6 +140,40 @@ const optionalDateTime = z
   .union([z.null(), z.literal(''), z.coerce.date()])
   .optional()
   .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+
+/**
+ * An anchor date for a template schedule.
+ *
+ * A bare `YYYY-MM-DD` from a date picker is a calendar LABEL, not an instant, so
+ * it is resolved in the BUSINESS timezone at the default start hour. Plain
+ * `z.coerce.date()` resolves it to midnight UTC instead, which lands a day early
+ * for anyone west of UTC — that is the bug this replaces. A full ISO timestamp
+ * is still accepted as-is, since the caller then meant a specific instant.
+ */
+const businessAnchorDate = z.union([z.string(), z.date()]).transform((value, ctx) => {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
+      return z.NEVER;
+    }
+    return value;
+  }
+  const raw = value.trim();
+  if (CALENDAR_DATE_RE.test(raw)) {
+    const resolved = fromBusinessDate(raw, DEFAULT_START_HOUR);
+    if (Number.isNaN(resolved.getTime())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
+      return z.NEVER;
+    }
+    return resolved;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
+    return z.NEVER;
+  }
+  return parsed;
+});
 
 const tags = z.array(z.string().trim().min(1).max(50)).max(50);
 
@@ -440,7 +476,7 @@ const recurrenceInputSchema = z
     intervalUnit: z.enum(RECURRENCE_UNITS).nullable().optional(),
     weekdays: weekdaysSchema,
     anchorDate: z
-      .union([z.null(), z.literal(''), z.coerce.date()])
+      .union([z.null(), z.literal(''), businessAnchorDate])
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     endType: z.enum(RECURRENCE_END_TYPES).optional(),
@@ -545,7 +581,7 @@ export const instantiateTemplateSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
-  anchorStart: z.coerce.date(),
+  anchorStart: businessAnchorDate,
   roleAssignments: z
     .array(
       z.object({
