@@ -4394,6 +4394,17 @@ button.dash-stat:hover {
   overflow: hidden;
   background: var(--surface);
 }
+/* Stands in for a Segmented while its value is still being fetched, so the
+   control appears already showing the right state instead of flipping to it.
+   Matches `.seg`'s box so the header does not jump when the real one lands. */
+.seg-placeholder {
+  display: inline-block;
+  width: 9.5rem;
+  height: calc(0.56rem + 1.25rem + 2px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunk);
+}
 .seg-btn {
   background: transparent;
   border: none;
@@ -6407,6 +6418,34 @@ tr.just-completed > td {
 }
 
 /* --- Dashboard row cells ------------------------------------------------ */
+/* --- Alert Groups list: a switched-off group ---------------------------- */
+/*
+ * Greyed out, marked, and quieter than the rows around it — a group that is
+ * not being checked should not read as loudly as one that is. Everything stays
+ * legible and every control stays usable; only the emphasis changes.
+ */
+.exc-table tbody tr.exc-row-inactive > td {
+  background: var(--canvas-deep);
+  color: var(--faint);
+}
+.exc-row-inactive .exc-group-name,
+.exc-row-inactive .exc-asins,
+.exc-row-inactive .exc-latest,
+.exc-row-inactive .exc-latest-abs {
+  color: var(--faint);
+}
+.exc-row-inactive .status-pill,
+.exc-row-inactive .exc-count {
+  opacity: 0.55;
+}
+/* The red minus sits to the left of the name, centred against it. */
+.exc-inactive-mark {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-right: 7px;
+  color: var(--danger);
+}
 .exc-group-name {
   font-weight: 600;
   font-size: 0.85rem;
@@ -6599,6 +6638,16 @@ tr.just-completed > td {
   background: var(--canvas-deep);
   color: var(--ink-3);
 }
+/* The Active/Inactive switch: green when on, red when off, so the state of a
+   group reads at a glance without anyone having to parse the words. */
+.exc-seg-btn.active.tone-ok {
+  background: var(--ok);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-danger {
+  background: var(--danger);
+  color: #fff;
+}
 
 /* --- Editor: crumb bar -------------------------------------------------- */
 .exc-editor .exc-crumbbar {
@@ -6661,14 +6710,36 @@ tr.just-completed > td {
   font-weight: 700;
   font-size: 0.95rem;
 }
+/* Three columns, with the side ones forced to the SAME width, so the middle
+   switch sits on the row's centre line rather than in the middle of whatever
+   space the title and the right-hand switch happen to leave. `minmax(0, 1fr)`
+   lets both sides shrink together as the window narrows, which keeps the
+   centre fixed at every width instead of drifting with the title's length. */
 .exc-panel-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 0.75rem;
   margin-bottom: 1rem;
 }
 .exc-panel-head-right {
-  margin-left: auto;
+  justify-self: end;
+}
+.exc-panel-head-mid {
+  justify-self: center;
+}
+/* Too narrow for three across: stack them, keeping the switch centred on its
+   own line rather than letting the row overflow sideways. */
+@media (max-width: 680px) {
+  .exc-panel-head {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    gap: 0.6rem;
+  }
+  .exc-panel-head-mid,
+  .exc-panel-head-right {
+    justify-self: center;
+  }
 }
 
 /* --- Editor: name field ------------------------------------------------- */
@@ -7646,6 +7717,16 @@ tr.just-completed > td {
 .exc-seg-btn.active.tone-neutral:hover {
   background: var(--canvas-deep);
   color: var(--ink-3);
+}
+.exc-seg-btn.active.tone-ok,
+.exc-seg-btn.active.tone-ok:hover {
+  background: var(--ok);
+  color: #fff;
+}
+.exc-seg-btn.active.tone-danger,
+.exc-seg-btn.active.tone-danger:hover {
+  background: var(--danger);
+  color: #fff;
 }
 
 /* Remove-an-ASIN: a round target with the cross in the middle of it, rather
