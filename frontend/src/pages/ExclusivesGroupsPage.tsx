@@ -24,6 +24,7 @@ import { DeleteGroupModal } from '../components/exclusives/DeleteGroupModal';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { StatusDot } from '../components/exclusives/StatusDot';
 import { GroupAlertsPanel } from '../components/exclusives/GroupAlertsPanel';
+import { InactiveIcon } from '../components/exclusives/icons';
 import { NoticeModal } from '../components/exclusives/NoticeModal';
 
 const COLUMNS = 9;
@@ -45,6 +46,18 @@ function countPillClass(n: number): string {
   return 'exc-count';
 }
 
+/**
+ * "3 groups · 1 individual · 2 inactive groups" — the kind counts cover every
+ * group, and the inactive tally is appended so it is clear at a glance how
+ * many are not being checked.
+ */
+function statLine(s: ExclusivesSummaryDto): string {
+  const parts = [`${s.groupCount} groups`, `${s.individualCount} individual`];
+  if (s.inactiveCount > 0) {
+    parts.push(`${s.inactiveCount} inactive group${s.inactiveCount === 1 ? '' : 's'}`);
+  }
+  return parts.join(' · ');
+}
 /** "last run 2:30 PM · next run 3:00 PM", from the real sweep times. */
 function runLine(summary: ExclusivesSummaryDto | null): string {
   if (!summary) return 'Loading…';
@@ -167,9 +180,7 @@ export function ExclusivesGroupsPage() {
         <div className="exc-stat">
           <span className="exc-stat-value">{summary ? summary.asinsMonitored : '—'}</span>
           <span className="exc-stat-label">ASINs monitored</span>
-          <span className="exc-stat-sub">
-            {summary ? `${summary.groupCount} groups · ${summary.individualCount} individual` : ' '}
-          </span>
+          <span className="exc-stat-sub">{summary ? statLine(summary) : ' '}</span>
         </div>
       </div>
 
@@ -226,8 +237,20 @@ export function ExclusivesGroupsPage() {
                 const hot =
                   g.latestAlertAt !== null && Date.now() - Date.parse(g.latestAlertAt) < HOT_MS;
                 return (
-                  <tr key={g.id}>
+                  // A switched-off group is greyed out and marked, so the list
+                  // says at a glance which groups are not being checked.
+                  <tr key={g.id} className={g.isActive ? undefined : 'exc-row-inactive'}>
                     <td className="exc-col-name">
+                      {!g.isActive && (
+                        <span
+                          className="exc-inactive-mark"
+                          role="img"
+                          aria-label="Inactive — not being checked"
+                          title="Inactive — not being checked"
+                        >
+                          <InactiveIcon size={15} />
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="exc-group-name exc-group-name-btn"

@@ -41,7 +41,7 @@ model User {
   // addresses get reused: if a leaver's address is later given to a new hire,
   // matching on email alone would hand the newcomer the old account. A Google
   // subject id is never reissued.
-  googleSub      String? @unique
+  googleSub String? @unique
 
   // Account merge (Phase 5): when two accounts are merged, the non-surviving one
   // is deactivated (never deleted) and points here at the account it was merged
@@ -930,6 +930,8 @@ model AlertGroup {
   id          Int      @id @default(autoincrement())
   name        String   @unique
   groupType   String
+  /// Switched off groups are skipped by the sweep; nothing else changes.
+  isActive    Boolean  @default(true)
   createdById String
   createdBy   User     @relation("AlertGroupCreator", fields: [createdById], references: [id])
   updatedById String?
@@ -943,6 +945,7 @@ model AlertGroup {
 
   @@index([createdById])
   @@index([updatedById])
+  @@index([isActive])
 }
 
 model Listing {

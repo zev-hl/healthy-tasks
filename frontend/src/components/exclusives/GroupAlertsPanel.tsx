@@ -17,7 +17,7 @@ import {
 import { api, ApiError } from '../../api/client';
 import { absoluteShort, formatAgo } from '../../lib/datetime';
 import { ClampedText } from './ClampedText';
-import { AlertTypeBadge, GroupTypeBadge, alertTone } from './AlertBadge';
+import { AlertTypeBadge, GroupStatusBadge, GroupTypeBadge, alertTone } from './AlertBadge';
 import { Flag } from './Flag';
 
 /** Alerts shown in the panel before it sends people to the full log. */
@@ -116,6 +116,7 @@ export function GroupAlertsPanel({
           <div className="exc-drawer-title-row">
             <h2 id="exc-drawer-title">{group.name}</h2>
             <GroupTypeBadge type={group.groupType} />
+            <GroupStatusBadge isActive={group.isActive} />
             <div className="exc-drawer-head-btns">
               <button type="button" className="secondary btn-sm" onClick={onEdit}>
                 Edit group

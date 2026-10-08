@@ -38,6 +38,7 @@ const group = (over: Partial<ExclusivesGroupRowDto> = {}): ExclusivesGroupRowDto
   id: 1,
   name: 'Versure Exclusives',
   groupType: 'GROUP',
+  isActive: true,
   listingCount: 445,
   asinPreview: ['B00024D8SA', 'B0CKM2SSK3', 'B000E9CCSA'],
   alerts24h: 26,
@@ -53,6 +54,7 @@ const summary: ExclusivesSummaryDto = {
   asinsMonitored: 445,
   groupCount: 1,
   individualCount: 0,
+  inactiveCount: 0,
   lastSweepAt: '2026-09-22T17:59:00.000Z',
   nextSweepAt: '2026-09-22T18:29:00.000Z',
   sweepEnabled: true,
@@ -175,6 +177,50 @@ describe('ExclusivesGroupsPage', () => {
     );
   });
 
+  it('leaves the stat line alone when every group is active', async () => {
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText('1 groups · 0 individual')).toBeInTheDocument();
+  });
+
+  it('names how many groups are switched off', async () => {
+    getSummary.mockResolvedValue({
+      ...summary,
+      groupCount: 3,
+      individualCount: 1,
+      inactiveCount: 2,
+    });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText('3 groups · 1 individual · 2 inactive groups')).toBeInTheDocument();
+  });
+
+  it('says "group" rather than "groups" when only one is switched off', async () => {
+    getSummary.mockResolvedValue({ ...summary, inactiveCount: 1 });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText('1 groups · 0 individual · 1 inactive group')).toBeInTheDocument();
+  });
+  it('marks an inactive group and leaves an active one plain', async () => {
+    queryGroups.mockResolvedValue(
+      pageOf([
+        group({ id: 1, name: 'Still watching', isActive: true }),
+        group({ id: 2, name: 'Switched off', isActive: false }),
+      ]),
+    );
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+
+    const off = screen.getByRole('button', { name: 'Switched off' }).closest('tr');
+    const on = screen.getByRole('button', { name: 'Still watching' }).closest('tr');
+    expect(off).toHaveClass('exc-row-inactive');
+    expect(on).not.toHaveClass('exc-row-inactive');
+
+    // One mark on the page, and it belongs to the switched-off row.
+    const marks = screen.getAllByRole('img', { name: 'Inactive — not being checked' });
+    expect(marks).toHaveLength(1);
+    expect(off).toContainElement(marks[0] as HTMLElement);
+  });
   it('deletes through the API and reloads', async () => {
     renderWithRouter(<ExclusivesGroupsPage />);
     await settle();

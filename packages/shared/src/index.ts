@@ -1923,6 +1923,8 @@ export interface ExclusivesGroupRowDto {
   id: number;
   name: string;
   groupType: ExclusivesGroupType;
+  /** Inactive groups are shown greyed out and are skipped by the sweep. */
+  isActive: boolean;
   listingCount: number;
   /** Up to EXCLUSIVES_ASIN_PREVIEW ASINs, for the preview column. */
   asinPreview: string[];
@@ -1940,6 +1942,8 @@ export interface ExclusivesGroupDto {
   id: number;
   name: string;
   groupType: ExclusivesGroupType;
+  /** Off means the sweep skips this group's ASINs entirely. */
+  isActive: boolean;
   listings: ExclusivesListingDto[];
   /** Always all 12 types; a missing row reads as 'off'. */
   settings: Record<ExclusivesAlertType, ExclusivesAlertMode>;
@@ -1959,10 +1963,15 @@ export type ExclusivesGroupSortField = (typeof EXCLUSIVES_GROUP_SORT_FIELDS)[num
 export interface ExclusivesSummaryDto {
   /** Alerts logged across all groups in the last 24 hours. */
   alerts24h: number;
-  /** Listing rows being monitored (US and Canada counted separately). */
+  /**
+   * Listing rows actually being checked — ASINs in ACTIVE groups only, since a
+   * switched-off group's ASINs are not swept. US and Canada counted separately.
+   */
   asinsMonitored: number;
   groupCount: number;
   individualCount: number;
+  /** How many of those are switched off, of either kind. */
+  inactiveCount: number;
   /** Newest snapshot, i.e. the last successful Amazon check. ISO; null if never. */
   lastSweepAt: string | null;
   /** When the next sweep is due, ISO; null when sweeping is switched off. */
@@ -2117,6 +2126,8 @@ export interface ExclusivesGroupListingInput {
 export interface ExclusivesGroupWriteRequest {
   name?: string;
   groupType: ExclusivesGroupType;
+  /** Omitted on create means active. */
+  isActive?: boolean;
   listings: ExclusivesGroupListingInput[];
   /** Defaults to 'merge'; 'replace' removes anything not submitted. */
   listingsMode?: ExclusivesListingsMode;

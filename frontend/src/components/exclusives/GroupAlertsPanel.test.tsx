@@ -33,6 +33,7 @@ const group: ExclusivesGroupRowDto = {
   id: 5,
   name: 'Versure Exclusives',
   groupType: 'GROUP',
+  isActive: true,
   listingCount: 429,
   asinPreview: [],
   alerts24h: 110,
@@ -108,6 +109,24 @@ afterEach(() => {
 describe('dayHeading', () => {
   const now = new Date('2026-09-24T12:00:00');
 
+  it('says whether the group is active, beside its kind', async () => {
+    open();
+    await settle();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it('says Inactive for a group that is switched off', async () => {
+    render(
+      <GroupAlertsPanel
+        group={{ ...group, isActive: false }}
+        onClose={vi.fn()}
+        onEdit={vi.fn()}
+        onOpenLog={vi.fn()}
+      />,
+    );
+    await settle();
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+  });
   it('names today and yesterday, and dates anything older', () => {
     expect(dayHeading(new Date('2026-09-24T09:00:00').toISOString(), now)).toMatch(/^Today · /);
     expect(dayHeading(new Date('2026-09-23T23:00:00').toISOString(), now)).toMatch(/^Yesterday · /);

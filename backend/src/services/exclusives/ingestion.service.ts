@@ -9,7 +9,10 @@ import {
 import type { SnapshotEntry } from './snapshot.repository.js';
 
 export interface IngestionReport {
+  /** Listings in active groups — the ones this run actually tried to fetch. */
   listingCount: number;
+  /** Listings left alone because their group is switched off. */
+  inactiveCount: number;
   /** Complete fresh data per listing — what detection compares and saves. */
   entries: SnapshotEntry[];
   /** Monitored listings with no fresh data this run, and why. */
@@ -31,20 +34,32 @@ export function summarizeSkips(skipped: SkippedListing[]): string {
   return [...counts].map(([reason, n]) => `${reason}=${n}`).join(', ');
 }
 
-// Fetch fresh data for every monitored Listing. Read-only against Amazon and
-// against the DB snapshots — saving is detection's job, after it compares
-// (detection.service.ts). Paced by the sweep so we stay under the rate limit.
-// An SP-API failure never throws out of here: affected listings are skipped for
-// this run and reported.
+// Fetch fresh data for every monitored Listing in an ACTIVE group. Read-only
+// against Amazon and against the DB snapshots — saving is detection's job,
+// after it compares (detection.service.ts). Paced by the sweep so we stay under
+// the rate limit. An SP-API failure never throws out of here: affected listings
+// are skipped for this run and reported.
+//
+// A group switched off is skipped entirely: its listings are not fetched, so
+// they produce no entries, and detection therefore writes nothing for them. If
+// every group is off the query comes back empty and the guard below means no
+// Amazon call is made at all.
 export async function runIngestion(
   onLog: (msg: string) => void = () => {},
 ): Promise<IngestionReport> {
   const startedAt = new Date().toISOString();
 
-  const listings = await prisma.listing.findMany({
-    select: { id: true, sku: true, marketplace: true },
-  });
-  onLog(`[exclusives] ingestion start — ${listings.length} monitored listing(s)`);
+  const [listings, inactiveCount] = await Promise.all([
+    prisma.listing.findMany({
+      where: { group: { isActive: true } },
+      select: { id: true, sku: true, marketplace: true },
+    }),
+    prisma.listing.count({ where: { group: { isActive: false } } }),
+  ]);
+  onLog(
+    `[exclusives] ingestion start — ${listings.length} monitored listing(s)` +
+      (inactiveCount > 0 ? ` (${inactiveCount} in inactive group(s) skipped)` : ''),
+  );
 
   const idByKey = new Map<string, number>();
   const monitored: MonitoredListing[] = listings.map((l) => {
@@ -78,6 +93,7 @@ export async function runIngestion(
 
   return {
     listingCount: listings.length,
+    inactiveCount,
     entries,
     skipped,
     aborted,

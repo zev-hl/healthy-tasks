@@ -781,6 +781,9 @@ const exclusivesGroupListing = z.object({
 const exclusivesGroupBody = {
   name: z.string().trim().max(200).optional(),
   groupType: z.enum(EXCLUSIVES_GROUP_TYPES),
+  // Left out means active: a create that predates the toggle, or a caller that
+  // does not care, should not silently switch a group off.
+  isActive: z.boolean().optional(),
   listings: z.array(exclusivesGroupListing).max(EXCLUSIVES_LOOKUP_MAX_ASINS).default([]),
   listingsMode: z.enum(EXCLUSIVES_LISTINGS_MODES).optional(),
   moveExisting: z.boolean().optional(),
