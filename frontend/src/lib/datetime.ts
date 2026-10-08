@@ -5,8 +5,10 @@ import type { TaskStatus } from '@healthy-tasks/shared';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export const DEFAULT_START_HOUR = 7; // 7:00 AM
-export const DEFAULT_DUE_HOUR = 19; // 7:00 PM
+// Defined in shared because the server needs the same two numbers when it
+// expands a template's day offsets. Re-exported here so existing callers keep
+// importing them from the module they already use.
+export { DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '@healthy-tasks/shared';
 
 export const defaultTime = (hour: number) => `${pad(hour)}:00`;
 
@@ -200,4 +202,14 @@ export function formatAgo(iso: string | null | undefined): string {
   if (dayDiff === 1) return 'Yesterday';
   if (dayDiff < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Today's date as the user's own calendar shows it, `YYYY-MM-DD`, for seeding a
+ * date input. `new Date().toISOString().slice(0,10)` gives the UTC date instead,
+ * which is already tomorrow for anyone whose evening has crossed midnight UTC.
+ */
+export function todayLocalDate(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

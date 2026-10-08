@@ -20,6 +20,7 @@ import {
   type TemplateSummaryDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { todayLocalDate } from '../lib/datetime';
 import { userLabel } from '../components/ui/Avatar';
 import { EmptyState } from '../components/ui/EmptyState';
 import { WeekdayPicker } from '../components/WeekdayPicker';
@@ -847,7 +848,9 @@ function InstantiateModal({
   onClose: () => void;
   onDone: (rootTaskId: number) => void;
 }) {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  // The user's own calendar date, not the UTC one: `toISOString()` would
+  // pre-fill tomorrow for anyone whose evening is already the next day in UTC.
+  const today = useMemo(() => todayLocalDate(), []);
   const [label, setLabel] = useState('');
   const [anchor, setAnchor] = useState(today);
   const [roleMap, setRoleMap] = useState<Record<string, string>>({});
