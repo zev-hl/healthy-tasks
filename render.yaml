@@ -253,12 +253,24 @@ projects:
               # dispatch reminder emails.
               - key: SCHEDULER_ENABLED
                 value: "true"
-              # Recommended: keep Staging email STUBBED (console) even after
-              # Production goes live, so test resets never email real people.
+              # ----- Email -----------------------------------------------------
+              # Staging sends REAL email through the SMTP_* settings below, so a
+              # password reset or reminder on Staging lands in a real inbox - test
+              # with your own accounts. Set EMAIL_PROVIDER back to "console" to
+              # return to log-only mail. Until SMTP_HOST is filled in, sending
+              # fails (the boot log warns about it).
               - key: EMAIL_PROVIDER
-                value: console
-              - key: EMAIL_FROM
-                value: HL Central (staging) <no-reply@healthy-tasks.local>
+                sync: false
+              - key: EMAIL_FROM # a sender address the SMTP provider accepts
+                sync: false
+              - key: SMTP_HOST
+                sync: false
+              - key: SMTP_PORT
+                sync: false
+              - key: SMTP_USER
+                sync: false
+              - key: SMTP_PASS
+                sync: false
               - key: STORAGE_DRIVER
                 value: s3
               - key: S3_BUCKET # SEPARATE bucket from prod, e.g. healthy-tasks-staging

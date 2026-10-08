@@ -146,8 +146,12 @@ reset and admin-created-user emails are **printed to the backend logs, not sent*
 The SMTP path already exists (`backend/src/utils/mailer.ts`) and turns on purely
 via env vars — no code change needed.
 
-- **Staging:** keep `console` even after Production is live, so test flows never
-  email real people.
+- **Staging:** all six email settings (`EMAIL_PROVIDER`, `EMAIL_FROM`,
+  `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`) are `sync: false` and
+  live only in the dashboard. Set `EMAIL_PROVIDER=smtp` there to send real
+  email — until `SMTP_HOST` is set, sending fails — or `console` for log-only
+  mail. With `smtp`, test with your own accounts, since resets and reminders
+  reach real inboxes.
 - **Production:** you want real emails. **Before go-live**, set `EMAIL_PROVIDER=smtp`
   and fill `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` from your provider
   (SendGrid, SES, Postmark, etc.), and set `EMAIL_FROM` to an address on a domain
