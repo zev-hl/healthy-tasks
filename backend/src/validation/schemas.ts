@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CALENDAR_DATE_RE, fromBusinessDate } from '../utils/business-time.js';
+import { CALENDAR_DATE_RE, endOfBusinessDay, fromBusinessDate } from '../utils/business-time.js';
 import {
   COMMENT_MAX_ATTACHMENTS,
   DEFAULT_START_HOUR,
@@ -142,38 +142,37 @@ const optionalDateTime = z
   .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
 
 /**
- * An anchor date for a template schedule.
+ * A date a user picked on a calendar, for a template schedule.
  *
- * A bare `YYYY-MM-DD` from a date picker is a calendar LABEL, not an instant, so
- * it is resolved in the BUSINESS timezone at the default start hour. Plain
- * `z.coerce.date()` resolves it to midnight UTC instead, which lands a day early
- * for anyone west of UTC — that is the bug this replaces. A full ISO timestamp
- * is still accepted as-is, since the caller then meant a specific instant.
+ * A bare `YYYY-MM-DD` is a calendar LABEL, not an instant, so it is resolved in
+ * the BUSINESS timezone by `resolveCalendarDate`. Plain `z.coerce.date()`
+ * resolves it to midnight UTC instead, which lands a day early for anyone west
+ * of UTC — that is the bug this replaces. A full ISO timestamp still passes
+ * through, since the caller then meant a specific instant.
  */
-const businessAnchorDate = z.union([z.string(), z.date()]).transform((value, ctx) => {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
+function businessCalendarDate(resolveCalendarDate: (date: string) => Date) {
+  return z.union([z.string(), z.date()]).transform((value, ctx) => {
+    const invalid = (): never => {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
       return z.NEVER;
-    }
-    return value;
-  }
-  const raw = value.trim();
-  if (CALENDAR_DATE_RE.test(raw)) {
-    const resolved = fromBusinessDate(raw, DEFAULT_START_HOUR);
-    if (Number.isNaN(resolved.getTime())) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
-      return z.NEVER;
-    }
-    return resolved;
-  }
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
-    return z.NEVER;
-  }
-  return parsed;
-});
+    };
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? invalid() : value;
+    const raw = value.trim();
+    const resolved = CALENDAR_DATE_RE.test(raw) ? resolveCalendarDate(raw) : new Date(raw);
+    return Number.isNaN(resolved.getTime()) ? invalid() : resolved;
+  });
+}
+
+/** The day a series starts, resolved at the default start hour. */
+const businessAnchorDate = businessCalendarDate((date) => fromBusinessDate(date, DEFAULT_START_HOUR));
+
+/**
+ * The day a series ends, INCLUSIVE: "ends on Oct 31" admits an occurrence
+ * anchored on Oct 31, whatever time of day it sits at. `seqAllowed` compares
+ * `anchor <= endDate`, so resolving this to midnight UTC excluded the final day
+ * entirely — the same off-by-one as the anchor bug, one field over.
+ */
+const businessEndDate = businessCalendarDate((date) => endOfBusinessDay(date));
 
 const tags = z.array(z.string().trim().min(1).max(50)).max(50);
 
@@ -481,7 +480,7 @@ const recurrenceInputSchema = z
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     endType: z.enum(RECURRENCE_END_TYPES).optional(),
     endDate: z
-      .union([z.null(), z.literal(''), z.coerce.date()])
+      .union([z.null(), z.literal(''), businessEndDate])
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
@@ -611,7 +610,7 @@ export const setTaskRecurrenceSchema = z
     weekdays: weekdaysSchema,
     endType: z.enum(RECURRENCE_END_TYPES).optional(),
     endDate: z
-      .union([z.null(), z.literal(''), z.coerce.date()])
+      .union([z.null(), z.literal(''), businessEndDate])
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),

@@ -7562,6 +7562,18 @@ describe('template anchoring: business-timezone calendar helpers', () => {
     assert.equal(bt.toBusinessDate(bt.offsetFromAnchor(anchor, 0, 19, NY), NY), '2026-10-08');
     assert.equal(bt.toBusinessDate(bt.offsetFromAnchor(anchor, 1, 19, NY), NY), '2026-10-09');
   });
+
+  it('ends a business day at its last millisecond, still on that day', () => {
+    const endOfOct31 = bt.endOfBusinessDay('2026-10-31', NY);
+    assert.equal(endOfOct31.toISOString(), '2026-11-01T03:59:59.999Z');
+    assert.equal(bt.toBusinessDate(endOfOct31, NY), '2026-10-31', 'still Oct 31 locally');
+
+    // An anchor anywhere in that day must fall at or before it — that is what
+    // makes an "ends on" date inclusive ...
+    assert.ok(bt.fromBusinessDate('2026-10-31', 7, NY).getTime() <= endOfOct31.getTime());
+    // ... and the next day must not.
+    assert.ok(bt.fromBusinessDate('2026-11-01', 7, NY).getTime() > endOfOct31.getTime());
+  });
 });
 
 describe('template anchoring: instantiation end to end', () => {
@@ -7638,5 +7650,35 @@ describe('template anchoring: instantiation end to end', () => {
     const t = await request(app).get(`/api/tasks/${res.body.rootTaskId}`).set(auth(admin));
     assert.equal(t.body.startAt, '2026-10-08T11:00:00.000Z', '7:00 AM New York');
     assert.equal(t.body.dueAt, '2026-10-11T23:00:00.000Z', '7:00 PM New York, three days on');
+  });
+
+  it('an "ends on" date includes occurrences anchored on that very day', async () => {
+    const admin = await adminToken();
+    // Weekly from Oct 1, ending Oct 15 — so Oct 1, Oct 8 and Oct 15: three.
+    // Resolved as midnight UTC, the end date sat at Oct 14 8:00 PM New York and
+    // silently dropped the final occurrence.
+    const tpl = await createTemplate(admin, {
+      name: 'Ends on a date',
+      nodes: [{ key: 'root', parentKey: null, name: 'Weekly thing', dueOffsetDays: 0 }],
+      recurrence: {
+        recurrenceType: 'Fixed',
+        intervalCount: 1,
+        intervalUnit: 'Week',
+        anchorDate: '2026-10-01',
+        endType: 'OnDate',
+        endDate: '2026-10-15',
+      },
+    });
+
+    const ghosts = await request(app).get(`/api/templates/${tpl.id}/ghosts`).set(auth(admin));
+    assert.equal(ghosts.status, 200, JSON.stringify(ghosts.body));
+    assert.equal(ghosts.body.length, 3, 'the final day is in the series, not cut off');
+
+    const days = (ghosts.body as { dueAt: string | null }[]).map((g) => g.dueAt);
+    assert.deepEqual(days, [
+      '2026-10-01T23:00:00.000Z',
+      '2026-10-08T23:00:00.000Z',
+      '2026-10-15T23:00:00.000Z',
+    ]);
   });
 });

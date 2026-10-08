@@ -87,6 +87,19 @@ export function addCalendarDays(date: CalendarDate, days: number): CalendarDate 
 }
 
 /**
+ * The LAST moment of this calendar day in the business timezone.
+ *
+ * For an inclusive end date: "ends on Oct 31" should admit anything anchored on
+ * Oct 31, whatever time of day. Resolving such a date at an hour instead would
+ * only work while every anchor happens to sit at that same hour, which is the
+ * kind of coincidence that breaks quietly later.
+ */
+export function endOfBusinessDay(date: CalendarDate, timeZone: string = env.businessTimeZone): Date {
+  const nextMidnight = fromBusinessDate(addCalendarDays(date, 1), 0, timeZone);
+  return new Date(nextMidnight.getTime() - 1);
+}
+
+/**
  * The instant `offsetDays` calendar days from `anchor`, at `hour` business time.
  * This is what turns a template node's relative offset into a real start/due.
  *
