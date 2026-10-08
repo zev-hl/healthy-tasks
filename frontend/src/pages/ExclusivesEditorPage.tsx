@@ -108,13 +108,13 @@ function savedMessage(
   if (onlyToggled && saved.isActive) {
     return {
       title: 'Group is now active',
-      message: `Checking resumes for “${saved.name}”. Its ${asins} are back in the next sweep.`,
+      message: `Monitoring has resumed for “${saved.name}”. Its ${asins} will be checked from the next run.`,
     };
   }
   if (onlyToggled) {
     return {
       title: 'Group is now inactive',
-      message: `Checking has stopped for “${saved.name}”. Its ${asins} stay out of the sweep until it is switched back on.`,
+      message: `Monitoring is paused for “${saved.name}”. Its ${asins} will not be checked until the group is reactivated.`,
     };
   }
   if (saved.isActive) {
@@ -517,30 +517,43 @@ export function ExclusivesEditorPage() {
             <div className="exc-panel-head">
               <span className="exc-panel-title">Listing</span>
               <div className="exc-panel-head-mid">
-                <Segmented
-                  ariaLabel="Monitoring"
-                  // Green on Active, red on Inactive: the colour follows the
-                  // choice rather than the control.
-                  tone={active ? 'ok' : 'danger'}
-                  value={active ? 'active' : 'inactive'}
-                  onChange={(v) => setActive(v === 'active')}
-                  options={[
-                    { value: 'active', label: 'Active' },
-                    { value: 'inactive', label: 'Inactive' },
-                  ]}
-                />
+                {/* Both switches wait for the group to arrive. Their useState
+                    defaults (active, GROUP) are only a starting point for a NEW
+                    group; rendering them before the fetch resolves showed an
+                    inactive group as "Active" for a frame, then visibly flipped.
+                    A placeholder of the same size holds the row steady. */}
+                {loading ? (
+                  <span className="seg-placeholder" aria-hidden="true" />
+                ) : (
+                  <Segmented
+                    ariaLabel="Monitoring"
+                    // Green on Active, red on Inactive: the colour follows the
+                    // choice rather than the control.
+                    tone={active ? 'ok' : 'danger'}
+                    value={active ? 'active' : 'inactive'}
+                    onChange={(v) => setActive(v === 'active')}
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
+                    ]}
+                  />
+                )}
               </div>
               <div className="exc-panel-head-right">
-                <Segmented
-                  ariaLabel="Listing type"
-                  tone="ink"
-                  value={kind}
-                  onChange={setKind}
-                  options={[
-                    { value: 'INDIVIDUAL', label: 'Individual' },
-                    { value: 'GROUP', label: 'Group' },
-                  ]}
-                />
+                {loading ? (
+                  <span className="seg-placeholder" aria-hidden="true" />
+                ) : (
+                  <Segmented
+                    ariaLabel="Listing type"
+                    tone="ink"
+                    value={kind}
+                    onChange={setKind}
+                    options={[
+                      { value: 'INDIVIDUAL', label: 'Individual' },
+                      { value: 'GROUP', label: 'Group' },
+                    ]}
+                  />
+                )}
               </div>
             </div>
             <div className="exc-field">

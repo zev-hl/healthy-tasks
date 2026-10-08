@@ -117,6 +117,27 @@ describe('ExclusivesGroupsPage', () => {
     expect(screen.getByText(/last check .* · next .* · every 30 min/)).toBeInTheDocument();
   });
 
+  it('names no next check when every group is switched off', async () => {
+    getSummary.mockResolvedValue({ ...summary, inactiveCount: 1, asinsMonitored: 0 });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText(/no active group to check/)).toBeInTheDocument();
+    expect(screen.queryByText(/· next /)).not.toBeInTheDocument();
+  });
+
+  it('names no next check when there are no groups at all', async () => {
+    getSummary.mockResolvedValue({
+      ...summary,
+      groupCount: 0,
+      individualCount: 0,
+      inactiveCount: 0,
+      asinsMonitored: 0,
+    });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText(/no active group to check/)).toBeInTheDocument();
+  });
+
   it('says so when automatic checks are switched off', async () => {
     getSummary.mockResolvedValue({ ...summary, sweepEnabled: false, nextSweepAt: null });
     renderWithRouter(<ExclusivesGroupsPage />);
@@ -183,7 +204,7 @@ describe('ExclusivesGroupsPage', () => {
     expect(screen.getByText('1 groups · 0 individual')).toBeInTheDocument();
   });
 
-  it('names how many groups are switched off', async () => {
+  it('counts the kinds only, leaving the inactive tally out', async () => {
     getSummary.mockResolvedValue({
       ...summary,
       groupCount: 3,
@@ -192,14 +213,8 @@ describe('ExclusivesGroupsPage', () => {
     });
     renderWithRouter(<ExclusivesGroupsPage />);
     await settle();
-    expect(screen.getByText('3 groups · 1 individual · 2 inactive groups')).toBeInTheDocument();
-  });
-
-  it('says "group" rather than "groups" when only one is switched off', async () => {
-    getSummary.mockResolvedValue({ ...summary, inactiveCount: 1 });
-    renderWithRouter(<ExclusivesGroupsPage />);
-    await settle();
-    expect(screen.getByText('1 groups · 0 individual · 1 inactive group')).toBeInTheDocument();
+    expect(screen.getByText('3 groups · 1 individual')).toBeInTheDocument();
+    expect(screen.queryByText(/inactive/)).not.toBeInTheDocument();
   });
   it('marks an inactive group and leaves an active one plain', async () => {
     queryGroups.mockResolvedValue(

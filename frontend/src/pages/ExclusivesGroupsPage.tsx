@@ -47,22 +47,25 @@ function countPillClass(n: number): string {
 }
 
 /**
- * "3 groups · 1 individual · 2 inactive groups" — the kind counts cover every
- * group, and the inactive tally is appended so it is clear at a glance how
- * many are not being checked.
+ * "3 groups · 1 individual" — the kind counts, covering every group. The
+ * inactive tally used to be appended here; the run line beside it already says
+ * when nothing is being checked, and the table shows which rows are off.
  */
 function statLine(s: ExclusivesSummaryDto): string {
-  const parts = [`${s.groupCount} groups`, `${s.individualCount} individual`];
-  if (s.inactiveCount > 0) {
-    parts.push(`${s.inactiveCount} inactive group${s.inactiveCount === 1 ? '' : 's'}`);
-  }
-  return parts.join(' · ');
+  return `${s.groupCount} groups · ${s.individualCount} individual`;
 }
 /** "last run 2:30 PM · next run 3:00 PM", from the real sweep times. */
 function runLine(summary: ExclusivesSummaryDto | null): string {
   if (!summary) return 'Loading…';
   const last = summary.lastSweepAt ? formatTimestamp(summary.lastSweepAt) : 'never';
   if (!summary.sweepEnabled) return `last check ${last} · automatic checks are off`;
+  // A next-check time is a promise that something will be checked. When every
+  // group is switched off — or there are none — the timer still ticks but has
+  // nothing to do, and naming a time would be misleading. `asinsMonitored`
+  // already counts only what sits in an active group.
+  const activeGroups = summary.groupCount + summary.individualCount - summary.inactiveCount;
+  if (activeGroups <= 0) return `last check ${last} · no active group to check`;
+  if (summary.asinsMonitored === 0) return `last check ${last} · no ASINs to check`;
   const next = summary.nextSweepAt ? formatTimestamp(summary.nextSweepAt) : 'due now';
   return `last check ${last} · next ${next} · every ${summary.sweepMinutes} min`;
 }

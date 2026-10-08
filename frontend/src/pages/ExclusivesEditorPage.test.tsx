@@ -459,7 +459,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('Group is now inactive');
-    expect(dialog).toHaveTextContent('Checking has stopped');
+    expect(dialog).toHaveTextContent('Monitoring is paused');
     expect(dialog).not.toHaveTextContent('now watches');
   });
 
@@ -476,7 +476,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('Group is now active');
-    expect(dialog).toHaveTextContent('Checking resumes');
+    expect(dialog).toHaveTextContent('Monitoring has resumed');
   });
 
   it('still reports a normal save when the switch moved alongside an edit', async () => {
