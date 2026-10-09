@@ -25,7 +25,12 @@ import {
 } from '../services/user.service.js';
 import { createPasswordReset } from '../services/auth.service.js';
 import { toActiveUserDto, toUserDto, toUserRef } from '../services/user.mapper.js';
-import { sendGoogleWelcomeEmail, sendPasswordResetEmail } from '../utils/mailer.js';
+import {
+  sendGoogleWelcomeEmail,
+  sendInBackground,
+  sendNewAccountEmail,
+  sendPasswordResetEmail,
+} from '../utils/mailer.js';
 import { isCompanyAccount } from '../utils/allowed-domain.js';
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
@@ -108,15 +113,21 @@ export async function createUserController(req: Request, res: Response): Promise
   const input = req.body as CreateUserInput;
   const user = await createUser(input);
 
+  // The emails go out in the background: the user is saved either way, and the
+  // admin should not wait on the mail provider to hear so.
   if (isCompanyAccount(user.email) && env.google.clientId) {
-    await sendGoogleWelcomeEmail(user.email, env.frontendUrl);
+    sendInBackground(`welcome to ${user.email}`, () =>
+      sendGoogleWelcomeEmail(user.email, env.frontendUrl),
+    );
     const body: AdminResetLinkResponse = { user: toUserDto(user), signInMethod: 'google' };
     res.status(201).json(body);
     return;
   }
 
   const ticket = await createPasswordReset(user.id);
-  await sendPasswordResetEmail(user.email, ticket.resetLink);
+  sendInBackground(`welcome to ${user.email}`, () =>
+    sendNewAccountEmail(user.email, ticket.resetLink, ticket.expiresAt),
+  );
   const body: AdminResetLinkResponse = {
     user: toUserDto(user),
     resetLink: ticket.resetLink,
@@ -157,7 +168,9 @@ export async function adminResetPasswordController(req: Request, res: Response):
   const { id } = req.params as { id: string };
   const user = await getUserById(id);
   const ticket = await createPasswordReset(user.id);
-  await sendPasswordResetEmail(user.email, ticket.resetLink);
+  sendInBackground(`password reset to ${user.email}`, () =>
+    sendPasswordResetEmail(user.email, ticket.resetLink),
+  );
 
   const body: AdminResetLinkResponse = {
     user: toUserDto(user),

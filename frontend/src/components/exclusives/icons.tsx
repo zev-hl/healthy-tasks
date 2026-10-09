@@ -14,6 +14,20 @@ const base = {
   strokeLinejoin: 'round' as const,
 };
 
+/**
+ * A minus in a circle — marks a group that is switched off in the Alert Groups
+ * list. A minus rather than a cross: the group still exists and still holds its
+ * ASINs, it is only not being checked.
+ */
+export function InactiveIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...base} width={size} height={size} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  );
+}
+
 /** A caution — used by the amber banner when ASINs belong to another group. */
 export function WarningIcon({ size = 16 }: { size?: number }) {
   return (

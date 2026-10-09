@@ -11,7 +11,7 @@ import {
 import { getUserById } from '../services/user.service.js';
 import { assertCanRecoverPassword } from '../utils/allowed-domain.js';
 import { toUserDto } from '../services/user.mapper.js';
-import { sendPasswordResetEmail } from '../utils/mailer.js';
+import { sendInBackground, sendPasswordResetEmail } from '../utils/mailer.js';
 import type {
   LoginInput,
   GoogleLoginInput,
@@ -59,7 +59,11 @@ export async function forgotPasswordController(req: Request, res: Response): Pro
   const user = await findResettableUserByEmail(email);
   if (user) {
     const ticket = await createPasswordReset(user.id);
-    await sendPasswordResetEmail(user.email, ticket.resetLink);
+    // In the background: the reply never waits on the mail provider, which also
+    // keeps a registered address from answering seconds slower than an unknown one.
+    sendInBackground(`password reset to ${user.email}`, () =>
+      sendPasswordResetEmail(user.email, ticket.resetLink),
+    );
   }
   res.json({ message: 'If that email is registered, a reset link has been sent.' });
 }

@@ -24,6 +24,7 @@ import { DeleteGroupModal } from '../components/exclusives/DeleteGroupModal';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { StatusDot } from '../components/exclusives/StatusDot';
 import { GroupAlertsPanel } from '../components/exclusives/GroupAlertsPanel';
+import { InactiveIcon } from '../components/exclusives/icons';
 import { NoticeModal } from '../components/exclusives/NoticeModal';
 
 const COLUMNS = 9;
@@ -45,11 +46,26 @@ function countPillClass(n: number): string {
   return 'exc-count';
 }
 
+/**
+ * "3 groups · 1 individual" — the kind counts, covering every group. The
+ * inactive tally used to be appended here; the run line beside it already says
+ * when nothing is being checked, and the table shows which rows are off.
+ */
+function statLine(s: ExclusivesSummaryDto): string {
+  return `${s.groupCount} groups · ${s.individualCount} individual`;
+}
 /** "last run 2:30 PM · next run 3:00 PM", from the real sweep times. */
 function runLine(summary: ExclusivesSummaryDto | null): string {
   if (!summary) return 'Loading…';
   const last = summary.lastSweepAt ? formatTimestamp(summary.lastSweepAt) : 'never';
   if (!summary.sweepEnabled) return `last check ${last} · automatic checks are off`;
+  // A next-check time is a promise that something will be checked. When every
+  // group is switched off — or there are none — the timer still ticks but has
+  // nothing to do, and naming a time would be misleading. `asinsMonitored`
+  // already counts only what sits in an active group.
+  const activeGroups = summary.groupCount + summary.individualCount - summary.inactiveCount;
+  if (activeGroups <= 0) return `last check ${last} · no active group to check`;
+  if (summary.asinsMonitored === 0) return `last check ${last} · no ASINs to check`;
   const next = summary.nextSweepAt ? formatTimestamp(summary.nextSweepAt) : 'due now';
   return `last check ${last} · next ${next} · every ${summary.sweepMinutes} min`;
 }
@@ -167,9 +183,7 @@ export function ExclusivesGroupsPage() {
         <div className="exc-stat">
           <span className="exc-stat-value">{summary ? summary.asinsMonitored : '—'}</span>
           <span className="exc-stat-label">ASINs monitored</span>
-          <span className="exc-stat-sub">
-            {summary ? `${summary.groupCount} groups · ${summary.individualCount} individual` : ' '}
-          </span>
+          <span className="exc-stat-sub">{summary ? statLine(summary) : ' '}</span>
         </div>
       </div>
 
@@ -226,8 +240,20 @@ export function ExclusivesGroupsPage() {
                 const hot =
                   g.latestAlertAt !== null && Date.now() - Date.parse(g.latestAlertAt) < HOT_MS;
                 return (
-                  <tr key={g.id}>
+                  // A switched-off group is greyed out and marked, so the list
+                  // says at a glance which groups are not being checked.
+                  <tr key={g.id} className={g.isActive ? undefined : 'exc-row-inactive'}>
                     <td className="exc-col-name">
+                      {!g.isActive && (
+                        <span
+                          className="exc-inactive-mark"
+                          role="img"
+                          aria-label="Inactive — not being checked"
+                          title="Inactive — not being checked"
+                        >
+                          <InactiveIcon size={15} />
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="exc-group-name exc-group-name-btn"
