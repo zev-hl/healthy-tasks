@@ -32,6 +32,16 @@ export const env = {
 
   databaseUrl: required('DATABASE_URL'),
 
+  // The zone to assume when the server must turn a bare calendar date into a
+  // real instant and NO user's browser is available to ask. Today that means
+  // expanding a template's relative day offsets; later it will also mean
+  // formatting dates inside server-rendered email.
+  //
+  // NOT "the app's timezone". Staff are spread across several countries, and
+  // dates a user types into a task form are already converted in that user's own
+  // zone, which is correct for an absolute deadline. Do not apply this to them.
+  businessTimeZone: optional('BUSINESS_TIMEZONE', 'America/New_York'),
+
   // Whether this process runs the recurrence scheduler (Phase 14 / S3). Default
   // on; set false on staging, where an always-ticking timer keeps the Neon
   // compute awake 24/7 for no benefit. NOTE: with the scheduler off, recurring

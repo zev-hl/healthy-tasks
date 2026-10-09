@@ -92,6 +92,13 @@ projects:
                 value: production
               - key: JWT_EXPIRES_IN
                 value: 8h
+              # The zone to assume when the server must turn a bare calendar date
+              # into a real instant and no user's browser is there to ask -
+              # today, expanding a template's relative day offsets. NOT "the
+              # app's timezone": staff are in several countries, and dates typed
+              # into a task form are already converted in that user's own zone.
+              - key: BUSINESS_TIMEZONE
+                value: America/New_York
               - key: PASSWORD_RESET_EXPIRES_IN
                 value: 60m
               # ----- Email -----------------------------------------------------
@@ -232,6 +239,13 @@ projects:
                 value: production # controls app behavior (no dev stack traces), not which data it touches
               - key: JWT_EXPIRES_IN
                 value: 8h
+              # The zone to assume when the server must turn a bare calendar date
+              # into a real instant and no user's browser is there to ask -
+              # today, expanding a template's relative day offsets. NOT "the
+              # app's timezone": staff are in several countries, and dates typed
+              # into a task form are already converted in that user's own zone.
+              - key: BUSINESS_TIMEZONE
+                value: America/New_York
               - key: PASSWORD_RESET_EXPIRES_IN
                 value: 60m
               # Phase 14: the recurrence scheduler RUNS on Staging.

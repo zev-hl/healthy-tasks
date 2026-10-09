@@ -24,6 +24,8 @@ export interface GroupListingInput {
 export interface GroupWriteInput {
   name?: string;
   groupType: ExclusivesGroupType;
+  /** Undefined means "leave it as it is" on update, and active on create. */
+  isActive?: boolean;
   listings: GroupListingInput[];
   listingsMode?: ExclusivesListingsMode;
   /** Take an ASIN that another group watches, keeping its history. */
@@ -185,7 +187,13 @@ export async function createGroup(
 
   const id = await prisma.$transaction(async (tx) => {
     const group = await tx.alertGroup.create({
-      data: { name, groupType: input.groupType, createdById: actorId },
+      // A new group watches straight away unless it was created switched off.
+      data: {
+        name,
+        groupType: input.groupType,
+        isActive: input.isActive ?? true,
+        createdById: actorId,
+      },
     });
     await tx.alertSetting.createMany({ data: settingRows(group.id, input.settings) });
 
@@ -247,7 +255,14 @@ export async function updateGroup(
     // and the next save's stale check has something to compare against.
     await tx.alertGroup.update({
       where: { id },
-      data: { name, groupType: input.groupType, updatedById: actorId },
+      data: {
+        name,
+        groupType: input.groupType,
+        // Only when the caller said so: an older client that does not know
+        // about the toggle must not switch a group back on by omission.
+        ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
+        updatedById: actorId,
+      },
     });
 
     if (input.settings) {

@@ -15,10 +15,13 @@ export async function getExclusivesSummary(now: Date = new Date()): Promise<Excl
   const since = new Date(now.getTime() - ALERTS_WINDOW_MS);
   const mode = exclusivesSweepMode();
 
-  const [alerts24h, asinsMonitored, byType, lastSweep] = await Promise.all([
+  const [alerts24h, asinsMonitored, byType, inactiveCount, lastSweep] = await Promise.all([
     prisma.alertLog.count({ where: { createdAt: { gte: since } } }),
-    prisma.listing.count(),
+    // Only what is really being checked: a switched-off group's ASINs are
+    // skipped by the sweep, so counting them here would overstate the number.
+    prisma.listing.count({ where: { group: { isActive: true } } }),
     prisma.alertGroup.groupBy({ by: ['groupType'], _count: { _all: true } }),
+    prisma.alertGroup.count({ where: { isActive: false } }),
     lastSuccessfulSweepAt(),
   ]);
 
@@ -33,6 +36,7 @@ export async function getExclusivesSummary(now: Date = new Date()): Promise<Excl
     asinsMonitored,
     groupCount: countOf('GROUP'),
     individualCount: countOf('INDIVIDUAL'),
+    inactiveCount,
     lastSweepAt: lastSweep?.toISOString() ?? null,
     nextSweepAt: nextSweepAt?.toISOString() ?? null,
     sweepEnabled: mode.on,

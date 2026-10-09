@@ -7,6 +7,8 @@ import { getStorage } from '../storage/index.js';
 import { assertCanEditTask } from './access-control.service.js';
 import {
   TERMINAL_TASK_STATUSES,
+  DEFAULT_DUE_HOUR,
+  DEFAULT_START_HOUR,
   type ApplyToFutureResultDto,
   type FutureOccurrenceDto,
   type GhostOccurrenceDto,
@@ -30,7 +32,8 @@ import {
   toTemplateOccurrenceDto,
   toTemplateSummaryDto,
 } from './template.mapper.js';
-import { addDays, fixedAnchorForSeq, isWithinLeadTime, seqAllowed, upcomingFixedSeqs, type RecurrenceConfig } from './recurrence.js';
+import { offsetFromAnchor } from '../utils/business-time.js';
+import { fixedAnchorForSeq, isWithinLeadTime, seqAllowed, upcomingFixedSeqs, type RecurrenceConfig } from './recurrence.js';
 import { carryForwardAssignees, generateOccurrence } from './template-instantiation.service.js';
 import { getMaterializeLeadDays } from './app-settings.service.js';
 import {
@@ -649,8 +652,16 @@ export async function getTemplateGhosts(id: number, now: Date): Promise<GhostOcc
       sourceName: template.name,
       seq,
       name: rootName,
-      startAt: root.startOffsetDays != null ? addDays(anchor, root.startOffsetDays).toISOString() : null,
-      dueAt: root.dueOffsetDays != null ? addDays(anchor, root.dueOffsetDays).toISOString() : null,
+      // Same business-zone rule as real instantiation, so a ghost preview shows
+      // the dates the occurrence will actually get.
+      startAt:
+        root.startOffsetDays != null
+          ? offsetFromAnchor(anchor, root.startOffsetDays, DEFAULT_START_HOUR).toISOString()
+          : null,
+      dueAt:
+        root.dueOffsetDays != null
+          ? offsetFromAnchor(anchor, root.dueOffsetDays, DEFAULT_DUE_HOUR).toISOString()
+          : null,
       priority: root.defaultPriority,
       withinLeadTime: isWithinLeadTime(anchor, leadDays, now, earliestOffset),
     };
@@ -762,8 +773,14 @@ export async function applyTemplateToOccurrences(
 
         const newName = occ.instanceLabel ? `${occ.instanceLabel}: ${node.name}` : node.name;
         const newDescription = node.description ?? null;
-        const newStart = node.startOffsetDays != null ? addDays(occ.anchorStart, node.startOffsetDays) : null;
-        const newDue = node.dueOffsetDays != null ? addDays(occ.anchorStart, node.dueOffsetDays) : null;
+        const newStart =
+          node.startOffsetDays != null
+            ? offsetFromAnchor(occ.anchorStart, node.startOffsetDays, DEFAULT_START_HOUR)
+            : null;
+        const newDue =
+          node.dueOffsetDays != null
+            ? offsetFromAnchor(occ.anchorStart, node.dueOffsetDays, DEFAULT_DUE_HOUR)
+            : null;
 
         const descriptionChanged = newDescription !== task.description;
         const changed =

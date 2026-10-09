@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { CALENDAR_DATE_RE, endOfBusinessDay, fromBusinessDate } from '../utils/business-time.js';
 import {
   COMMENT_MAX_ATTACHMENTS,
+  DEFAULT_START_HOUR,
   ROLES,
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -138,6 +140,39 @@ const optionalDateTime = z
   .union([z.null(), z.literal(''), z.coerce.date()])
   .optional()
   .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+
+/**
+ * A date a user picked on a calendar, for a template schedule.
+ *
+ * A bare `YYYY-MM-DD` is a calendar LABEL, not an instant, so it is resolved in
+ * the BUSINESS timezone by `resolveCalendarDate`. Plain `z.coerce.date()`
+ * resolves it to midnight UTC instead, which lands a day early for anyone west
+ * of UTC — that is the bug this replaces. A full ISO timestamp still passes
+ * through, since the caller then meant a specific instant.
+ */
+function businessCalendarDate(resolveCalendarDate: (date: string) => Date) {
+  return z.union([z.string(), z.date()]).transform((value, ctx) => {
+    const invalid = (): never => {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date' });
+      return z.NEVER;
+    };
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? invalid() : value;
+    const raw = value.trim();
+    const resolved = CALENDAR_DATE_RE.test(raw) ? resolveCalendarDate(raw) : new Date(raw);
+    return Number.isNaN(resolved.getTime()) ? invalid() : resolved;
+  });
+}
+
+/** The day a series starts, resolved at the default start hour. */
+const businessAnchorDate = businessCalendarDate((date) => fromBusinessDate(date, DEFAULT_START_HOUR));
+
+/**
+ * The day a series ends, INCLUSIVE: "ends on Oct 31" admits an occurrence
+ * anchored on Oct 31, whatever time of day it sits at. `seqAllowed` compares
+ * `anchor <= endDate`, so resolving this to midnight UTC excluded the final day
+ * entirely — the same off-by-one as the anchor bug, one field over.
+ */
+const businessEndDate = businessCalendarDate((date) => endOfBusinessDay(date));
 
 const tags = z.array(z.string().trim().min(1).max(50)).max(50);
 
@@ -440,12 +475,12 @@ const recurrenceInputSchema = z
     intervalUnit: z.enum(RECURRENCE_UNITS).nullable().optional(),
     weekdays: weekdaysSchema,
     anchorDate: z
-      .union([z.null(), z.literal(''), z.coerce.date()])
+      .union([z.null(), z.literal(''), businessAnchorDate])
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     endType: z.enum(RECURRENCE_END_TYPES).optional(),
     endDate: z
-      .union([z.null(), z.literal(''), z.coerce.date()])
+      .union([z.null(), z.literal(''), businessEndDate])
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
@@ -545,7 +580,7 @@ export const instantiateTemplateSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
-  anchorStart: z.coerce.date(),
+  anchorStart: businessAnchorDate,
   roleAssignments: z
     .array(
       z.object({
@@ -575,7 +610,7 @@ export const setTaskRecurrenceSchema = z
     weekdays: weekdaysSchema,
     endType: z.enum(RECURRENCE_END_TYPES).optional(),
     endDate: z
-      .union([z.null(), z.literal(''), z.coerce.date()])
+      .union([z.null(), z.literal(''), businessEndDate])
       .optional()
       .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
     maxOccurrences: z.number().int().min(1).max(1000).nullable().optional(),
@@ -781,6 +816,9 @@ const exclusivesGroupListing = z.object({
 const exclusivesGroupBody = {
   name: z.string().trim().max(200).optional(),
   groupType: z.enum(EXCLUSIVES_GROUP_TYPES),
+  // Left out means active: a create that predates the toggle, or a caller that
+  // does not care, should not silently switch a group off.
+  isActive: z.boolean().optional(),
   listings: z.array(exclusivesGroupListing).max(EXCLUSIVES_LOOKUP_MAX_ASINS).default([]),
   listingsMode: z.enum(EXCLUSIVES_LISTINGS_MODES).optional(),
   moveExisting: z.boolean().optional(),

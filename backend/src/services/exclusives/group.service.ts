@@ -147,6 +147,7 @@ export async function queryGroups(
     id: g.id,
     name: g.name,
     groupType: g.groupType as ExclusivesGroupType,
+    isActive: g.isActive,
     listingCount: g._count.listings,
     asinPreview: preview.get(g.id) ?? [],
     alerts24h: recentById.get(g.id) ?? 0,

@@ -42,6 +42,7 @@ const group = (over: Partial<ExclusivesGroupDto> = {}): ExclusivesGroupDto => ({
   id: 7,
   name: 'Versure Exclusives',
   groupType: 'GROUP',
+  isActive: true,
   listings: [
     {
       id: 1,
@@ -417,6 +418,87 @@ describe('ExclusivesEditorPage — an existing group', () => {
     expect(screen.getByText('1 of 12 on')).toBeInTheDocument();
   });
 
+  it('shows a group as Active or Inactive, matching what was saved', async () => {
+    getGroup.mockResolvedValue(group({ isActive: false }));
+    editEditor();
+    await settle();
+
+    expect(screen.getByRole('button', { name: 'Inactive' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Active' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('switches a group off and saves it with the rest of the form', async () => {
+    editEditor();
+    await settle();
+
+    // It starts on, and flipping it is a change like any other field.
+    expect(screen.getByRole('button', { name: 'Active' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
+    await settle();
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await settle();
+    expect(updateGroup).toHaveBeenCalledWith(7, expect.objectContaining({ isActive: false }));
+  });
+
+  it('reports switching a group off as its own thing, not as an edit', async () => {
+    updateGroup.mockResolvedValue(group({ isActive: false }));
+    editEditor();
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await settle();
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Group is now inactive');
+    expect(dialog).toHaveTextContent('Monitoring is paused');
+    expect(dialog).not.toHaveTextContent('now watches');
+  });
+
+  it('reports switching a group back on as checking resuming', async () => {
+    getGroup.mockResolvedValue(group({ isActive: false }));
+    updateGroup.mockResolvedValue(group({ isActive: true }));
+    editEditor();
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Active' }));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await settle();
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Group is now active');
+    expect(dialog).toHaveTextContent('Monitoring has resumed');
+  });
+
+  it('still reports a normal save when the switch moved alongside an edit', async () => {
+    updateGroup.mockResolvedValue(group({ isActive: false }));
+    editEditor();
+    await settle();
+
+    makeDirty();
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await settle();
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Group saved successfully');
+    expect(dialog).toHaveTextContent('is switched off');
+  });
+  it('starts a brand new group active', async () => {
+    newEditor();
+    await settle();
+    expect(screen.getByRole('button', { name: 'Active' })).toHaveAttribute('aria-pressed', 'true');
+  });
   it('only says "Unsaved changes" once something has changed', async () => {
     editEditor();
     await settle();
@@ -482,7 +564,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
 
     const dialog = screen.getByRole('alertdialog');
     expect(dialog).toHaveTextContent('Group saved successfully');
-    expect(dialog).toHaveTextContent('now watches 1 ASIN(s)');
+    expect(dialog).toHaveTextContent('now watches 1 ASIN');
     // Still on the editor until it is acknowledged.
     expect(screen.queryByText('Alert Groups screen')).not.toBeInTheDocument();
 
