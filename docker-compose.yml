@@ -81,8 +81,12 @@ services:
       PASSWORD_RESET_EXPIRES_IN: '60m'
       FRONTEND_URL: 'http://localhost:5173'
       CORS_ORIGIN: 'http://localhost:5173'
-      EMAIL_PROVIDER: 'console'
-      EMAIL_FROM: 'HL Central <no-reply@healthy-tasks.local>'
+      # Both fall back to the console mailer, so a checkout with no mail
+      # settings behaves as before. Set them in .env to send for real —
+      # without these fallbacks the literals here would override .env and the
+      # switch would silently do nothing.
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
+      EMAIL_FROM: ${EMAIL_FROM:-HL Central <no-reply@healthy-tasks.local>}
       SEED_ADMIN_EMAIL: 'admin@healthy-tasks.local'
       SEED_ADMIN_PASSWORD: 'ChangeMe123!'
       # Google sign-in. Taken from .env so the client id is not committed, with

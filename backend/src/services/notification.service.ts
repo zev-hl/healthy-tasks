@@ -1,6 +1,6 @@
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
-import { mailer } from '../utils/mailer.js';
+import { mailer, sendInBackground } from '../utils/mailer.js';
 import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
@@ -341,16 +341,19 @@ async function emailMention(taskId: number, commentId: string, userIds: string[]
   ]);
   if (!task) return;
   const by = comment?.author.email ?? 'someone';
+  // In the background, so posting the comment does not wait on the mail provider.
   for (const u of users) {
-    await mailer.send({
-      to: u.email,
-      subject: `You were mentioned on “${task.name}”`,
-      text: [
-        `${by} mentioned you in a comment on task #${taskId} (“${task.name}”).`,
-        '',
-        `Open the task: ${taskLink(taskId)}`,
-      ].join('\n'),
-    });
+    sendInBackground(`mention to ${u.email}`, () =>
+      mailer.send({
+        to: u.email,
+        subject: `You were mentioned on “${task.name}”`,
+        text: [
+          `${by} mentioned you in a comment on task #${taskId} (“${task.name}”).`,
+          '',
+          `Open the task: ${taskLink(taskId)}`,
+        ].join('\n'),
+      }),
+    );
   }
 }
 
@@ -361,15 +364,18 @@ async function emailAssignment(userId: string, taskId: number, action: AssignAct
   ]);
   if (!task || !user) return;
   const verb = action === 'added' ? 'assigned to' : 'unassigned from';
-  await mailer.send({
-    to: user.email,
-    subject: `You were ${verb} “${task.name}”`,
-    text: [
-      `You were ${verb} task #${taskId} (“${task.name}”).`,
-      '',
-      `Open the task: ${taskLink(taskId)}`,
-    ].join('\n'),
-  });
+  // In the background, so saving the task does not wait on the mail provider.
+  sendInBackground(`assignment to ${user.email}`, () =>
+    mailer.send({
+      to: user.email,
+      subject: `You were ${verb} “${task.name}”`,
+      text: [
+        `You were ${verb} task #${taskId} (“${task.name}”).`,
+        '',
+        `Open the task: ${taskLink(taskId)}`,
+      ].join('\n'),
+    }),
+  );
 }
 
 async function emailReminder(to: string, r: DueReminder): Promise<void> {
