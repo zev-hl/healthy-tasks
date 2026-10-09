@@ -174,6 +174,28 @@ projects:
                 sync: false
               - key: SEED_ADMIN_PASSWORD
                 sync: false
+              # ----- Exclusives / Amazon SP-API (HLAI-71) ----------------------
+              # Same seller account and same rules as Staging: the rate limit
+              # belongs to the account, so only one environment may have
+              # EXCLUSIVES_SWEEP_ENABLED="true" at a time — switch Staging's off
+              # when Production's goes on. All entered in the dashboard
+              # (sync: false). Left unset, Amazon stays disconnected and the
+              # sweep never runs. The sweep also needs the scheduler, which is on
+              # here by default (SCHEDULER_ENABLED is not set for Production).
+              - key: SP_API_CLIENT_ID
+                sync: false
+              - key: SP_API_CLIENT_SECRET
+                sync: false
+              - key: SP_API_REFRESH_TOKEN
+                sync: false
+              - key: SP_API_MERCHANT_TOKEN # own Merchant ID; used for Buy Box win/loss
+                sync: false
+              - key: SELLER_STORE_NAME # store name shown in alert wording
+                sync: false
+              - key: EXCLUSIVES_SWEEP_ENABLED # "true" only where alerts should run
+                sync: false
+              - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
+                sync: false
 
           # -------------------------------------------------------------------
           # Frontend — Vite React SPA, served as static files.
@@ -313,24 +335,14 @@ projects:
               # ONLY — no password, and no self-service reset. Confirm Google
               # sign-in actually works here before syncing, and keep the staging
               # seed admin on a non-company address, or there is no way back in.
+              # Same rule as Production, so testing the Google button here needs a
+              # real Workspace address, not a personal Gmail.
               - key: GOOGLE_ALLOWED_DOMAIN
                 value: healthlifeny.com
               - key: SEED_ADMIN_EMAIL
                 sync: false
               - key: SEED_ADMIN_PASSWORD
                 sync: false
-              # ----- Google sign-in --------------------------------------------
-              # Staging's OWN OAuth client, not production's: an origin list is
-              # per client, and staging's site is a different address.
-              #
-              # Same domain rule as production, so staging behaves identically:
-              # a @healthlifeny.com account signs in with Google and has no
-              # password, and everyone else uses the form. Testing here with a
-              # personal Gmail therefore needs a real Workspace address instead.
-              - key: GOOGLE_CLIENT_ID
-                sync: false
-              - key: GOOGLE_ALLOWED_DOMAIN
-                value: healthlifeny.com
               # ----- Exclusives / Amazon SP-API (HLAI-71) ----------------------
               # Read-only access to ONE seller account. The rate limit belongs to
               # that account, not to the server, so only one environment should
