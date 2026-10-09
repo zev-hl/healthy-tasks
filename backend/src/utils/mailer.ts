@@ -78,7 +78,69 @@ class SmtpMailer implements Mailer {
 export const mailer: Mailer =
   env.email.provider === 'smtp' ? new SmtpMailer() : new ConsoleMailer();
 
-/** Convenience helper for the password-reset email. */
+/**
+ * Hand an email to the mailer without making the caller wait for it.
+ *
+ * An SMTP send logs in to the provider first, which takes a second or more, so
+ * awaiting it held every response that sends mail (adding a user, a reset, a
+ * mention) until the provider answered. By the time a caller gets here its own
+ * work is saved, so a failed send must not turn the request into an error
+ * either: it is logged instead. Never rethrown — a rejection nobody awaits
+ * would stop the Node process.
+ *
+ * `send` starts synchronously, so the console mailer's outbox is already filled
+ * when this returns.
+ */
+export function sendInBackground(what: string, send: () => Promise<void>): void {
+  send().catch((err: unknown) => {
+    // eslint-disable-next-line no-console
+    console.error(`Email not sent (${what}):`, err);
+  });
+}
+
+/** "60 minutes", "24 hours", "7 days" — how long a link stays valid from now. */
+function timeLeft(until: Date): string {
+  const minutes = Math.max(1, Math.round((until.getTime() - Date.now()) / 60_000));
+  const [n, unit] =
+    minutes < 120
+      ? [minutes, 'minute']
+      : minutes < 48 * 60
+        ? [Math.round(minutes / 60), 'hour']
+        : [Math.round(minutes / (24 * 60)), 'day'];
+  return `${n} ${unit}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * The first email a new password account receives: a welcome, then the link
+ * to choose a password. The link is an ordinary reset link; only the wording
+ * differs, because "a password reset was requested" makes no sense to someone
+ * who has never had a password.
+ */
+export async function sendNewAccountEmail(
+  to: string,
+  setPasswordLink: string,
+  expiresAt: Date,
+): Promise<void> {
+  await mailer.send({
+    to,
+    subject: 'Welcome to HL Central',
+    text: [
+      'Welcome aboard!',
+      '',
+      `An HL Central account has been created for you. You'll sign in with this email address: ${to}`,
+      '',
+      'To get started, open this link and choose your password:',
+      setPasswordLink,
+      '',
+      `The link works for the next ${timeLeft(expiresAt)}. If it has expired, use "Forgot password" ` +
+        'on the sign-in page, or ask an administrator to send you a new one.',
+      '',
+      'See you inside,',
+      'The HL Central team',
+    ].join('\n'),
+  });
+}
+
 /**
  * Sent instead of a reset link when the new account can use Sign in with
  * Google. There is no password to set, so a reset link would only confuse —
@@ -101,6 +163,7 @@ export async function sendGoogleWelcomeEmail(to: string, signInUrl: string): Pro
   });
 }
 
+/** Convenience helper for the password-reset email. */
 export async function sendPasswordResetEmail(to: string, resetLink: string): Promise<void> {
   await mailer.send({
     to,
