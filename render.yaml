@@ -107,9 +107,9 @@ projects:
               # Leaving it "console" keeps reset links in the server logs only
               # (users will NOT receive reset emails). See DEPLOY_RENDER.md.
               - key: EMAIL_PROVIDER
-                value: console # change to "smtp" once a provider is wired up
+                sync: false # change to "smtp" once a provider is wired up
               - key: EMAIL_FROM
-                value: HL Central <no-reply@healthy-tasks.local>
+                sync: false
               - key: SMTP_HOST # only used when EMAIL_PROVIDER=smtp
                 sync: false
               - key: SMTP_PORT
