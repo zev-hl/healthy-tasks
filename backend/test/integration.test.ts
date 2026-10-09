@@ -7220,6 +7220,78 @@ describe('exclusives: pass runner (HLAI-71 6d)', () => {
     assert.equal((await P.runExclusivesPass()).status, 'completed');
   });
 
+  // --- Active/Inactive groups (backlog item 3) ------------------------------
+
+  /** A group that watches price changes, switched on or off, with one listing. */
+  async function seedGroup(name: string, isActive: boolean, sku: string) {
+    const admin = await prisma.user.findFirstOrThrow({ where: { email: ADMIN_EMAIL } });
+    const group = await prisma.alertGroup.create({
+      data: {
+        name,
+        groupType: 'GROUP',
+        isActive,
+        createdById: admin.id,
+        settings: { create: [{ alertType: 'PriceChanged', mode: 'immediate' }] },
+      },
+    });
+    return prisma.listing.create({
+      data: {
+        groupId: group.id,
+        marketplace: 'USA',
+        asin: `B0${sku}`,
+        sku,
+        createdById: admin.id,
+      },
+    });
+  }
+
+  it('sweeps only the ASINs in active groups', async () => {
+    const watched = await seedGroup('Switched on', true, 'A');
+    const ignored = await seedGroup('Switched off', false, 'B');
+    fakeAmazon({ items: [plainListing('A', 10), plainListing('B', 20)] });
+
+    const report = await P.runExclusivesPass();
+    assert.equal(report.status, 'completed');
+    assert.equal(report.ingestion?.listingCount, 1, 'only the active group was fetched');
+    assert.equal(report.ingestion?.inactiveCount, 1);
+
+    assert.equal(await prisma.listingSnapshot.count({ where: { listingId: watched.id } }), 1);
+    assert.equal(
+      await prisma.listingSnapshot.count({ where: { listingId: ignored.id } }),
+      0,
+      'a switched-off group keeps no saved state from this run',
+    );
+  });
+
+  it('writes no alerts for a group switched off between passes', async () => {
+    const listing = await seedGroup('Goes quiet', true, 'A');
+    const world: FakeAmazonWorld = { items: [plainListing('A', 10)] };
+    fakeAmazon(world);
+    await P.runExclusivesPass(); // baseline
+
+    await prisma.alertGroup.update({
+      where: { id: listing.groupId },
+      data: { isActive: false },
+    });
+
+    world.items = [plainListing('A', 12)];
+    const after = await P.runExclusivesPass();
+    assert.equal(after.status, 'completed');
+    assert.equal(after.detection?.alertsWritten, 0);
+    assert.equal(await prisma.alertLog.count(), 0);
+  });
+
+  it('calls Amazon not at all when every group is inactive', async () => {
+    await seedGroup('Off one', false, 'A');
+    await seedGroup('Off two', false, 'B');
+    const amazon = fakeAmazon({ items: [plainListing('A', 10), plainListing('B', 20)] });
+
+    const report = await P.runExclusivesPass();
+    assert.equal(report.status, 'completed');
+    assert.equal(report.ingestion?.listingCount, 0);
+    assert.equal(report.ingestion?.inactiveCount, 2);
+    assert.deepEqual(amazon.requests, [], 'nothing was asked of Amazon');
+  });
   it('runs one pass at a time in this process', async () => {
     await seedWatchedListings('A');
     fakeAmazon({ items: [plainListing('A', 10)] });

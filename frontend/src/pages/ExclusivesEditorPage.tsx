@@ -74,14 +74,60 @@ const MODE_OPTIONS = EXCLUSIVES_ALERT_MODES.map((m) => ({
 
 const rowKey = (r: { asin: string; marketplace: string }) => `${r.marketplace}:${r.asin}`;
 
-/** What the form holds, flattened, so "has anything changed?" is one compare. */
-const snapshotOf = (kind: string, name: string, rows: AsinRow[], settings: Settings): string =>
+/**
+ * Everything the form holds EXCEPT the Active/Inactive switch, flattened so
+ * "has anything changed?" is one compare. The switch is kept out of it so the
+ * editor can tell a plain switch-off from an edit that also moved the switch,
+ * and say the right thing afterwards.
+ */
+const restOf = (kind: string, name: string, rows: AsinRow[], settings: Settings): string =>
   JSON.stringify({
     kind,
     name: name.trim(),
     rows: rows.map(rowKey).sort(),
     settings,
   });
+
+/** The form as it was last saved: the switch, and everything else. */
+interface Baseline {
+  active: boolean;
+  rest: string;
+}
+
+/**
+ * What to say after a save. Flipping the switch and changing nothing else is
+ * its own action, not an edit, so it gets its own words — and they name the
+ * consequence people actually care about: whether Amazon is being checked.
+ */
+function savedMessage(
+  saved: ExclusivesGroupDto,
+  onlyToggled: boolean,
+): { title: string; message: string } {
+  const n = saved.listings.length;
+  const asins = `${n} ASIN${n === 1 ? '' : 's'}`;
+  if (onlyToggled && saved.isActive) {
+    return {
+      title: 'Group is now active',
+      message: `Monitoring has resumed for “${saved.name}”. Its ${asins} will be checked from the next run.`,
+    };
+  }
+  if (onlyToggled) {
+    return {
+      title: 'Group is now inactive',
+      message: `Monitoring is paused for “${saved.name}”. Its ${asins} will not be checked until the group is reactivated.`,
+    };
+  }
+  if (saved.isActive) {
+    return {
+      title: 'Group saved successfully',
+      message: `“${saved.name}” now watches ${asins}.`,
+    };
+  }
+  return {
+    title: 'Group saved successfully',
+    message: `“${saved.name}” is switched off, so its ${asins} are not being checked.`,
+  };
+}
 
 export function ExclusivesEditorPage() {
   const navigate = useNavigate();
@@ -90,13 +136,19 @@ export function ExclusivesEditorPage() {
   const isNew = groupId === null;
 
   const [kind, setKind] = useState<ExclusivesGroupType>('GROUP');
+  // A new group is active; an existing one is whatever was saved. Switched off
+  // means the sweep skips its ASINs entirely.
+  const [active, setActive] = useState(true);
   const [name, setName] = useState('');
   const [rows, setRows] = useState<AsinRow[]>([]);
   // Off by default — the creator switches on what they want (HLAI-71 §8 #16).
   const [settings, setSettings] = useState<Settings>(allMode('off'));
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState<string | undefined>(undefined);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [baseline, setBaseline] = useState(() => snapshotOf('GROUP', '', [], allMode('off')));
+  const [baseline, setBaseline] = useState<Baseline>(() => ({
+    active: true,
+    rest: restOf('GROUP', '', [], allMode('off')),
+  }));
 
   const [addAsin, setAddAsin] = useState('');
   const [addMarketplace, setAddMarketplace] = useState<ExclusivesMarketplace>('USA');
@@ -127,14 +179,19 @@ export function ExclusivesEditorPage() {
       problem: null,
     }));
     setKind(group.groupType);
+    setActive(group.isActive);
     setName(group.name);
     setRows(next);
     setSettings({ ...allMode('off'), ...group.settings });
     setExpectedUpdatedAt(group.updatedAt);
     setSavedAt(group.updatedAt);
-    setBaseline(
-      snapshotOf(group.groupType, group.name, next, { ...allMode('off'), ...group.settings }),
-    );
+    setBaseline({
+      active: group.isActive,
+      rest: restOf(group.groupType, group.name, next, {
+        ...allMode('off'),
+        ...group.settings,
+      }),
+    });
   }, []);
 
   useEffect(() => {
@@ -161,10 +218,14 @@ export function ExclusivesEditorPage() {
   // An individual listing is exactly one product, so the add controls close
   // once it has one. Removing the row opens them again.
   const addLocked = kind === 'INDIVIDUAL' && rows.length >= 1;
-  const dirty = useMemo(
-    () => snapshotOf(kind, name, rows, settings) !== baseline,
+  const restChanged = useMemo(
+    () => restOf(kind, name, rows, settings) !== baseline.rest,
     [kind, name, rows, settings, baseline],
   );
+  const activeChanged = active !== baseline.active;
+  const dirty = restChanged || activeChanged;
+  /** The switch was moved and nothing else — worth saying so plainly. */
+  const onlyToggled = activeChanged && !restChanged;
   useUnsavedChangesWarning(dirty && !saving);
 
   /**
@@ -338,6 +399,7 @@ export function ExclusivesEditorPage() {
       const body: ExclusivesGroupWriteRequest = {
         name: name.trim() || undefined,
         groupType: kind,
+        isActive: active,
         listings: rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace })),
         // The editor shows the whole list, so what is on screen is the group.
         // 'merge' would quietly ignore rows the person removed.
@@ -353,8 +415,7 @@ export function ExclusivesEditorPage() {
           : await api.updateExclusivesGroup(groupId as number, body);
         hydrate(saved);
         setNotice({
-          title: 'Group saved successfully',
-          message: `“${saved.name}” now watches ${saved.listings.length} ASIN(s).`,
+          ...savedMessage(saved, onlyToggled),
           onDone: () => navigate('/exclusives/groups'),
         });
       });
@@ -455,17 +516,44 @@ export function ExclusivesEditorPage() {
           <section className="card exc-panel">
             <div className="exc-panel-head">
               <span className="exc-panel-title">Listing</span>
+              <div className="exc-panel-head-mid">
+                {/* Both switches wait for the group to arrive. Their useState
+                    defaults (active, GROUP) are only a starting point for a NEW
+                    group; rendering them before the fetch resolves showed an
+                    inactive group as "Active" for a frame, then visibly flipped.
+                    A placeholder of the same size holds the row steady. */}
+                {loading ? (
+                  <span className="seg-placeholder" aria-hidden="true" />
+                ) : (
+                  <Segmented
+                    ariaLabel="Monitoring"
+                    // Green on Active, red on Inactive: the colour follows the
+                    // choice rather than the control.
+                    tone={active ? 'ok' : 'danger'}
+                    value={active ? 'active' : 'inactive'}
+                    onChange={(v) => setActive(v === 'active')}
+                    options={[
+                      { value: 'active', label: 'Active' },
+                      { value: 'inactive', label: 'Inactive' },
+                    ]}
+                  />
+                )}
+              </div>
               <div className="exc-panel-head-right">
-                <Segmented
-                  ariaLabel="Listing type"
-                  tone="ink"
-                  value={kind}
-                  onChange={setKind}
-                  options={[
-                    { value: 'INDIVIDUAL', label: 'Individual' },
-                    { value: 'GROUP', label: 'Group' },
-                  ]}
-                />
+                {loading ? (
+                  <span className="seg-placeholder" aria-hidden="true" />
+                ) : (
+                  <Segmented
+                    ariaLabel="Listing type"
+                    tone="ink"
+                    value={kind}
+                    onChange={setKind}
+                    options={[
+                      { value: 'INDIVIDUAL', label: 'Individual' },
+                      { value: 'GROUP', label: 'Group' },
+                    ]}
+                  />
+                )}
               </div>
             </div>
             <div className="exc-field">

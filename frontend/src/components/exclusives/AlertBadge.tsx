@@ -49,6 +49,24 @@ export function AlertTypeBadge({
   );
 }
 
+/**
+ * Active / Inactive badge, in the same pill chrome as the kind badge so the two
+ * read as a pair. Green for a group being checked, red for one that is not.
+ */
+export function GroupStatusBadge({ isActive }: { isActive: boolean }) {
+  return (
+    <span
+      className="status-pill exc-kind"
+      style={{
+        background: isActive ? 'var(--ok-soft)' : 'var(--danger-soft)',
+        color: isActive ? 'var(--ok-deep)' : 'var(--danger-deep)',
+      }}
+    >
+      {isActive ? 'Active' : 'Inactive'}
+    </span>
+  );
+}
+
 /** GROUP / INDIVIDUAL kind badge (no dot), reusing the pill chrome. */
 export function GroupTypeBadge({ type }: { type: ExclusivesGroupType }) {
   const accent = type === 'GROUP';

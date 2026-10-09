@@ -53,6 +53,7 @@ export function toExclusivesGroupDto(group: GroupDetailRow): ExclusivesGroupDto 
     id: group.id,
     name: group.name,
     groupType: group.groupType as ExclusivesGroupType,
+    isActive: group.isActive,
     listings: group.listings.map(toExclusivesListingDto),
     settings: normalizeSettings(group.settings),
     createdAt: group.createdAt.toISOString(),

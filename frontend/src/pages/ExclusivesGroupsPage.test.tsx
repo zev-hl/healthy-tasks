@@ -38,6 +38,7 @@ const group = (over: Partial<ExclusivesGroupRowDto> = {}): ExclusivesGroupRowDto
   id: 1,
   name: 'Versure Exclusives',
   groupType: 'GROUP',
+  isActive: true,
   listingCount: 445,
   asinPreview: ['B00024D8SA', 'B0CKM2SSK3', 'B000E9CCSA'],
   alerts24h: 26,
@@ -53,6 +54,7 @@ const summary: ExclusivesSummaryDto = {
   asinsMonitored: 445,
   groupCount: 1,
   individualCount: 0,
+  inactiveCount: 0,
   lastSweepAt: '2026-09-22T17:59:00.000Z',
   nextSweepAt: '2026-09-22T18:29:00.000Z',
   sweepEnabled: true,
@@ -115,6 +117,27 @@ describe('ExclusivesGroupsPage', () => {
     expect(screen.getByText(/last check .* · next .* · every 30 min/)).toBeInTheDocument();
   });
 
+  it('names no next check when every group is switched off', async () => {
+    getSummary.mockResolvedValue({ ...summary, inactiveCount: 1, asinsMonitored: 0 });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText(/no active group to check/)).toBeInTheDocument();
+    expect(screen.queryByText(/· next /)).not.toBeInTheDocument();
+  });
+
+  it('names no next check when there are no groups at all', async () => {
+    getSummary.mockResolvedValue({
+      ...summary,
+      groupCount: 0,
+      individualCount: 0,
+      inactiveCount: 0,
+      asinsMonitored: 0,
+    });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText(/no active group to check/)).toBeInTheDocument();
+  });
+
   it('says so when automatic checks are switched off', async () => {
     getSummary.mockResolvedValue({ ...summary, sweepEnabled: false, nextSweepAt: null });
     renderWithRouter(<ExclusivesGroupsPage />);
@@ -175,6 +198,44 @@ describe('ExclusivesGroupsPage', () => {
     );
   });
 
+  it('leaves the stat line alone when every group is active', async () => {
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText('1 groups · 0 individual')).toBeInTheDocument();
+  });
+
+  it('counts the kinds only, leaving the inactive tally out', async () => {
+    getSummary.mockResolvedValue({
+      ...summary,
+      groupCount: 3,
+      individualCount: 1,
+      inactiveCount: 2,
+    });
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+    expect(screen.getByText('3 groups · 1 individual')).toBeInTheDocument();
+    expect(screen.queryByText(/inactive/)).not.toBeInTheDocument();
+  });
+  it('marks an inactive group and leaves an active one plain', async () => {
+    queryGroups.mockResolvedValue(
+      pageOf([
+        group({ id: 1, name: 'Still watching', isActive: true }),
+        group({ id: 2, name: 'Switched off', isActive: false }),
+      ]),
+    );
+    renderWithRouter(<ExclusivesGroupsPage />);
+    await settle();
+
+    const off = screen.getByRole('button', { name: 'Switched off' }).closest('tr');
+    const on = screen.getByRole('button', { name: 'Still watching' }).closest('tr');
+    expect(off).toHaveClass('exc-row-inactive');
+    expect(on).not.toHaveClass('exc-row-inactive');
+
+    // One mark on the page, and it belongs to the switched-off row.
+    const marks = screen.getAllByRole('img', { name: 'Inactive — not being checked' });
+    expect(marks).toHaveLength(1);
+    expect(off).toContainElement(marks[0] as HTMLElement);
+  });
   it('deletes through the API and reloads', async () => {
     renderWithRouter(<ExclusivesGroupsPage />);
     await settle();

@@ -412,6 +412,7 @@ describe('exclusives: summary (HLAI-71 7a)', () => {
     assert.equal(res.body.asinsMonitored, 3, 'US and Canada counted separately');
     assert.equal(res.body.groupCount, 1);
     assert.equal(res.body.individualCount, 1);
+    assert.equal(res.body.inactiveCount, 0, 'both are switched on');
     assert.equal(res.body.alerts24h, 2, 'the 30-hour-old alert is outside the window');
     assert.equal(res.body.sweepEnabled, true);
     assert.equal(res.body.sweepMinutes, 30);
@@ -427,7 +428,41 @@ describe('exclusives: summary (HLAI-71 7a)', () => {
     assert.equal(res.body.groupCount, 0);
     assert.equal(res.body.individualCount, 0);
     assert.equal(res.body.alerts24h, 0);
+    assert.equal(res.body.inactiveCount, 0);
     assert.equal(res.body.lastSweepAt, null);
+  });
+
+  it('counts the groups that are switched off, and leaves their ASINs out', async () => {
+    const off = await seedGroup({
+      name: 'Paused group',
+      asins: [
+        { asin: 'BOFF1', title: 'x' },
+        { asin: 'BOFF2', title: 'y' },
+      ],
+    });
+    const offSingle = await seedGroup({
+      name: 'Paused single',
+      groupType: 'INDIVIDUAL',
+      asins: [{ asin: 'BOFF3', title: 'z' }],
+    });
+    await seedGroup({ name: 'Still on', asins: [{ asin: 'BON1', title: 'a' }] });
+    await prisma.alertGroup.updateMany({
+      where: { id: { in: [off, offSingle] } },
+      data: { isActive: false },
+    });
+
+    const res = await request(app)
+      .get('/api/exclusives/summary')
+      .set(auth(await token()));
+    assert.equal(res.status, 200);
+    assert.equal(res.body.groupCount, 2, 'the kind counts still cover every group');
+    assert.equal(res.body.individualCount, 1);
+    assert.equal(res.body.inactiveCount, 2);
+    assert.equal(
+      res.body.asinsMonitored,
+      1,
+      'only the ASIN in the active group is actually being checked',
+    );
   });
 
   it('needs a signed-in user', async () => {
@@ -834,6 +869,83 @@ describe('exclusives: group writes (HLAI-71 7d)', () => {
     );
   });
 
+  it('starts a new group active, and carries the flag into the list', async () => {
+    fakeAmazon({ items: [amazonListing('B000000131', 'SKU-131')] });
+
+    const created = await createGroup({
+      name: 'Watching by default',
+      groupType: 'GROUP',
+      listings: [us('B000000131')],
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.isActive, true, 'a new group watches straight away');
+
+    const list = await request(app)
+      .post('/api/exclusives/groups/query')
+      .set(await api())
+      .send({ text: 'Watching by default' });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.rows[0].isActive, true);
+  });
+
+  it('switches a group off and back on, leaving its ASINs and settings alone', async () => {
+    fakeAmazon({ items: [amazonListing('B000000132', 'SKU-132')] });
+    const created = await createGroup({
+      name: 'Toggle me',
+      groupType: 'GROUP',
+      listings: [us('B000000132')],
+      settings: { PriceChanged: 'immediate' },
+    });
+    assert.equal(created.status, 201);
+    const id = created.body.id as number;
+
+    fakeAmazon({ items: [amazonListing('B000000132', 'SKU-132')] });
+    const off = await patchGroup(id, {
+      name: 'Toggle me',
+      groupType: 'GROUP',
+      isActive: false,
+      listings: [us('B000000132')],
+      expectedUpdatedAt: created.body.updatedAt,
+    });
+    assert.equal(off.status, 200);
+    assert.equal(off.body.isActive, false);
+    assert.equal(off.body.listings.length, 1, 'switching off keeps the ASINs');
+    assert.equal(off.body.settings.PriceChanged, 'immediate', 'and the alert settings');
+
+    fakeAmazon({ items: [amazonListing('B000000132', 'SKU-132')] });
+    const on = await patchGroup(id, {
+      name: 'Toggle me',
+      groupType: 'GROUP',
+      isActive: true,
+      listings: [us('B000000132')],
+      expectedUpdatedAt: off.body.updatedAt,
+    });
+    assert.equal(on.status, 200);
+    assert.equal(on.body.isActive, true);
+  });
+
+  it('leaves the flag alone when a save does not mention it', async () => {
+    fakeAmazon({ items: [amazonListing('B000000133', 'SKU-133')] });
+    const created = await createGroup({
+      name: 'Quietly off',
+      groupType: 'GROUP',
+      isActive: false,
+      listings: [us('B000000133')],
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.isActive, false, 'a group can be created switched off');
+
+    // An older client posting no isActive must not switch the group back on.
+    fakeAmazon({ items: [amazonListing('B000000133', 'SKU-133')] });
+    const renamed = await patchGroup(created.body.id as number, {
+      name: 'Quietly off, renamed',
+      groupType: 'GROUP',
+      listings: [us('B000000133')],
+      expectedUpdatedAt: created.body.updatedAt,
+    });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.isActive, false);
+  });
   it('creates a group with chosen alert types on', async () => {
     fakeAmazon({ items: [amazonListing('B000000102', 'SKU-102')] });
     const res = await createGroup({

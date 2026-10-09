@@ -583,7 +583,7 @@ export function UsersPage() {
               signInMethod === 'google'
                 ? 'User created. They were sent a welcome message and sign in with Google — ' +
                     'there is no password to hand over.'
-                : 'User created. A password-reset link was emailed / logged to the console.',
+                : 'User created. A welcome email with a link to set their password is on its way.',
             );
             void load();
             loadSupervisors();

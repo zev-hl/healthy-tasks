@@ -20,8 +20,12 @@ export function Segmented<T extends string>({
   value: T;
   onChange: (v: T) => void;
   size?: 'sm' | 'md';
-  /** Selected-segment colour: 'ink' (dark), 'accent' (teal) or 'neutral' (grey). */
-  tone?: 'ink' | 'accent' | 'neutral';
+  /**
+   * Selected-segment colour: 'ink' (dark), 'accent' (teal), 'neutral' (grey),
+   * 'ok' (green) or 'danger' (red). The Active/Inactive switch passes a tone
+   * that follows the value, so the chosen side is green or red.
+   */
+  tone?: 'ink' | 'accent' | 'neutral' | 'ok' | 'danger';
   ariaLabel?: string;
 }) {
   return (
