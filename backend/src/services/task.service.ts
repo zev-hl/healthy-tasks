@@ -47,8 +47,19 @@ import {
   type TaskDetailDto,
   type TaskDto,
   type TaskStatus,
+  dutyLabel,
 } from '@healthy-tasks/shared';
 import { toActiveUserDto } from './user.mapper.js';
+import { assertDutyAssignable } from './department.service.js';
+import { assertHoldsDuty } from './duty-check.service.js';
+import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
+
+/** "Department › Duty" for a duty id (history snapshots), or null. */
+async function dutyHistoryLabel(dutyId: string | null): Promise<string | null> {
+  if (!dutyId) return null;
+  const duty = await prisma.duty.findUnique({ where: { id: dutyId }, ...dutyRefSelect });
+  return duty ? dutyLabel(toDutyRef(duty)) : null;
+}
 
 /**
  * Normalize a Description value: `undefined` = leave unchanged (PATCH), `null` =
@@ -122,6 +133,12 @@ export async function createTask(actor: Actor, input: CreateTaskInput): Promise<
   // Enforce who this actor may assign to (Member/Manager/Admin scopes).
   await assertAssigneeAllowed(actor, assigneeId);
   assertStartBeforeDue(input.startAt ?? null, input.dueAt ?? null);
+  // Department Duties: an optional duty, which the assignee must hold.
+  const dutyId = input.dutyId ?? null;
+  if (dutyId) {
+    await assertDutyAssignable(dutyId);
+    await assertHoldsDuty(assigneeId, dutyId);
+  }
 
   const task = await prisma.task.create({
     data: {
@@ -135,6 +152,7 @@ export async function createTask(actor: Actor, input: CreateTaskInput): Promise<
       tags: input.tags ?? [],
       startAt: input.startAt ?? null,
       dueAt: input.dueAt ?? null,
+      dutyId,
       // statusChangedAt intentionally left null: it is blank until the first
       // status *change*, and creation is the initial value, not a change.
     },
@@ -315,6 +333,29 @@ export async function updateTask(
     if (assigneeChanging) await assertAssigneeAllowed(actor, input.assigneeId);
   }
 
+  // Department Duties: a task with a duty may only go to someone who holds it.
+  // The rule runs whenever the duty or the assignee changes, whichever is set
+  // first; an EXISTING mismatch (a duty taken away after assignment) never
+  // blocks saving unrelated fields — it's only flagged ⚠. Review hand-offs are
+  // exempt: entering Review gives the task to a reviewer, and leaving it hands
+  // it back. While in Review the rule is judged against the prior assignee.
+  const dutyChanging = input.dutyId !== undefined && input.dutyId !== existing.dutyId;
+  const afterDutyId = input.dutyId !== undefined ? input.dutyId : existing.dutyId;
+  if (dutyChanging && afterDutyId) await assertDutyAssignable(afterDutyId);
+  const reviewHandoff = enteringReview || !!opts.allowReviewExit;
+  if (afterDutyId && (dutyChanging || (assigneeChanging && !reviewHandoff))) {
+    const statusAfter = input.status ?? existing.status;
+    const doer =
+      statusAfter === 'Review'
+        ? enteringReview
+          ? existing.assigneeId
+          : (existing.priorAssigneeId ?? existing.assigneeId)
+        : input.assigneeId !== undefined
+          ? input.assigneeId
+          : existing.assigneeId;
+    if (doer) await assertHoldsDuty(doer, afterDutyId);
+  }
+
   // Validate Start < Due using the values that WILL be in effect after this
   // patch (incoming value if provided, otherwise the existing stored value).
   const effectiveStart = input.startAt !== undefined ? input.startAt : existing.startAt;
@@ -340,6 +381,9 @@ export async function updateTask(
     cleanedDescription !== undefined && (cleanedDescription ?? null) !== existing.description;
 
   const assigneeEmails = await resolveAssigneeEmails([existing.assigneeId, afterAssigneeId]);
+  const [dutyBefore, dutyAfter] = dutyChanging
+    ? await Promise.all([dutyHistoryLabel(existing.dutyId), dutyHistoryLabel(afterDutyId)])
+    : [null, null];
   const before: TaskFieldValues = {
     name: existing.name,
     assignee: existing.assigneeId ? (assigneeEmails.get(existing.assigneeId) ?? null) : null,
@@ -348,6 +392,7 @@ export async function updateTask(
     tags: existing.tags,
     startAt: existing.startAt,
     dueAt: existing.dueAt,
+    duty: dutyBefore,
   };
   const after: TaskFieldValues = {
     name: input.name ?? existing.name,
@@ -357,6 +402,7 @@ export async function updateTask(
     tags: input.tags ?? existing.tags,
     startAt: input.startAt !== undefined ? input.startAt : existing.startAt,
     dueAt: input.dueAt !== undefined ? input.dueAt : existing.dueAt,
+    duty: dutyAfter,
   };
 
   // Reminders overhaul (removal + notify): a Save that clears the Start Date
@@ -398,6 +444,7 @@ export async function updateTask(
         ...(input.tags !== undefined ? { tags: input.tags } : {}),
         ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
         ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
+        ...(dutyChanging ? { dutyId: afterDutyId } : {}),
         ...(statusChanged ? { statusChangedAt: new Date() } : {}),
         ...reviewData,
         // creatorId, createdAt, and id are never updatable.
@@ -737,6 +784,8 @@ export async function duplicateTask(
           tags: o.tags,
           startAt: o.startAt,
           dueAt: o.dueAt,
+          // A copy keeps its duty (an existing mismatch stays flagged ⚠).
+          dutyId: o.dutyId,
           parentId,
           // status/statusChangedAt reset to the defaults: a copy is fresh work.
         },

@@ -25,6 +25,8 @@ import {
   classifyRow,
   getTaskAccessScope,
 } from './access-control.service.js';
+import { dutyRefSelect, heldDutiesSelect, isDutyMismatch, toDutyRef } from './duty.mapper.js';
+import { mismatchedTaskIds } from './duty-check.service.js';
 
 // Hard cap on export size to bound memory (well above realistic result sets).
 const EXPORT_MAX_ROWS = 10000;
@@ -35,7 +37,20 @@ const NEST_MAX_ROWS = 5000;
 
 export const rowInclude = {
   creator: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
-  assignee: { select: { id: true, email: true, firstName: true, lastName: true, title: true } },
+  assignee: {
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      title: true,
+      ...heldDutiesSelect,
+    },
+  },
+  // Department Duties: the duty, plus the prior assignee's held duties (the ⚠
+  // flag is judged against them while the task is in Review).
+  priorAssignee: { select: heldDutiesSelect },
+  duty: dutyRefSelect,
   _count: { select: { children: true } },
   // Phase 10: the predecessor ids that feed the Gantt view's dependency arrows.
   blockedBy: { select: { blockerId: true } },
@@ -67,6 +82,8 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     templateId: t.templateId,
     // Read-only cues: mention-only and/or tree-inherited (both false for full access / Admin).
     ...classifyRow(scope, t.id),
+    duty: t.duty ? toDutyRef(t.duty) : null,
+    dutyMismatch: isDutyMismatch(t),
   };
 }
 
@@ -202,6 +219,13 @@ export async function buildWhere(
   }
   if (f.templateId) and.push({ templateId: f.templateId });
 
+  // Department Duties: by department (via the duty), by duty, and the ⚠ flag.
+  if (f.departmentIds && f.departmentIds.length > 0) {
+    and.push({ duty: { departmentId: { in: f.departmentIds } } });
+  }
+  if (f.dutyIds && f.dutyIds.length > 0) and.push({ dutyId: { in: f.dutyIds } });
+  if (f.dutyMismatch) and.push({ id: { in: await mismatchedTaskIds() } });
+
   return and.length > 0 ? { AND: and } : {};
 }
 
@@ -234,13 +258,21 @@ function mapSort(field: TaskSortField, dir: SortDirection): Prisma.TaskOrderByWi
       return { dueAt: { sort: dir, nulls: 'first' } };
     case 'parentChild':
       return { parentId: { sort: dir, nulls: 'last' } };
+    case 'duty':
+      // Department name first; buildOrderBy appends the duty name.
+      return { duty: { department: { name: dir } } };
   }
 }
 
 export function buildOrderBy(
   sort: { field: TaskSortField; dir: SortDirection }[],
 ): Prisma.TaskOrderByWithRelationInput[] {
-  const orderBy = sort.map((s) => mapSort(s.field, s.dir));
+  // "Department › Duty" sorts as one column: department, then duty name.
+  const orderBy = sort.flatMap((s) =>
+    s.field === 'duty'
+      ? [mapSort(s.field, s.dir), { duty: { name: s.dir } }]
+      : [mapSort(s.field, s.dir)],
+  );
   // Default: Due ascending with no-due tasks pinned to the top.
   if (orderBy.length === 0) orderBy.push({ dueAt: { sort: 'asc', nulls: 'first' } });
   // Stable tiebreaker for deterministic pagination.

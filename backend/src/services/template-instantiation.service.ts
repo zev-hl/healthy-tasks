@@ -6,6 +6,7 @@ import { getStorage } from '../storage/index.js';
 import { offsetFromAnchor } from '../utils/business-time.js';
 import { recordHistory } from './task-history.service.js';
 import { createAssignedNotification } from './notification.service.js';
+import { notifyDutyMismatches } from './duty-check.service.js';
 import {
   DEFAULT_DUE_HOUR,
   DEFAULT_START_HOUR,
@@ -31,6 +32,7 @@ interface NodeForGen {
   tags: string[];
   startOffsetDays: number | null;
   dueOffsetDays: number | null;
+  dutyId: string | null;
 }
 
 /** Order nodes so every parent precedes its children (the tree is acyclic). */
@@ -95,7 +97,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
   const result = await prisma.$transaction(async (tx) => {
     const template = await tx.taskTemplate.findUnique({
       where: { id: templateId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, createdById: true },
     });
     if (!template) throw HttpError.notFound('Template not found');
 
@@ -145,6 +147,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           templateId,
           templateNodeId: node.id,
           templateOccurrenceId: occurrence.id,
+          dutyId: node.dutyId,
         },
         select: { id: true },
       });
@@ -177,7 +180,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       detail: `${template.name}${labelPart}`,
     });
 
-    return { occurrenceId: occurrence.id, rootTaskId, created };
+    return { occurrenceId: occurrence.id, rootTaskId, created, ownerId: template.createdById };
   });
 
   // Copy each node's default attachments onto its generated task (independent
@@ -198,6 +201,16 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       });
     }
   }
+
+  // Department Duties: a manual instantiation was already checked (422 on any
+  // missing duty), so a mismatch here means automatic creation — a scheduled
+  // fire or a ghost click-through carrying assignees forward — where nobody can
+  // answer a prompt. The task is created anyway (flagged ⚠) and the template
+  // owner is told.
+  await notifyDutyMismatches(
+    result.created.map((c) => c.taskId),
+    result.ownerId,
+  );
 
   return {
     occurrenceId: result.occurrenceId,

@@ -73,6 +73,23 @@ import type {
   OrgHierarchyNode,
   DueDateReportRequest,
   DueDateReportResult,
+  CreateDepartmentRequest,
+  CreateDutyRequest,
+  DepartmentDto,
+  DutyHoldingsDto,
+  OrgDto,
+  RelatedTaskDto,
+  SaveOrgChangesRequest,
+  SaveTimeDayRequest,
+  SetTimeDayCompletedRequest,
+  TemplateDutyCheckDto,
+  TemplateDutyCheckRequest,
+  TimeDayDto,
+  TimeReviewDto,
+  TimeReviewPeopleDto,
+  TimeReviewRequest,
+  UpdateDepartmentRequest,
+  UpdateDutyRequest,
 } from '@healthy-tasks/shared';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
@@ -580,6 +597,71 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+
+  // --- Department Duties: Departments & Duties catalog ---
+  // Every write answers with the whole catalog.
+  listDepartments: () => request<DepartmentDto[]>('/api/departments'),
+  getDutyHoldings: () => request<DutyHoldingsDto>('/api/departments/holdings'),
+  createDepartment: (body: CreateDepartmentRequest) =>
+    request<DepartmentDto[]>('/api/departments', { method: 'POST', body: JSON.stringify(body) }),
+  updateDepartment: (id: string, body: UpdateDepartmentRequest) =>
+    request<DepartmentDto[]>(`/api/departments/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  archiveDepartment: (id: string) =>
+    request<DepartmentDto[]>(`/api/departments/${id}/archive`, { method: 'POST' }),
+  restoreDepartment: (id: string) =>
+    request<DepartmentDto[]>(`/api/departments/${id}/restore`, { method: 'POST' }),
+  deleteDepartment: (id: string) =>
+    request<DepartmentDto[]>(`/api/departments/${id}`, { method: 'DELETE' }),
+  createDuty: (departmentId: string, body: CreateDutyRequest) =>
+    request<DepartmentDto[]>(`/api/departments/${departmentId}/duties`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateDuty: (id: string, body: UpdateDutyRequest) =>
+    request<DepartmentDto[]>(`/api/departments/duties/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  archiveDuty: (id: string) =>
+    request<DepartmentDto[]>(`/api/departments/duties/${id}/archive`, { method: 'POST' }),
+  restoreDuty: (id: string) =>
+    request<DepartmentDto[]>(`/api/departments/duties/${id}/restore`, { method: 'POST' }),
+  deleteDuty: (id: string) =>
+    request<DepartmentDto[]>(`/api/departments/duties/${id}`, { method: 'DELETE' }),
+
+  // --- Department Duties: Organization ---
+  getOrg: () => request<OrgDto>('/api/org'),
+  saveOrg: (body: SaveOrgChangesRequest) =>
+    request<OrgDto>('/api/org', { method: 'PUT', body: JSON.stringify(body) }),
+  grantDuty: (userId: string, dutyId: string) =>
+    request<void>(`/api/org/people/${userId}/duties/${dutyId}`, { method: 'POST' }),
+
+  // --- Department Duties: templates ---
+  checkTemplateDuties: (id: number, body: TemplateDutyCheckRequest) =>
+    request<TemplateDutyCheckDto>(`/api/templates/${id}/duty-check`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // --- Department Duties: time ---
+  listTimeDays: (from: string, to: string, userId?: string) =>
+    request<TimeDayDto[]>(
+      `/api/time/days?from=${from}&to=${to}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
+    ),
+  saveTimeDay: (date: string, body: SaveTimeDayRequest) =>
+    request<TimeDayDto>(`/api/time/days/${date}`, { method: 'PUT', body: JSON.stringify(body) }),
+  setTimeDayCompleted: (date: string, completed: boolean) =>
+    request<TimeDayDto>(`/api/time/days/${date}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ completed } satisfies SetTimeDayCompletedRequest),
+    }),
+  listTimeRelatedTasks: (from: string, to: string, userId?: string) =>
+    request<RelatedTaskDto[]>(
+      `/api/time/related?from=${from}&to=${to}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
+    ),
+  getTimeReviewPeople: () => request<TimeReviewPeopleDto>('/api/time/review/people'),
+  getTimeReview: (body: TimeReviewRequest) =>
+    request<TimeReviewDto>('/api/time/review', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 /**

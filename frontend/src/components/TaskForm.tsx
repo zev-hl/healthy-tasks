@@ -1,16 +1,21 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   DEFAULT_TASK_PRIORITY,
   DEFAULT_TASK_STATUS,
+  type ActiveUserDto,
   type TaskDto,
   type TaskPriority,
   type TaskStatus,
-  type TaskUserRef,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
+import { assigneeOptionGroups, dutyOptionGroups, isMismatch, useDutyCatalog } from '../lib/duties';
+import { userLabel } from './ui/Avatar';
+import { DutyCrossCheck } from './duties/DutyCrossCheck';
+import { GroupedOptions } from './duties/GroupedOptions';
 import { RichTextEditor } from './RichTextEditor';
 import {
   isoToParts,
@@ -29,6 +34,7 @@ export interface TaskFormPayload {
   tags: string[];
   startAt: string | null;
   dueAt: string | null;
+  dutyId: string | null;
 }
 
 interface Props {
@@ -60,7 +66,7 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
   const [dueDate, setDueDate] = useState(initialDue.date);
   const [dueTime, setDueTime] = useState(initialDue.time);
 
-  const [users, setUsers] = useState<TaskUserRef[]>([]);
+  const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -70,6 +76,45 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
       .then(setUsers)
       .catch(() => setUsers([]));
   }, []);
+
+  // --- Department Duties: optional duty + the live assignee ⇄ duty check -----
+  // An unassigned new task goes to its creator, so the check runs against them.
+  const { user: me } = useAuth();
+  const catalog = useDutyCatalog();
+  const [dutyId, setDutyId] = useState(initial?.dutyId ?? '');
+  const [granting, setGranting] = useState(false);
+  const assigneeRef = useRef<HTMLSelectElement>(null);
+  const doerId = assigneeId || me?.id || null;
+  const doer = users.find((u) => u.id === doerId) ?? null;
+  const duty = dutyId ? (catalog.duties.get(dutyId) ?? null) : null;
+  const mismatch = !catalog.loading && isMismatch(catalog.holdings, doerId, dutyId || null);
+  const byId = new Map(users.map((u) => [u.id, u]));
+  const supervisorOf = (id: string | null) => (id ? byId.get(byId.get(id)?.supervisorId ?? '') : undefined);
+  const isAbove = (actorId: string, subId: string | null) => {
+    const seen = new Set<string>();
+    let cur = subId;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const sup = byId.get(cur)?.supervisorId ?? null;
+      if (sup === actorId) return true;
+      cur = sup;
+    }
+    return false;
+  };
+  const canGrant = !!me && !!doerId && (me.role === 'Admin' || isAbove(me.id, doerId));
+
+  async function grant() {
+    if (!doerId || !dutyId) return;
+    setGranting(true);
+    try {
+      await api.grantDuty(doerId, dutyId);
+      catalog.grantLocally(doerId, dutyId);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not give the duty');
+    } finally {
+      setGranting(false);
+    }
+  }
 
   function addTag() {
     const t = tagDraft.trim();
@@ -118,6 +163,7 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
         tags,
         startAt,
         dueAt,
+        dutyId: dutyId === '' ? null : dutyId,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save task');
@@ -154,18 +200,47 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
         <label htmlFor="task-assignee">Assignee</label>
         <select
           id="task-assignee"
+          ref={assigneeRef}
           value={assigneeId}
           onChange={(e) => setAssigneeId(e.target.value)}
         >
-          <option value="">— Unassigned —</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.email}
-              {u.title ? ` (${u.title})` : ''}
-            </option>
-          ))}
+          <option value="">— Unassigned (me) —</option>
+          {/* With a duty chosen, people split into holders and ⚠ non-holders. */}
+          <GroupedOptions groups={assigneeOptionGroups(users, { holdings: catalog.holdings, duty })} />
         </select>
       </div>
+
+      <div className="field">
+        <label htmlFor="task-duty">Department › Duty</label>
+        <select id="task-duty" value={dutyId} onChange={(e) => setDutyId(e.target.value)}>
+          <option value="">— No duty —</option>
+          <GroupedOptions
+            groups={dutyOptionGroups(catalog.departments, {
+              holdings: catalog.holdings,
+              assignee: doer ? { id: doer.id, firstName: doer.firstName } : null,
+              selectedId: dutyId || null,
+            })}
+          />
+        </select>
+      </div>
+
+      {mismatch && duty && doer && (
+        <DutyCrossCheck
+          personName={userLabel(doer)}
+          personFirstName={doer.firstName || userLabel(doer)}
+          duty={duty}
+          blocking
+          canGrant={canGrant}
+          supervisorName={(() => {
+            const s = supervisorOf(doer.id);
+            return s ? userLabel(s) : null;
+          })()}
+          granting={granting}
+          onGrant={() => void grant()}
+          onPickAssignee={() => assigneeRef.current?.focus()}
+          onClearDuty={() => setDutyId('')}
+        />
+      )}
 
       <div className="field">
         <label htmlFor="task-priority">Priority</label>
@@ -273,9 +348,14 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
         </div>
       </div>
 
-      <button type="submit" disabled={submitting}>
+      <button type="submit" disabled={submitting || mismatch}>
         {submitting ? 'Saving…' : submitLabel}
       </button>
+      {mismatch && (
+        <span className="muted" style={{ marginLeft: 10, fontSize: 12.5 }}>
+          Fix the duty mismatch to save.
+        </span>
+      )}
     </form>
   );
 }

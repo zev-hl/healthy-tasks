@@ -110,6 +110,12 @@ model User {
   updatedAlertGroups AlertGroup[] @relation("AlertGroupUpdater")
   createdListings    Listing[]    @relation("ListingCreator")
 
+  // Department Duties: the duties this person holds, and the time they log
+  // against them (one row per duty per day, plus a per-day completion flag).
+  duties      UserDuty[]
+  timeEntries TimeEntry[]
+  timeDays    TimeDay[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -247,6 +253,12 @@ model Task {
   recurrenceOccurrences Task[]          @relation("TaskRecurrenceOccurrences")
   recurrenceSeq         Int?
 
+  // Department Duties: the (optional) duty this task is done under. The
+  // department comes from the duty, so it is never stored twice. Restrict: a
+  // duty any task references is archived, never deleted.
+  dutyId String?
+  duty   Duty?   @relation(fields: [dutyId], references: [id], onDelete: Restrict)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -275,6 +287,7 @@ model Task {
   @@index([templateOccurrenceId])
   @@index([instanceLabel])
   @@index([recurrenceSourceId])
+  @@index([dutyId])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -462,6 +475,11 @@ model UserScreenPref {
 enum NotificationType {
   mentioned
   assigned
+  // Department Duties: an automatically created task (scheduled template fire,
+  // ghost click-through, recurring-task copy) went to someone who doesn't hold
+  // its duty. Sent to the template owner / recurring task's creator and shown in
+  // the Assigned list.
+  dutyMismatch
 }
 
 // For an `assigned` notification: whether the recipient was added or removed as
@@ -665,6 +683,10 @@ model TaskTemplateNode {
   dueOffsetDays   Int?
   // Free-text role placeholder (not a user, not the permission Role enum).
   assigneeRole    String?
+  // Department Duties: the duty the generated task carries. At instantiation
+  // the person filling `assigneeRole` must hold it.
+  dutyId          String?
+  duty            Duty?        @relation(fields: [dutyId], references: [id], onDelete: Restrict)
   // Sibling ordering within a parent.
   orderIndex      Int          @default(0)
 
@@ -684,6 +706,7 @@ model TaskTemplateNode {
 
   @@index([templateId])
   @@index([parentNodeId])
+  @@index([dutyId])
 }
 
 // A directed dependency edge between two nodes of the same template (blocker
@@ -1021,4 +1044,110 @@ model AlertLog {
   @@index([createdAt(sort: Desc)])
   @@index([listingId, createdAt(sort: Desc)])
   @@index([groupId, createdAt(sort: Desc)])
+}
+
+// ---------------------------------------------------------------------------
+// Department Duties
+// ---------------------------------------------------------------------------
+// Departments own Duties, people hold Duties, tasks (and template nodes) can
+// carry a Duty, and people log their time against their Duties each day.
+// Archive, don't delete: once anything references a department or duty it is
+// archived (hidden from pickers, kept in history and reports). Only never-used
+// rows can be deleted, and the Restrict FKs below are the backstop for that.
+
+model Department {
+  id      String @id @default(uuid())
+  name    String
+  // Case/whitespace-insensitive uniqueness key (lower, trimmed, single-spaced).
+  // A trigger recomputes it from `name` on every write, so it can never drift.
+  nameKey String @unique
+  // Swatch color (hex) shown next to the department everywhere.
+  color   String
+
+  // Non-null ⇒ archived. Archiving a department archives all of its duties.
+  archivedAt DateTime?
+
+  duties Duty[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Duty {
+  id           String     @id @default(uuid())
+  // Required and immutable (a trigger rejects changes): moving a duty would
+  // rewrite past time reports. Archive it and create a new one instead.
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  name         String
+  // Uniqueness key within the department (see Department.nameKey).
+  nameKey      String
+  description  String?
+
+  archivedAt DateTime?
+
+  holders       UserDuty[]
+  tasks         Task[]
+  templateNodes TaskTemplateNode[]
+  timeEntries   TimeEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Unique WITHIN its department: "Finance › Reporting" and "Marketing ›
+  // Reporting" can both exist because a duty is always shown as Dept › Duty.
+  @@unique([departmentId, nameKey])
+  @@index([departmentId])
+}
+
+// A person holds a duty. A person can hold duties in several departments.
+model UserDuty {
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dutyId String
+  duty   Duty   @relation(fields: [dutyId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@id([userId, dutyId])
+  @@index([dutyId])
+}
+
+// Minutes a person logged against one duty on one calendar day. `date` is a
+// plain DATE (no time zone): the person's own calendar day, so it can never
+// shift across midnight UTC the way Goal deadlines did.
+model TimeEntry {
+  id      String   @id @default(uuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date    DateTime @db.Date
+  dutyId  String
+  duty    Duty     @relation(fields: [dutyId], references: [id], onDelete: Restrict)
+  // 1–1440 (CHECK constraint in the migration). The day total is capped at 1440
+  // by the service.
+  minutes Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date, dutyId])
+  @@index([date])
+  @@index([dutyId])
+}
+
+// Per-person, per-day header: the Completed flag and an optional note. A
+// completed day is read-only until its owner reopens it. `updatedAt` doubles as
+// the optimistic-concurrency token for the day editor.
+model TimeDay {
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime  @db.Date
+  completedAt DateTime?
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, date])
+  @@index([date])
 }

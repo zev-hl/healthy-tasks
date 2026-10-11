@@ -16,12 +16,19 @@ import {
   type TaskPriority,
   type TemplateDropPosition,
   type TemplateDto,
+  type TemplateDutyProblemDto,
   type TemplateNodeInput,
   type TemplateSummaryDto,
+  dutyLabel,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { todayLocalDate } from '../lib/datetime';
-import { userLabel } from '../components/ui/Avatar';
+import { Avatar, userLabel } from '../components/ui/Avatar';
+import { useAuth } from '../auth/AuthContext';
+import { ModalShell } from '../components/exclusives/ModalShell';
+import { DutyTag } from '../components/duties/DutyTag';
+import { GroupedOptions } from '../components/duties/GroupedOptions';
+import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from '../lib/duties';
 import { EmptyState } from '../components/ui/EmptyState';
 import { WeekdayPicker } from '../components/WeekdayPicker';
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -38,6 +45,7 @@ interface EditorNode {
   startOffsetDays: string;
   dueOffsetDays: string;
   assigneeRole: string;
+  dutyId: string; // Department Duties: '' = no duty
   tags: string; // comma-separated in the form; parsed to string[] on save
   attachmentCount: number; // default attachments carried by this node (read-only)
 }
@@ -76,7 +84,7 @@ const emptyRecurrence = (): EditorRecurrence => ({
 });
 
 function blankNode(key: string, parentKey: string | null): EditorNode {
-  return { key, parentKey, name: '', description: '', defaultPriority: 'Medium', startOffsetDays: '', dueOffsetDays: '', assigneeRole: '', tags: '', attachmentCount: 0 };
+  return { key, parentKey, name: '', description: '', defaultPriority: 'Medium', startOffsetDays: '', dueOffsetDays: '', assigneeRole: '', dutyId: '', tags: '', attachmentCount: 0 };
 }
 
 /** Load an existing template into the editor model. */
@@ -96,6 +104,7 @@ function toEditor(t: TemplateDto): EditorState {
       startOffsetDays: n.startOffsetDays != null ? String(n.startOffsetDays) : '',
       dueOffsetDays: n.dueOffsetDays != null ? String(n.dueOffsetDays) : '',
       assigneeRole: n.assigneeRole ?? '',
+      dutyId: n.dutyId ?? '',
       tags: n.tags.join(', '),
       attachmentCount: n.attachmentCount,
     })),
@@ -132,6 +141,7 @@ function toRequest(e: EditorState): CreateTemplateRequest {
     startOffsetDays: parseOffset(n.startOffsetDays),
     dueOffsetDays: parseOffset(n.dueOffsetDays),
     assigneeRole: n.assigneeRole.trim() || null,
+    dutyId: n.dutyId || null,
     tags: n.tags
       .split(',')
       .map((t) => t.trim())
@@ -348,6 +358,8 @@ function TemplateEditor({
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Department Duties: each template task may carry a duty.
+  const catalog = useDutyCatalog();
   // Edit-scope ("this and following"): after saving an existing template with
   // materialized future instances, offer to re-sync them (never automatic).
   const [pendingFuture, setPendingFuture] = useState<FutureOccurrenceDto[] | null>(null);
@@ -564,6 +576,22 @@ function TemplateEditor({
             <div className="field">
               <label>Role placeholder</label>
               <input value={n.assigneeRole} placeholder="e.g. Inspector" onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Department › Duty</label>
+              <select
+                value={n.dutyId}
+                aria-label={`Department › Duty for node ${idx + 1}`}
+                onChange={(e) => patchNode(n.key, { dutyId: e.target.value })}
+              >
+                <option value="">— No duty —</option>
+                <GroupedOptions
+                  groups={dutyOptionGroups(catalog.departments, {
+                    holdings: catalog.holdings,
+                    selectedId: n.dutyId || null,
+                  })}
+                />
+              </select>
             </div>
             <div className="field">
               <label>Start (+days)</label>
@@ -856,62 +884,284 @@ function InstantiateModal({
   const [roleMap, setRoleMap] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Department Duties: everyone filling a role must hold the duties that role's
+  // template tasks carry. Checked live as people are chosen (✓ / ⚠), and again
+  // on Create — any remaining problems open the "missing duties" step, where
+  // Proceed stays disabled until each one is fixed.
+  const { user: me } = useAuth();
+  const catalog = useDutyCatalog();
+  const [problems, setProblems] = useState<TemplateDutyProblemDto[] | null>(null);
+  const [fixed, setFixed] = useState<TemplateDutyProblemDto[]>([]);
+  const [granting, setGranting] = useState<string | null>(null);
 
-  async function submit() {
+  const roleNeeds = (role: string) => [
+    ...new Set(template.nodes.filter((n) => n.assigneeRole === role && n.dutyId).map((n) => n.dutyId as string)),
+  ];
+  const nodeById = new Map(template.nodes.map((n) => [n.id, n]));
+  const userById = new Map(users.map((u) => [u.id, u]));
+  const roleAssignments = () => template.roles.map((role) => ({ role, assigneeId: roleMap[role] || null }));
+  const canManage = (userId: string): boolean => {
+    if (!me) return false;
+    if (me.role === 'Admin') return true;
+    const seen = new Set<string>();
+    let cur: string | null = userId;
+    while (cur && !seen.has(cur)) {
+      seen.add(cur);
+      const sup: string | null = userById.get(cur)?.supervisorId ?? null;
+      if (sup === me.id) return true;
+      cur = sup;
+    }
+    return false;
+  };
+  const supervisorName = (userId: string) => {
+    const sup = userById.get(userById.get(userId)?.supervisorId ?? '');
+    return sup ? userLabel(sup) : 'an Admin';
+  };
+
+  async function create() {
     setBusy(true);
     setError(null);
     try {
       const res = await api.instantiateTemplate(template.id, {
         instanceLabel: label.trim() || null,
         anchorStart: anchor,
-        roleAssignments: template.roles.map((role) => ({ role, assigneeId: roleMap[role] || null })),
+        roleAssignments: roleAssignments(),
       });
       onDone(res.rootTaskId);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not instantiate the template');
+      if (isDutyNotHeldError(e)) {
+        // Someone's duties changed since the check: show what's missing now.
+        setProblems((e.details as { problems: TemplateDutyProblemDto[] }).problems ?? []);
+      } else setError(e instanceof ApiError ? e.message : 'Could not instantiate the template');
       setBusy(false);
     }
   }
 
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginTop: 0 }}>Instantiate “{template.name}”</h3>
-        {error && <div className="alert error">{error}</div>}
-        <div className="field">
-          <label htmlFor="inst-label">Instance label (optional)</label>
-          <input id="inst-label" value={label} placeholder="e.g. PO-4521" onChange={(e) => setLabel(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="inst-anchor">Start date</label>
-          <input id="inst-anchor" type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
-        </div>
-        {template.roles.length > 0 && (
+  async function check(): Promise<TemplateDutyProblemDto[]> {
+    const res = await api.checkTemplateDuties(template.id, { roleAssignments: roleAssignments() });
+    return res.problems;
+  }
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const found = await check();
+      if (found.length > 0) {
+        setProblems(found);
+        setFixed([]);
+        setBusy(false);
+        return;
+      }
+      await create();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not check the duties');
+      setBusy(false);
+    }
+  }
+
+  async function grant(p: TemplateDutyProblemDto) {
+    setGranting(`${p.userId}:${p.dutyId}`);
+    try {
+      await api.grantDuty(p.userId, p.dutyId);
+      catalog.grantLocally(p.userId, p.dutyId);
+      setFixed((f) => [...f, p]);
+      setProblems((list) => (list ?? []).filter((x) => !(x.userId === p.userId && x.dutyId === p.dutyId)));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not give the duty');
+    } finally {
+      setGranting(null);
+    }
+  }
+
+  async function recheck() {
+    setBusy(true);
+    setError(null);
+    try {
+      await catalog.reload();
+      const found = await check();
+      setFixed((f) => [
+        ...f,
+        ...(problems ?? []).filter((p) => !found.some((x) => x.userId === p.userId && x.dutyId === p.dutyId)),
+      ]);
+      setProblems(found);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not check the duties');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const nodeCount = template.nodes.length;
+
+  // --- Step 2: the missing-duties pop-up -------------------------------------
+  if (problems) {
+    const open = problems.length;
+    const rows = [...problems.map((p) => ({ p, ok: false })), ...fixed.map((p) => ({ p, ok: true }))];
+    return (
+      <ModalShell
+        title={open ? `${open} required ${open === 1 ? 'duty isn’t' : 'duties aren’t'} held` : 'All required duties are now held'}
+        tone={open ? 'danger' : 'accent'}
+        role="alertdialog"
+        width="720px"
+        hint={
+          <button type="button" className="secondary btn-sm" disabled={busy} onClick={() => void recheck()} title="Check again after duties were added somewhere else">
+            ↻ Re-check
+          </button>
+        }
+        actions={
           <>
-            <div className="u-label" style={{ marginBottom: '0.3rem' }}>Assign roles</div>
-            {template.roles.map((role) => (
-              <div key={role} className="field">
-                <label>{role}</label>
-                <select value={roleMap[role] ?? ''} onChange={(e) => setRoleMap((m) => ({ ...m, [role]: e.target.value }))}>
-                  <option value="">Unassigned</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>{userLabel(u)}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
+            <button type="button" className="secondary btn-sm" disabled={busy} onClick={() => setProblems(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn-sm" disabled={busy || open > 0} onClick={() => void create()}>
+              {busy ? 'Creating…' : `Proceed — create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
+            </button>
           </>
-        )}
-        <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-          <button className="secondary" onClick={onClose} disabled={busy}>
+        }
+      >
+        <p className="exc-confirm-sub">
+          {open
+            ? 'Each template task goes to the person filling its role, and that person must hold the task’s duty. Add the missing duties below, or cancel and choose different people.'
+            : 'You can now create the tasks.'}
+        </p>
+        {error && <div className="alert error">{error}</div>}
+        {rows.map(({ p, ok }) => {
+          const person = userById.get(p.userId);
+          const duty = catalog.duties.get(p.dutyId) ?? null;
+          const name = person ? userLabel(person) : 'Someone';
+          const first = person?.firstName || name;
+          return (
+            <div key={`${p.role}:${p.userId}:${p.dutyId}`} className="dd-err-row">
+              {person && <Avatar user={person} decorative />}
+              <div className="grow">
+                <div>
+                  <b>{name}</b> <span className="muted">as</span> <span className="dd-role-chip">{p.role}</span>
+                </div>
+                <div style={{ margin: '4px 0' }}>
+                  {ok ? <span className="dd-tag ok">✓ Now holds</span> : <b style={{ color: 'var(--danger-deep)' }}>Missing</b>}{' '}
+                  <DutyTag duty={duty} />
+                </div>
+                <div className="muted" style={{ fontSize: 12 }}>
+                  Needed for: {p.nodeIds.map((id) => nodeById.get(id)?.name ?? `#${id}`).join('; ')}
+                </div>
+              </div>
+              <div style={{ flex: 'none', maxWidth: 230, textAlign: 'right' }}>
+                {ok ? null : canManage(p.userId) ? (
+                  <button
+                    type="button"
+                    className="btn-sm"
+                    disabled={granting !== null}
+                    onClick={() => void grant(p)}
+                  >
+                    {granting === `${p.userId}:${p.dutyId}` ? 'Giving…' : `Give ${first} this duty`}
+                  </button>
+                ) : (
+                  <>
+                    <div className="duty-xc-perm" style={{ fontSize: 11.5 }}>
+                      Only {supervisorName(p.userId)} or an Admin can give {first} duties.
+                    </div>
+                    {me?.role !== 'Member' && (
+                      <a href={`/admin/organization?view=person&person=${p.userId}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600 }}>
+                        Open in Organization ↗
+                      </a>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </ModalShell>
+    );
+  }
+
+  // --- Step 1: anchor, label and who fills each role ----------------------------
+  return (
+    <ModalShell
+      title={`Instantiate “${template.name}”`}
+      width="720px"
+      onBackdropClick={busy ? undefined : onClose}
+      hint={`${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'} will be created`}
+      actions={
+        <>
+          <button type="button" className="secondary btn-sm" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button onClick={() => void submit()} disabled={busy}>
-            {busy ? 'Creating…' : 'Create tasks'}
+          <button type="button" className="btn-sm" onClick={() => void submit()} disabled={busy}>
+            {busy ? 'Checking…' : `Create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
           </button>
-        </div>
+        </>
+      }
+    >
+      {error && <div className="alert error">{error}</div>}
+      <div className="field">
+        <label htmlFor="inst-label">Instance label (optional)</label>
+        <input id="inst-label" value={label} placeholder="e.g. PO-4521" onChange={(e) => setLabel(e.target.value)} />
       </div>
-    </div>
+      <div className="field" style={{ maxWidth: 220 }}>
+        <label htmlFor="inst-anchor">Start date (Day 0)</label>
+        <input id="inst-anchor" type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
+      </div>
+      {template.roles.length > 0 && (
+        <>
+          <div className="u-label" style={{ margin: '6px 0 2px' }}>
+            Fill each role with a person
+          </div>
+          {template.roles.map((role) => {
+            const nodes = template.nodes.filter((n) => n.assigneeRole === role);
+            const needs = roleNeeds(role);
+            const pid = roleMap[role] ?? '';
+            const missing = pid ? needs.filter((u) => !holdsDuty(catalog.holdings, pid, u)) : [];
+            return (
+              <div key={role} className="dd-map-row">
+                <div>
+                  <span className="dd-role-chip">{role}</span>
+                  <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
+                    {nodes.length} {nodes.length === 1 ? 'task' : 'tasks'} · needs {needs.length}{' '}
+                    {needs.length === 1 ? 'duty' : 'duties'}
+                  </div>
+                </div>
+                <select
+                  value={pid}
+                  aria-label={`Person for ${role}`}
+                  onChange={(e) => setRoleMap((m) => ({ ...m, [role]: e.target.value }))}
+                >
+                  <option value="">— Leave unassigned —</option>
+                  {[...users]
+                    .sort((a, b) => userLabel(a).localeCompare(userLabel(b)))
+                    .map((u) => {
+                      const ok = needs.every((d) => holdsDuty(catalog.holdings, u.id, d));
+                      return (
+                        <option key={u.id} value={u.id}>
+                          {ok ? '' : '⚠ '}
+                          {userLabel(u)}
+                        </option>
+                      );
+                    })}
+                </select>
+                <div style={{ fontSize: 12 }}>
+                  {!pid ? (
+                    <span className="muted">Tasks will be unassigned</span>
+                  ) : missing.length ? (
+                    missing.map((d) => {
+                      const duty = catalog.duties.get(d);
+                      return (
+                        <div key={d} style={{ color: 'var(--danger-deep)' }}>
+                          ⚠ Doesn’t hold {duty ? dutyLabel(duty) : 'a required duty'}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <span className="dd-tag ok">✓ Holds every duty needed</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </ModalShell>
   );
 }
 

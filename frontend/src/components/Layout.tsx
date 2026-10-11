@@ -79,10 +79,22 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       </nav>
 
       <div className="side-group">
+        <div className="side-group-label">Time</div>
+        <NavLink to="/time" className={navItemClass}>
+          My Time
+        </NavLink>
+      </div>
+
+      <div className="side-group">
         <div className="side-group-label">Reports</div>
         <NavLink to="/reports/due-date" className={navItemClass}>
           Due Date Performance
         </NavLink>
+        {(user?.role === 'Admin' || user?.role === 'Manager') && (
+          <NavLink to="/reports/time" className={navItemClass}>
+            Time Review
+          </NavLink>
+        )}
       </div>
 
       <div className="side-group">
@@ -157,6 +169,14 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
           <div className="side-group-label">Manage</div>
           <NavLink to="/admin/templates" className={navItemClass}>
             Templates
+          </NavLink>
+          {user?.role === 'Admin' && (
+            <NavLink to="/admin/departments" className={navItemClass}>
+              Departments &amp; Duties
+            </NavLink>
+          )}
+          <NavLink to="/admin/organization" className={navItemClass}>
+            Organization
           </NavLink>
           {user?.role === 'Admin' && (
             <NavLink to="/admin/users" className={navItemClass}>

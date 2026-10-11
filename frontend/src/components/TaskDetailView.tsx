@@ -33,6 +33,10 @@ import { StatusPill, PriorityRamp } from './ui/indicators';
 import { DueDate, AgoDate } from './ui/dates';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { assigneeOptionGroups, dutyOptionGroups, isMismatch, useDutyCatalog } from '../lib/duties';
+import { DutyTag } from './duties/DutyTag';
+import { DutyCrossCheck } from './duties/DutyCrossCheck';
+import { GroupedOptions } from './duties/GroupedOptions';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
 
@@ -143,6 +147,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [startTime, setStartTime] = useState(() => isoToParts(initialTask.startAt).time);
   const [dueDate, setDueDate] = useState(() => isoToParts(initialTask.dueAt).date);
   const [dueTime, setDueTime] = useState(() => isoToParts(initialTask.dueAt).time);
+  // Department Duties: the staged duty, checked live against the assignee.
+  const [dutyId, setDutyId] = useState(initialTask.dutyId ?? '');
+  const catalog = useDutyCatalog();
+  const [granting, setGranting] = useState(false);
+  const assigneeSelectRef = useRef<HTMLSelectElement>(null);
   const [savingFields, setSavingFields] = useState(false);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
 
@@ -171,7 +180,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     startDate !== persistedStart.date ||
     startTime !== persistedStart.time ||
     dueDate !== persistedDue.date ||
-    dueTime !== persistedDue.time;
+    dueTime !== persistedDue.time ||
+    dutyId !== (task.dutyId ?? '');
 
   // Commit all staged fields at once (status, priority, assignee, and dates),
   // always via the explicit "Save changes" button.
@@ -219,6 +229,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             status: nextStatus,
             startAt: stagedStartIso,
             dueAt: stagedDueIso,
+            dutyId: dutyId === '' ? null : dutyId,
           },
           task.updatedAt,
         );
@@ -242,6 +253,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // "unsaved" once the server has the change (e.g. the reviewer becoming assignee).
   function syncStaged(t: TaskDetailDto) {
     setAssigneeId(t.assigneeId ?? '');
+    setDutyId(t.dutyId ?? '');
     setPriority(t.priority);
     setStatus(t.status);
     const s = isoToParts(t.startAt);
@@ -301,6 +313,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             reviewerId,
             startAt: stagedStartIso,
             dueAt: stagedDueIso,
+            dutyId: dutyId === '' ? null : dutyId,
           },
           task.updatedAt,
         );
@@ -566,6 +579,44 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         ? task.assignee
         : users.find((u) => u.id === assigneeId) ?? null;
 
+  // --- Department Duties: the assignee ⇄ duty check -------------------------
+  // The person doing the work is the assignee — except in Review, where the
+  // assignee is the reviewer (exempt) and the rule is judged against the prior
+  // assignee. The check runs whichever field was changed first; while it fails
+  // because one of them is being changed, Save is blocked. A mismatch that
+  // already existed (a duty taken away later) only warns.
+  const stagedDuty = dutyId ? (catalog.duties.get(dutyId) ?? (task.duty?.id === dutyId ? task.duty : null)) : null;
+  const doerId = isInReview ? (task.priorAssigneeId ?? null) : assigneeId || null;
+  const doer = doerId
+    ? (users.find((u) => u.id === doerId) ?? (isInReview ? task.priorAssignee : assigneeUser))
+    : null;
+  const pairChanged = assigneeId !== (task.assigneeId ?? '') || dutyId !== (task.dutyId ?? '');
+  const dutyMismatch = catalog.loading
+    ? task.dutyMismatch && !pairChanged
+    : isMismatch(catalog.holdings, doerId, dutyId || null);
+  const dutyBlocking = dutyMismatch && pairChanged;
+  const canGrantDuty =
+    !!doerId && (currentUser.role === 'Admin' || isSupervisorAbove(currentUser.id, doerId));
+  const doerSupervisor = (() => {
+    const supId = users.find((u) => u.id === doerId)?.supervisorId;
+    const sup = supId ? users.find((u) => u.id === supId) : null;
+    return sup ? userLabel(sup) : null;
+  })();
+
+  async function grantDutyToDoer() {
+    if (!doerId || !dutyId) return;
+    setGranting(true);
+    setFieldsError(null);
+    try {
+      await api.grantDuty(doerId, dutyId);
+      catalog.grantLocally(doerId, dutyId);
+    } catch (err) {
+      setFieldsError(err instanceof ApiError ? err.message : 'Could not give the duty');
+    } finally {
+      setGranting(false);
+    }
+  }
+
   return (
     <div className="detail-page">
       {/* Top bar */}
@@ -710,7 +761,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             )}
           </span>
 
-          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
+          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}${dutyBlocking ? ' is-bad' : ''}`}>
             {assigneeUser ? (
               <UserChip
                 user={assigneeUser}
@@ -725,17 +776,53 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             {!isInReview && canEdit && (
               <>
                 <span className="prop-caret" aria-hidden="true">▾</span>
-                <select className="prop-overlay-select" value={assigneeId} aria-label="Assignee" onChange={(e) => setAssigneeId(e.target.value)}>
+                <select
+                  ref={assigneeSelectRef}
+                  className="prop-overlay-select"
+                  value={assigneeId}
+                  aria-label="Assignee"
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                >
                   <option value="">Unassigned</option>
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {userLabel(u)}
-                    </option>
-                  ))}
+                  {/* With a duty chosen, people split into holders and ⚠ non-holders. */}
+                  <GroupedOptions groups={assigneeOptionGroups(users, { holdings: catalog.holdings, duty: stagedDuty })} />
                 </select>
               </>
             )}
           </span>
+
+          {(dutyId || canEdit) && (
+            <span
+              className={`prop-chip${dutyId !== (task.dutyId ?? '') ? ' is-dirty' : ''}${dutyBlocking ? ' is-bad' : ''}`}
+              title="Department › Duty"
+            >
+              {stagedDuty ? (
+                <DutyTag duty={stagedDuty} compact />
+              ) : (
+                <span className="muted">+ Duty</span>
+              )}
+              {canEdit && (
+                <>
+                  <span className="prop-caret" aria-hidden="true">▾</span>
+                  <select
+                    className="prop-overlay-select"
+                    value={dutyId}
+                    aria-label="Department › Duty"
+                    onChange={(e) => setDutyId(e.target.value)}
+                  >
+                    <option value="">— No duty —</option>
+                    <GroupedOptions
+                      groups={dutyOptionGroups(catalog.departments, {
+                        holdings: catalog.holdings,
+                        assignee: doer && doerId ? { id: doerId, firstName: doer.firstName } : null,
+                        selectedId: dutyId || null,
+                      })}
+                    />
+                  </select>
+                </>
+              )}
+            </span>
+          )}
 
           <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
             <span className="due-chip-label">Due</span>
@@ -778,6 +865,21 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           )}
         </div>
 
+        {dutyMismatch && stagedDuty && doer && doerId && (
+          <DutyCrossCheck
+            personName={userLabel(doer)}
+            personFirstName={doer.firstName || userLabel(doer)}
+            duty={stagedDuty}
+            blocking={dutyBlocking}
+            canGrant={canGrantDuty && canEdit}
+            supervisorName={doerSupervisor}
+            granting={granting}
+            onGrant={() => void grantDutyToDoer()}
+            onPickAssignee={() => assigneeSelectRef.current?.focus()}
+            onClearDuty={() => setDutyId('')}
+          />
+        )}
+
         {isInReview && (
           <div className="review-card" role="status">
             <div className="review-card-row">
@@ -809,6 +911,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </span>
           ) : null}
           {fieldsError && <span className="savebar-error">{fieldsError}</span>}
+          {!fieldsError && dutyBlocking && (
+            <span className="savebar-error">Fix the duty mismatch to save.</span>
+          )}
           <div className="spacer" />
           {fieldsDirty && !conflict && (
             <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
@@ -820,7 +925,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               {savingFields ? 'Refreshing…' : 'Refresh'}
             </button>
           ) : (
-            <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty} onClick={() => void saveFields()}>
+            <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty || dutyBlocking} onClick={() => void saveFields()}>
               {savingFields ? 'Saving…' : 'Save changes'}
             </button>
           )}

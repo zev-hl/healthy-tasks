@@ -14,28 +14,44 @@ import {
   type AttachmentWithUploader,
 } from './attachment.mapper.js';
 import { commentInclude, toCommentDto, type CommentWithRefs } from './comment.mapper.js';
+import {
+  dutyRefSelect,
+  heldDutiesSelect,
+  isDutyMismatch,
+  toDutyRef,
+  type DutyWithDepartment,
+  type HolderWithDuties,
+} from './duty.mapper.js';
 
 type UserRefSelect = Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'title'>;
 
 /** A Task row with its creator (and optional assignee) joined in. */
 export type TaskWithRefs = Task & {
   creator: UserRefSelect;
-  assignee: UserRefSelect | null;
+  // The duties the assignee / prior assignee hold ride along so the Department
+  // Duties ⚠ flag needs no extra query.
+  assignee: (UserRefSelect & HolderWithDuties) | null;
   // Phase 10 review workflow refs (null unless the task is in Review).
   reviewInitiator: UserRefSelect | null;
-  priorAssignee: UserRefSelect | null;
+  priorAssignee: (UserRefSelect & HolderWithDuties) | null;
+  duty: DutyWithDepartment | null;
 };
 
 const userRefSelect = {
   select: { id: true, email: true, firstName: true, lastName: true, title: true },
 } as const;
 
+const holderRefSelect = {
+  select: { ...userRefSelect.select, ...heldDutiesSelect },
+} as const;
+
 /** The Prisma `include` used everywhere a TaskDto is returned. */
 export const taskInclude = {
   creator: userRefSelect,
-  assignee: userRefSelect,
+  assignee: holderRefSelect,
   reviewInitiator: userRefSelect,
-  priorAssignee: userRefSelect,
+  priorAssignee: holderRefSelect,
+  duty: dutyRefSelect,
 } as const;
 
 const taskRefSelect = { id: true, name: true, status: true } as const;
@@ -112,6 +128,9 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     priorStatus: task.priorStatus,
     instanceLabel: task.instanceLabel,
     templateId: task.templateId,
+    dutyId: task.dutyId,
+    duty: task.duty ? toDutyRef(task.duty) : null,
+    dutyMismatch: isDutyMismatch(task),
   };
 }
 
