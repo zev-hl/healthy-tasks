@@ -27,6 +27,11 @@ import {
   EXCLUSIVES_LOOKUP_MAX_ASINS,
   EXCLUSIVES_ALERT_MODES,
   EXCLUSIVES_LISTINGS_MODES,
+  DEPARTMENT_NAME_MAX,
+  DUTY_NAME_MAX,
+  DUTY_DESCRIPTION_MAX,
+  TIME_DAY_MAX_MINUTES,
+  TIME_DAY_NOTE_MAX,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -134,6 +139,12 @@ const optionalUserId = z
   .optional()
   .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
 
+// Department Duties: an optional duty id with the same omitted/cleared rules.
+const optionalDutyId = z
+  .union([z.null(), z.literal(''), z.string().uuid('Invalid duty id')])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+
 // Optional date/time. Distinguishes "omitted" (undefined → leave unchanged) from
 // "cleared" ('' or null → set to null). Accepts ISO or datetime-local strings.
 const optionalDateTime = z
@@ -194,6 +205,7 @@ export const createTaskSchema = z.object({
   tags: tags.optional(),
   startAt: optionalDateTime,
   dueAt: optionalDateTime,
+  dutyId: optionalDutyId,
 });
 
 // PATCH semantics: every field optional; omitted fields are left unchanged.
@@ -206,6 +218,7 @@ export const updateTaskSchema = z.object({
   tags: tags.optional(),
   startAt: optionalDateTime,
   dueAt: optionalDateTime,
+  dutyId: optionalDutyId,
   // Phase 10: reviewer chosen when sending a task to Review (required by the
   // service only on a transition into Review).
   reviewerId: optionalUserId,
@@ -338,6 +351,10 @@ const taskFiltersSchema = z.object({
   // Template provenance filters (Phase 11).
   instanceLabel: z.string().trim().max(200).optional(),
   templateId: z.coerce.number().int().positive().optional(),
+  // Department Duties filters.
+  departmentIds: z.array(z.string().uuid()).max(200).optional(),
+  dutyIds: z.array(z.string().uuid()).max(500).optional(),
+  dutyMismatch: z.boolean().optional(),
 });
 
 export const taskSearchSchema = z.object({
@@ -531,6 +548,7 @@ const templateNodeInputSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+  dutyId: optionalDutyId,
   tags: tags.optional(),
   orderIndex: z.number().int().min(0).max(10000).optional(),
 });
@@ -591,6 +609,10 @@ export const instantiateTemplateSchema = z.object({
     .max(200)
     .optional(),
 });
+
+// Department Duties: which role fillers lack the duties their template tasks need.
+export const templateDutyCheckSchema = instantiateTemplateSchema.pick({ roleAssignments: true });
+export type TemplateDutyCheckInput = z.infer<typeof templateDutyCheckSchema>;
 
 export const materializeGhostSchema = z.object({
   seq: z.number().int().min(1),
@@ -843,3 +865,104 @@ export const exclusivesGroupExportSchema = z.object({
 });
 export type ExclusivesAlertExportInput = z.infer<typeof exclusivesAlertExportSchema>;
 export type ExclusivesGroupExportInput = z.infer<typeof exclusivesGroupExportSchema>;
+
+// --- Department Duties --------------------------------------------------------
+
+const departmentName = z
+  .string()
+  .trim()
+  .min(1, 'Enter a name.')
+  .max(DEPARTMENT_NAME_MAX, 'Name is too long');
+const dutyName = z.string().trim().min(1, 'Enter a name.').max(DUTY_NAME_MAX, 'Name is too long');
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Pick a color');
+const dutyDescription = z
+  .string()
+  .trim()
+  .max(DUTY_DESCRIPTION_MAX, 'Description is too long')
+  .optional()
+  .nullable()
+  .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+
+export const createDepartmentSchema = z.object({ name: departmentName, color: hexColor.optional() });
+export const updateDepartmentSchema = z.object({
+  name: departmentName.optional(),
+  color: hexColor.optional(),
+});
+export const createDutySchema = z.object({ name: dutyName, description: dutyDescription });
+export const updateDutySchema = z.object({
+  name: dutyName.optional(),
+  description: dutyDescription,
+});
+export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
+export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;
+export type CreateDutyInput = z.infer<typeof createDutySchema>;
+export type UpdateDutyInput = z.infer<typeof updateDutySchema>;
+
+// Organization: staged supervisor moves + duty ticks, saved together.
+export const saveOrgChangesSchema = z.object({
+  supervisorChanges: z
+    .array(
+      z.object({
+        userId: z.string().uuid(),
+        supervisorId: z.string().uuid().nullable(),
+        expectedSupervisorId: z.string().uuid().nullable(),
+      }),
+    )
+    .max(1000)
+    .optional(),
+  dutyChanges: z
+    .array(
+      z.object({
+        userId: z.string().uuid(),
+        add: z.array(z.string().uuid()).max(500),
+        remove: z.array(z.string().uuid()).max(500),
+      }),
+    )
+    .max(1000)
+    .optional(),
+});
+export type SaveOrgChangesInput = z.infer<typeof saveOrgChangesSchema>;
+
+// Time logging. Dates are bare calendar dates (YYYY-MM-DD) — the person's own
+// day, never converted through a time zone.
+export const calendarDate = z
+  .string()
+  .regex(CALENDAR_DATE_RE, 'Use a YYYY-MM-DD date')
+  .refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)), 'Invalid date');
+
+export const saveTimeDaySchema = z.object({
+  entries: z
+    .array(
+      z.object({
+        dutyId: z.string().uuid(),
+        minutes: z.number().int().min(0).max(TIME_DAY_MAX_MINUTES),
+      }),
+    )
+    .max(200),
+  note: z
+    .string()
+    .trim()
+    .max(TIME_DAY_NOTE_MAX, 'Note is too long')
+    .optional()
+    .nullable()
+    .transform((v) => (v === undefined ? undefined : v === '' ? null : v)),
+  completed: z.boolean().optional(),
+  expectedUpdatedAt: z.string().nullable().optional(),
+});
+export type SaveTimeDayInput = z.infer<typeof saveTimeDaySchema>;
+
+export const setTimeDayCompletedSchema = z.object({ completed: z.boolean() });
+
+export const timeReviewSchema = z
+  .object({
+    from: calendarDate,
+    to: calendarDate,
+    scope: z.union([
+      z.enum(['team', 'direct', 'withme', 'all']),
+      z.string().regex(/^user:[0-9a-fA-F-]{36}$/, 'Invalid scope'),
+    ]),
+    departmentId: z.string().uuid().nullable().optional(),
+    dutyId: z.string().uuid().nullable().optional(),
+  })
+  .refine((v) => v.from <= v.to, { message: '`from` must be on or before `to`', path: ['to'] });
+export type TimeReviewInput = z.infer<typeof timeReviewSchema>;

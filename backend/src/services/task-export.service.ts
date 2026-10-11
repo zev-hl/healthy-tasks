@@ -1,6 +1,15 @@
 import ExcelJS from 'exceljs';
-import { TASK_STATUS_LABELS, type TaskRowDto } from '@healthy-tasks/shared';
+import { TASK_STATUS_LABELS, dutyLabel, type TaskRowDto } from '@healthy-tasks/shared';
 import { toExcelLocalDate } from '../utils/excel-date.js';
+
+/** "Department › Duty" for a spreadsheet cell, flagged when archived or held by no one. */
+export function exportDutyLabel(r: Pick<TaskRowDto, 'duty' | 'dutyMismatch'>): string {
+  if (!r.duty) return '';
+  const notes = [r.duty.archived ? 'archived' : '', r.dutyMismatch ? '⚠ assignee lacks duty' : '']
+    .filter(Boolean)
+    .join(', ');
+  return notes ? `${dutyLabel(r.duty)} (${notes})` : dutyLabel(r.duty);
+}
 
 /**
  * Build an .xlsx workbook of the given task rows. Includes ALL columns
@@ -29,6 +38,7 @@ export async function buildTasksWorkbook(
     { header: 'Due', key: 'dueAt', width: 20 },
     { header: 'Parent / Child', key: 'parentChild', width: 20 },
     { header: 'Tags', key: 'tags', width: 32 },
+    { header: 'Department › Duty', key: 'duty', width: 34 },
   ];
   ws.getRow(1).font = { bold: true };
 
@@ -50,6 +60,7 @@ export async function buildTasksWorkbook(
           ? `${r.childrenCount} sub-task(s)`
           : '',
       tags: r.tags.join(', '),
+      duty: exportDutyLabel(r),
     });
   }
 

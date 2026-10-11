@@ -1,6 +1,7 @@
 import type { Prisma, User } from '@prisma/client';
 import {
   isSupervisorRole,
+  TIME_DAY_MAX_MINUTES,
   TASK_HISTORY_FIELDS,
   DEFAULT_PAGE_SIZE,
   type PaginatedResult,
@@ -494,6 +495,44 @@ export async function mergeUsers(actorId: string, input: MergeUsersInput): Promi
       where: { userId: mergedId },
       data: { userId: survivingId },
     });
+
+    // Department Duties: the survivor holds every duty either account held and
+    // inherits the merged account's logged time. The same day + duty on both
+    // accounts adds up (capped at 24h); a day completed on either stays
+    // completed, and both notes are kept.
+    const mergedDuties = await tx.userDuty.findMany({ where: { userId: mergedId } });
+    if (mergedDuties.length > 0) {
+      await tx.userDuty.createMany({
+        data: mergedDuties.map((d) => ({ userId: survivingId, dutyId: d.dutyId })),
+        skipDuplicates: true,
+      });
+      await tx.userDuty.deleteMany({ where: { userId: mergedId } });
+    }
+    for (const e of await tx.timeEntry.findMany({ where: { userId: mergedId } })) {
+      const clash = await tx.timeEntry.findUnique({
+        where: { userId_date_dutyId: { userId: survivingId, date: e.date, dutyId: e.dutyId } },
+      });
+      if (clash) {
+        await tx.timeEntry.update({
+          where: { id: clash.id },
+          data: { minutes: Math.min(TIME_DAY_MAX_MINUTES, clash.minutes + e.minutes) },
+        });
+        await tx.timeEntry.delete({ where: { id: e.id } });
+      } else {
+        await tx.timeEntry.update({ where: { id: e.id }, data: { userId: survivingId } });
+      }
+    }
+    for (const d of await tx.timeDay.findMany({ where: { userId: mergedId } })) {
+      const key = { userId_date: { userId: survivingId, date: d.date } };
+      const clash = await tx.timeDay.findUnique({ where: key });
+      const note = [clash?.note, d.note].filter(Boolean).join(' / ') || null;
+      await tx.timeDay.upsert({
+        where: key,
+        create: { userId: survivingId, date: d.date, completedAt: d.completedAt, note: d.note },
+        update: { completedAt: clash?.completedAt ?? d.completedAt, note },
+      });
+      await tx.timeDay.delete({ where: { userId_date: { userId: mergedId, date: d.date } } });
+    }
 
     // 4. Repoint anyone supervised by the merged account to the survivor.
     await tx.user.updateMany({

@@ -53,6 +53,16 @@ const ExclusivesLogPage = lazy(() =>
 const ExclusivesEditorPage = lazy(() =>
   import('./pages/ExclusivesEditorPage').then((m) => ({ default: m.ExclusivesEditorPage })),
 );
+const DepartmentsPage = lazy(() =>
+  import('./pages/DepartmentsPage').then((m) => ({ default: m.DepartmentsPage })),
+);
+const OrganizationPage = lazy(() =>
+  import('./pages/OrganizationPage').then((m) => ({ default: m.OrganizationPage })),
+);
+const MyTimePage = lazy(() => import('./pages/MyTimePage').then((m) => ({ default: m.MyTimePage })));
+const TimeReviewPage = lazy(() =>
+  import('./pages/TimeReviewPage').then((m) => ({ default: m.TimeReviewPage })),
+);
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
@@ -133,6 +143,32 @@ export const router = createBrowserRouter([
             element: (
               <RequireAuth roles={['Admin']}>
                 <SettingsPage />
+              </RequireAuth>
+            ),
+          },
+          // Department Duties.
+          { path: '/time', element: <MyTimePage /> },
+          {
+            path: '/reports/time',
+            element: (
+              <RequireAuth roles={['Admin', 'Manager']}>
+                <TimeReviewPage />
+              </RequireAuth>
+            ),
+          },
+          {
+            path: '/admin/departments',
+            element: (
+              <RequireAuth roles={['Admin']}>
+                <DepartmentsPage />
+              </RequireAuth>
+            ),
+          },
+          {
+            path: '/admin/organization',
+            element: (
+              <RequireAuth roles={['Admin', 'Manager']}>
+                <OrganizationPage />
               </RequireAuth>
             ),
           },

@@ -7,6 +7,7 @@ import {
   createTemplateSchema,
   instantiateTemplateSchema,
   materializeGhostSchema,
+  templateDutyCheckSchema,
   updateTemplateSchema,
 } from '../validation/schemas.js';
 import {
@@ -20,6 +21,7 @@ import {
   listFutureOccurrencesController,
   listTemplatesController,
   materializeGhostController,
+  templateDutyCheckController,
   updateTemplateController,
 } from '../controllers/templates.controller.js';
 
@@ -47,6 +49,12 @@ templatesRouter.get('/:id/future', asyncHandler(listFutureOccurrencesController)
 
 // Manual instantiation, ghost click-through materialization, and the
 // "this and following" re-sync of already-materialized future instances.
+// Department Duties: pre-flight for "Create tasks" (and its Re-check button).
+templatesRouter.post(
+  '/:id/duty-check',
+  validateBody(templateDutyCheckSchema),
+  asyncHandler(templateDutyCheckController),
+);
 templatesRouter.post(
   '/:id/instantiate',
   validateBody(instantiateTemplateSchema),

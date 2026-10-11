@@ -8,6 +8,7 @@ import {
   type DueDateReportRow,
 } from '@healthy-tasks/shared';
 import { toExcelLocalDate } from '../utils/excel-date.js';
+import { exportDutyLabel } from './task-export.service.js';
 
 /**
  * Build the Due Date Performance Report workbook. Mirrors the Task export column
@@ -33,6 +34,7 @@ export async function buildDueDateReportWorkbook(
     { header: 'Creator', key: 'creator', width: 28 },
     { header: 'Start', key: 'startAt', width: 20 },
     { header: 'Due', key: 'dueAt', width: 20 },
+    { header: 'Department › Duty', key: 'duty', width: 34 },
     { header: 'Result', key: 'result', width: 26 },
   ];
   ws.getRow(1).font = { bold: true };
@@ -48,6 +50,7 @@ export async function buildDueDateReportWorkbook(
       creator: r.creator.email,
       startAt: toExcelLocalDate(r.startAt, timeZone),
       dueAt: toExcelLocalDate(r.dueAt, timeZone),
+      duty: exportDutyLabel(r),
       result: formatDueDateResult(r.bucket, r.daysDelta),
     });
   };

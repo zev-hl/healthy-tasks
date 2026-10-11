@@ -299,6 +299,12 @@ export interface TaskDto {
   // PO/batch label (also prefixed onto `name`); `templateId` traces the source.
   instanceLabel: string | null;
   templateId: number | null;
+  // Department Duties: the task's (optional) duty, and whether the person doing
+  // it doesn't hold that duty. While in Review that person is the prior
+  // assignee, not the reviewer (reviews are exempt from the duty rule).
+  dutyId: string | null;
+  duty: DutyRef | null;
+  dutyMismatch: boolean;
 }
 
 /**
@@ -372,6 +378,8 @@ export interface CreateTaskRequest {
   tags?: string[];
   startAt?: string | null;
   dueAt?: string | null;
+  /** Optional duty; the assignee must hold it (422 DUTY_NOT_HELD otherwise). */
+  dutyId?: string | null;
 }
 
 /** All fields optional; id, creator, and createdAt are immutable and omitted. */
@@ -384,6 +392,12 @@ export interface UpdateTaskRequest {
   tags?: string[];
   startAt?: string | null;
   dueAt?: string | null;
+  /**
+   * Department Duties. Whenever the assignee or the duty changes, the (new)
+   * assignee must hold the (new) duty — 422 DUTY_NOT_HELD otherwise. An existing
+   * mismatch doesn't block saving unrelated fields.
+   */
+  dutyId?: string | null;
   // Phase 10: required by the server only on a transition INTO Review — the
   // chosen reviewer becomes the temporary assignee.
   reviewerId?: string | null;
@@ -557,6 +571,8 @@ export const TASK_HISTORY_FIELDS = {
   merge: 'merge',
   // Phase 11: task generated from a template (provenance, on the root task).
   template: 'template',
+  // Department Duties: the task's Department › Duty.
+  duty: 'duty',
 } as const;
 
 /** Human-readable label for a history `field` key (falls back to the key). */
@@ -576,6 +592,7 @@ export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
   comment: 'Comment',
   merge: 'Account merge',
   template: 'Template',
+  duty: 'Department › Duty',
 };
 
 /** A single change-history entry for a task, newest-first in listings. */
@@ -611,7 +628,16 @@ export interface PaginatedResult<T> {
 }
 
 /** Per-user persisted screen state lives under one of these keys. */
-export const SCREEN_KEYS = ['task-search', 'users', 'due-date-report'] as const;
+export const SCREEN_KEYS = [
+  'task-search',
+  'users',
+  'due-date-report',
+  // Department Duties screens (expanded rows, hide-weekends, chosen views).
+  'departments',
+  'organization',
+  'my-time',
+  'time-review',
+] as const;
 export type ScreenKey = (typeof SCREEN_KEYS)[number];
 
 // --- Task Search columns ---------------------------------------------------
@@ -633,6 +659,7 @@ export const TASK_COLUMN_KEYS = [
   'dueAt',
   'parentChild',
   'tags',
+  'duty',
 ] as const;
 export type TaskColumnKey = (typeof TASK_COLUMN_KEYS)[number];
 
@@ -649,6 +676,7 @@ export const TASK_COLUMN_LABELS: Record<TaskColumnKey, string> = {
   dueAt: 'Due',
   parentChild: 'Parent / Child',
   tags: 'Tags',
+  duty: 'Department › Duty',
 };
 
 /** Default left-to-right column order (mirrors the spec's column order, tags last). */
@@ -672,6 +700,8 @@ export const TASK_SORT_FIELDS = [
   'startAt',
   'dueAt',
   'parentChild',
+  // Department Duties: sorts by department name, then duty name.
+  'duty',
 ] as const;
 export type TaskSortField = (typeof TASK_SORT_FIELDS)[number];
 
@@ -733,6 +763,13 @@ export interface TaskSearchFilters {
   instanceLabel?: string;
   /** Restrict to tasks generated from this template. */
   templateId?: number;
+  // --- Department Duties ----------------------------------------------------
+  /** Tasks whose duty belongs to one of these departments. */
+  departmentIds?: string[];
+  /** Tasks carrying one of these duties. */
+  dutyIds?: string[];
+  /** Only tasks whose assignee doesn't hold the task's duty (the ⚠ flag). */
+  dutyMismatch?: boolean;
 }
 
 export interface TaskSearchRequest {
@@ -834,6 +871,9 @@ export interface TaskRowDto {
    * be both (mentioned AND tree-inherited).
    */
   treeOnly: boolean;
+  /** Department Duties: the task's duty and the assignee ⇄ duty ⚠ flag. */
+  duty: DutyRef | null;
+  dutyMismatch: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1065,6 +1105,13 @@ export interface AssignedNotificationDto {
   blockedByCount: number; // open blockers on the task
   createdAt: string; // ISO
   read: boolean;
+  /**
+   * Department Duties: set (and `action` is 'added') when this row is not an
+   * assignment but a heads-up that an automatically created task went to
+   * someone who doesn't hold its duty. Sent to the template owner / the
+   * recurring task's creator.
+   */
+  dutyMismatch: { assignee: TaskUserRef | null; duty: DutyRef } | null;
 }
 
 /** The full Notifications screen payload. */
@@ -1358,6 +1405,9 @@ export interface TemplateNodeDto {
   dueOffsetDays: number | null;
   /** Free-text job-role placeholder, resolved to a real user at instantiation. */
   assigneeRole: string | null;
+  /** Department Duties: the duty the generated task carries (null = none). */
+  dutyId: string | null;
+  duty: DutyRef | null;
   /** Default tags applied to the task generated from this node. */
   tags: string[];
   orderIndex: number;
@@ -1465,6 +1515,7 @@ export interface TemplateNodeInput {
   startOffsetDays?: number | null;
   dueOffsetDays?: number | null;
   assigneeRole?: string | null;
+  dutyId?: string | null;
   tags?: string[];
   orderIndex?: number;
 }
@@ -2176,4 +2227,310 @@ export interface ExclusivesGroupOptionDto {
   id: number;
   name: string;
   groupType: ExclusivesGroupType;
+}
+
+// ===========================================================================
+// Department Duties
+// ---------------------------------------------------------------------------
+// Departments own Duties, people hold Duties, tasks and template tasks can
+// carry a Duty, and people log their time against their Duties each day.
+// A duty is always shown as "Department › Duty", so its name only has to be
+// unique within its department.
+// ===========================================================================
+
+/** Swatch colors offered for a department (hex, from the app palette). */
+export const DEPARTMENT_COLORS = [
+  '#0f7b6c',
+  '#3b6ea5',
+  '#7857c8',
+  '#b8720a',
+  '#b3452f',
+  '#2f7d4f',
+  '#2d557f',
+  '#8a8177',
+  '#3d8579',
+  '#8c5606',
+  '#5b3f96',
+  '#93361f',
+] as const;
+
+export const DEPARTMENT_NAME_MAX = 80;
+export const DUTY_NAME_MAX = 120;
+export const DUTY_DESCRIPTION_MAX = 500;
+export const TIME_DAY_NOTE_MAX = 500;
+
+/** How a department/duty name is stored: trimmed, inner whitespace collapsed. */
+export function normalizeCatalogName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ');
+}
+
+/** The case/space-insensitive key two names clash on. */
+export function catalogNameKey(name: string): string {
+  return normalizeCatalogName(name).toLowerCase();
+}
+
+/** Compact duty reference embedded in tasks, template nodes and time rows. */
+export interface DutyRef {
+  id: string;
+  name: string;
+  departmentId: string;
+  departmentName: string;
+  /** The department's swatch color. */
+  color: string;
+  /** True when the duty (or its department) is archived. */
+  archived: boolean;
+}
+
+/** "Department › Duty" — the one way a duty is labelled everywhere. */
+export function dutyLabel(d: Pick<DutyRef, 'departmentName' | 'name'>): string {
+  return `${d.departmentName} › ${d.name}`;
+}
+
+/** A duty row on the Departments & Duties screen (and in every duty picker). */
+export interface DutyDto {
+  id: string;
+  departmentId: string;
+  name: string;
+  description: string | null;
+  archived: boolean;
+  /** Active people who hold this duty. */
+  peopleCount: number;
+  /** Open (not Completed/Canceled) tasks carrying this duty. */
+  openTaskCount: number;
+  /**
+   * Referenced by anything (a holder, a task, a template task, logged time).
+   * A used duty can only be archived; a never-used one can be deleted.
+   */
+  inUse: boolean;
+}
+
+export interface DepartmentDto {
+  id: string;
+  name: string;
+  color: string;
+  archived: boolean;
+  /** Every duty, active and archived, alphabetical. */
+  duties: DutyDto[];
+  /** Distinct active people holding any of this department's duties. */
+  peopleCount: number;
+}
+
+export interface CreateDepartmentRequest {
+  name: string;
+  color?: string;
+}
+
+export interface UpdateDepartmentRequest {
+  name?: string;
+  color?: string;
+}
+
+export interface CreateDutyRequest {
+  name: string;
+  description?: string | null;
+}
+
+export interface UpdateDutyRequest {
+  name?: string;
+  description?: string | null;
+}
+
+/**
+ * Which duties each active person holds (userId → dutyIds), for the assignee ⇄
+ * duty cross-checks in task and template pickers. Any signed-in user may read it.
+ */
+export type DutyHoldingsDto = Record<string, string[]>;
+
+/**
+ * Error code (in `details.code`, HTTP 422) when a task's assignee doesn't hold
+ * the task's duty, or when template roles are filled by people missing duties.
+ */
+export const DUTY_NOT_HELD_CODE = 'DUTY_NOT_HELD';
+
+/**
+ * One unmet requirement when creating tasks from a template: the person filling
+ * `role` lacks `dutyId`, which these template tasks need.
+ */
+export interface TemplateDutyProblemDto {
+  role: string;
+  userId: string;
+  dutyId: string;
+  nodeIds: number[];
+}
+
+export interface TemplateDutyCheckRequest {
+  roleAssignments?: RoleAssignment[];
+}
+
+export interface TemplateDutyCheckDto {
+  problems: TemplateDutyProblemDto[];
+}
+
+// --- Organization ------------------------------------------------------------
+
+/** One person on the Organization screen. */
+export interface OrgPersonDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  title: string | null;
+  role: Role;
+  supervisorId: string | null;
+  /** Every duty held (active and archived). */
+  dutyIds: string[];
+  /** dutyId → this person's open tasks carrying that duty (for removal warnings). */
+  openTaskCountByDuty: Record<string, number>;
+  /** The viewer may tick/untick this person's duties. */
+  canEditDuties: boolean;
+  /** The viewer may give this person a new supervisor. */
+  canChangeSupervisor: boolean;
+}
+
+/**
+ * The Organization screen's data. Admins see every active person. A Manager
+ * sees themselves plus everyone below them, and may edit the duties and the
+ * supervisor of anyone below them (never their own).
+ */
+export interface OrgDto {
+  people: OrgPersonDto[];
+  scope: 'all' | 'team';
+}
+
+export interface OrgSupervisorChange {
+  userId: string;
+  supervisorId: string | null;
+  /** The supervisor the client last saw (409 if it has changed since). */
+  expectedSupervisorId: string | null;
+}
+
+export interface OrgDutyChange {
+  userId: string;
+  add: string[];
+  remove: string[];
+}
+
+/** Staged Organization edits, saved together in one transaction. */
+export interface SaveOrgChangesRequest {
+  supervisorChanges?: OrgSupervisorChange[];
+  dutyChanges?: OrgDutyChange[];
+}
+
+// --- Time logging ------------------------------------------------------------
+
+/** The most minutes one day may hold (all duties together). */
+export const TIME_DAY_MAX_MINUTES = 1440;
+
+/** A calendar date as `YYYY-MM-DD` (no time, no zone). */
+export type CalendarDateString = string;
+
+export interface TimeEntryDto {
+  dutyId: string;
+  minutes: number;
+}
+
+/** One person's day: minutes per duty, the Completed flag and a note. */
+export interface TimeDayDto {
+  userId: string;
+  date: CalendarDateString;
+  entries: TimeEntryDto[];
+  completed: boolean;
+  completedAt: string | null; // ISO
+  note: string | null;
+  /** Optimistic-concurrency token for the day editor (null if never saved). */
+  updatedAt: string | null;
+}
+
+/**
+ * Replace a day's entries (and note). Only duties the person currently holds can
+ * be logged; an entry on a duty they no longer hold may be lowered or cleared
+ * but not raised. A Completed day must be reopened first. `completed: true`
+ * marks the day complete in the same save.
+ */
+export interface SaveTimeDayRequest {
+  entries: TimeEntryDto[];
+  note?: string | null;
+  completed?: boolean;
+  expectedUpdatedAt?: string | null;
+}
+
+export interface SetTimeDayCompletedRequest {
+  completed: boolean;
+}
+
+/**
+ * Whose time the Time Review grid covers: everyone below the viewer, direct
+ * reports only, the viewer plus everyone below, everyone (Admins only), or one
+ * person (`user:<id>`).
+ */
+export type TimeReviewScope = 'team' | 'direct' | 'withme' | 'all' | `user:${string}`;
+
+export interface TimeReviewRequest {
+  from: CalendarDateString;
+  to: CalendarDateString;
+  scope: TimeReviewScope;
+  departmentId?: string | null;
+  dutyId?: string | null;
+}
+
+/** One logged amount, flattened for client-side pivoting. */
+export interface TimeRecordDto {
+  userId: string;
+  date: CalendarDateString;
+  dutyId: string;
+  minutes: number;
+}
+
+/** A task with a duty whose start–due range touches the period. */
+export interface RelatedTaskDto {
+  id: number;
+  name: string;
+  status: TaskStatus;
+  assignee: TaskUserRef;
+  duty: DutyRef;
+  startAt: string | null;
+  dueAt: string | null;
+}
+
+export interface TimeReviewPersonDto extends TaskUserRef {
+  supervisorId: string | null;
+}
+
+export interface TimeReviewDto {
+  from: CalendarDateString;
+  to: CalendarDateString;
+  people: TimeReviewPersonDto[];
+  /** Entries in the period (already narrowed by department/duty). */
+  records: TimeRecordDto[];
+  /** Per person per day that has a row: total minutes (unfiltered) and Completed. */
+  days: { userId: string; date: CalendarDateString; minutes: number; completed: boolean }[];
+  /** Every duty referenced by `records` or `relatedTasks`, archived included. */
+  duties: DutyRef[];
+  relatedTasks: RelatedTaskDto[];
+}
+
+/** Who the viewer may pick in the Time Review "People" filter. */
+export interface TimeReviewPeopleDto {
+  me: TimeReviewPersonDto;
+  /** Everyone below the viewer (Admins: every other active person). */
+  team: TimeReviewPersonDto[];
+  directIds: string[];
+  isAdmin: boolean;
+}
+
+/** Format minutes as h:mm ("—" for zero). */
+export function formatHM(minutes: number): string {
+  if (!minutes) return '—';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}:${String(m).padStart(2, '0')}`;
+}
+
+/** Format minutes as "3h 15m" / "45m" / "2h". */
+export function formatDuration(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes || 0));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (!h) return `${r}m`;
+  return r ? `${h}h ${r}m` : `${h}h`;
 }

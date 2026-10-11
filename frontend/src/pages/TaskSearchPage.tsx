@@ -12,6 +12,7 @@ import {
   TASK_STATUS_LABELS,
   isSupervisorRole,
   type ActiveUserDto,
+  type DepartmentDto,
   type GhostOccurrenceDto,
   type OrgHierarchyNode,
   type TaskColumnKey,
@@ -48,6 +49,7 @@ import { DueDate, AgoDate } from '../components/ui/dates';
 import { TaskKanban } from '../components/TaskKanban';
 import { TaskCalendar, type CalendarMode, type CalendarScale } from '../components/TaskCalendar';
 import { TaskGantt } from '../components/TaskGantt';
+import { DutyTag, MismatchFlag } from '../components/duties/DutyTag';
 
 interface ColumnState {
   key: TaskColumnKey;
@@ -87,6 +89,7 @@ const FILTERABLE: TaskColumnKey[] = [
   'startAt',
   'dueAt',
   'statusChangedAt',
+  'duty',
 ];
 
 const defaultFilters: TaskSearchFilters = { includeNoStart: true, includeNoDue: true };
@@ -155,6 +158,8 @@ export function TaskSearchPage() {
 
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  // Department Duties: the catalog for the Department / Duty filters.
+  const [departments, setDepartments] = useState<DepartmentDto[]>([]);
   const [hierarchy, setHierarchy] = useState<OrgHierarchyNode[]>([]);
   const [dash, setDash] = useState<TaskDashboardDto | null>(null);
   const [showColumns, setShowColumns] = useState(false);
@@ -197,6 +202,10 @@ export function TaskSearchPage() {
       .listTaskTags()
       .then(setAllTags)
       .catch(() => setAllTags([]));
+    void api
+      .listDepartments()
+      .then(setDepartments)
+      .catch(() => setDepartments([]));
     void api
       .getUserHierarchy()
       .then(setHierarchy)
@@ -347,6 +356,21 @@ export function TaskSearchPage() {
       cancelled = true;
     };
   }, [hydrated, debouncedText, filters, includeReadOnly]);
+
+  // Department Duties: how many visible tasks carry the ⚠ flag (drives the quick
+  // "Only duty mismatches" toggle). Independent of the other filters.
+  const [mismatchCount, setMismatchCount] = useState(0);
+  useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+    void api
+      .queryTasks({ filters: { dutyMismatch: true }, page: 1, pageSize: 1, includeReadOnly })
+      .then((r) => !cancelled && setMismatchCount(r.total))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, includeReadOnly, rows]);
 
   // --- Change handlers -----------------------------------------------------
   const patchFilters = (patch: Partial<TaskSearchFilters>) => {
@@ -516,6 +540,16 @@ export function TaskSearchPage() {
         label: filters.dueFrom || filters.dueTo ? 'Due date' : 'Has due date',
         clear: { dueFrom: null, dueTo: null, includeNoDue: true },
       });
+    if (filters.departmentIds?.length)
+      chips.push({
+        id: 'department',
+        label: `Department · ${filters.departmentIds.length}`,
+        clear: { departmentIds: [], dutyIds: [] },
+      });
+    if (filters.dutyIds?.length)
+      chips.push({ id: 'duty', label: `Duty · ${filters.dutyIds.length}`, clear: { dutyIds: [] } });
+    if (filters.dutyMismatch)
+      chips.push({ id: 'dutyMismatch', label: 'Duty mismatches', clear: { dutyMismatch: undefined } });
   }
   const filtersActive = chips.length > 0;
 
@@ -676,6 +710,62 @@ export function TaskSearchPage() {
             </div>
           </FilterPopover>
         );
+      case 'duty': {
+        // Department narrows the Duty list to its duties.
+        const pickDepts = departments.filter((d) => d.duties.length > 0);
+        const dutyPool = pickDepts.filter(
+          (d) => !filters.departmentIds?.length || filters.departmentIds.includes(d.id),
+        );
+        return (
+          <FilterPopover
+            label="Department › Duty"
+            active={
+              (filters.departmentIds?.length ?? 0) > 0 ||
+              (filters.dutyIds?.length ?? 0) > 0 ||
+              !!filters.dutyMismatch
+            }
+          >
+            <div className="pop-range">
+              <span className="u-label">Department</span>
+              <MultiSelect
+                options={pickDepts.map((d) => ({
+                  value: d.id,
+                  label: `${d.name}${d.archived ? ' (archived)' : ''}`,
+                }))}
+                selected={filters.departmentIds ?? []}
+                onChange={(v) =>
+                  patchFilters({
+                    departmentIds: v,
+                    // Drop picked duties that fall outside the chosen departments.
+                    dutyIds: (filters.dutyIds ?? []).filter((id) =>
+                      pickDepts.some((d) => (!v.length || v.includes(d.id)) && d.duties.some((u) => u.id === id)),
+                    ),
+                  })
+                }
+              />
+              <span className="u-label">Duty</span>
+              <MultiSelect
+                options={dutyPool.flatMap((d) =>
+                  d.duties.map((u) => ({
+                    value: u.id,
+                    label: `${d.name} › ${u.name}${u.archived ? ' (archived)' : ''}`,
+                  })),
+                )}
+                selected={filters.dutyIds ?? []}
+                onChange={(v) => patchFilters({ dutyIds: v })}
+              />
+              <label className="check-inline">
+                <input
+                  type="checkbox"
+                  checked={!!filters.dutyMismatch}
+                  onChange={(e) => patchFilters({ dutyMismatch: e.target.checked || undefined })}
+                />
+                <span>Only duty mismatches (⚠ assignee doesn’t hold the duty)</span>
+              </label>
+            </div>
+          </FilterPopover>
+        );
+      }
       default:
         return null;
     }
@@ -764,6 +854,17 @@ export function TaskSearchPage() {
         return <span className="muted">—</span>;
       case 'tags':
         return <TagsCell tags={row.tags} />;
+      case 'duty':
+        return row.duty ? (
+          <span className="duty-cell">
+            <DutyTag duty={row.duty} />
+            {row.dutyMismatch && (
+              <MismatchFlag who={row.assignee ? `${row.assignee.firstName} ${row.assignee.lastName}`.trim() : null} />
+            )}
+          </span>
+        ) : (
+          <span className="muted">—</span>
+        );
     }
   }
 
@@ -889,6 +990,19 @@ export function TaskSearchPage() {
           </button>
         )}
         <div className="spacer" />
+        {(mismatchCount > 0 || filters.dutyMismatch) && (
+          <label
+            className="nest-toggle"
+            title="Tasks whose assignee doesn’t hold the task’s duty (flagged ⚠) — a quick way to clean them up"
+          >
+            <input
+              type="checkbox"
+              checked={!!filters.dutyMismatch}
+              onChange={(e) => patchFilters({ dutyMismatch: e.target.checked || undefined })}
+            />
+            Only duty mismatches <span className="count-pill">{mismatchCount}</span>
+          </label>
+        )}
         <label
           className="nest-toggle mention-toggle"
           title="Show tasks you can only see read-only — via an @mention or via parent/child tree position"

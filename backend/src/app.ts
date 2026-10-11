@@ -15,6 +15,9 @@ import { goalsRouter } from './routes/goals.routes.js';
 import { reportsRouter } from './routes/reports.routes.js';
 import { settingsRouter } from './routes/app-settings.routes.js';
 import { exclusivesRouter } from './routes/exclusives.routes.js';
+import { departmentsRouter } from './routes/departments.routes.js';
+import { orgRouter } from './routes/org.routes.js';
+import { timeRouter } from './routes/time.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 
 export function createApp() {
@@ -53,6 +56,10 @@ export function createApp() {
   app.use('/api/reports', reportsRouter);
   app.use('/api/settings', settingsRouter);
   app.use('/api/exclusives', exclusivesRouter);
+  // Department Duties.
+  app.use('/api/departments', departmentsRouter);
+  app.use('/api/org', orgRouter);
+  app.use('/api/time', timeRouter);
 
   // Fallbacks
   app.use(notFoundHandler);
