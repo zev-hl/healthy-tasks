@@ -4,7 +4,9 @@ import {
   REMINDER_CANCEL_REASON_LABELS,
   REMINDER_SNOOZE_OPTIONS,
   reminderLeadLabel,
+  dutyLabel,
   type AssignAction,
+  type AssignedNotificationDto,
   type NotificationsDto,
   type ReminderCancelReason,
   type TaskPriority,
@@ -42,6 +44,8 @@ interface FeedItem {
   actor?: TaskUserRef | null; // assigned: who assigned/unassigned
   dueAt?: string | null; // assigned: the task's due date
   blockedByCount?: number; // assigned: open blockers on the task
+  // Department Duties: an auto-created task went to someone lacking its duty.
+  dutyMismatch?: AssignedNotificationDto['dutyMismatch'];
 }
 
 /** Flatten the three lists into one timestamp-sorted feed (newest first). */
@@ -73,6 +77,7 @@ function buildFeed(d: NotificationsDto): FeedItem[] {
       actor: a.actor,
       dueAt: a.dueAt,
       blockedByCount: a.blockedByCount,
+      dutyMismatch: a.dutyMismatch,
     });
   for (const r of d.reminders)
     items.push({
@@ -346,6 +351,8 @@ export function NotificationsPage() {
                     <span className="notif-item-icon" aria-hidden="true">
                       {it.kind === 'mentioned' && it.commenter ? (
                         <Avatar user={it.commenter} px={30} decorative />
+                      ) : it.dutyMismatch ? (
+                        <span className="notif-badge assigned">⚠</span>
                       ) : it.kind === 'assigned' && it.actor ? (
                         <Avatar user={it.actor} px={30} decorative />
                       ) : (
@@ -361,6 +368,12 @@ export function NotificationsPage() {
                           {it.kind === 'mentioned' && it.commenter ? (
                             <>
                               <strong>{userLabel(it.commenter)}</strong> mentioned you
+                            </>
+                          ) : it.dutyMismatch ? (
+                            <>
+                              <strong>Duty mismatch:</strong>{' '}
+                              {it.dutyMismatch.assignee ? userLabel(it.dutyMismatch.assignee) : 'The assignee'} doesn’t hold{' '}
+                              {dutyLabel(it.dutyMismatch.duty)}
                             </>
                           ) : it.kind === 'assigned' ? (
                             it.actor ? (

@@ -7809,3 +7809,1392 @@ tr.just-completed > td {
   background: var(--accent);
   color: #fff;
 }
+
+/* ===========================================================================
+   Department Duties — Departments & Duties, Organization, the assignee ⇄ duty
+   cross-check, My Time and Time Review (from docs/design/Department Duties
+   Prototype.html). Buttons that paint their own background carry `btn-plain`.
+   =========================================================================== */
+
+/* --- Shared pieces --------------------------------------------------------- */
+.duty-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: var(--radius-chip);
+  background: var(--canvas-deep);
+  color: var(--ink-2);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.duty-tag.compact {
+  padding: 1px 6px;
+  font-size: 11.5px;
+}
+.duty-dept {
+  color: var(--muted);
+}
+.duty-sw {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+}
+.duty-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+  font-weight: 700;
+  font-size: 11px;
+  flex: none;
+}
+.duty-cell {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 320px;
+}
+.count-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.count-pill.accent {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.dd-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+.dd-tag.warn {
+  color: var(--warn-deep);
+  background: var(--warn-soft);
+}
+.dd-tag.ok {
+  color: var(--ok-deep);
+  background: var(--ok-soft);
+}
+.dd-tag.info {
+  color: var(--info-text);
+  background: var(--info-soft);
+}
+.dd-tag.neutral {
+  color: var(--ink-3);
+  background: var(--canvas-deep);
+}
+.dd-tag.muted-tag {
+  color: var(--faint);
+  background: var(--canvas-deep);
+}
+.dd-chg {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.dd-chg.add {
+  background: var(--ok-soft);
+  color: var(--ok-deep);
+}
+.dd-chg.rem {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+.dd-chg.mv {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+}
+.dd-chip {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  white-space: nowrap;
+}
+button.dd-chip {
+  border: none;
+  cursor: pointer;
+}
+button.dd-chip:hover {
+  background: #ebe4d9;
+  color: var(--ink);
+}
+.dd-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.dd-page {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 22px 26px 90px;
+}
+.dd-page.narrow {
+  max-width: 1150px;
+}
+.dd-page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.dd-page-head h1 {
+  font-size: 22px;
+}
+.dd-crumbs {
+  font-size: 12.5px;
+  color: var(--muted-2);
+  margin-bottom: 4px;
+}
+.dd-page-sub {
+  font-size: 13px;
+  color: var(--muted-2);
+  margin-top: 2px;
+}
+.dd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.dd-toolbar select,
+.dd-filters select {
+  width: auto;
+  padding: 6px 30px 6px 10px;
+  font-size: 12.5px;
+}
+.dd-search {
+  position: relative;
+  width: 300px;
+  max-width: 40vw;
+}
+.dd-search input {
+  padding: 7px 12px 7px 32px;
+  font-size: 13px;
+}
+.dd-search svg {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--faint);
+}
+.dd-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+}
+.dd-range-label {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.dd-navgrp {
+  display: inline-flex;
+  gap: 4px;
+}
+.dd-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+.dd-empty {
+  padding: 34px;
+  text-align: center;
+  color: var(--muted);
+}
+.dd-inline-err {
+  color: var(--danger-deep);
+  font-size: 12px;
+  font-weight: 500;
+}
+mark.dd-hl {
+  background: #fdeab0;
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+button.dd-icon-btn {
+  background: transparent;
+  color: var(--muted);
+  padding: 3px 8px;
+  border-radius: 7px;
+  font-weight: 500;
+  font-size: 12px;
+  border: none;
+}
+button.dd-icon-btn:hover {
+  background: var(--canvas-deep);
+  color: var(--ink);
+}
+button.dd-icon-btn.danger-t:hover {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+button.dd-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: inherit;
+}
+button.dd-link:hover {
+  background: none;
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+/* --- Collapsible tree (Departments & Duties, Organization) ----------------- */
+.dd-tree {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-frame);
+}
+.dd-tree-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.dd-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--row-line);
+  min-height: 42px;
+  transition: background var(--dur-fast);
+}
+.dd-row:last-child {
+  border-bottom: none;
+}
+.dd-row:hover {
+  background: var(--surface-sunk);
+}
+.dd-row.dept {
+  background: #fdfcfa;
+}
+.dd-row.dept .dd-name {
+  font-weight: 650;
+  font-size: 13.5px;
+}
+.dd-row.duty {
+  padding-left: 58px;
+}
+.dd-row.duty .dd-name {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.dd-row.archived .dd-name {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+.dd-row.adding {
+  background: var(--accent-tint);
+}
+.dd-row input,
+.dd-row select {
+  width: auto;
+  padding: 5px 9px;
+  font-size: 13px;
+}
+.dd-name {
+  white-space: nowrap;
+}
+.dd-desc {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.dd-meta {
+  font-size: 12px;
+  color: var(--muted-2);
+  white-space: nowrap;
+}
+a.dd-meta:hover {
+  color: var(--accent-deep);
+}
+button.dd-caret {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+button.dd-caret:hover {
+  background: var(--canvas-deep);
+  color: var(--ink);
+}
+.dd-caret svg {
+  transition: transform var(--dur) var(--ease);
+}
+.dd-caret.open svg {
+  transform: rotate(90deg);
+}
+.dd-caret-sp {
+  width: 22px;
+  flex: none;
+}
+.dd-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+.dd-row:hover .dd-actions,
+.dd-row:focus-within .dd-actions {
+  opacity: 1;
+}
+.dd-bullet {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--faint-2);
+  flex: none;
+}
+button.dd-add-duty {
+  padding: 2px 8px;
+  font-size: 11.5px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent-deep);
+  border: 1px solid var(--accent-soft);
+}
+button.dd-add-duty:hover {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+.dd-swatch-btn {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  padding: 0;
+  flex: none;
+}
+.dd-swatch-btn.on {
+  border-color: var(--ink);
+}
+.dd-swatches {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.dd-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+/* --- Organization ----------------------------------------------------------- */
+.dd-org-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 16px;
+  align-items: start;
+}
+.dd-org-row.sel {
+  background: var(--accent-tint);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+button.dd-pname {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13.5px;
+  text-align: left;
+}
+button.dd-pname:hover {
+  background: none;
+  color: var(--accent-deep);
+}
+.dd-ptitle {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.dd-grip {
+  color: var(--faint-2);
+  cursor: grab;
+  font-size: 13px;
+  letter-spacing: -2px;
+  user-select: none;
+  flex: none;
+}
+.dd-org-row.drop-ok {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.dd-org-row.drop-bad {
+  background: var(--danger-soft);
+}
+.dd-org-row.dragging {
+  opacity: 0.4;
+}
+.dd-dropzone {
+  margin: 10px 14px 14px;
+  border: 1.5px dashed var(--border-dashed);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dd-dropzone.drop-ok {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent-deep);
+}
+.dd-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-frame);
+}
+.dd-pp-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.dd-pp-name {
+  font-weight: 700;
+  font-size: 16px;
+}
+.dd-pp-sec {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.dd-pp-sec:last-child {
+  border-bottom: none;
+}
+.dd-pp-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dd-pd-dept {
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+.dd-pd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--surface-sunk);
+}
+button.dd-pd-name {
+  font-weight: 600;
+  font-size: 13px;
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+}
+button.dd-pd-name:hover {
+  background: none;
+}
+.dd-pd-duty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 36px;
+  border-top: 1px solid var(--row-line);
+  font-size: 13px;
+}
+.dd-pd-duty label {
+  flex: 1;
+  cursor: pointer;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.dd-pd-warn {
+  font-size: 11.5px;
+  color: var(--warn-deep);
+  padding: 0 10px 7px 36px;
+  margin-top: -2px;
+}
+.dd-savebar {
+  position: fixed;
+  left: 232px;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 26px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -6px 20px rgba(33, 29, 25, 0.06);
+  z-index: 30;
+}
+.dd-savebar .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+/* --- Assignee ⇄ duty cross-check ---------------------------------------------- */
+.duty-xcheck {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin: 10px 0 12px;
+  border: 1px solid;
+}
+.duty-xcheck.err {
+  background: var(--danger-soft);
+  border-color: #efc3b8;
+  color: var(--danger-deep);
+}
+.duty-xcheck.warn {
+  background: var(--warn-soft);
+  border-color: #f1d6a8;
+  color: var(--warn-deep);
+}
+.duty-xc-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.duty-xc-icon span {
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+.duty-xc-title {
+  font-weight: 650;
+  color: var(--ink);
+}
+.duty-xc-text {
+  font-size: 12.5px;
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+.duty-xc-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+  align-items: center;
+}
+.duty-xc-perm {
+  font-size: 12px;
+  color: var(--ink-3);
+  font-style: italic;
+}
+.prop-chip.is-bad {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-soft);
+}
+
+/* --- KPI tiles ---------------------------------------------------------------- */
+.dd-kpis {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.dd-kpi {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  min-width: 130px;
+}
+.dd-kpi-v {
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.dd-kpi-l {
+  font-weight: 600;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.dd-kpi.warn .dd-kpi-v {
+  color: var(--warn-deep);
+}
+.dd-kpi.ok .dd-kpi-v {
+  color: var(--ok-deep);
+}
+.dd-kpi.acc .dd-kpi-v {
+  color: var(--accent-deep);
+}
+
+/* --- My Time ------------------------------------------------------------------ */
+.dd-my-duties {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+/* Day cards keep a readable minimum width; on a narrow window the week scrolls
+   sideways rather than squeezing the cards until their contents collide. */
+.dd-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(132px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+}
+.dd-week.five {
+  grid-template-columns: repeat(5, minmax(132px, 1fr));
+}
+.dd-daycard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+  cursor: pointer;
+  transition:
+    border-color var(--dur),
+    box-shadow var(--dur);
+  text-align: left;
+  color: var(--ink);
+}
+.dd-daycard:hover {
+  border-color: var(--border-dashed);
+  box-shadow: var(--shadow-pop);
+}
+.dd-daycard.today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.dd-daycard.future {
+  cursor: default;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--surface),
+    var(--surface) 8px,
+    var(--surface-sunk) 8px,
+    var(--surface-sunk) 16px
+  );
+}
+.dd-daycard.future:hover {
+  box-shadow: none;
+  border-color: var(--border);
+}
+.dd-daycard.weekend .dd-dc-head {
+  background: var(--surface-sunk);
+}
+.dd-dc-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.dd-dc-dow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 600;
+  /* Let the Today tag drop below rather than collide with the month label. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 0;
+}
+.dd-dc-head > div:first-child {
+  min-width: 0;
+}
+.dd-daycard.today .dd-dc-dow {
+  color: var(--accent-deep);
+}
+.dd-dc-date {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.dd-today-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  padding: 1px 6px;
+  border-radius: 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.dd-dc-body {
+  padding: 4px 12px;
+  flex: 1;
+}
+.dd-dc-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--row-line);
+}
+.dd-dc-entry:last-child {
+  border-bottom: none;
+}
+.dd-dc-dept {
+  font-size: 10px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dd-dc-duty {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.dd-dc-min {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  white-space: nowrap;
+  padding-top: 12px;
+}
+.dd-dc-empty {
+  color: var(--faint);
+  font-size: 12px;
+  padding: 16px 0;
+  text-align: center;
+}
+.dd-dc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border-soft);
+}
+.dd-dc-total {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 15px;
+}
+.dd-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+button.dd-done:hover {
+  background: var(--canvas-deep);
+  color: var(--ink);
+}
+.dd-done.on {
+  background: var(--ok-soft);
+  color: var(--ok-deep);
+  border-color: #bfe0c9;
+}
+button.dd-done.on:hover {
+  background: #d5eadb;
+  color: var(--ok-deep);
+}
+.dd-done.late {
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+  border-color: #f1d6a8;
+}
+.dd-done .ck {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  border: 1.5px solid currentColor;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1;
+}
+.dd-hidden-we {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.dd-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.dd-month.five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.dd-m-dow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  padding: 0 4px 2px;
+  font-weight: 600;
+}
+button.dd-mcell {
+  min-height: 92px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  color: var(--ink);
+  font-weight: 400;
+}
+button.dd-mcell:hover {
+  border-color: var(--border-dashed);
+  background: var(--surface);
+}
+.dd-mcell.out {
+  opacity: 0.42;
+}
+.dd-mcell.today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+button.dd-mcell.future,
+button.dd-mcell.future:hover {
+  cursor: default;
+  background: var(--surface-sunk);
+  opacity: 1;
+}
+.dd-m-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+.dd-m-day {
+  font-weight: 700;
+  font-size: 13px;
+}
+.dd-m-total {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-weight: 600;
+  margin-top: auto;
+}
+.dd-m-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--canvas-deep);
+  margin-top: 5px;
+  overflow: hidden;
+  width: 100%;
+}
+.dd-m-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent-mid);
+  border-radius: 2px;
+}
+.dd-st {
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.dd-st.ok {
+  color: var(--ok);
+}
+.dd-st.late {
+  color: var(--warn-deep);
+}
+.dd-st.miss {
+  color: var(--danger);
+}
+.dd-st.none {
+  color: var(--faint-2);
+}
+.dd-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+/* Day editor (inside ModalShell) */
+.dd-de-grp {
+  margin-bottom: 12px;
+}
+.dd-de-grp-h {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 600;
+  padding: 4px 0;
+}
+.dd-de-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.dd-de-row:hover {
+  background: var(--surface-sunk);
+}
+.dd-de-row.has {
+  background: var(--accent-tint);
+}
+.dd-de-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.dd-de-name small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.dd-quick {
+  display: flex;
+  gap: 3px;
+}
+button.dd-quick-btn {
+  padding: 3px 6px;
+  font-size: 11px;
+  border-radius: 6px;
+  background: var(--canvas-deep);
+  color: var(--ink-3);
+  font-weight: 600;
+  border: none;
+}
+button.dd-quick-btn:hover {
+  background: #ebe4d9;
+  color: var(--ink);
+}
+.dd-hm {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dd-hm input {
+  width: 56px;
+  padding: 6px 8px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.dd-hm span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.dd-de-total {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--canvas);
+  margin-top: 6px;
+}
+.dd-de-total .mono {
+  font-size: 18px;
+  font-weight: 600;
+}
+.dd-rel {
+  border-top: 1px solid var(--border-soft);
+  margin-top: 14px;
+  padding-top: 10px;
+}
+.dd-rel-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 12.5px;
+}
+.dd-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 10px;
+}
+
+/* --- Tables (review pivot, related tasks) ------------------------------------ */
+.dd-tbl-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: auto;
+  box-shadow: var(--shadow-frame);
+}
+table.dd-tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: none;
+  border-radius: 0;
+}
+.dd-tbl th {
+  background: var(--surface-sunk);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 600;
+  text-align: left;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.dd-tbl td {
+  border-bottom: 1px solid var(--row-line);
+  font-size: 12.5px;
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+.dd-tbl .num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-feature-settings: 'tnum' 1;
+  white-space: nowrap;
+}
+.dd-tbl th.num {
+  text-align: right;
+}
+.dd-tbl th .sub {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--faint);
+  font-weight: 500;
+}
+.dd-tbl th.today-col {
+  color: var(--accent-deep);
+}
+.dd-tbl td.zero {
+  color: var(--faint-2);
+}
+.dd-tbl td.tot,
+.dd-tbl th.tot {
+  background: var(--surface-sunk);
+  font-weight: 600;
+}
+.dd-tbl tfoot td {
+  background: var(--canvas-deep);
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  position: sticky;
+  bottom: 0;
+}
+.dd-tbl tr.l0 td {
+  background: #fdfcfa;
+  font-weight: 600;
+}
+.dd-tbl tr.l0 td.tot {
+  background: var(--surface-sunk);
+}
+.dd-tbl tr.sel td {
+  background: var(--accent-tint) !important;
+}
+.dd-tbl tr.sel td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.dd-pv-label {
+  white-space: nowrap;
+  min-width: 190px;
+}
+.dd-pv-label > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+button.dd-pv-name {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+}
+button.dd-pv-name:hover {
+  background: none;
+  color: var(--accent-deep);
+}
+tr.l1 button.dd-pv-name {
+  font-weight: 550;
+  color: var(--ink-2);
+}
+tr.l2 button.dd-pv-name {
+  font-weight: 500;
+  color: var(--ink-3);
+}
+td.dd-dr-cell {
+  cursor: pointer;
+  text-align: center !important;
+}
+td.dd-dr-cell:hover {
+  background: var(--accent-tint) !important;
+}
+.dd-dr-cell .mono {
+  display: block;
+  font-size: 13px;
+}
+.dd-dr-cell .dd-st {
+  display: block;
+}
+
+/* --- Time Review layout -------------------------------------------------------- */
+.dd-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.dd-fl {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+  font-weight: 600;
+}
+.dd-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  gap: 14px;
+  align-items: start;
+}
+.dd-split.closed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dd-tp {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.dd-tp-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.dd-tp-list {
+  overflow: auto;
+}
+.dd-tp-item {
+  display: block;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--row-line);
+  color: var(--ink);
+}
+.dd-tp-item:hover {
+  background: var(--surface-sunk);
+  color: var(--ink);
+  text-decoration: none;
+}
+.dd-tp-item:last-child {
+  border-bottom: none;
+}
+.dd-tp-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.dd-ctx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+  font-size: 12px;
+}
+button.dd-ctx-x {
+  background: transparent;
+  color: var(--accent-deep);
+  padding: 0 5px;
+  font-size: 13px;
+  border-radius: 50%;
+  border: none;
+}
+button.dd-ctx-x:hover {
+  background: rgba(15, 123, 108, 0.12);
+}
+.dd-task-id {
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* --- Template duty mapping --------------------------------------------------- */
+.dd-map-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 1.3fr;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--row-line);
+}
+.dd-map-row:last-child {
+  border-bottom: none;
+}
+.dd-role-chip {
+  display: inline-flex;
+  font-weight: 650;
+  font-size: 12.5px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: var(--review-soft);
+  color: var(--review-deep);
+}
+.dd-err-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--row-line);
+}
+.dd-err-row:last-child {
+  border-bottom: none;
+}
+.dd-err-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 1250px) {
+  /* minmax(0, …) so a wide grid scrolls inside its own frame instead of
+     pushing the whole page sideways. */
+  .dd-org-grid,
+  .dd-split,
+  .dd-split.closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dd-panel,
+  .dd-tp {
+    position: static;
+    max-height: none;
+  }
+}

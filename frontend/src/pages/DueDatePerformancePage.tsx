@@ -8,6 +8,7 @@ import {
   TASK_STATUS_LABELS,
   formatDueDateResult,
   type ActiveUserDto,
+  type DepartmentDto,
   type DueDateBucket,
   type DueDateBucketTotals,
   type DueDateReportRow,
@@ -30,6 +31,7 @@ import { UserChip, UnassignedAvatar, userLabel } from '../components/ui/Avatar';
 import { StatusPill } from '../components/ui/indicators';
 import { AgoDate, DueDate } from '../components/ui/dates';
 import { TableEmptyRow } from '../components/ui/EmptyState';
+import { DutyTag, MismatchFlag } from '../components/duties/DutyTag';
 
 const defaultFilters: TaskSearchFilters = { includeNoStart: true, includeNoDue: true };
 
@@ -80,6 +82,7 @@ export function DueDatePerformancePage() {
 
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<DepartmentDto[]>([]);
   const [hierarchy, setHierarchy] = useState<OrgHierarchyNode[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [showTree, setShowTree] = useState(false);
@@ -94,6 +97,7 @@ export function DueDatePerformancePage() {
     hydratedOnce.current = true;
     void api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
     void api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
+    void api.listDepartments().then(setDepartments).catch(() => setDepartments([]));
     void api.getUserHierarchy().then(setHierarchy).catch(() => setHierarchy([]));
     void api
       .getPreference('due-date-report')
@@ -213,6 +217,13 @@ export function DueDatePerformancePage() {
     chips.push({ id: 'dd', label: (filters.dueFrom || filters.dueTo) ? 'Due date' : 'Has due date', clear: () => patchFilters({ dueFrom: null, dueTo: null, includeNoDue: true }) });
   if (selectedHierarchy.size > 0)
     chips.push({ id: 'tree', label: `Team · ${selectedHierarchy.size} selected`, clear: () => setSelectedHierarchy(new Set()) });
+  if (filters.departmentIds?.length)
+    chips.push({ id: 'dept', label: `Department · ${filters.departmentIds.length}`, clear: () => patchFilters({ departmentIds: [], dutyIds: [] }) });
+  if (filters.dutyIds?.length)
+    chips.push({ id: 'duty', label: `Duty · ${filters.dutyIds.length}`, clear: () => patchFilters({ dutyIds: [] }) });
+  if (filters.dutyMismatch)
+    chips.push({ id: 'mis', label: 'Duty mismatches', clear: () => patchFilters({ dutyMismatch: undefined }) });
+  const dutyDepts = departments.filter((d) => d.duties.length > 0);
 
   const groups = useMemo(() => groupByAssigneeRows(rows), [rows]);
 
@@ -343,6 +354,26 @@ export function DueDatePerformancePage() {
               </label>
             </div>
           </FilterPopover>
+          <FilterPopover label="Department" active={(filters.departmentIds ?? []).length > 0}>
+            <MultiSelect
+              options={dutyDepts.map((d) => ({ value: d.id, label: `${d.name}${d.archived ? ' (archived)' : ''}` }))}
+              selected={filters.departmentIds ?? []}
+              onChange={(next) => patchFilters({ departmentIds: next })}
+            />
+          </FilterPopover>
+          <FilterPopover label="Duty" active={(filters.dutyIds ?? []).length > 0 || !!filters.dutyMismatch}>
+            <MultiSelect
+              options={dutyDepts
+                .filter((d) => !filters.departmentIds?.length || filters.departmentIds.includes(d.id))
+                .flatMap((d) => d.duties.map((u) => ({ value: u.id, label: `${d.name} › ${u.name}${u.archived ? ' (archived)' : ''}` })))}
+              selected={filters.dutyIds ?? []}
+              onChange={(next) => patchFilters({ dutyIds: next })}
+            />
+            <label className="check-inline">
+              <input type="checkbox" checked={!!filters.dutyMismatch} onChange={(e) => patchFilters({ dutyMismatch: e.target.checked || undefined })} />
+              <span>Only duty mismatches</span>
+            </label>
+          </FilterPopover>
         </div>
       )}
 
@@ -368,14 +399,15 @@ export function DueDatePerformancePage() {
               <SortHeader label="Start" state={sortForKey('startAt')} onSort={(m) => onSort('startAt', m)} multi />
               <SortHeader label="Due" state={sortForKey('dueAt')} onSort={(m) => onSort('dueAt', m)} multi />
               <SortHeader label="Status changed" state={sortForKey('statusChangedAt')} onSort={(m) => onSort('statusChangedAt', m)} multi />
+              <SortHeader label="Department › Duty" state={sortForKey('duty')} onSort={(m) => onSort('duty', m)} multi />
               <th>Result</th>
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 ? (
-              <tr><td colSpan={8} className="muted" style={{ padding: '1rem' }}>Loading…</td></tr>
+              <tr><td colSpan={9} className="muted" style={{ padding: '1rem' }}>Loading…</td></tr>
             ) : rows.length === 0 ? (
-              <TableEmptyRow colSpan={8} title="No tasks">
+              <TableEmptyRow colSpan={9} title="No tasks">
                 No tasks match the current filters.
               </TableEmptyRow>
             ) : groupByAssignee ? (
@@ -432,6 +464,16 @@ function ReportRow({ row }: { row: DueDateReportRow }) {
       <td><DueDate iso={row.dueAt} status={row.status} completedAt={row.statusChangedAt} isDue /></td>
       <td><AgoDate iso={row.statusChangedAt} /></td>
       <td>
+        {row.duty ? (
+          <span className="duty-cell">
+            <DutyTag duty={row.duty} compact />
+            {row.dutyMismatch && <MismatchFlag who={row.assignee ? userLabel(row.assignee) : null} />}
+          </span>
+        ) : (
+          <span className="muted">—</span>
+        )}
+      </td>
+      <td>
         <span className={`result-pill bucket-${BUCKET_CLASS[row.bucket]}`}>
           {formatDueDateResult(row.bucket, row.daysDelta)}
         </span>
@@ -451,7 +493,7 @@ function GroupBlock({ group, collapsed, onToggle }: { group: AssigneeGroup; coll
   return (
     <>
       <tr className="group-subtotal" onClick={onToggle}>
-        <td colSpan={8}>
+        <td colSpan={9}>
           <button type="button" className="group-toggle" aria-expanded={!collapsed}>
             <span className="group-caret" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
             <span className="group-name">{group.label}</span>

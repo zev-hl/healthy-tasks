@@ -7,6 +7,7 @@ import type {
   InstantiateResultDto,
   Role,
   TemplateDto,
+  TemplateDutyCheckDto,
   TemplateSummaryDto,
 } from '@healthy-tasks/shared';
 import type {
@@ -14,10 +15,12 @@ import type {
   CreateTemplateInput,
   InstantiateTemplateInput,
   MaterializeGhostInput,
+  TemplateDutyCheckInput,
   UpdateTemplateInput,
 } from '../validation/schemas.js';
 import {
   applyTemplateToOccurrences,
+  checkTemplateDuties,
   createTemplate,
   deleteTemplate,
   getAllGhosts,
@@ -66,6 +69,16 @@ export async function updateTemplateController(req: Request, res: Response): Pro
 export async function deleteTemplateController(req: Request, res: Response): Promise<void> {
   await deleteTemplate(actor(req), parseTemplateId(req));
   res.status(204).send();
+}
+
+/** POST /api/templates/:id/duty-check — which role fillers lack required duties. */
+export async function templateDutyCheckController(req: Request, res: Response): Promise<void> {
+  const result = await checkTemplateDuties(
+    actor(req),
+    parseTemplateId(req),
+    req.body as TemplateDutyCheckInput,
+  );
+  res.json(result satisfies TemplateDutyCheckDto);
 }
 
 export async function instantiateTemplateController(req: Request, res: Response): Promise<void> {

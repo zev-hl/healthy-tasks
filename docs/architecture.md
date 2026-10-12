@@ -529,3 +529,14 @@ tree-read-only user cannot snapshot a structure they can't edit.
   `TaskTemplateNodeAttachment` defaults on the matching node. At **every**
   instantiation these defaults are copied again onto the generated real tasks
   (`tasks/{taskId}/{uuid}/{name}`), so each instance gets its own independent blob.
+
+## 13. Department Duties
+
+Departments own Duties, people hold Duties (`UserDuty`), tasks and template nodes
+can carry a Duty, and people log minutes per Duty per day (`TimeEntry`, `TimeDay`)
+for supervisors to review. New services: `department.service.ts` (catalog),
+`org.service.ts` (Organization screen), `duty-check.service.ts` (the assignee ⇄
+duty rule, 422 `DUTY_NOT_HELD`), `time.service.ts` (My Time + Time Review). The
+rules — archive-don't-delete, the Review hand-off exemption, team-scoped Manager
+edits, the Completed-day lock, automatic-creation mismatches — are specified in
+`docs/department-duties-spec.md`.

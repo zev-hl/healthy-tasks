@@ -3,6 +3,7 @@ import { HttpError } from '../utils/http-error.js';
 import { mailer, sendInBackground } from '../utils/mailer.js';
 import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
+import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
 import { listDueReminders, type DueReminder } from './reminder.service.js';
 import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cache.js';
@@ -83,6 +84,23 @@ export async function createAssignedNotification(params: {
   if (prefs.assignedEmail) await emailAssignment(recipientId, taskId, action);
 }
 
+/**
+ * Department Duties: tell the template owner (or recurring task's creator) that
+ * an automatically created task went to someone who doesn't hold its duty. It
+ * lands in the Assigned list, so the Assigned in-app opt-in governs it. There is
+ * no actor — the background timer created the task.
+ */
+export async function createDutyMismatchNotification(params: {
+  recipientId: string;
+  taskId: number;
+}): Promise<void> {
+  const { recipientId, taskId } = params;
+  const prefs = await getNotificationPreferences(recipientId);
+  if (!prefs.assignedInApp) return;
+  await prisma.notification.create({ data: { userId: recipientId, type: 'dutyMismatch', taskId } });
+  invalidateUnread(recipientId);
+}
+
 // --- Reading ---------------------------------------------------------------
 
 function mentionedWhere(userId: string, filter: MentionedFilter) {
@@ -128,9 +146,24 @@ export async function listNotifications(
       read: r.readAt !== null,
     }));
 
+  // The Assigned list also carries Department Duties heads-ups (dutyMismatch),
+  // which describe the task's CURRENT assignee and duty.
   const assignedRows = await prisma.notification.findMany({
-    where: { userId, type: 'assigned' },
-    include: { task: { select: { name: true, startAt: true, dueAt: true, priority: true } } },
+    where: { userId, type: { in: ['assigned', 'dutyMismatch'] } },
+    include: {
+      task: {
+        select: {
+          name: true,
+          startAt: true,
+          dueAt: true,
+          priority: true,
+          assignee: {
+            select: { id: true, email: true, firstName: true, lastName: true, title: true },
+          },
+          duty: dutyRefSelect,
+        },
+      },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
@@ -170,6 +203,13 @@ export async function listNotifications(
     blockedByCount: blockedByCount.get(r.taskId) ?? 0,
     createdAt: r.createdAt.toISOString(),
     read: r.readAt !== null,
+    dutyMismatch:
+      r.type === 'dutyMismatch' && r.task.duty
+        ? {
+            assignee: r.task.assignee ? toUserRef(r.task.assignee) : null,
+            duty: toDutyRef(r.task.duty),
+          }
+        : null,
   }));
 
   // Reminders are live/time-conditional; opting out suppresses the whole list.
@@ -214,7 +254,9 @@ export async function getUnreadCounts(
   const prefs = await getNotificationPreferences(userId);
   const [mentioned, assigned] = await Promise.all([
     prisma.notification.count({ where: { userId, type: 'mentioned', readAt: null } }),
-    prisma.notification.count({ where: { userId, type: 'assigned', readAt: null } }),
+    prisma.notification.count({
+      where: { userId, type: { in: ['assigned', 'dutyMismatch'] }, readAt: null },
+    }),
   ]);
   let reminders = 0;
   if (prefs.remindersInApp) {

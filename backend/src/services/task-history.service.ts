@@ -96,6 +96,11 @@ export interface TaskFieldValues {
   tags: string[];
   startAt: Date | null;
   dueAt: Date | null;
+  /**
+   * Department Duties: "Department › Duty", or null for none. Optional so
+   * callers that can't change the duty simply leave it out (never diffed then).
+   */
+  duty?: string | null;
 }
 
 function dateValue(d: Date | null): string | null {
@@ -158,6 +163,8 @@ export function buildTaskFieldEntries(params: {
     updated(F.startAt, dateValue(before.startAt), dateValue(after.startAt));
   if (dateValue(before.dueAt) !== dateValue(after.dueAt))
     updated(F.dueAt, dateValue(before.dueAt), dateValue(after.dueAt));
+  if ((before.duty ?? null) !== (after.duty ?? null))
+    updated(F.duty, before.duty ?? null, after.duty ?? null);
 
   return entries;
 }

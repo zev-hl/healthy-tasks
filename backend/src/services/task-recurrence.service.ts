@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { getTaskDetail } from './task.service.js';
 import { createAssignedNotification } from './notification.service.js';
+import { notifyDutyMismatches } from './duty-check.service.js';
 import { type Actor, assertCanEditTask } from './access-control.service.js';
 import { getMaterializeLeadDays } from './app-settings.service.js';
 import {
@@ -115,6 +116,7 @@ interface SourceTask {
   tags: string[];
   creatorId: string;
   instanceLabel: string | null;
+  dutyId: string | null;
 }
 
 /** The assignee to carry forward: the most recent instance's assignee (the last
@@ -160,12 +162,18 @@ async function generateTaskOccurrence(params: {
         instanceLabel: source.instanceLabel,
         recurrenceSourceId: source.id,
         recurrenceSeq: seq,
+        // Department Duties: each copy carries the series' duty.
+        dutyId: source.dutyId,
       },
       select: { id: true },
     });
     if (assigneeId) {
       await createAssignedNotification({ recipientId: assigneeId, actorId, taskId: created.id, action: 'added' });
     }
+    // If the carried-forward assignee no longer holds the duty, the copy is
+    // still created (nobody is there to answer a prompt) — flagged ⚠, and the
+    // series' creator is told.
+    await notifyDutyMismatches([created.id], source.creatorId);
     return created.id;
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return null;
@@ -230,6 +238,7 @@ const ghostSourceSelect = {
   tags: true,
   creatorId: true,
   instanceLabel: true,
+  dutyId: true,
   startAt: true,
   dueAt: true,
   recurrence: true,

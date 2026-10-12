@@ -9,6 +9,10 @@ import {
   TERMINAL_TASK_STATUSES,
   DEFAULT_DUE_HOUR,
   DEFAULT_START_HOUR,
+  DUTY_NOT_HELD_CODE,
+  dutyLabel,
+  type TemplateDutyCheckDto,
+  type TemplateDutyProblemDto,
   type ApplyToFutureResultDto,
   type FutureOccurrenceDto,
   type GhostOccurrenceDto,
@@ -22,9 +26,12 @@ import type {
   InstantiateTemplateInput,
   RecurrenceInputParsed,
   SaveTaskAsTemplateInput,
+  TemplateDutyCheckInput,
   TemplateNodeInputParsed,
   UpdateTemplateInput,
 } from '../validation/schemas.js';
+import { assertDutyAssignable } from './department.service.js';
+import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import {
   templateInclude,
   templateSummaryInclude,
@@ -209,13 +216,23 @@ async function reconcileTree(
 
   const existing = await tx.taskTemplateNode.findMany({
     where: { templateId },
-    select: { id: true },
+    select: { id: true, dutyId: true },
   });
   const existingIds = new Set(existing.map((n) => n.id));
   const payloadIds = new Set(nodesInput.filter((n) => n.id != null).map((n) => n.id as number));
   for (const id of payloadIds) {
     if (!existingIds.has(id)) throw HttpError.badRequest(`Node ${id} does not belong to this template`);
   }
+
+  // Department Duties: a duty newly put on a node must be active. A node that
+  // already carries a since-archived duty may keep it.
+  const existingDuty = new Map(existing.map((n) => [n.id, n.dutyId]));
+  const newlySetDuties = new Set(
+    nodesInput
+      .filter((n) => n.dutyId && (n.id == null || existingDuty.get(n.id) !== n.dutyId))
+      .map((n) => n.dutyId as string),
+  );
+  for (const dutyId of newlySetDuties) await assertDutyAssignable(dutyId);
 
   const keyToId = new Map<string, number>();
   for (const n of nodesInput) if (n.id != null) keyToId.set(n.key, n.id);
@@ -232,6 +249,7 @@ async function reconcileTree(
       startOffsetDays: n.startOffsetDays ?? null,
       dueOffsetDays: n.dueOffsetDays ?? null,
       assigneeRole: n.assigneeRole ?? null,
+      dutyId: n.dutyId ?? null,
       tags: n.tags ?? [],
       orderIndex: n.orderIndex ?? 0,
       parentNodeId,
@@ -415,6 +433,8 @@ export async function saveTaskAsTemplate(
       startAt: true,
       dueAt: true,
       assignee: { select: { firstName: true, lastName: true, email: true } },
+      // An archived duty isn't carried into a new template (it can't be picked).
+      duty: { select: { id: true, archivedAt: true, department: { select: { archivedAt: true } } } },
     },
   });
   const byId = new Map(tasks.map((t) => [t.id, t]));
@@ -444,6 +464,7 @@ export async function saveTaskAsTemplate(
       startOffsetDays: offset(t.startAt),
       dueOffsetDays: offset(t.dueAt),
       assigneeRole: role,
+      dutyId: t.duty && !t.duty.archivedAt && !t.duty.department.archivedAt ? t.duty.id : null,
       tags: t.tags,
       orderIndex: i,
     };
@@ -554,6 +575,18 @@ export async function instantiateTemplate(
     await assertAssigneeActive(assigneeId);
   }
 
+  // Department Duties: everyone filling a role must hold the duties that role's
+  // template tasks carry. All problems are reported at once (422) so the
+  // creator can fix them in one pass.
+  const problems = await templateDutyProblems(template.nodes, roleMap);
+  if (problems.length > 0) {
+    throw new HttpError(
+      422,
+      `${problems.length} required ${problems.length === 1 ? 'duty is' : 'duties are'} not held by the people filling these roles`,
+      { code: DUTY_NOT_HELD_CODE, problems },
+    );
+  }
+
   const assigneeByNodeId = new Map<number, string | null>();
   for (const node of template.nodes) {
     assigneeByNodeId.set(node.id, node.assigneeRole ? (roleMap.get(node.assigneeRole) ?? null) : null);
@@ -571,6 +604,52 @@ export async function instantiateTemplate(
   });
 
   return loadInstantiateResult(gen);
+}
+
+/**
+ * The duties each role filler is missing: for every (role, person, duty) where
+ * the person doesn't hold a duty some of that role's template tasks carry.
+ * Unfilled roles produce nothing (their tasks are created unassigned).
+ */
+async function templateDutyProblems(
+  nodes: { id: number; assigneeRole: string | null; dutyId: string | null }[],
+  roleMap: Map<string, string | null>,
+): Promise<TemplateDutyProblemDto[]> {
+  const needs = new Map<string, Map<string, number[]>>(); // role → dutyId → nodeIds
+  for (const n of nodes) {
+    if (!n.assigneeRole || !n.dutyId || !roleMap.get(n.assigneeRole)) continue;
+    const byDuty = needs.get(n.assigneeRole) ?? new Map<string, number[]>();
+    byDuty.set(n.dutyId, [...(byDuty.get(n.dutyId) ?? []), n.id]);
+    needs.set(n.assigneeRole, byDuty);
+  }
+  if (needs.size === 0) return [];
+  const userIds = [...new Set([...needs.keys()].map((r) => roleMap.get(r) as string))];
+  const held = await prisma.userDuty.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true, dutyId: true },
+  });
+  const holds = new Set(held.map((h) => `${h.userId}:${h.dutyId}`));
+  const problems: TemplateDutyProblemDto[] = [];
+  for (const [role, byDuty] of needs) {
+    const userId = roleMap.get(role) as string;
+    for (const [dutyId, nodeIds] of byDuty) {
+      if (!holds.has(`${userId}:${dutyId}`)) problems.push({ role, userId, dutyId, nodeIds });
+    }
+  }
+  return problems;
+}
+
+/** Pre-flight for the "Create tasks" dialog (and its Re-check button). */
+export async function checkTemplateDuties(
+  actor: Actor,
+  id: number,
+  input: TemplateDutyCheckInput,
+): Promise<TemplateDutyCheckDto> {
+  assertTemplateManager(actor);
+  const template = await loadTemplateForGeneration(id);
+  const roleMap = new Map<string, string | null>();
+  for (const ra of input.roleAssignments ?? []) roleMap.set(ra.role, ra.assigneeId ?? null);
+  return { problems: await templateDutyProblems(template.nodes, roleMap) };
 }
 
 async function loadInstantiateResult(gen: {
@@ -754,10 +833,21 @@ export async function applyTemplateToOccurrences(
           startAt: true,
           dueAt: true,
           templateNodeId: true,
+          dutyId: true,
         },
       },
     },
   });
+
+  // Department Duties: the duty is part of the definition, so it re-syncs too
+  // (a resulting mismatch is flagged ⚠ on the task, never blocked here).
+  const dutyIds = new Set<string>();
+  for (const n of template.nodes) if (n.dutyId) dutyIds.add(n.dutyId);
+  for (const o of occurrences) for (const t of o.tasks) if (t.dutyId) dutyIds.add(t.dutyId);
+  const dutyRows = await prisma.duty.findMany({ where: { id: { in: [...dutyIds] } }, ...dutyRefSelect });
+  const dutyLabels = new Map(dutyRows.map((d) => [d.id, dutyLabel(toDutyRef(d))]));
+  const labelOf = (dutyId: string | null): string | null =>
+    dutyId ? (dutyLabels.get(dutyId) ?? null) : null;
 
   let updatedOccurrences = 0;
   let updatedTasks = 0;
@@ -788,7 +878,8 @@ export async function applyTemplateToOccurrences(
           descriptionChanged ||
           node.defaultPriority !== task.priority ||
           (newStart?.getTime() ?? null) !== (task.startAt?.getTime() ?? null) ||
-          (newDue?.getTime() ?? null) !== (task.dueAt?.getTime() ?? null);
+          (newDue?.getTime() ?? null) !== (task.dueAt?.getTime() ?? null) ||
+          node.dutyId !== task.dutyId;
         if (!changed) continue;
 
         await tx.task.update({
@@ -799,6 +890,7 @@ export async function applyTemplateToOccurrences(
             priority: node.defaultPriority,
             startAt: newStart,
             dueAt: newDue,
+            dutyId: node.dutyId,
           },
         });
 
@@ -812,6 +904,7 @@ export async function applyTemplateToOccurrences(
           tags: task.tags,
           startAt: task.startAt,
           dueAt: task.dueAt,
+          duty: labelOf(task.dutyId),
         };
         const after: TaskFieldValues = {
           name: newName,
@@ -821,6 +914,7 @@ export async function applyTemplateToOccurrences(
           tags: task.tags,
           startAt: newStart,
           dueAt: newDue,
+          duty: labelOf(node.dutyId),
         };
         await recordHistory(
           tx,

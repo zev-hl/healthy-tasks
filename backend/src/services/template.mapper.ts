@@ -7,6 +7,7 @@ import type {
   TemplateSummaryDto,
 } from '@healthy-tasks/shared';
 import { toUserRef } from './user.mapper.js';
+import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 
 const userRefSelect = {
   select: { id: true, email: true, firstName: true, lastName: true, title: true },
@@ -18,7 +19,9 @@ const userRefSelect = {
  * can't live inside an `as const` include without becoming readonly). */
 export const templateInclude = {
   createdBy: userRefSelect,
-  nodes: { include: { blocking: true, _count: { select: { attachments: true } } } },
+  nodes: {
+    include: { blocking: true, duty: dutyRefSelect, _count: { select: { attachments: true } } },
+  },
   occurrences: { orderBy: { id: 'asc' } },
 } as const;
 
@@ -48,6 +51,8 @@ function toNodeDto(n: TemplateWithGraph['nodes'][number]): TemplateNodeDto {
     startOffsetDays: n.startOffsetDays,
     dueOffsetDays: n.dueOffsetDays,
     assigneeRole: n.assigneeRole,
+    dutyId: n.dutyId,
+    duty: n.duty ? toDutyRef(n.duty) : null,
     tags: n.tags,
     orderIndex: n.orderIndex,
     attachmentCount: n._count.attachments,
