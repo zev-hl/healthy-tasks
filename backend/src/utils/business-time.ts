@@ -78,6 +78,34 @@ export function fromBusinessDate(
   return new Date(wallClock.getTime() - corrected);
 }
 
+/**
+ * A date and time for a human to read, in the business timezone, WITH the zone
+ * named — e.g. "Oct 8, 2026, 7:00 PM EDT (New York)".
+ *
+ * For server-rendered email, where there is no recipient browser to ask and no
+ * per-user timezone stored. Staff are spread across several countries, so an
+ * unlabelled local time would be worse than useless: naming the zone lets a
+ * reader in Karachi or Tel Aviv convert it. The raw `toISOString()` this replaces
+ * produced "2026-10-08T23:00:00.000Z", which nobody can act on.
+ *
+ * The city label is derived from the IANA id rather than hardcoded, so changing
+ * BUSINESS_TIMEZONE changes the text too.
+ */
+export function formatBusinessTimestamp(instant: Date, timeZone: string = env.businessTimeZone): string {
+  const when = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZoneName: 'short',
+  }).format(instant);
+  const city = timeZone.split('/').pop()?.replace(/_/g, ' ') ?? timeZone;
+  return `${when} (${city})`;
+}
+
 /** Add (or subtract) whole calendar days. Pure date math — DST cannot affect it. */
 export function addCalendarDays(date: CalendarDate, days: number): CalendarDate {
   const [y, m, d] = date.split('-').map(Number) as [number, number, number];

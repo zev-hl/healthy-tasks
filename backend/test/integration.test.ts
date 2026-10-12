@@ -7646,6 +7646,30 @@ describe('template anchoring: business-timezone calendar helpers', () => {
     // ... and the next day must not.
     assert.ok(bt.fromBusinessDate('2026-11-01', 7, NY).getTime() > endOfOct31.getTime());
   });
+
+  it('formats a timestamp for email in business time, with the zone named', () => {
+    // Server-rendered email has no recipient browser and no stored per-user
+    // timezone. Staff are in several countries, so the zone MUST be named or the
+    // time is unusable. (\s covers the narrow no-break space newer ICU emits.)
+    const summer = bt.formatBusinessTimestamp(new Date('2026-10-08T23:00:00.000Z'), NY);
+    assert.match(summer, /Oct 8, 2026/);
+    assert.match(summer, /7:00\s*PM/);
+    assert.match(summer, /EDT/);
+    assert.match(summer, /\(New York\)/);
+    assert.doesNotMatch(summer, /\d{4}-\d{2}-\d{2}T/, 'never a raw ISO string');
+
+    // The same wall-clock hour in winter reports EST, so a reader can convert.
+    const winter = bt.formatBusinessTimestamp(new Date('2026-12-09T00:00:00.000Z'), NY);
+    assert.match(winter, /Dec 8, 2026/);
+    assert.match(winter, /7:00\s*PM/);
+    assert.match(winter, /EST/);
+
+    // The city label follows BUSINESS_TIMEZONE rather than being hardcoded.
+    assert.match(
+      bt.formatBusinessTimestamp(new Date('2026-10-08T23:00:00.000Z'), 'Asia/Karachi'),
+      /\(Karachi\)/,
+    );
+  });
 });
 
 describe('template anchoring: instantiation end to end', () => {
