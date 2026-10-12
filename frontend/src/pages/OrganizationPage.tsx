@@ -85,7 +85,7 @@ export function OrganizationPage() {
   const [deptFilter, setDeptFilter] = useState('');
   const [expanded, setExpanded] = useState<Set<string> | null>(null);
   const [selId, setSelId] = useState<string | null>(params.get('person'));
-  const [pdToggle, setPdToggle] = useState<Set<string>>(new Set());
+  const [pdOpen, setPdOpen] = useState<Map<string, boolean>>(new Map());
   const [dragId, setDragId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast, showToast, clearToast } = useToast();
@@ -442,6 +442,16 @@ export function OrganizationPage() {
     return !subtreeOf(subject, draft.sup).has(target);
   };
   const [dropTarget, setDropTarget] = useState<{ id: string; ok: boolean } | null>(null);
+  // Open the new supervisor's node and every manager above it, so a person who
+  // was just moved stays visible in Reporting lines. The subject can't be an
+  // ancestor of `sup` (cycle check), so the current draft chain is still right.
+  function revealUnder(sup: string | null) {
+    const keys: string[] = [];
+    for (let id = sup, guard = 0; id && guard < 500; id = draft.sup[id] ?? null, guard++) {
+      keys.push(`L${id}`);
+    }
+    if (keys.length) setExpanded((e) => new Set([...(e ?? []), ...keys]));
+  }
   function moveTo(subject: string, target: string | '__root') {
     const p = P.get(subject)!;
     if (!canDropOn(target, subject)) {
@@ -457,7 +467,7 @@ export function OrganizationPage() {
     const sup = target === '__root' ? null : target;
     setDraft((d) => ({ ...d, sup: { ...d.sup, [subject]: sup } }));
     setSelId(subject);
-    if (sup) setExpanded((e) => new Set([...(e ?? []), `L${sup}`]));
+    revealUnder(sup);
     showToast(
       sup
         ? `${p.firstName} now reports to ${pname(P.get(sup)!)} (not saved yet)`
@@ -704,18 +714,14 @@ export function OrganizationPage() {
             people={people}
             draft={draft}
             activeDepts={activeDepts}
-            pdToggle={pdToggle}
+            pdOpen={pdOpen}
             scope={org?.scope ?? 'team'}
-            onToggleDept={(key) =>
-              setPdToggle((s) => {
-                const next = new Set(s);
-                if (next.has(key)) next.delete(key);
-                else next.add(key);
-                return next;
-              })
-            }
+            onToggleDept={(key, open) => setPdOpen((m) => new Map(m).set(key, !open))}
             onSelect={setSelId}
-            onSupervisor={(sup) => setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }))}
+            onSupervisor={(sup) => {
+              setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }));
+              revealUnder(sup);
+            }}
             onDuties={(next) =>
               setDraft((d) => ({ ...d, duties: { ...d.duties, [sel.id]: next } }))
             }
@@ -766,7 +772,7 @@ function PersonPanel({
   people,
   draft,
   activeDepts,
-  pdToggle,
+  pdOpen,
   scope,
   onToggleDept,
   onSelect,
@@ -777,9 +783,9 @@ function PersonPanel({
   people: OrgPersonDto[];
   draft: Draft;
   activeDepts: DepartmentDto[];
-  pdToggle: Set<string>;
+  pdOpen: Map<string, boolean>;
   scope: 'all' | 'team';
-  onToggleDept: (key: string) => void;
+  onToggleDept: (key: string, open: boolean) => void;
   onSelect: (id: string) => void;
   onSupervisor: (sup: string | null) => void;
   onDuties: (next: Set<string>) => void;
@@ -887,8 +893,10 @@ function PersonPanel({
           const us = d.duties.filter((u) => !u.archived).sort(byName);
           const n = us.filter((u) => mine.has(u.id)).length;
           const key = `${p.id}:${d.id}`;
-          const defOpen = n > 0;
-          const open = pdToggle.has(key) ? !defOpen : defOpen;
+          // Open by default when they held a duty here as SAVED — not the unsaved
+          // draft, or ticking/unticking a box would open/collapse the section
+          // under the cursor. Once clicked, the stored state wins.
+          const open = pdOpen.get(key) ?? us.some((u) => had.has(u.id));
           return (
             <div key={d.id} className="dd-pd-dept">
               <div className="dd-pd-head">
@@ -910,7 +918,7 @@ function PersonPanel({
                 <button
                   type="button"
                   className="dd-pd-name btn-plain"
-                  onClick={() => onToggleDept(key)}
+                  onClick={() => onToggleDept(key, open)}
                 >
                   {d.name}
                 </button>
@@ -920,7 +928,7 @@ function PersonPanel({
                 <button
                   type="button"
                   className={`dd-caret${open ? ' open' : ''}`}
-                  onClick={() => onToggleDept(key)}
+                  onClick={() => onToggleDept(key, open)}
                   aria-label={`${open ? 'Collapse' : 'Expand'} ${d.name}`}
                   aria-expanded={open}
                 >

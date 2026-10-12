@@ -384,10 +384,29 @@ function TemplateEditor({
   const patchNode = (key: string, p: Partial<EditorNode>) =>
     setEditor({ ...editor, nodes: editor.nodes.map((n) => (n.key === key ? { ...n, ...p } : n)) });
 
+  // Expand `key` and every node above it, so a node just added or re-parented
+  // under it is visible rather than silently hidden in a collapsed branch.
+  function revealUnder(key: string | null) {
+    const chain = new Set<string>();
+    let k = key;
+    while (k && !chain.has(k)) {
+      const cur = k;
+      chain.add(cur);
+      k = editor.nodes.find((n) => n.key === cur)?.parentKey ?? null;
+    }
+    setCollapsed((prev) => {
+      if (![...chain].some((k) => prev.has(k))) return prev;
+      const next = new Set(prev);
+      for (const k of chain) next.delete(k);
+      return next;
+    });
+  }
+
   function addNode() {
     const key = nextKey();
     const root = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
     patch({ nodes: [...editor.nodes, blankNode(key, root?.key ?? null)] });
+    revealUnder(root?.key ?? null);
   }
   function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
@@ -553,7 +572,10 @@ function TemplateEditor({
               ) : (
                 <select
                   value={n.parentKey ?? ''}
-                  onChange={(e) => patchNode(n.key, { parentKey: e.target.value })}
+                  onChange={(e) => {
+                    patchNode(n.key, { parentKey: e.target.value });
+                    revealUnder(e.target.value);
+                  }}
                 >
                   {parentOptions(n.key).map((o) => (
                     <option key={o.key} value={o.key}>
