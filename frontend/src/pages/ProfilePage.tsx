@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   NOTIFICATION_LISTS,
@@ -18,12 +18,41 @@ const PREF_META: Record<NotificationList, { label: string; desc: string }> = {
 // Order shown in the mock (mentioned, assigned, reminders).
 const PREF_ORDER: NotificationList[] = ['mentioned', 'assigned', 'reminders'];
 
+const DEVICE_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Every IANA zone the browser knows, labelled with its current UTC offset. */
+function timeZoneOptions(): { id: string; label: string }[] {
+  const now = new Date();
+  return Intl.supportedValuesOf('timeZone').map((id) => {
+    const offset =
+      new Intl.DateTimeFormat('en-US', { timeZone: id, timeZoneName: 'shortOffset' })
+        .formatToParts(now)
+        .find((p) => p.type === 'timeZoneName')?.value ?? '';
+    return { id, label: `${id.replace(/_/g, ' ')} (${offset})` };
+  });
+}
+
 export function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateMe } = useAuth();
   const navigate = useNavigate();
   const [prefs, setPrefs] = useState<NotificationPreferencesDto | null>(null);
   const [supervisorName, setSupervisorName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tzSaving, setTzSaving] = useState(false);
+  const [tzError, setTzError] = useState<string | null>(null);
+  const tzOptions = useMemo(timeZoneOptions, []);
+
+  const saveTimeZone = async (timeZone: string | null) => {
+    setTzSaving(true);
+    try {
+      await updateMe({ timeZone });
+      setTzError(null);
+    } catch (err) {
+      setTzError(err instanceof ApiError ? err.message : 'Failed to save time zone');
+    } finally {
+      setTzSaving(false);
+    }
+  };
 
   useEffect(() => {
     void api
@@ -100,6 +129,41 @@ export function ProfilePage() {
               <span className="profile-detail-value">
                 {supervisorName ?? <span className="muted">—</span>}
               </span>
+            </div>
+            <div className="profile-detail">
+              <label className="profile-detail-label" htmlFor="profile-tz">
+                Time zone
+              </label>
+              <select
+                id="profile-tz"
+                className="profile-tz-select"
+                value={user?.timeZone ?? ''}
+                disabled={tzSaving}
+                onChange={(e) => void saveTimeZone(e.target.value || null)}
+              >
+                <option value="">Not set (company time)</option>
+                {/* Keep a saved zone selectable even if this browser doesn't list it. */}
+                {user?.timeZone && !tzOptions.some((o) => o.id === user.timeZone) && (
+                  <option value={user.timeZone}>{user.timeZone}</option>
+                )}
+                {tzOptions.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              {!user?.timeZone && DEVICE_TIME_ZONE && (
+                <button
+                  type="button"
+                  className="link-button profile-tz-use"
+                  disabled={tzSaving}
+                  onClick={() => void saveTimeZone(DEVICE_TIME_ZONE)}
+                >
+                  Use this device’s zone ({DEVICE_TIME_ZONE.replace(/_/g, ' ')})
+                </button>
+              )}
+              <span className="profile-tz-hint muted">Used for times in emails sent to you.</span>
+              {tzError && <div className="alert error">{tzError}</div>}
             </div>
           </div>
 

@@ -64,6 +64,27 @@ export const resetPasswordSchema = z.object({
   newPassword: password,
 });
 
+// A real IANA zone id, as the runtime's Intl understands it ("Asia/Karachi").
+// Checked by constructing a formatter, which throws RangeError on an unknown id.
+const ianaTimeZone = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((tz) => {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Unknown time zone');
+
+// Self-service profile edit. null clears the zone (back to the business default).
+export const updateMyProfileSchema = z.object({
+  timeZone: ianaTimeZone.nullable().optional(),
+});
+
 // --- Admin user management --------------------------------------------------
 
 // Optional free-text field. Preserves `undefined` (field omitted → leave
@@ -307,6 +328,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type GoogleLoginInput = z.infer<typeof googleLoginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type UpdateMyProfileInput = z.infer<typeof updateMyProfileSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateUserInput = z.infer<typeof updateUserSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

@@ -82,8 +82,9 @@ export function fromBusinessDate(
  * A date and time for a human to read, in the business timezone, WITH the zone
  * named — e.g. "Oct 8, 2026, 7:00 PM EDT (New York)".
  *
- * For server-rendered email, where there is no recipient browser to ask and no
- * per-user timezone stored. Staff are spread across several countries, so an
+ * For server-rendered email, where there is no recipient browser to ask. Pass
+ * the recipient's Profile timezone when they set one; otherwise this falls back
+ * to the business zone. Staff are spread across several countries, so an
  * unlabelled local time would be worse than useless: naming the zone lets a
  * reader in Karachi or Tel Aviv convert it. The raw `toISOString()` this replaces
  * produced "2026-10-08T23:00:00.000Z", which nobody can act on.

@@ -40,6 +40,7 @@ export function toUserDto(user: User): UserDto {
     lastName: user.lastName,
     title: user.title,
     jobDescription: user.jobDescription,
+    timeZone: user.timeZone,
     role: user.role,
     supervisorId: user.supervisorId,
     isActive: user.isActive,

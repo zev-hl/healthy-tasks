@@ -26,7 +26,10 @@ export function TeamGoalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState<number | null>(null);
+  // The goal whose detail is open. Held directly rather than looked up in the
+  // filtered list: an action (e.g. Approve) can move it out of the filters, and
+  // the window must not vanish under the person who just clicked.
+  const [open, setOpen] = useState<GoalDto | null>(null);
   const [exporting, setExporting] = useState(false);
 
   async function handleExport() {
@@ -111,7 +114,6 @@ export function TeamGoalsPage() {
     chips.push({ id: 'dt', label: `To ${filters.deadlineTo.slice(0, 10)}`, clear: () => patch({ deadlineTo: null }) });
 
   const hasFilters = chips.length > 0;
-  const open = goals.find((g) => g.id === openId) ?? null;
   // Filter dropdown spans the whole downline; creating a goal is limited to direct reports.
   const ownerOptions = reports.map((r) => ({ id: r.id, label: userLabel(r) }));
   const createOwnerOptions = directReports.map((r) => ({ id: r.id, label: userLabel(r) }));
@@ -228,7 +230,7 @@ export function TeamGoalsPage() {
       ) : (
         <div className="goal-grid">
           {goals.map((g) => (
-            <GoalCard key={g.id} goal={g} showOwner onOpen={() => setOpenId(g.id)} />
+            <GoalCard key={g.id} goal={g} showOwner onOpen={() => setOpen(g)} />
           ))}
         </div>
       )}
@@ -248,7 +250,7 @@ export function TeamGoalsPage() {
         <GoalDetailModal
           goal={open}
           supervisorView
-          onClose={() => setOpenId(null)}
+          onClose={() => setOpen(null)}
           onChanged={() => void load()}
         />
       )}
