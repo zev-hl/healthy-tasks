@@ -30,12 +30,7 @@ export function ForgotPasswordPage() {
         <p className="auth-sub">We&apos;ll email you a link to set a new one.</p>
       </div>
       {message ? (
-        <>
-          <div className="alert success">{message}</div>
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
-            In development the reset link is printed to the backend console.
-          </p>
-        </>
+        <div className="alert success">{message}</div>
       ) : (
         <>
           {error && <div className="alert error">{error}</div>}

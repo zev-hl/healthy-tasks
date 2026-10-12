@@ -7,6 +7,7 @@ import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
 import { listDueReminders, type DueReminder } from './reminder.service.js';
 import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cache.js';
+import { formatBusinessTimestamp } from '../utils/business-time.js';
 import type { Actor } from './access-control.service.js';
 import {
   reminderLeadLabel,
@@ -426,7 +427,11 @@ async function emailReminder(to: string, r: DueReminder): Promise<void> {
     subject: `Reminder: “${r.taskName}”`,
     text: [
       `Reminder for task #${r.taskId} (“${r.taskName}”).`,
-      r.startAt ? `Starts: ${r.startAt.toISOString()} (${reminderLeadLabel(r.leadMinutes)})` : '',
+      // Business time with the zone named, not a raw UTC ISO string: this is read
+      // by staff in several countries and the server has no recipient timezone.
+      r.startAt
+        ? `Starts: ${formatBusinessTimestamp(r.startAt)} — ${reminderLeadLabel(r.leadMinutes)}`
+        : '',
       '',
       `Open the task: ${taskLink(r.taskId)}`,
     ]
