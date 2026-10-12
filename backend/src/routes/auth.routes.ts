@@ -7,12 +7,14 @@ import {
   googleLoginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  updateMyProfileSchema,
 } from '../validation/schemas.js';
 import {
   loginController,
   googleLoginController,
   logoutController,
   meController,
+  updateMeController,
   forgotPasswordController,
   resetPasswordController,
 } from '../controllers/auth.controller.js';
@@ -25,6 +27,12 @@ authRouter.post('/login', validateBody(loginSchema), asyncHandler(loginControlle
 authRouter.post('/google', validateBody(googleLoginSchema), asyncHandler(googleLoginController));
 authRouter.post('/logout', asyncHandler(logoutController));
 authRouter.get('/me', requireAuth, asyncHandler(meController));
+authRouter.patch(
+  '/me',
+  requireAuth,
+  validateBody(updateMyProfileSchema),
+  asyncHandler(updateMeController),
+);
 
 authRouter.post(
   '/forgot-password',

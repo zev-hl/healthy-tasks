@@ -214,6 +214,18 @@ export async function getUserById(id: string): Promise<User> {
   return user;
 }
 
+/** A person editing their own profile. Only self-service fields reach here. */
+export async function updateMyProfile(
+  id: string,
+  input: { timeZone?: string | null },
+): Promise<User> {
+  await getUserById(id);
+  return prisma.user.update({
+    where: { id },
+    data: { ...(input.timeZone !== undefined && { timeZone: input.timeZone }) },
+  });
+}
+
 /**
  * Create a user with a random unusable password. The admin is expected to send
  * a reset link (see auth.service.createPasswordReset) so the user sets their

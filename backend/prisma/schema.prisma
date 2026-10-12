@@ -29,6 +29,10 @@ model User {
   lastName       String  @default("")
   title          String?
   jobDescription String?
+  // The person's own IANA timezone (e.g. "Asia/Karachi"), set on their Profile.
+  // Null = not set: server-rendered times (reminder emails) fall back to
+  // BUSINESS_TIMEZONE. Screens in the browser always use the device's zone.
+  timeZone       String?
   role           Role
   passwordHash   String
   isActive       Boolean @default(true)

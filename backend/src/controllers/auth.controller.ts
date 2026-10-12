@@ -8,7 +8,7 @@ import {
   findResettableUserByEmail,
   resetPassword,
 } from '../services/auth.service.js';
-import { getUserById } from '../services/user.service.js';
+import { getUserById, updateMyProfile } from '../services/user.service.js';
 import { assertCanRecoverPassword } from '../utils/allowed-domain.js';
 import { toUserDto } from '../services/user.mapper.js';
 import { sendInBackground, sendPasswordResetEmail } from '../utils/mailer.js';
@@ -17,6 +17,7 @@ import type {
   GoogleLoginInput,
   ForgotPasswordInput,
   ResetPasswordInput,
+  UpdateMyProfileInput,
 } from '../validation/schemas.js';
 
 export async function loginController(req: Request, res: Response): Promise<void> {
@@ -43,6 +44,13 @@ export async function logoutController(_req: Request, res: Response): Promise<vo
 export async function meController(req: Request, res: Response): Promise<void> {
   if (!req.user) throw HttpError.unauthorized();
   const user = await getUserById(req.user.id);
+  res.json(toUserDto(user) satisfies UserDto);
+}
+
+/** Self-service profile edit — only the fields a person may change on themselves. */
+export async function updateMeController(req: Request, res: Response): Promise<void> {
+  if (!req.user) throw HttpError.unauthorized();
+  const user = await updateMyProfile(req.user.id, req.body as UpdateMyProfileInput);
   res.json(toUserDto(user) satisfies UserDto);
 }
 

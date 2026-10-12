@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { UserDto } from '@healthy-tasks/shared';
+import type { UpdateMyProfileRequest, UserDto } from '@healthy-tasks/shared';
 import { api, getToken, getTokenExpiresAt, setToken, setUnauthorizedHandler } from '../api/client';
 
 interface AuthState {
@@ -23,6 +23,8 @@ interface AuthState {
   /** Sign in with a Google ID token. Lands in the same session as `login`. */
   loginWithGoogle: (idToken: string) => Promise<UserDto>;
   logout: () => void;
+  /** Save self-service profile fields and adopt the returned user. */
+  updateMe: (body: UpdateMyProfileRequest) => Promise<UserDto>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -131,6 +133,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSessionExpired(false);
         setExpiryWarning(false);
         return res.user;
+      },
+      async updateMe(body) {
+        const me = await api.updateMe(body);
+        setUser(me);
+        return me;
       },
       logout() {
         setToken(null);

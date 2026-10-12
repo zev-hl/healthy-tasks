@@ -873,6 +873,62 @@ describe('JWT revocation via tokenVersion', () => {
   });
 });
 
+describe('self-service profile: time zone', () => {
+  it('starts unset, saves a valid IANA zone, and clears back to null', async () => {
+    await seedUser({ email: 'tz@test.local', role: 'Member', password: 'Secret123!' });
+    const tok = await login('tz@test.local', 'Secret123!');
+    const auth = { Authorization: `Bearer ${tok}` };
+
+    const before = await request(app).get('/api/auth/me').set(auth);
+    assert.equal(before.body.timeZone, null);
+
+    const set = await request(app)
+      .patch('/api/auth/me')
+      .set(auth)
+      .send({ timeZone: 'Asia/Karachi' });
+    assert.equal(set.status, 200);
+    assert.equal(set.body.timeZone, 'Asia/Karachi');
+    const me = await request(app).get('/api/auth/me').set(auth);
+    assert.equal(me.body.timeZone, 'Asia/Karachi');
+
+    const cleared = await request(app).patch('/api/auth/me').set(auth).send({ timeZone: null });
+    assert.equal(cleared.status, 200);
+    assert.equal(cleared.body.timeZone, null);
+  });
+
+  it('rejects an unknown zone and leaves the saved one alone', async () => {
+    await seedUser({ email: 'tz2@test.local', role: 'Member', password: 'Secret123!' });
+    const tok = await login('tz2@test.local', 'Secret123!');
+    const auth = { Authorization: `Bearer ${tok}` };
+    await request(app).patch('/api/auth/me').set(auth).send({ timeZone: 'Asia/Jerusalem' });
+
+    const bad = await request(app)
+      .patch('/api/auth/me')
+      .set(auth)
+      .send({ timeZone: 'Mars/Olympus' });
+    assert.equal(bad.status, 400);
+    const me = await request(app).get('/api/auth/me').set(auth);
+    assert.equal(me.body.timeZone, 'Asia/Jerusalem');
+  });
+
+  it('ignores fields a person may not change on themselves', async () => {
+    await seedUser({ email: 'tz3@test.local', role: 'Member', password: 'Secret123!' });
+    const tok = await login('tz3@test.local', 'Secret123!');
+    const res = await request(app)
+      .patch('/api/auth/me')
+      .set({ Authorization: `Bearer ${tok}` })
+      .send({ role: 'Admin', timeZone: 'Europe/London' });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.role, 'Member');
+    assert.equal(res.body.timeZone, 'Europe/London');
+  });
+
+  it('requires a signed-in user', async () => {
+    const res = await request(app).patch('/api/auth/me').send({ timeZone: 'Europe/London' });
+    assert.equal(res.status, 401);
+  });
+});
+
 describe('active users endpoint', () => {
   it('is available to any authenticated user and returns minimal refs', async () => {
     await seedUser({ email: 'member1@test.local', role: 'Member', password: 'Secret123!' });

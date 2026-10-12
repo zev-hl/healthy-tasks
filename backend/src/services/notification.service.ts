@@ -313,7 +313,10 @@ export async function processDueReminderEmails(actor: Actor, now: Date): Promise
   const pending = due.filter((r) => r.kind === 'due' && r.emailSentAt === null);
   if (pending.length === 0) return;
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true, timeZone: true },
+  });
   if (!user) return;
 
   for (const r of pending) {
@@ -324,7 +327,7 @@ export async function processDueReminderEmails(actor: Actor, now: Date): Promise
     });
     if (claimed.count !== 1) continue;
     try {
-      await emailReminder(user.email, r);
+      await emailReminder(user.email, r, user.timeZone);
     } catch (err) {
       console.error('Failed to send reminder email', r.id, err);
     }
@@ -421,16 +424,20 @@ async function emailAssignment(userId: string, taskId: number, action: AssignAct
   );
 }
 
-async function emailReminder(to: string, r: DueReminder): Promise<void> {
+async function emailReminder(
+  to: string,
+  r: DueReminder,
+  timeZone: string | null,
+): Promise<void> {
   await mailer.send({
     to,
     subject: `Reminder: “${r.taskName}”`,
     text: [
       `Reminder for task #${r.taskId} (“${r.taskName}”).`,
-      // Business time with the zone named, not a raw UTC ISO string: this is read
-      // by staff in several countries and the server has no recipient timezone.
+      // The recipient's Profile timezone if set, else business time — either way
+      // with the zone named, since staff are spread across several countries.
       r.startAt
-        ? `Starts: ${formatBusinessTimestamp(r.startAt)} — ${reminderLeadLabel(r.leadMinutes)}`
+        ? `Starts: ${formatBusinessTimestamp(r.startAt, timeZone ?? undefined)} — ${reminderLeadLabel(r.leadMinutes)}`
         : '',
       '',
       `Open the task: ${taskLink(r.taskId)}`,

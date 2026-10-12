@@ -35,6 +35,12 @@ export interface UserDto {
   lastName: string;
   title: string | null;
   jobDescription: string | null;
+  /**
+   * IANA timezone the person chose on their Profile, or null if unset (server
+   * emails then use the business timezone). Not used for on-screen times —
+   * those always follow the device.
+   */
+  timeZone: string | null;
   role: Role;
   supervisorId: string | null;
   isActive: boolean;
@@ -73,6 +79,11 @@ export interface GoogleLoginRequest {
 export interface LoginResponse {
   token: string;
   user: UserDto;
+}
+
+/** Self-service profile edit (PATCH /api/auth/me). null clears the field. */
+export interface UpdateMyProfileRequest {
+  timeZone?: string | null;
 }
 
 export interface ForgotPasswordRequest {

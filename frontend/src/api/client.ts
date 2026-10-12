@@ -48,6 +48,7 @@ import type {
   UpdateTaskRequest,
   UpdateUserRequest,
   UserDto,
+  UpdateMyProfileRequest,
   UserCountsDto,
   UserFilterOptions,
   UserSearchRequest,
@@ -207,6 +208,8 @@ export const api = {
       body: JSON.stringify({ idToken }),
     }),
   me: () => request<UserDto>('/api/auth/me'),
+  updateMe: (body: UpdateMyProfileRequest) =>
+    request<UserDto>('/api/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
 
   // --- Exclusives (HLAI-71) ---
   getExclusivesStatus: () => request<ExclusivesStatusDto>('/api/exclusives/status'),
