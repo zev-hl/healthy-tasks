@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { emailConfig } from './email-config.js';
 
 // Load .env from the repo root (docker-compose also injects these directly).
 dotenv.config();
@@ -55,14 +56,9 @@ export const env = {
   frontendUrl: optional('FRONTEND_URL', 'http://localhost:5173'),
   corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173'),
 
-  email: {
-    provider: optional('EMAIL_PROVIDER', 'console'),
-    from: optional('EMAIL_FROM', 'HL Central <no-reply@healthy-tasks.local>'),
-    smtpHost: process.env.SMTP_HOST,
-    smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
-    smtpUser: process.env.SMTP_USER,
-    smtpPass: process.env.SMTP_PASS,
-  },
+  // Lives in email-config.ts so the email worker can read it without the
+  // required settings above.
+  email: emailConfig,
 
   seed: {
     // Must satisfy GOOGLE_ALLOWED_DOMAIN, or a fresh environment seeds an

@@ -7,6 +7,8 @@ import {
   stopScheduler,
 } from './services/scheduler.service.js';
 import { mailerSummary, productionReadinessGaps } from './config/startup-checks.js';
+import { closeEmailQueue, getEmailQueue } from './queue/email-queue.js';
+import { mailer } from './utils/mailer.js';
 
 const app = createApp();
 
@@ -17,6 +19,13 @@ const server = app.listen(env.port, () => {
   // there is a boot line confirming it took.
   // eslint-disable-next-line no-console
   console.log(`   ${mailerSummary(env.email.provider, env.email.smtpHost)}`);
+  // eslint-disable-next-line no-console
+  console.log(
+    `   email delivery: ${env.email.delivery === 'queue' ? 'queued for the email worker' : 'direct'}`,
+  );
+  // Connect to the queue now, so the first email of the day finds the
+  // connection ready instead of falling back to a direct send.
+  if (env.email.delivery === 'queue') getEmailQueue();
 
   // Production dependencies otherwise fail silently; Phase 14's health alerting
   // is worthless if the mailer it uses is a no-op, so say so out loud.
@@ -53,7 +62,9 @@ async function shutdown(signal: string): Promise<void> {
   console.log(`\n${signal} received, shutting down...`);
   stopScheduler();
   server.close(() => {
-    void prisma.$disconnect().finally(() => process.exit(0));
+    void Promise.allSettled([prisma.$disconnect(), closeEmailQueue(), mailer.close?.()]).finally(
+      () => process.exit(0),
+    );
   });
 }
 

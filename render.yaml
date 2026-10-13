@@ -118,6 +118,19 @@ projects:
                 sync: false
               - key: SMTP_PASS
                 sync: false
+              # ----- Email queue (BullMQ) --------------------------------------
+              # "direct" (the default when unset): this service sends its own
+              # email, as before. "queue": it hands each email to
+              # hlcentral-email-worker through hlcentral-queue, and the worker
+              # retries failures. Switch to "queue" only once the worker is
+              # running with its email settings filled in.
+              - key: EMAIL_DELIVERY
+                sync: false
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: hlcentral-queue
+                  property: connectionString
               # ----- Object storage for attachments (Phase 4) ------------------
               # Cloudflare R2. Attachment bytes never pass through this service:
               # the browser uploads and downloads straight to the bucket with
@@ -196,6 +209,76 @@ projects:
                 sync: false
               - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
                 sync: false
+
+          # -------------------------------------------------------------------
+          # Email worker — takes emails off the queue and sends them, retrying
+          # a failed send every 2 minutes, up to 10 times (backend/src/worker.ts).
+          # It has no web address: it only talks to hlcentral-queue, the mail
+          # server and (from the failed-email table onward) the database.
+          # Background workers have no free plan.
+          # -------------------------------------------------------------------
+          - name: hlcentral-email-worker
+            type: worker
+            runtime: node
+            plan: 0.5c-512mb # the smallest worker; sending email needs very little
+            region: virginia
+            branch: main
+            autoDeployTrigger: commit
+            # Same build as hlcentral-api (see the note there on --include=dev).
+            buildCommand: >-
+              npm ci --include=dev &&
+              npm run build:shared &&
+              npm run prisma:generate --workspace backend &&
+              npm run build --workspace backend
+            # node itself, not `npm run worker`: npm doesn't pass Render's stop
+            # signal on, and the worker needs it to finish the emails it is
+            # sending before a deploy replaces it. No preDeployCommand: the API
+            # applies migrations.
+            startCommand: node backend/dist/worker.js
+            maxShutdownDelaySeconds: 60
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: hlcentral-queue
+                  property: connectionString
+              # The same Neon connection string as hlcentral-api. Used from the
+              # failed-email table onward (Phase 2).
+              - key: DATABASE_URL
+                sync: false
+              # The worker does the sending, so it needs the same mail settings
+              # as hlcentral-api — enter the same values in both.
+              - key: EMAIL_PROVIDER
+                sync: false
+              - key: EMAIL_FROM
+                sync: false
+              - key: SMTP_HOST
+                sync: false
+              - key: SMTP_PORT
+                sync: false
+              - key: SMTP_USER
+                sync: false
+              - key: SMTP_PASS
+                sync: false
+
+          # -------------------------------------------------------------------
+          # Key Value (Valkey, Redis-compatible) — holds the email queue.
+          #  - noeviction: BullMQ requires it. Render's default (allkeys-lru)
+          #    silently deletes queued emails when memory runs out.
+          #  - ipAllowList []: nothing outside Render can connect; this
+          #    environment's services reach it over Render's private network.
+          #  - 256mb, not free: a free instance keeps nothing through a restart,
+          #    so queued emails and pending retries would be lost.
+          # -------------------------------------------------------------------
+          - name: hlcentral-queue
+            type: keyvalue
+            plan: 256mb
+            region: virginia
+            maxmemoryPolicy: noeviction
+            persistenceMode: journal-snapshot
+            ipAllowList: []
 
           # -------------------------------------------------------------------
           # Frontend — Vite React SPA, served as static files.
@@ -307,6 +390,16 @@ projects:
                 sync: false
               - key: SMTP_PASS
                 sync: false
+              # ----- Email queue (BullMQ) --------------------------------------
+              # Same as Production: "direct" when unset; "queue" hands email to
+              # hlcentral-email-worker-staging through hlcentral-queue-staging.
+              - key: EMAIL_DELIVERY
+                sync: false
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: hlcentral-queue-staging
+                  property: connectionString
               - key: STORAGE_DRIVER
                 value: s3
               - key: S3_BUCKET # SEPARATE bucket from prod, e.g. healthy-tasks-staging
@@ -366,6 +459,56 @@ projects:
                 sync: false
               - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
                 sync: false
+
+          # Email worker — see hlcentral-email-worker under Production.
+          - name: hlcentral-email-worker-staging
+            type: worker
+            runtime: node
+            plan: 0.5c-512mb # background workers have no free plan
+            region: virginia
+            branch: staging
+            autoDeployTrigger: commit
+            buildCommand: >-
+              npm ci --include=dev &&
+              npm run build:shared &&
+              npm run prisma:generate --workspace backend &&
+              npm run build --workspace backend
+            startCommand: node backend/dist/worker.js
+            maxShutdownDelaySeconds: 60
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: hlcentral-queue-staging
+                  property: connectionString
+              - key: DATABASE_URL # the staging Neon branch, same as hlcentral-api-staging
+                sync: false
+              # Same mail settings as hlcentral-api-staging.
+              - key: EMAIL_PROVIDER
+                sync: false
+              - key: EMAIL_FROM
+                sync: false
+              - key: SMTP_HOST
+                sync: false
+              - key: SMTP_PORT
+                sync: false
+              - key: SMTP_USER
+                sync: false
+              - key: SMTP_PASS
+                sync: false
+
+          # Key Value for staging's email queue — see hlcentral-queue under
+          # Production. Free here to save cost: it keeps nothing through a
+          # restart, so emails waiting or awaiting a retry at that moment are
+          # lost. Change to 256mb if staging must behave exactly like Production.
+          - name: hlcentral-queue-staging
+            type: keyvalue
+            plan: free
+            region: virginia
+            maxmemoryPolicy: noeviction
+            ipAllowList: []
 
           - name: hlcentral-staging
             type: web

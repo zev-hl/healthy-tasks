@@ -1,4 +1,5 @@
-import { env } from '../config/env.js';
+import type { Transporter } from 'nodemailer';
+import { emailConfig } from '../config/email-config.js';
 
 export interface Email {
   to: string;
@@ -9,6 +10,8 @@ export interface Email {
 
 export interface Mailer {
   send(email: Email): Promise<void>;
+  /** Close any open connections to the mail server (process shutdown). */
+  close?(): Promise<void>;
 }
 
 /**
@@ -38,7 +41,7 @@ class ConsoleMailer implements Mailer {
       [
         '',
         '📧 ───────────────────────────────────────────────',
-        `From:    ${env.email.from}`,
+        `From:    ${emailConfig.from}`,
         `To:      ${email.to}`,
         `Subject: ${email.subject}`,
         '───────────────────────────────────────────────',
@@ -53,30 +56,59 @@ class ConsoleMailer implements Mailer {
 /**
  * SMTP mailer using nodemailer. Only constructed when EMAIL_PROVIDER=smtp so
  * that the console path has zero external dependencies at runtime.
+ *
+ * Keeps a small pool of connections open and reuses them, instead of logging
+ * in to the mail server for every email — that login was most of the 1–2
+ * seconds a send took. The pool is opened by the first email.
+ *
+ * The timeouts stay under the email worker's 30-second job lock, so a mail
+ * server that stops answering fails the send (and it is retried) rather than
+ * leaving the job hanging.
  */
 class SmtpMailer implements Mailer {
+  private transport: Promise<Transporter> | undefined;
+
+  private getTransport(): Promise<Transporter> {
+    this.transport ??= import('nodemailer').then((nodemailer) =>
+      nodemailer.createTransport({
+        pool: true,
+        maxConnections: 3,
+        maxMessages: 100,
+        host: emailConfig.smtpHost,
+        port: emailConfig.smtpPort,
+        secure: emailConfig.smtpPort === 465,
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
+        auth:
+          emailConfig.smtpUser && emailConfig.smtpPass
+            ? { user: emailConfig.smtpUser, pass: emailConfig.smtpPass }
+            : undefined,
+      }),
+    );
+    return this.transport;
+  }
+
   async send(email: Email): Promise<void> {
-    const nodemailer = await import('nodemailer');
-    const transport = nodemailer.createTransport({
-      host: env.email.smtpHost,
-      port: env.email.smtpPort,
-      auth:
-        env.email.smtpUser && env.email.smtpPass
-          ? { user: env.email.smtpUser, pass: env.email.smtpPass }
-          : undefined,
-    });
+    const transport = await this.getTransport();
     await transport.sendMail({
-      from: env.email.from,
+      from: emailConfig.from,
       to: email.to,
       subject: email.subject,
       text: email.text,
       html: email.html,
     });
   }
+
+  async close(): Promise<void> {
+    const transport = this.transport;
+    this.transport = undefined;
+    (await transport)?.close();
+  }
 }
 
 export const mailer: Mailer =
-  env.email.provider === 'smtp' ? new SmtpMailer() : new ConsoleMailer();
+  emailConfig.provider === 'smtp' ? new SmtpMailer() : new ConsoleMailer();
 
 /**
  * Hand an email to the mailer without making the caller wait for it.

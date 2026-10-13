@@ -161,7 +161,57 @@ via env vars — no code change needed.
 
 ---
 
-## 6. Pre-flight sanity checks
+## 6. Email queue: Key Value + email worker
+
+`render.yaml` adds two services to **each** environment for the email queue
+(BullMQ):
+
+| Service | Production | Staging | Plan |
+| --- | --- | --- | --- |
+| Key Value (holds the queue) | `hlcentral-queue` | `hlcentral-queue-staging` | `256mb` (prod, keeps data through restarts) / `free` (staging, keeps nothing) |
+| Background worker (sends the emails) | `hlcentral-email-worker` | `hlcentral-email-worker-staging` | `0.5c-512mb` — workers have no free plan |
+
+> **Cost:** both new production services and the staging worker are paid.
+> Check Render's current prices before syncing. The Blueprint syncs from `main`,
+> so these services are created the moment this reaches `main` — merging is the
+> decision point.
+
+What is set up for you:
+
+- `REDIS_URL` on each API and its worker is wired to that environment's Key Value
+  automatically (`fromService`) — nothing to enter.
+- The Key Value uses `maxmemoryPolicy: noeviction` (BullMQ requires it; Render's
+  default would silently delete queued emails when full) and accepts no
+  connections from outside Render (`ipAllowList: []`).
+- The worker starts with `node backend/dist/worker.js` and is given 60 seconds on
+  each deploy to finish the emails it is sending.
+
+What you enter, per environment:
+
+- [ ] **On the worker:** the same six email settings as that environment's API
+      (`EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+      `SMTP_PASS`) — the worker is what sends the mail.
+- [ ] **On the worker:** `DATABASE_URL`, the same value as that environment's API
+      (used once failed emails are recorded in the database).
+- [ ] **On the API:** `EMAIL_DELIVERY` — leave it **unset** (= `direct`, the API
+      sends its own email as before) until the worker is running. Then set it to
+      `queue`.
+
+To check it works:
+
+- The worker's log starts with `📮 Email worker started — SMTP via …`, and each
+  email it sends logs `sent … (try 1 of 11 …)`.
+- With `EMAIL_DELIVERY=queue`, the API's boot log says
+  `email delivery: queued for the email worker`.
+- Rolling back is instant: set `EMAIL_DELIVERY` back to `direct` (or remove it) on
+  the API.
+
+The queue dashboard (Bull Board) is **local only** (`http://localhost:3005/bullmq`
+in docker-compose). It has no login, so it is not deployed to Render.
+
+---
+
+## 7. Pre-flight sanity checks
 
 - [ ] `render.yaml` synced without validation errors.
 - [ ] Both API services show a healthy `/health` check.
@@ -173,3 +223,7 @@ via env vars — no code change needed.
 - [ ] `VITE_API_URL` on each frontend points at that env's API.
 - [ ] Production marked as a protected environment.
 - [ ] First admin seeded in each environment.
+- [ ] Each email worker shows `Email worker started` in its log, with the same
+      email settings as its API (§6).
+- [ ] `EMAIL_DELIVERY` on each API is unset (`direct`) until its worker is
+      confirmed working.

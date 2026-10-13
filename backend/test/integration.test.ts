@@ -41,6 +41,10 @@ before(async () => {
   process.env.PASSWORD_RESET_EXPIRES_IN = '60m';
   process.env.FRONTEND_URL = 'http://localhost:5173';
   process.env.EMAIL_PROVIDER = 'console';
+  // Emails are sent in-process: there is no Redis under test, and a .env that
+  // switches the dev stack to the queue must not reach the suite.
+  process.env.EMAIL_DELIVERY = 'direct';
+  delete process.env.REDIS_URL;
   process.env.NODE_ENV = 'test';
   // Google sign-in: a fake client id, and NO domain restriction. The dev
   // container loads .env, so a real GOOGLE_ALLOWED_DOMAIN would otherwise
