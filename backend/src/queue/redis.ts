@@ -30,13 +30,24 @@ export function createRedis(role: RedisRole): Redis {
 
   // Without a listener ioredis reports every failed reconnect as an unhandled
   // 'error' event. One line a minute is enough to show Redis is unreachable.
-  let lastLoggedAt = 0;
-  redis.on('error', (err: Error) => {
-    const now = Date.now();
-    if (now - lastLoggedAt < ERROR_LOG_INTERVAL_MS) return;
-    lastLoggedAt = now;
-    // eslint-disable-next-line no-console
-    console.error(`[queue] Redis unreachable (${role}): ${err.message}`);
-  });
+  redis.on('error', quietErrorLog(`[queue] Redis unreachable (${role}): `));
   return redis;
+}
+
+/**
+ * An error listener that prints each distinct message at most once a minute.
+ * While Redis is down, ioredis and BullMQ report every reconnect attempt —
+ * several a second — on the connection and again on each queue and worker
+ * listening, so their 'error' listeners go through this. Share one between
+ * listeners to print a message once for all of them.
+ */
+export function quietErrorLog(prefix: string): (err: Error) => void {
+  const lastLoggedAt = new Map<string, number>();
+  return (err) => {
+    const now = Date.now();
+    if (now - (lastLoggedAt.get(err.message) ?? 0) < ERROR_LOG_INTERVAL_MS) return;
+    lastLoggedAt.set(err.message, now);
+    // eslint-disable-next-line no-console
+    console.error(`${prefix}${err.message}`);
+  };
 }

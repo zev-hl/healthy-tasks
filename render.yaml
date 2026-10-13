@@ -214,7 +214,7 @@ projects:
           # Email worker — takes emails off the queue and sends them, retrying
           # a failed send every 2 minutes, up to 10 times (backend/src/worker.ts).
           # It has no web address: it only talks to hlcentral-queue, the mail
-          # server and (from the failed-email table onward) the database.
+          # server and the database (failed emails, and their weekly cleanup).
           # Background workers have no free plan.
           # -------------------------------------------------------------------
           - name: hlcentral-email-worker
@@ -239,13 +239,16 @@ projects:
             envVars:
               - key: NODE_ENV
                 value: production
+              # The weekly cleanup of failed emails runs Sundays 04:00 in this zone.
+              - key: BUSINESS_TIMEZONE
+                value: America/New_York
               - key: REDIS_URL
                 fromService:
                   type: keyvalue
                   name: hlcentral-queue
                   property: connectionString
-              # The same Neon connection string as hlcentral-api. Used from the
-              # failed-email table onward (Phase 2).
+              # The same Neon connection string as hlcentral-api: failed emails
+              # are recorded there (FailedEmail) and cleaned up weekly.
               - key: DATABASE_URL
                 sync: false
               # The worker does the sending, so it needs the same mail settings
@@ -478,6 +481,9 @@ projects:
             envVars:
               - key: NODE_ENV
                 value: production
+              # The weekly cleanup of failed emails runs Sundays 04:00 in this zone.
+              - key: BUSINESS_TIMEZONE
+                value: America/New_York
               - key: REDIS_URL
                 fromService:
                   type: keyvalue

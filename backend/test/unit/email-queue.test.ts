@@ -42,6 +42,14 @@ describe('email job data', () => {
     assert.deepEqual(jobs.emailFromJob(one), email);
   });
 
+  it('keeps a fixed id when given one, so the queue sends that email once', () => {
+    const email = { to: 'a@example.com', subject: 'Reminder', text: 'Soon' };
+    const one = jobs.emailJobData(email, 'reminder', 'reminder-r1');
+    const two = jobs.emailJobData(email, 'reminder', 'reminder-r1');
+    assert.equal(one.emailId, 'reminder-r1');
+    assert.equal(two.emailId, one.emailId);
+  });
+
   it('keeps html only when the email has it', () => {
     const plain = jobs.emailJobData({ to: 'a@example.com', subject: 'Hi', text: 'Hello' }, 'test');
     assert.equal('html' in plain, false);
@@ -68,29 +76,36 @@ describe('queueEmail in direct mode', () => {
 });
 
 describe('email processor', () => {
+  // Recording failures in the database is covered in failed-email.test.ts.
+  const noRecorder = { recordFailure: async () => {}, clearFailure: async () => {} };
+  const firstTry = (to: string) => ({
+    data: jobs.emailJobData({ to, subject: 'S', text: 'T' }, 'test'),
+    attemptsMade: 0,
+    opts: { attempts: 11 },
+  });
+
   it('sends the job through the given mailer', async () => {
     const { createEmailProcessor } = await import('../../src/queue/email.processor.js');
     const sent: unknown[] = [];
-    const process = createEmailProcessor({ send: async (email) => void sent.push(email) });
-    await process({
-      data: jobs.emailJobData({ to: 'c@example.com', subject: 'S', text: 'T' }, 'test'),
-    });
+    const process = createEmailProcessor(
+      { send: async (email) => void sent.push(email) },
+      noRecorder,
+    );
+    await process(firstTry('c@example.com'));
     assert.deepEqual(sent, [{ to: 'c@example.com', subject: 'S', text: 'T' }]);
   });
 
   it('fails the try when the send fails, so BullMQ retries it', async () => {
     const { createEmailProcessor } = await import('../../src/queue/email.processor.js');
-    const process = createEmailProcessor({
-      send: async () => {
-        throw new Error('mail server down');
+    const process = createEmailProcessor(
+      {
+        send: async () => {
+          throw new Error('mail server down');
+        },
       },
-    });
-    await assert.rejects(
-      process({
-        data: jobs.emailJobData({ to: 'c@example.com', subject: 'S', text: 'T' }, 'test'),
-      }),
-      /mail server down/,
+      noRecorder,
     );
+    await assert.rejects(process(firstTry('c@example.com')), /mail server down/);
   });
 });
 
@@ -100,5 +115,26 @@ describe('describeTry', () => {
     assert.equal(describeTry(1, { opts: { attempts: 11 } }), 'try 1 of 11');
     assert.equal(describeTry(11, { opts: { attempts: 11 } }), 'try 11 of 11');
     assert.equal(describeTry(12, { opts: { attempts: 11 } }), 'try 12, retried by hand');
+  });
+});
+
+describe('quietErrorLog', () => {
+  it('prints each distinct message once, however often it repeats', async () => {
+    const { quietErrorLog } = await import('../../src/queue/redis.js');
+    const printed: string[] = [];
+    const error = console.error;
+    console.error = (line: string) => void printed.push(line);
+    try {
+      const log = quietErrorLog('[test] ');
+      for (let i = 0; i < 50; i++) log(new Error('connect ECONNREFUSED'));
+      log(new Error('getaddrinfo ENOTFOUND redis'));
+      log(new Error('connect ECONNREFUSED'));
+    } finally {
+      console.error = error;
+    }
+    assert.deepEqual(printed, [
+      '[test] connect ECONNREFUSED',
+      '[test] getaddrinfo ENOTFOUND redis',
+    ]);
   });
 });

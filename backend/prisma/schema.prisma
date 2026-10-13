@@ -1155,3 +1155,43 @@ model TimeDay {
   @@id([userId, date])
   @@index([date])
 }
+
+// ---------------------------------------------------------------------------
+// Email queue
+// ---------------------------------------------------------------------------
+// An email the email worker could not send. Written only by the worker, and
+// only after a failed try: an email sent on its first try never gets a row.
+//
+//  - `retrying`: it failed, and the queue will try again at `nextRetryAt`.
+//  - `failed`:   every automatic try failed. It is never retried on its own;
+//                a person can still retry it from the queue dashboard.
+//
+// A later try that succeeds deletes the row, so the table holds only emails
+// that are failing right now or have failed for good. The weekly cleanup
+// deletes the `failed` rows. `status`, `attempts` and the failedAt pairing are
+// CHECK constraints in the migration.
+model FailedEmail {
+  id          String    @id @default(uuid())
+  // The queue job's id: one row per email, however many times it fails.
+  emailId     String    @unique
+  // Which email it is (new-account, password-reset, mention, …).
+  kind        String
+  recipient   String
+  subject     String
+  // { to, subject, text, html? } with sign-in links' tokens redacted.
+  payload     Json
+  status      String
+  // Tries made so far, the first one included.
+  attempts    Int
+  // The last error, shortened.
+  lastError   String
+  // When the next automatic try is due; null once the email has failed.
+  nextRetryAt DateTime?
+  // When it ran out of automatic tries; set exactly when status = 'failed'.
+  failedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}

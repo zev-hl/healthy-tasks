@@ -31,10 +31,19 @@ export interface EmailJobData {
   html?: string;
 }
 
-export function emailJobData(email: Email, kind: EmailKind): EmailJobData {
+/**
+ * `emailId` defaults to a fresh one. Pass a fixed one (e.g. `reminder-<id>`)
+ * for an email that must go out at most once: the queue ignores a second job
+ * with the same id while the first is still kept (see `emailJobOptions`).
+ */
+export function emailJobData(
+  email: Email,
+  kind: EmailKind,
+  emailId: string = randomUUID(),
+): EmailJobData {
   return {
     v: 1,
-    emailId: randomUUID(),
+    emailId,
     kind,
     to: email.to,
     subject: email.subject,

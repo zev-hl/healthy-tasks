@@ -6841,6 +6841,7 @@ describe('production readiness reporting (Phase 14)', () => {
     isProduction: true,
     emailProvider: 'smtp',
     smtpHost: 'smtp.example.com',
+    emailDelivery: 'queue',
     storageDriver: 's3',
     schedulerEnabled: true,
     googleClientId: 'fake-client-id.apps.googleusercontent.com',
@@ -6864,6 +6865,13 @@ describe('production readiness reporting (Phase 14)', () => {
     const found = gaps({ ...ready, smtpHost: undefined });
     assert.equal(found.length, 1);
     assert.match(found[0] ?? '', /SMTP_HOST is unset/);
+  });
+
+  it('flags email sent directly, without the queue and its retries', () => {
+    const found = gaps({ ...ready, emailDelivery: 'direct' });
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /EMAIL_DELIVERY is "direct"/);
+    assert.match(found[0] ?? '', /not retried/);
   });
 
   it('flags in-memory storage and a disabled scheduler', () => {

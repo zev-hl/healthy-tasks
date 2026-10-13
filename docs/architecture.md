@@ -24,7 +24,8 @@ goal approval and visibility.
 - **Monorepo** (npm workspaces): `backend`, `frontend`, `packages/shared`.
 - **Backend**: Node + Express + TypeScript (ESM), Prisma ORM over PostgreSQL.
   Object storage (attachments) via an S3-compatible driver (MinIO in dev; an
-  in-memory fake under tests). JWT auth.
+  in-memory fake under tests). JWT auth. Email through a BullMQ queue in Redis
+  (Valkey), sent by a separate email worker process (§14).
 - **Frontend**: React + Vite + TypeScript, React Router **data router**
   (`createBrowserRouter`, so screens can use `useBlocker` for unsaved-changes
   guards), TipTap rich-text editor.
@@ -43,8 +44,13 @@ backend/
     services/                 # business logic + Prisma access + *.mapper.ts
     middleware/               # auth, validation, error handler
     validation/schemas.ts     # all zod schemas + inferred input types
-    utils/                    # HttpError, jwt, password, mailer, async-handler…
+    utils/                    # HttpError, jwt, password, mailer, account-emails, async-handler…
+    queue/                    # email queue: Redis connections, jobs, processor, failed-email recorder, maintenance (§14)
+    worker.ts                 # the email worker process (§14)
+    queue-dashboard.ts        # local queue dashboard, Bull Board (§14)
+  scripts/                    # one-off commands (queue:test-email, queue:clean-failed-emails)
   test/integration.test.ts    # the whole integration suite (node:test + supertest)
+  test/unit/                  # unit tests (no database)
 frontend/
   src/
     pages/                    # one component per screen
@@ -58,9 +64,12 @@ docs/                         # this doc + the Phase 9/10 design handoff
 ## 3. Runtime topology (dev)
 
 `docker compose up` starts: **frontend** (Vite :5173), **backend** (Express :4000),
-**Postgres** (:5432), **MinIO** (:9000 API / :9001 console). The backend applies
-migrations on start and runs the background scheduler (§8). Attachments upload
-directly to MinIO via pre-signed URLs; only metadata passes through the API.
+**Postgres** (:5432), **MinIO** (:9000 API / :9001 console), **Redis** (Valkey,
+:6379, this computer only), the **email worker** (`worker`) and the **queue
+dashboard** (:3005, this computer only). The backend applies migrations on start
+and runs the background scheduler (§8). Attachments upload directly to MinIO via
+pre-signed URLs; only metadata passes through the API. Emails go from the
+backend to Redis and are sent by the worker (§14).
 
 ## 4. Cross-cutting conventions
 
@@ -540,3 +549,76 @@ duty rule, 422 `DUTY_NOT_HELD`), `time.service.ts` (My Time + Time Review). The
 rules — archive-don't-delete, the Review hand-off exemption, team-scoped Manager
 edits, the Completed-day lock, automatic-creation mismatches — are specified in
 `docs/department-duties-spec.md`.
+
+## 14. Email delivery (BullMQ queue)
+
+Every email goes through one function, `queueEmail(email, { kind, emailId? })` in
+`src/queue/email-queue.ts`; nothing else calls the mailer. The callers are the
+account emails (`utils/account-emails.ts`: `new-account`, `google-welcome`,
+`password-reset`), the notification emails (`notification.service.ts`:
+`mention`, `assignment`, `reminder`) and the scheduler's alerts
+(`scheduler.service.ts`: `admin-alert`). Where a reply must not wait, the caller
+wraps it in `sendInBackground`. `EMAIL_DELIVERY` decides what `queueEmail` does:
+
+- **`queue`** (the docker-compose default): the email is added to the `email`
+  queue in Redis, with the job id = `emailId`, and the **email worker**
+  (`src/worker.ts`, a process of its own) sends it. If Redis cannot take it, the
+  API sends it directly and logs a warning, so an email is never lost to a Redis
+  outage.
+- **`direct`** (the app's own default: tests, a backend run outside Docker, and
+  Render until its worker is live): the API's mailer sends it at once. The send
+  starts synchronously, so the console mailer's outbox is filled when the call
+  returns; the tests rely on that. Production logs a NOT PRODUCTION READY warning
+  in this mode.
+
+**Retries.** A failed send is retried after `EMAIL_RETRY_DELAY_SECONDS` (120),
+`EMAIL_MAX_RETRIES` (10) times after the first try: 11 tries over about 20
+minutes. Every error is retried the same way. The policy is stamped on each job
+when it is queued, so changing the settings affects new emails only. Sent jobs
+stay in Redis for a day, failed ones for 14 days (retryable by hand).
+
+**Duplicates.** `emailId` is a fresh UUID unless the caller passes one. Reminders
+pass `reminder-<reminder id>`: on top of the `emailSentAt` claim, the queue then
+ignores a second job for the same reminder while the first is kept.
+
+**`FailedEmail` table.** Written only by the worker
+(`queue/failed-email.recorder.ts`, which never throws, so a database hiccup
+cannot change whether an email is retried):
+
+- sent on the first try: nothing is written (a normal day never touches the
+  database);
+- failed with tries left: a `retrying` row with `nextRetryAt`;
+- failed with none left, including a failed retry pressed on the dashboard:
+  `failed`, with `failedAt`; never retried automatically;
+- sent after failing: the row is deleted.
+
+Tokens in sign-in links are stored as `token=[redacted]`; `lastError` is capped at
+500 characters. CHECK constraints in the migration keep `status` to
+`retrying`/`failed`, `attempts` at least 1, and `failedAt` set exactly when the
+status is `failed`.
+
+**Weekly cleanup.** On start the worker registers a BullMQ job scheduler on the
+`maintenance` queue (`queue/maintenance.ts`): every Sunday 04:00
+`BUSINESS_TIMEZONE`, it deletes the `failed` rows, and only those. To run it now,
+`npm run queue:clean-failed-emails` adds a one-off job. Do not use Promote on the
+scheduled job: that runs the week's slot early, so the schedule skips a week.
+
+**Dashboard.** Bull Board (`src/queue-dashboard.ts`) at
+`http://localhost:3005/bullmq` shows both queues, with Retry for failed emails. It
+has no login, so it is local only and never deployed; on Render, failed emails
+are read from the `FailedEmail` table.
+
+**Connections** (`queue/redis.ts`). The API's connection fails fast instead of
+holding commands while Redis is down, so a request never waits on it; the worker
+and dashboard wait and reconnect. Their error listeners use `quietErrorLog`,
+which prints each distinct message at most once a minute. Redis must run with
+`maxmemory-policy noeviction`, or a full Redis would silently drop queued emails.
+
+**Shutdown.** The worker stops taking jobs, finishes the sends under way (Render
+allows 60 s, docker-compose 30 s), then closes the SMTP pool, Prisma and Redis.
+A worker killed mid-send can send one email twice (rare; accepted).
+
+**Known limits.** Set-password and reset links last 60 minutes and the retries
+finish in about 20, so a retried link still works; a long worker outage could
+deliver a link that has expired. Retried emails, tokens included, wait in Redis,
+which is reachable only from inside Render (and only from this computer locally).

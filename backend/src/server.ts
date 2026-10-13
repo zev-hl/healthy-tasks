@@ -33,6 +33,7 @@ const server = app.listen(env.port, () => {
     isProduction: env.isProduction,
     emailProvider: env.email.provider,
     smtpHost: env.email.smtpHost,
+    emailDelivery: env.email.delivery,
     storageDriver: env.storage.driver,
     schedulerEnabled: env.schedulerEnabled,
     googleClientId: env.google.clientId,

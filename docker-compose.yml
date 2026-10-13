@@ -109,10 +109,11 @@ services:
       # switch would silently do nothing.
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
       EMAIL_FROM: ${EMAIL_FROM:-HL Central <no-reply@healthy-tasks.local>}
-      # Email queue. `direct` sends from the API as before; `queue` hands each
-      # email to the worker through Redis. Set EMAIL_DELIVERY in .env to switch.
+      # Email queue. `queue` (the local default) hands each email to the worker
+      # through Redis, which retries failed sends; `direct` sends from the API
+      # itself, as before the queue. Set EMAIL_DELIVERY in .env to switch.
       REDIS_URL: 'redis://redis:6379'
-      EMAIL_DELIVERY: ${EMAIL_DELIVERY:-direct}
+      EMAIL_DELIVERY: ${EMAIL_DELIVERY:-queue}
       SEED_ADMIN_EMAIL: 'admin@healthy-tasks.local'
       SEED_ADMIN_PASSWORD: 'ChangeMe123!'
       # Google sign-in. Taken from .env so the client id is not committed, with
@@ -166,8 +167,16 @@ services:
     restart: unless-stopped
     # Replaces the image's "apply migrations, then run the API" command. Runs
     # tsx itself rather than `npm run worker:dev`: npm ends on Docker's stop
-    # signal without passing it on, which cut the worker off mid-send.
-    command: ['/app/node_modules/.bin/tsx', 'watch', 'src/worker.ts']
+    # signal without passing it on, which cut the worker off mid-send (`exec`
+    # keeps the shell out of the way for the same reason). The Prisma client is
+    # regenerated first: this container keeps its own node_modules, so the
+    # backend's "update the migrations" would not refresh it.
+    command:
+      [
+        'sh',
+        '-c',
+        'npx prisma generate >/dev/null && exec /app/node_modules/.bin/tsx watch src/worker.ts',
+      ]
     # Passes Docker's stop signal on to tsx, so emails being sent can finish.
     init: true
     stop_grace_period: 30s
@@ -183,6 +192,8 @@ services:
     environment:
       NODE_ENV: development
       REDIS_URL: 'redis://redis:6379'
+      # Failed emails are recorded in the same database as the backend's.
+      DATABASE_URL: 'postgresql://healthy:healthy@db:5432/healthy_tasks?schema=public'
       # Same fallbacks as the backend, so both send with the same settings.
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
       EMAIL_FROM: ${EMAIL_FROM:-HL Central <no-reply@healthy-tasks.local>}

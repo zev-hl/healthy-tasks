@@ -16,6 +16,7 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "queue:test-email": "tsx scripts/enqueue-test-email.ts",
+    "queue:clean-failed-emails": "tsx scripts/clean-failed-emails.ts",
     "lint": "eslint src --ext .ts",
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
     "test:unit": "node --import tsx --test test/unit/*.test.ts"

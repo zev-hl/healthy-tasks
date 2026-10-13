@@ -55,7 +55,9 @@ This is `prisma migrate deploy` (non-interactive, applies pending migrations) �
 **never** `prisma:migrate` / `migrate dev`, which authors *new* migrations. Use
 this when pulling another machine's migration files via git: the migration files
 travel through git, but each machine's database is separate and must be migrated
-locally.
+locally. The `worker` container keeps its own `node_modules` and regenerates its
+Prisma client each time it starts, so afterwards also run `docker compose restart
+worker`.
 
 Frontend tests use Vitest and are **not** covered by root `npm test`:
 
@@ -64,8 +66,21 @@ npm run test --workspace frontend        # vitest run
 npm run test:watch --workspace frontend
 ```
 
-Full local stack (Postgres + backend + frontend + MinIO) via `docker compose up
---build`. The backend runs `prisma migrate deploy` automatically on startup.
+Full local stack (Postgres + backend + frontend + MinIO + Redis + email worker +
+queue dashboard) via `docker compose up --build`. The backend runs `prisma
+migrate deploy` automatically on startup. After adding backend packages, use
+`docker compose up --build -V`, or the containers' own `node_modules` volumes
+hide the new packages.
+
+Email queue (see Email delivery below):
+
+```bash
+# Queue dashboard (local only): http://localhost:3005/bullmq
+docker compose exec backend npm run queue:test-email -- you@example.com  # queue one test email
+docker compose exec backend npm run queue:clean-failed-emails            # run the weekly failed-email cleanup now
+docker compose logs -f worker                                            # watch the email worker send
+npm run worker:dev --workspace backend    # the email worker outside Docker (needs REDIS_URL)
+```
 
 ## Testing
 
@@ -79,6 +94,10 @@ Full local stack (Postgres + backend + frontend + MinIO) via `docker compose up
 - The suite imports `createApp` and drives services directly. The recurrence
   **scheduler is never started under tests** — tests call `runScheduler`
   themselves for determinism.
+- Tests always use `EMAIL_DELIVERY=direct` and need no Redis.
+- **Backend unit tests** (`backend/test/unit/`, no database):
+  `npm run test:unit --workspace backend`. A few load `config/env.ts`, so on the
+  host set any `DATABASE_URL` and `JWT_SECRET` (placeholders are fine).
 
 ## Architecture
 
@@ -147,6 +166,18 @@ two-clock model (coarse ceiling + earlier-only fine wake), re-derived from the D
 every pass so nothing caches into staleness; a watchdog emails admins if the
 heartbeat stalls.
 
+### Email delivery
+Every email goes through `queueEmail(email, { kind })` (`queue/email-queue.ts`);
+never call `mailer.send` directly. With `EMAIL_DELIVERY=queue` (the
+docker-compose default) it goes on a BullMQ queue in Redis and the **email
+worker** (`src/worker.ts`, a separate process: the `worker` container locally, a
+Render background worker in the cloud) sends it, retrying a failure every 2
+minutes, 10 times. With `direct` (the app's default, always under tests) the API
+sends it itself; if Redis is down in queue mode, it falls back to that. Emails
+that run out of tries are kept in the `FailedEmail` table, which the worker
+empties of `failed` rows every Sunday 04:00 business time. The local dashboard
+is `http://localhost:3005/bullmq`. Full design: `docs/architecture.md` §14.
+
 ### Storage
 `storage/index.ts` selects a backend by `STORAGE_DRIVER`: `memory` (tests) or
 `s3` (default — MinIO locally, any S3-compatible bucket in prod). **File bytes
@@ -180,5 +211,8 @@ enforces `roles`.
 Backend config is centralized and validated in `backend/src/config/env.ts`
 (missing required vars throw at boot). Copy `.env.example` → `.env`. Notable
 vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `EMAIL_PROVIDER`
-(`console` dev / `smtp`), `STORAGE_DRIVER`, `SCHEDULER_ENABLED`, the `S3_*` set,
-and `SEED_ADMIN_*`.
+(`console` dev / `smtp`), `EMAIL_DELIVERY` (`direct` / `queue`), `REDIS_URL`,
+`EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `STORAGE_DRIVER`,
+`SCHEDULER_ENABLED`, the `S3_*` set, and `SEED_ADMIN_*`. The email worker loads
+only `config/email-config.ts` and `config/business-time-zone.ts`, not `env.ts`,
+so it runs without the API's secrets.

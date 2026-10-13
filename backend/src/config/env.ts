@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { businessTimeZone } from './business-time-zone.js';
 import { emailConfig } from './email-config.js';
 
 // Load .env from the repo root (docker-compose also injects these directly).
@@ -41,7 +42,8 @@ export const env = {
   // NOT "the app's timezone". Staff are spread across several countries, and
   // dates a user types into a task form are already converted in that user's own
   // zone, which is correct for an absolute deadline. Do not apply this to them.
-  businessTimeZone: optional('BUSINESS_TIMEZONE', 'America/New_York'),
+  // Read in business-time-zone.ts, so the email worker can use it too.
+  businessTimeZone,
 
   // Whether this process runs the recurrence scheduler (Phase 14 / S3). Default
   // on; set false on staging, where an always-ticking timer keeps the Neon

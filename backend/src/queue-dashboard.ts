@@ -4,11 +4,13 @@ import { Queue } from 'bullmq';
 import { createBullBoard } from '@bull-board/api';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
-import { createRedis } from './queue/redis.js';
+import { createRedis, quietErrorLog } from './queue/redis.js';
 import { EMAIL_QUEUE } from './queue/email-job.js';
+import { MAINTENANCE_QUEUE } from './queue/maintenance.js';
 
 // The queue dashboard (Bull Board): a page showing what is waiting, being sent,
-// sent and failed, with the option to retry a failed email by hand.
+// sent and failed, with the option to retry a failed email by hand. The
+// maintenance queue shows the weekly cleanup: its next run and past results.
 //
 // For local development only, as a container of its own at
 // http://localhost:3005/bullmq. It has no login, so it is never deployed: the
@@ -18,7 +20,10 @@ const PORT = Number(process.env.QUEUE_DASHBOARD_PORT ?? 3005);
 const BASE_PATH = '/bullmq';
 
 const connection = createRedis('dashboard');
-const queues = [new Queue(EMAIL_QUEUE, { connection })];
+const queues = [EMAIL_QUEUE, MAINTENANCE_QUEUE].map((name) => new Queue(name, { connection }));
+// Each queue would otherwise print a full stack per reconnect while Redis is down.
+const logError = quietErrorLog('[dashboard] ');
+for (const queue of queues) queue.on('error', logError);
 
 const serverAdapter = new ExpressAdapter();
 serverAdapter.setBasePath(BASE_PATH);

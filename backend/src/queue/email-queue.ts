@@ -34,7 +34,11 @@ export async function closeEmailQueue(): Promise<void> {
   const [q, r] = [queue, redis];
   queue = undefined;
   redis = undefined;
-  await q?.close();
+  // A queue that never reached Redis is not closed, only disconnected: BullMQ
+  // would report its unfinished connection attempt after removing its own
+  // listeners, and an unheard error ends the process (seen shutting down
+  // during a Redis outage).
+  if (r?.status === 'ready') await q?.close();
   // A connection handed to BullMQ is not closed by it.
   r?.disconnect();
 }
@@ -50,10 +54,13 @@ export async function closeEmailQueue(): Promise<void> {
  *    failures. If Redis can't take it, it is sent directly instead and a warning
  *    logged: an email that skips the queue still beats one that is lost.
  */
-export async function queueEmail(email: Email, options: { kind: EmailKind }): Promise<void> {
+export async function queueEmail(
+  email: Email,
+  options: { kind: EmailKind; emailId?: string },
+): Promise<void> {
   if (emailConfig.delivery === 'direct') return mailer.send(email);
 
-  const data = emailJobData(email, options.kind);
+  const data = emailJobData(email, options.kind, options.emailId);
   const q = getEmailQueue();
   // The producer connection refuses commands while it is down rather than
   // holding them; checking first also avoids queueing behind a reconnect.

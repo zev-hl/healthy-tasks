@@ -25,12 +25,12 @@ import {
 } from '../services/user.service.js';
 import { createPasswordReset } from '../services/auth.service.js';
 import { toActiveUserDto, toUserDto, toUserRef } from '../services/user.mapper.js';
+import { sendInBackground } from '../utils/mailer.js';
 import {
   sendGoogleWelcomeEmail,
-  sendInBackground,
   sendNewAccountEmail,
   sendPasswordResetEmail,
-} from '../utils/mailer.js';
+} from '../utils/account-emails.js';
 import { isCompanyAccount } from '../utils/allowed-domain.js';
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';

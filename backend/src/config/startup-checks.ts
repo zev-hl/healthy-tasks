@@ -23,6 +23,7 @@ export interface ReadinessInput {
   isProduction: boolean;
   emailProvider: string;
   smtpHost?: string | undefined;
+  emailDelivery: string;
   storageDriver: string;
   schedulerEnabled: boolean;
   googleClientId: string;
@@ -43,6 +44,13 @@ export function productionReadinessGaps(cfg: ReadinessInput): string[] {
     );
   } else if (!cfg.smtpHost) {
     gaps.push('EMAIL_PROVIDER is "smtp" but SMTP_HOST is unset: sending will fail.');
+  }
+
+  if (cfg.emailDelivery !== 'queue') {
+    gaps.push(
+      'EMAIL_DELIVERY is "direct": emails are sent from this process and a failed one ' +
+        'is not retried. Set it to "queue" once the email worker is running.',
+    );
   }
 
   if (!cfg.googleClientId) {

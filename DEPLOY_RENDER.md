@@ -185,26 +185,45 @@ What is set up for you:
   connections from outside Render (`ipAllowList: []`).
 - The worker starts with `node backend/dist/worker.js` and is given 60 seconds on
   each deploy to finish the emails it is sending.
+- The worker also runs the **weekly cleanup** of failed emails, Sundays 04:00 in
+  `BUSINESS_TIMEZONE` (committed as `America/New_York` on both workers).
+- The `FailedEmail` table comes with the migrations, which the API's pre-deploy
+  step applies as usual.
 
 What you enter, per environment:
 
 - [ ] **On the worker:** the same six email settings as that environment's API
       (`EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
       `SMTP_PASS`) — the worker is what sends the mail.
-- [ ] **On the worker:** `DATABASE_URL`, the same value as that environment's API
-      (used once failed emails are recorded in the database).
+- [ ] **On the worker:** `DATABASE_URL`, the same value as that environment's API.
+      The worker records failed emails there and runs the weekly cleanup. Without
+      it, emails are still sent and retried, but failures are not recorded.
 - [ ] **On the API:** `EMAIL_DELIVERY` — leave it **unset** (= `direct`, the API
       sends its own email as before) until the worker is running. Then set it to
       `queue`.
 
 To check it works:
 
-- The worker's log starts with `📮 Email worker started — SMTP via …`, and each
-  email it sends logs `sent … (try 1 of 11 …)`.
+- The worker's log starts with `📮 Email worker started — SMTP via …` and
+  `failed emails are cleaned up every Sunday at 04:00 America/New_York; next: …`.
+  Each email it sends logs `sent … (try 1 of 11 …)`.
 - With `EMAIL_DELIVERY=queue`, the API's boot log says
-  `email delivery: queued for the email worker`.
+  `email delivery: queued for the email worker`. While it is still `direct`, the
+  API logs `⚠️ NOT PRODUCTION READY: EMAIL_DELIVERY is "direct" …` on every boot.
 - Rolling back is instant: set `EMAIL_DELIVERY` back to `direct` (or remove it) on
   the API.
+
+When an email fails:
+
+- The worker retries it every 2 minutes, 10 times. Its log shows each try and
+  `no tries left` at the end.
+- There is no dashboard on Render. Failed emails are in the database: in Neon's
+  SQL editor, `SELECT recipient, subject, status, attempts, "lastError",
+  "failedAt" FROM "FailedEmail" ORDER BY "updatedAt" DESC;` (`retrying` = still
+  being tried, `failed` = gave up). Sign-in links in them are stored without
+  their token.
+- To clear the `failed` rows before Sunday, open the worker's **Shell** and run
+  `npm run queue:clean-failed-emails --workspace backend`.
 
 The queue dashboard (Bull Board) is **local only** (`http://localhost:3005/bullmq`
 in docker-compose). It has no login, so it is not deployed to Render.
@@ -223,7 +242,8 @@ in docker-compose). It has no login, so it is not deployed to Render.
 - [ ] `VITE_API_URL` on each frontend points at that env's API.
 - [ ] Production marked as a protected environment.
 - [ ] First admin seeded in each environment.
-- [ ] Each email worker shows `Email worker started` in its log, with the same
-      email settings as its API (§6).
+- [ ] Each email worker shows `Email worker started` and the weekly cleanup's next
+      run in its log, with the same email settings and `DATABASE_URL` as its API
+      (§6).
 - [ ] `EMAIL_DELIVERY` on each API is unset (`direct`) until its worker is
       confirmed working.
