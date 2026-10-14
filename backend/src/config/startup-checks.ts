@@ -23,6 +23,7 @@ export interface ReadinessInput {
   isProduction: boolean;
   emailProvider: string;
   smtpHost?: string | undefined;
+  emailDelivery: string;
   storageDriver: string;
   schedulerEnabled: boolean;
   googleClientId: string;
@@ -45,6 +46,13 @@ export function productionReadinessGaps(cfg: ReadinessInput): string[] {
     gaps.push('EMAIL_PROVIDER is "smtp" but SMTP_HOST is unset: sending will fail.');
   }
 
+  if (cfg.emailDelivery !== 'queue') {
+    gaps.push(
+      'EMAIL_DELIVERY is "direct": emails are sent from this process and a failed one ' +
+        'is not retried. Set it to "queue" once the email worker is running.',
+    );
+  }
+
   if (!cfg.googleClientId) {
     gaps.push(
       'GOOGLE_CLIENT_ID is unset: "Sign in with Google" will refuse every attempt. ' +
@@ -64,6 +72,19 @@ export function productionReadinessGaps(cfg: ReadinessInput): string[] {
   }
 
   return gaps;
+}
+
+/** Whether this API process runs the email worker itself (EMAIL_WORKER_IN_API). */
+export function runsEmailWorker(emailDelivery: string, workerInApi: boolean): boolean {
+  return emailDelivery === 'queue' && workerInApi;
+}
+
+/** One line naming who sends this API's emails, logged on every boot. */
+export function deliverySummary(emailDelivery: string, workerInApi: boolean): string {
+  if (emailDelivery !== 'queue') return 'email delivery: direct';
+  return workerInApi
+    ? 'email delivery: queued, sent by the email worker inside this API'
+    : 'email delivery: queued for the separate email worker';
 }
 
 /** One line naming the mail path actually in use, logged on every boot. */

@@ -11,7 +11,8 @@ import {
 import { getUserById, updateMyProfile } from '../services/user.service.js';
 import { assertCanRecoverPassword } from '../utils/allowed-domain.js';
 import { toUserDto } from '../services/user.mapper.js';
-import { sendInBackground, sendPasswordResetEmail } from '../utils/mailer.js';
+import { sendInBackground } from '../utils/mailer.js';
+import { sendPasswordResetEmail } from '../utils/account-emails.js';
 import type {
   LoginInput,
   GoogleLoginInput,

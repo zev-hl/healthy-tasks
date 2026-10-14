@@ -1,6 +1,7 @@
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
-import { mailer, sendInBackground } from '../utils/mailer.js';
+import { sendInBackground } from '../utils/mailer.js';
+import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
@@ -374,7 +375,7 @@ export async function dispatchDueReminderEmails(now: Date): Promise<void> {
   }
 }
 
-// --- Email bodies (dev: printed to console via the shared mailer) -----------
+// --- Email bodies (sent the way EMAIL_DELIVERY says; queue/email-queue.ts) ---
 
 async function emailMention(taskId: number, commentId: string, userIds: string[]): Promise<void> {
   const [task, comment, users] = await Promise.all([
@@ -390,15 +391,18 @@ async function emailMention(taskId: number, commentId: string, userIds: string[]
   // In the background, so posting the comment does not wait on the mail provider.
   for (const u of users) {
     sendInBackground(`mention to ${u.email}`, () =>
-      mailer.send({
-        to: u.email,
-        subject: `You were mentioned on “${task.name}”`,
-        text: [
-          `${by} mentioned you in a comment on task #${taskId} (“${task.name}”).`,
-          '',
-          `Open the task: ${taskLink(taskId)}`,
-        ].join('\n'),
-      }),
+      queueEmail(
+        {
+          to: u.email,
+          subject: `You were mentioned on “${task.name}”`,
+          text: [
+            `${by} mentioned you in a comment on task #${taskId} (“${task.name}”).`,
+            '',
+            `Open the task: ${taskLink(taskId)}`,
+          ].join('\n'),
+        },
+        { kind: 'mention' },
+      ),
     );
   }
 }
@@ -412,15 +416,18 @@ async function emailAssignment(userId: string, taskId: number, action: AssignAct
   const verb = action === 'added' ? 'assigned to' : 'unassigned from';
   // In the background, so saving the task does not wait on the mail provider.
   sendInBackground(`assignment to ${user.email}`, () =>
-    mailer.send({
-      to: user.email,
-      subject: `You were ${verb} “${task.name}”`,
-      text: [
-        `You were ${verb} task #${taskId} (“${task.name}”).`,
-        '',
-        `Open the task: ${taskLink(taskId)}`,
-      ].join('\n'),
-    }),
+    queueEmail(
+      {
+        to: user.email,
+        subject: `You were ${verb} “${task.name}”`,
+        text: [
+          `You were ${verb} task #${taskId} (“${task.name}”).`,
+          '',
+          `Open the task: ${taskLink(taskId)}`,
+        ].join('\n'),
+      },
+      { kind: 'assignment' },
+    ),
   );
 }
 
@@ -429,20 +436,25 @@ async function emailReminder(
   r: DueReminder,
   timeZone: string | null,
 ): Promise<void> {
-  await mailer.send({
-    to,
-    subject: `Reminder: “${r.taskName}”`,
-    text: [
-      `Reminder for task #${r.taskId} (“${r.taskName}”).`,
-      // The recipient's Profile timezone if set, else business time — either way
-      // with the zone named, since staff are spread across several countries.
-      r.startAt
-        ? `Starts: ${formatBusinessTimestamp(r.startAt, timeZone ?? undefined)} — ${reminderLeadLabel(r.leadMinutes)}`
-        : '',
-      '',
-      `Open the task: ${taskLink(r.taskId)}`,
-    ]
-      .filter(Boolean)
-      .join('\n'),
-  });
+  await queueEmail(
+    {
+      to,
+      subject: `Reminder: “${r.taskName}”`,
+      text: [
+        `Reminder for task #${r.taskId} (“${r.taskName}”).`,
+        // The recipient's Profile timezone if set, else business time — either way
+        // with the zone named, since staff are spread across several countries.
+        r.startAt
+          ? `Starts: ${formatBusinessTimestamp(r.startAt, timeZone ?? undefined)} — ${reminderLeadLabel(r.leadMinutes)}`
+          : '',
+        '',
+        `Open the task: ${taskLink(r.taskId)}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    },
+    // A fixed id on top of the emailSentAt claim: the queue also refuses a
+    // second job for the same reminder.
+    { kind: 'reminder', emailId: `reminder-${r.id}` },
+  );
 }
