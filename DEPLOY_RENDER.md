@@ -161,69 +161,95 @@ via env vars — no code change needed.
 
 ---
 
-## 6. Email queue: Key Value + email worker
+## 6. Email queue: Key Value + the email worker inside the API
 
-`render.yaml` adds two services to **each** environment for the email queue
-(BullMQ):
+Emails go through a queue (BullMQ) held in a **Key Value** (Render's
+Redis-compatible store), one per environment. The email worker that sends them
+**runs inside each API** (`EMAIL_WORKER_IN_API`, on by default), so there is no
+separate worker service. It retries a failed send every 2 minutes, 10 times,
+records failures in the `FailedEmail` table, and deletes the `failed` ones every
+Sunday 04:00 `BUSINESS_TIMEZONE`.
 
-| Service | Production | Staging | Plan |
-| --- | --- | --- | --- |
-| Key Value (holds the queue) | `hlcentral-queue` | `hlcentral-queue-staging` | `256mb` (prod, keeps data through restarts) / `free` (staging, keeps nothing) |
-| Background worker (sends the emails) | `hlcentral-email-worker` | `hlcentral-email-worker-staging` | `0.5c-512mb` — workers have no free plan |
+| | Production | Staging |
+| --- | --- | --- |
+| Key Value | `hlcentral-queue`: `256mb`, $10/month, kept on disk | `hlcentral-queue-staging`: `free`, $0, nothing kept through a restart |
+| Created by | the Blueprint, on the sync after merging to `main` | you, by hand (the Blueprint only syncs from `main`) |
+| Email worker | inside `hlcentral-api` | inside `hlcentral-api-staging` |
 
-> **Cost:** both new production services and the staging worker are paid.
-> Check Render's current prices before syncing. The Blueprint syncs from `main`,
-> so these services are created the moment this reaches `main` — merging is the
-> decision point.
+> **Cost:** $10/month, for the production Key Value. With Auto Sync on, it is
+> created and billed on the merge to `main`; with Auto Sync off, when you click
+> **Sync**. Only one free Key Value is allowed per workspace: if another already
+> exists, staging needs `256mb` too.
 
-What is set up for you:
+What `render.yaml` sets up:
 
-- `REDIS_URL` on each API and its worker is wired to that environment's Key Value
-  automatically (`fromService`) — nothing to enter.
-- The Key Value uses `maxmemoryPolicy: noeviction` (BullMQ requires it; Render's
-  default would silently delete queued emails when full) and accepts no
+- `REDIS_URL` on each API, wired to that environment's Key Value (`fromService`).
+- The Key Value uses `maxmemoryPolicy: noeviction` (BullMQ requires it; the default
+  `allkeys-lru` silently deletes queued emails when memory is full) and accepts no
   connections from outside Render (`ipAllowList: []`).
-- The worker starts with `node backend/dist/worker.js` and is given 60 seconds on
-  each deploy to finish the emails it is sending.
-- The worker also runs the **weekly cleanup** of failed emails, Sundays 04:00 in
-  `BUSINESS_TIMEZONE` (committed as `America/New_York` on both workers).
-- The `FailedEmail` table comes with the migrations, which the API's pre-deploy
-  step applies as usual.
+- Both APIs start with `node backend/dist/server.js`, not `npm start`: npm exits on
+  Render's stop signal without passing it on, so a deploy would cut off the emails
+  being sent. Started with node, the API finishes them first.
+- `BUSINESS_TIMEZONE=America/New_York` on both APIs (the weekly cleanup's clock).
+- The `FailedEmail` table comes with the migrations, which the pre-deploy step
+  applies as usual.
 
-What you enter, per environment:
+### Staging (by hand)
 
-- [ ] **On the worker:** the same six email settings as that environment's API
-      (`EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
-      `SMTP_PASS`) — the worker is what sends the mail.
-- [ ] **On the worker:** `DATABASE_URL`, the same value as that environment's API.
-      The worker records failed emails there and runs the weekly cleanup. Without
-      it, emails are still sent and retried, but failures are not recorded.
-- [ ] **On the API:** `EMAIL_DELIVERY` — leave it **unset** (= `direct`, the API
-      sends its own email as before) until the worker is running. Then set it to
-      `queue`.
+1. Merge the PR into `staging`. The API deploys and still sends email directly.
+2. **Staging API → Settings → Start Command:** `node backend/dist/server.js`.
+3. **Staging → + New → Key Value:**
+   - Name `hlcentral-queue-staging`; region **Virginia**, the same as the API (the
+     internal URL only works within one region).
+   - Maxmemory Policy **`noeviction`** (the form defaults to `allkeys-lru`).
+   - Compute **Free** (the form defaults to $10, and a plan cannot be downgraded
+     later).
+   - No external access.
 
-To check it works:
+   Then **Connect → Internal URL**, and copy it.
+4. **Staging API → Environment:** `REDIS_URL` = that internal URL and
+   `EMAIL_DELIVERY` = `queue`, in the **same save** (queue mode without `REDIS_URL`
+   stops the API from starting). It redeploys.
 
-- The worker's log starts with `📮 Email worker started — SMTP via …` and
-  `failed emails are cleaned up every Sunday at 04:00 America/New_York; next: …`.
-  Each email it sends logs `sent … (try 1 of 11 …)`.
-- With `EMAIL_DELIVERY=queue`, the API's boot log says
-  `email delivery: queued for the email worker`. While it is still `direct`, the
-  API logs `⚠️ NOT PRODUCTION READY: EMAIL_DELIVERY is "direct" …` on every boot.
-- Rolling back is instant: set `EMAIL_DELIVERY` back to `direct` (or remove it) on
-  the API.
+### Production (after merging to `main`)
+
+1. Sync the Blueprint (automatic with Auto Sync on). It creates `hlcentral-queue`,
+   wires `REDIS_URL` and sets the start command.
+2. **Production API → Environment:** `EMAIL_DELIVERY` = `queue`. It redeploys.
+
+To check it works (each environment):
+
+- The API's boot log shows:
+  - `email delivery: queued, sent by the email worker inside this API`
+  - `5 at a time; a failed send is retried every 120s, up to 10 times`
+  - `failed emails are cleaned up every Sunday at 04:00 America/New_York; next: …`
+- Each email sent logs `[email-worker] sent … (try 1 of 11 …)` in the API's log.
+- While `EMAIL_DELIVERY` is still `direct`, the API logs
+  `⚠️ NOT PRODUCTION READY: EMAIL_DELIVERY is "direct" …` on every boot.
+- Rolling back is instant: set `EMAIL_DELIVERY` back to `direct` (or remove it).
 
 When an email fails:
 
-- The worker retries it every 2 minutes, 10 times. Its log shows each try and
+- It is retried every 2 minutes, 10 times. The API's log shows each try and
   `no tries left` at the end.
 - There is no dashboard on Render. Failed emails are in the database: in Neon's
   SQL editor, `SELECT recipient, subject, status, attempts, "lastError",
   "failedAt" FROM "FailedEmail" ORDER BY "updatedAt" DESC;` (`retrying` = still
   being tried, `failed` = gave up). Sign-in links in them are stored without
   their token.
-- To clear the `failed` rows before Sunday, open the worker's **Shell** and run
+- To clear the `failed` rows before Sunday, open the API's **Shell** and run
   `npm run queue:clean-failed-emails --workspace backend`.
+
+Moving the email worker to a service of its own (only if email volume ever slows
+the API):
+
+1. **+ New → Background Worker** (paid; there is no free plan): same repo and
+   branch, region Virginia, the API's build command, start command
+   `node backend/dist/worker.js`, shutdown delay 60 s. Environment:
+   `NODE_ENV=production`, `BUSINESS_TIMEZONE=America/New_York`, `REDIS_URL` (the
+   same Key Value), and `DATABASE_URL` plus the six email settings, all the same
+   values as the API.
+2. On the API: `EMAIL_WORKER_IN_API=false`.
 
 The queue dashboard (Bull Board) is **local only** (`http://localhost:3005/bullmq`
 in docker-compose). It has no login, so it is not deployed to Render.
@@ -242,8 +268,9 @@ in docker-compose). It has no login, so it is not deployed to Render.
 - [ ] `VITE_API_URL` on each frontend points at that env's API.
 - [ ] Production marked as a protected environment.
 - [ ] First admin seeded in each environment.
-- [ ] Each email worker shows `Email worker started` and the weekly cleanup's next
-      run in its log, with the same email settings and `DATABASE_URL` as its API
-      (§6).
-- [ ] `EMAIL_DELIVERY` on each API is unset (`direct`) until its worker is
-      confirmed working.
+- [ ] Each API's boot log shows `email delivery: queued, sent by the email worker
+      inside this API` and the weekly cleanup's next run (§6).
+- [ ] The staging API's start command is `node backend/dist/server.js` (set by
+      hand; production gets it from `render.yaml`).
+- [ ] `EMAIL_DELIVERY` on each API stays unset (`direct`) until its Key Value
+      exists and `REDIS_URL` is set.

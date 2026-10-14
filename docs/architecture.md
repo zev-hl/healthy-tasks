@@ -25,7 +25,7 @@ goal approval and visibility.
 - **Backend**: Node + Express + TypeScript (ESM), Prisma ORM over PostgreSQL.
   Object storage (attachments) via an S3-compatible driver (MinIO in dev; an
   in-memory fake under tests). JWT auth. Email through a BullMQ queue in Redis
-  (Valkey), sent by a separate email worker process (§14).
+  (Valkey), sent by an email worker that runs inside the API process (§14).
 - **Frontend**: React + Vite + TypeScript, React Router **data router**
   (`createBrowserRouter`, so screens can use `useBlocker` for unsaved-changes
   guards), TipTap rich-text editor.
@@ -45,8 +45,8 @@ backend/
     middleware/               # auth, validation, error handler
     validation/schemas.ts     # all zod schemas + inferred input types
     utils/                    # HttpError, jwt, password, mailer, account-emails, async-handler…
-    queue/                    # email queue: Redis connections, jobs, processor, failed-email recorder, maintenance (§14)
-    worker.ts                 # the email worker process (§14)
+    queue/                    # email queue: Redis connections, jobs, email worker, processor, failed-email recorder, maintenance (§14)
+    worker.ts                 # the email worker as a process of its own, when not run inside the API (§14)
     queue-dashboard.ts        # local queue dashboard, Bull Board (§14)
   scripts/                    # one-off commands (queue:test-email, queue:clean-failed-emails)
   test/integration.test.ts    # the whole integration suite (node:test + supertest)
@@ -65,11 +65,11 @@ docs/                         # this doc + the Phase 9/10 design handoff
 
 `docker compose up` starts: **frontend** (Vite :5173), **backend** (Express :4000),
 **Postgres** (:5432), **MinIO** (:9000 API / :9001 console), **Redis** (Valkey,
-:6379, this computer only), the **email worker** (`worker`) and the **queue
-dashboard** (:3005, this computer only). The backend applies migrations on start
-and runs the background scheduler (§8). Attachments upload directly to MinIO via
-pre-signed URLs; only metadata passes through the API. Emails go from the
-backend to Redis and are sent by the worker (§14).
+:6379, this computer only) and the **queue dashboard** (:3005, this computer
+only). The backend applies migrations on start and runs the background
+scheduler (§8) and the email worker (§14). Attachments upload directly to MinIO
+via pre-signed URLs; only metadata passes through the API. Emails go from the
+backend to Redis and are sent by the email worker inside the backend (§14).
 
 ## 4. Cross-cutting conventions
 
@@ -561,15 +561,25 @@ account emails (`utils/account-emails.ts`: `new-account`, `google-welcome`,
 wraps it in `sendInBackground`. `EMAIL_DELIVERY` decides what `queueEmail` does:
 
 - **`queue`** (the docker-compose default): the email is added to the `email`
-  queue in Redis, with the job id = `emailId`, and the **email worker**
-  (`src/worker.ts`, a process of its own) sends it. If Redis cannot take it, the
-  API sends it directly and logs a warning, so an email is never lost to a Redis
-  outage.
+  queue in Redis, with the job id = `emailId`, and the **email worker** sends it
+  (see below for where it runs). If Redis cannot take it, the API sends it
+  directly and logs a warning, so an email is never lost to a Redis outage.
 - **`direct`** (the app's own default: tests, a backend run outside Docker, and
-  Render until its worker is live): the API's mailer sends it at once. The send
+  Render until its Key Value is in place): the API's mailer sends it at once. The send
   starts synchronously, so the console mailer's outbox is filled when the call
   returns; the tests rely on that. Production logs a NOT PRODUCTION READY warning
   in this mode.
+
+**Where the email worker runs.** `queue/email-worker.ts` (`startEmailWorker()`)
+is the worker: it sends, records failures and runs the weekly cleanup. By
+default it runs **inside the API process** (`EMAIL_WORKER_IN_API`, unset or
+`true`), started from `server.ts` when delivery is `queue`. With
+`EMAIL_WORKER_IN_API=false` the API only adds emails, and the same worker runs
+as a process of its own (`src/worker.ts`, e.g. a Render background worker).
+Inside the API was chosen because Render has no free background worker and both
+APIs are on always-on plans, so the worker never sleeps; the cost is that sending
+shares the API's CPU and pauses while it restarts. If email volume ever slows the
+API, move it out by setting the switch and adding the service; no code changes.
 
 **Retries.** A failed send is retried after `EMAIL_RETRY_DELAY_SECONDS` (120),
 `EMAIL_MAX_RETRIES` (10) times after the first try: 11 tries over about 20
@@ -608,17 +618,22 @@ scheduled job: that runs the week's slot early, so the schedule skips a week.
 has no login, so it is local only and never deployed; on Render, failed emails
 are read from the `FailedEmail` table.
 
-**Connections** (`queue/redis.ts`). The API's connection fails fast instead of
-holding commands while Redis is down, so a request never waits on it; the worker
-and dashboard wait and reconnect. Their error listeners use `quietErrorLog`,
+**Connections** (`queue/redis.ts`). The connection the API adds emails on fails
+fast instead of holding commands while Redis is down, so a request never waits
+on it; the email worker's own connection (inside the API or not) and the
+dashboard's wait and reconnect. Their error listeners use `quietErrorLog`,
 which prints each distinct message at most once a minute. Redis must run with
 `maxmemory-policy noeviction`, or a full Redis would silently drop queued emails.
 
-**Shutdown.** The worker stops taking jobs, finishes the sends under way (Render
-allows 60 s, docker-compose 30 s), then closes the SMTP pool, Prisma and Redis.
-A worker killed mid-send can send one email twice (rare; accepted).
+**Shutdown.** On SIGTERM the email worker stops taking jobs and finishes the
+sends under way, then the process closes Prisma, the queue and the SMTP pool,
+within 25 s (Render waits 30 s for a web service; docker-compose 30 s). The
+signal must reach node: Render starts the API with `node backend/dist/server.js`
+and docker-compose runs tsx directly behind `init`, because npm and a plain
+shell both exit on SIGTERM without passing it on. A process killed mid-send can
+send one email twice (rare; accepted).
 
 **Known limits.** Set-password and reset links last 60 minutes and the retries
-finish in about 20, so a retried link still works; a long worker outage could
-deliver a link that has expired. Retried emails, tokens included, wait in Redis,
+finish in about 20, so a retried link still works; a long outage of the email
+worker (the API, by default) could deliver a link that has expired. Retried emails, tokens included, wait in Redis,
 which is reachable only from inside Render (and only from this computer locally).

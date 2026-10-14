@@ -33,6 +33,15 @@ function delivery(): EmailDelivery {
   return value;
 }
 
+/** EMAIL_WORKER_IN_API: "true" (also when unset) or "false"; a typo fails at boot. */
+export function parseWorkerInApi(value: string | undefined): boolean {
+  if (!value) return true;
+  if (value !== 'true' && value !== 'false') {
+    throw new Error('EMAIL_WORKER_IN_API must be "true" or "false"');
+  }
+  return value === 'true';
+}
+
 export const emailConfig = {
   provider: optional('EMAIL_PROVIDER', 'console'),
   from: optional('EMAIL_FROM', 'HL Central <no-reply@healthy-tasks.local>'),
@@ -46,6 +55,11 @@ export const emailConfig = {
   // back if the queue misbehaves. `queue`: it is handed to the email worker
   // through Redis, which retries failures.
   delivery: delivery(),
+  // Who sends the queued emails. `true`: the API runs the email worker inside
+  // itself, so no other service is needed. `false`: a separate email worker
+  // process does (src/worker.ts), and the API only adds them to the queue.
+  // Ignored with `direct` delivery.
+  workerInApi: parseWorkerInApi(process.env.EMAIL_WORKER_IN_API),
   // Where the queue lives. Required for `queue`; unset means nothing ever
   // opens a Redis connection.
   redisUrl: process.env.REDIS_URL || undefined,

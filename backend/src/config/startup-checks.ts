@@ -74,6 +74,19 @@ export function productionReadinessGaps(cfg: ReadinessInput): string[] {
   return gaps;
 }
 
+/** Whether this API process runs the email worker itself (EMAIL_WORKER_IN_API). */
+export function runsEmailWorker(emailDelivery: string, workerInApi: boolean): boolean {
+  return emailDelivery === 'queue' && workerInApi;
+}
+
+/** One line naming who sends this API's emails, logged on every boot. */
+export function deliverySummary(emailDelivery: string, workerInApi: boolean): string {
+  if (emailDelivery !== 'queue') return 'email delivery: direct';
+  return workerInApi
+    ? 'email delivery: queued, sent by the email worker inside this API'
+    : 'email delivery: queued for the separate email worker';
+}
+
 /** One line naming the mail path actually in use, logged on every boot. */
 export function mailerSummary(emailProvider: string, smtpHost?: string | undefined): string {
   return emailProvider === 'smtp'
