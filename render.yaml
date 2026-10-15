@@ -350,6 +350,13 @@ projects:
                   type: keyvalue
                   name: hlcentral-queue-staging
                   property: connectionString
+              # The queue dashboard at /bullmq on this API, behind the browser's
+              # sign-in box. Off unless both are set (password 16+ characters)
+              # and EMAIL_DELIVERY is "queue". Staging only: Production has none.
+              - key: QUEUE_DASHBOARD_USER
+                sync: false
+              - key: QUEUE_DASHBOARD_PASSWORD
+                sync: false
               - key: STORAGE_DRIVER
                 value: s3
               - key: S3_BUCKET # SEPARATE bucket from prod, e.g. healthy-tasks-staging

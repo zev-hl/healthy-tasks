@@ -48,6 +48,7 @@ After the environments exist:
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | staging credentials        | **different** production credentials     |
 | `EMAIL_PROVIDER`    | `console` (stay stubbed)                 | `smtp` at go-live (see §5)              |
 | `SEED_ADMIN_*`      | staging admin                            | production admin                        |
+| `QUEUE_DASHBOARD_USER` / `_PASSWORD` | set: the queue dashboard (§6) | unset: no dashboard                |
 
 **Never reuse a value across environments — especially `DATABASE_URL`, `JWT_SECRET`,
 and the S3 credentials.**
@@ -193,6 +194,8 @@ What `render.yaml` sets up:
 - `BUSINESS_TIMEZONE=America/New_York` on both APIs (the weekly cleanup's clock).
 - The `FailedEmail` table comes with the migrations, which the pre-deploy step
   applies as usual.
+- `QUEUE_DASHBOARD_USER` and `QUEUE_DASHBOARD_PASSWORD` on the **staging** API
+  only, empty until you fill them in (see **Queue dashboard (staging)** below).
 
 ### Staging (by hand)
 
@@ -210,6 +213,8 @@ What `render.yaml` sets up:
 4. **Staging API → Environment:** `REDIS_URL` = that internal URL and
    `EMAIL_DELIVERY` = `queue`, in the **same save** (queue mode without `REDIS_URL`
    stops the API from starting). It redeploys.
+5. Optional: switch on the queue dashboard (see **Queue dashboard (staging)**
+   below).
 
 ### Production (after merging to `main`)
 
@@ -232,7 +237,9 @@ When an email fails:
 
 - It is retried every 2 minutes, 10 times. The API's log shows each try and
   `no tries left` at the end.
-- There is no dashboard on Render. Failed emails are in the database: in Neon's
+- On staging, the queue dashboard (below) shows it under **Failed**, with a
+  **Retry** button.
+- Failed emails are also in the database (production's only view): in Neon's
   SQL editor, `SELECT recipient, subject, status, attempts, "lastError",
   "failedAt" FROM "FailedEmail" ORDER BY "updatedAt" DESC;` (`retrying` = still
   being tried, `failed` = gave up). Sign-in links in them are stored without
@@ -251,8 +258,44 @@ the API):
    values as the API.
 2. On the API: `EMAIL_WORKER_IN_API=false`.
 
-The queue dashboard (Bull Board) is **local only** (`http://localhost:3005/bullmq`
-in docker-compose). It has no login, so it is not deployed to Render.
+### Queue dashboard (staging)
+
+The staging API can serve the queue dashboard (Bull Board) itself, at
+`https://hlcentral-api-staging.onrender.com/bullmq`, behind the browser's own
+sign-in box. It is the same dashboard as the local one: waiting, sent and failed
+emails, a **Retry** button, and the weekly cleanup on the `maintenance` queue. It is
+on only when `EMAIL_DELIVERY` is `queue` and both settings below are set, with a
+password of at least 16 characters; otherwise that address is a 404.
+
+To switch it on:
+
+1. Make a password of 20 or more random characters (a password manager can
+   generate one).
+2. **Staging API → Environment:** `QUEUE_DASHBOARD_USER` (any name, e.g. `hl-team`)
+   and `QUEUE_DASHBOARD_PASSWORD`. It redeploys.
+3. The boot log shows `queue dashboard: on at /bullmq (password protected)`. If
+   something is missing it shows `⚠️ queue dashboard: off - …` and says what.
+4. Open the address and sign in. The browser keeps the sign-in until it is fully
+   closed; there is no sign-out button.
+
+Good to know:
+
+- Share the user name and password privately (a direct message or a password
+  manager). Anyone with them sees who got which email, can read the emails, and
+  can retry or delete them.
+- To change the password, or to shut someone out, change
+  `QUEUE_DASHBOARD_PASSWORD`. To switch the dashboard off, delete both settings.
+- Sign-in links (password reset, welcome) are shown as `token=[redacted]`.
+  **Retry** sends the real link. **Duplicate** and **Update Data** start from what
+  is shown, so their copy would carry the hidden link: use **Retry** for those
+  emails.
+- It needs no access to the Key Value from outside Render (`ipAllowList: []`). If
+  you added your own address under the Key Value's **Networking** to reach it
+  from your computer, remove it.
+- Production has no dashboard: the settings are not in its part of `render.yaml`.
+  Setting them there would switch it on, so treat that as a deliberate choice.
+- Locally the dashboard is its own container, `http://localhost:3005/bullmq`, with
+  no sign-in and reachable from your computer only.
 
 ---
 
@@ -274,3 +317,6 @@ in docker-compose). It has no login, so it is not deployed to Render.
       hand; production gets it from `render.yaml`).
 - [ ] `EMAIL_DELIVERY` on each API stays unset (`direct`) until its Key Value
       exists and `REDIS_URL` is set.
+- [ ] If the staging queue dashboard is wanted: its boot line says `queue
+      dashboard: on at /bullmq (password protected)`, and the production API's
+      says `queue dashboard: off` (§6).
