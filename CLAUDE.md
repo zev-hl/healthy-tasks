@@ -182,7 +182,7 @@ sending before it stops. The queue dashboard (`queue/dashboard-board.ts`) is
 `http://localhost:3005/bullmq` locally (its own container, no sign-in); the API
 also serves it at `/bullmq` behind HTTP Basic auth when `QUEUE_DASHBOARD_USER`
 and `QUEUE_DASHBOARD_PASSWORD` (16+ characters) are set (staging and production,
-each its own pair). Admins open it from the profile page's "Email queue" card,
+each its own pair). Admins open it from the profile page's "Queues Dashboard" card,
 which follows `VITE_QUEUE_DASHBOARD_URL`. Full design: `docs/architecture.md` §14.
 
 ### Storage
