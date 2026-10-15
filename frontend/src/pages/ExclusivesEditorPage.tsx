@@ -7,7 +7,7 @@
  * Save creates or updates for real.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   EXCLUSIVES_ALERT_MODES,
   EXCLUSIVES_ALERT_TYPES,
@@ -26,6 +26,7 @@ import { api, ApiError, exportExclusivesGroupToCsv } from '../api/client';
 import { useStaleWriteGuard } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { formatTimestamp } from '../lib/datetime';
+import { groupsListUrl } from '../lib/groupListPlace';
 import { ConflictBanner } from '../components/ConflictBanner';
 import { alertTone } from '../components/exclusives/AlertBadge';
 import { Segmented } from '../components/exclusives/Segmented';
@@ -131,6 +132,9 @@ function savedMessage(
 
 export function ExclusivesEditorPage() {
   const navigate = useNavigate();
+  // Back to the page of the list this was opened from (its page, search and
+  // sort), or the list's first page when opened directly.
+  const listUrl = groupsListUrl(useLocation().state);
   const { id } = useParams();
   const groupId = id ? Number(id) : null;
   const isNew = groupId === null;
@@ -416,7 +420,7 @@ export function ExclusivesEditorPage() {
         hydrate(saved);
         setNotice({
           ...savedMessage(saved, onlyToggled),
-          onDone: () => navigate('/exclusives/groups'),
+          onDone: () => navigate(listUrl),
         });
       });
       if (!ok) return; // a stale write; the conflict banner explains it
@@ -451,7 +455,7 @@ export function ExclusivesEditorPage() {
   return (
     <div className="exc-page exc-editor">
       <div className="exc-crumbbar">
-        <Link to="/exclusives/groups" className="exc-crumb-link mono">
+        <Link to={listUrl} className="exc-crumb-link mono">
           Alert Groups
         </Link>
         <span className="exc-crumb-sep mono">/</span>
@@ -462,11 +466,7 @@ export function ExclusivesEditorPage() {
           </span>
           <span className="exc-crumb-div" />
           {dirty && <span className="mono exc-crumb-hint">Unsaved changes</span>}
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => navigate('/exclusives/groups')}
-          >
+          <button type="button" className="secondary" onClick={() => navigate(listUrl)}>
             Cancel
           </button>
           {/* Save needs BOTH something to save and something to have changed.

@@ -554,6 +554,35 @@ describe('ExclusivesEditorPage — an existing group', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 
+  it('links back to the page of the list it was opened from', async () => {
+    renderWithDataRouter(<ExclusivesEditorPage />, {
+      path: EDITOR_PATHS,
+      initialEntries: [
+        {
+          pathname: '/exclusives/groups/7/edit',
+          state: { listSearch: '?page=2&q=rasasi&sort=name.asc' },
+        },
+      ],
+      extraRoutes: GROUPS_ROUTE,
+    });
+    await settle();
+
+    // Cancel and the saved notice's OK go to the same address as this link.
+    expect(screen.getByRole('link', { name: 'Alert Groups' })).toHaveAttribute(
+      'href',
+      '/exclusives/groups?page=2&q=rasasi&sort=name.asc',
+    );
+  });
+
+  it('links back to the first page of the list when opened directly', async () => {
+    editEditor();
+    await settle();
+    expect(screen.getByRole('link', { name: 'Alert Groups' })).toHaveAttribute(
+      'href',
+      '/exclusives/groups',
+    );
+  });
+
   it('confirms the save in the middle of the screen, then returns to the list', async () => {
     editEditor();
     await settle();

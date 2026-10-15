@@ -3,10 +3,12 @@
  *
  * Real data: the header numbers come from GET /api/exclusives/summary and the
  * table from POST /api/exclusives/groups/query. Search, sorting and paging all
- * happen on the server, so the screen never holds more than one page.
+ * happen on the server, so the screen never holds more than one page. Where the
+ * list stands is kept in the address (lib/groupListPlace.ts), so the editor,
+ * a refresh and the browser's Back all return to the same rows.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   ExclusivesGroupRowDto,
   ExclusivesGroupSortField,
@@ -14,7 +16,13 @@ import type {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
-import { cycleSort, sortState, type SortEntry } from '../lib/multiSort';
+import { cycleSort, sortState } from '../lib/multiSort';
+import {
+  listPlaceParams,
+  readListPlace,
+  type GroupListLink,
+  type GroupListPlace,
+} from '../lib/groupListPlace';
 import { absoluteShort, formatAgo, formatTimestamp } from '../lib/datetime';
 import { SortHeader } from '../components/SortHeader';
 import { TableEmptyRow } from '../components/ui/EmptyState';
@@ -72,10 +80,40 @@ function runLine(summary: ExclusivesSummaryDto | null): string {
 
 export function ExclusivesGroupsPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortEntry<ExclusivesGroupSortField>[]>([]);
-  const [pageSize, setPageSize] = useState<number>(25);
-  const [page, setPage] = useState(1);
+  const location = useLocation();
+  const [params, setParams] = useSearchParams();
+  // Read once per address, so the sort list keeps its identity between renders
+  // and the load below runs only when the place really changes.
+  const query = params.toString();
+  const place = useMemo(() => readListPlace(new URLSearchParams(query)), [query]);
+  const { page, pageSize, sort } = place;
+
+  /** Move the list; replaces the address, so Back still leaves the screen. */
+  const goTo = useCallback(
+    (changes: Partial<GroupListPlace>) => {
+      setParams(listPlaceParams({ ...place, ...changes }), { replace: true });
+    },
+    [place, setParams],
+  );
+
+  // The search box answers every keystroke; the address, and so the server,
+  // get the text once typing pauses.
+  const [search, setSearch] = useState(place.search);
+  const debouncedSearch = useDebouncedValue(search, 350);
+  /** The search last put in the address from this box. */
+  const written = useRef(place.search);
+  useEffect(() => {
+    if (debouncedSearch === written.current) return;
+    written.current = debouncedSearch;
+    goTo({ search: debouncedSearch, page: 1 });
+  }, [debouncedSearch, goTo]);
+  // The address changed some other way — the sidebar's Alert Groups link
+  // clears it — so the box follows.
+  useEffect(() => {
+    if (place.search === written.current) return;
+    written.current = place.search;
+    setSearch(place.search);
+  }, [place.search]);
 
   const [rows, setRows] = useState<ExclusivesGroupRowDto[]>([]);
   const [total, setTotal] = useState(0);
@@ -87,18 +125,18 @@ export function ExclusivesGroupsPage() {
   /** Confirmation after a delete; clears itself. */
   const [deleted, setDeleted] = useState<string | null>(null);
 
-  const debouncedSearch = useDebouncedValue(search, 350);
   // Filters can change faster than the server answers; only the newest reply
   // is allowed to land.
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
     const id = ++requestId.current;
+    let movedOn = false;
     setLoading(true);
     try {
       const [result, stats] = await Promise.all([
         api.queryExclusivesGroups({
-          text: debouncedSearch.trim() || undefined,
+          text: place.search.trim() || undefined,
           sort: sort.length > 0 ? sort : undefined,
           page,
           pageSize,
@@ -106,6 +144,14 @@ export function ExclusivesGroupsPage() {
         api.getExclusivesSummary(),
       ]);
       if (id !== requestId.current) return;
+      // A page past the end — groups were deleted since this address was
+      // made: show the last page rather than an empty table.
+      const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+      if (result.rows.length === 0 && page > lastPage) {
+        movedOn = true;
+        goTo({ page: lastPage });
+        return;
+      }
       setRows(result.rows);
       setTotal(result.total);
       setSummary(stats);
@@ -114,17 +160,21 @@ export function ExclusivesGroupsPage() {
       if (id !== requestId.current) return;
       setError(err instanceof ApiError ? err.message : 'Could not load alert groups');
     } finally {
-      if (id === requestId.current) setLoading(false);
+      if (id === requestId.current && !movedOn) setLoading(false);
     }
-  }, [debouncedSearch, sort, page, pageSize]);
+  }, [place.search, sort, page, pageSize, goTo]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   function onSort(field: ExclusivesGroupSortField, additive: boolean) {
-    setSort((s) => cycleSort(s, field, additive));
-    setPage(1);
+    goTo({ sort: cycleSort(sort, field, additive), page: 1 });
+  }
+
+  /** Open the editor, telling it where to bring people back to. */
+  function openEditor(path: string) {
+    navigate(path, { state: { listSearch: location.search } satisfies GroupListLink });
   }
 
   async function confirmDelete() {
@@ -134,7 +184,7 @@ export function ExclusivesGroupsPage() {
       setDeleted(deleting.name);
       setDeleting(null);
       // The page may now be past the end; step back rather than showing nothing.
-      if (rows.length === 1 && page > 1) setPage(page - 1);
+      if (rows.length === 1 && page > 1) goTo({ page: page - 1 });
       else void load();
     } catch (err) {
       setDeleting(null);
@@ -142,7 +192,7 @@ export function ExclusivesGroupsPage() {
     }
   }
 
-  const searching = debouncedSearch.trim().length > 0;
+  const searching = place.search.trim().length > 0;
 
   return (
     <div className="exc-page">
@@ -160,13 +210,10 @@ export function ExclusivesGroupsPage() {
             type="search"
             placeholder="Search ASIN, title or group name…"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             aria-label="Search alert groups"
           />
-          <button type="button" onClick={() => navigate('/exclusives/groups/new')}>
+          <button type="button" onClick={() => openEditor('/exclusives/groups/new')}>
             New group
           </button>
         </div>
@@ -291,7 +338,7 @@ export function ExclusivesGroupsPage() {
                         <button
                           type="button"
                           className="exc-act"
-                          onClick={() => navigate(`/exclusives/groups/${g.id}/edit`)}
+                          onClick={() => openEditor(`/exclusives/groups/${g.id}/edit`)}
                         >
                           Edit
                         </button>
@@ -315,11 +362,8 @@ export function ExclusivesGroupsPage() {
           total={total}
           page={page}
           pageSize={pageSize}
-          onPage={setPage}
-          onPageSize={(n) => {
-            setPageSize(n);
-            setPage(1);
-          }}
+          onPage={(p) => goTo({ page: p })}
+          onPageSize={(n) => goTo({ pageSize: n, page: 1 })}
         />
       </section>
 
@@ -327,7 +371,7 @@ export function ExclusivesGroupsPage() {
         <GroupAlertsPanel
           group={viewing}
           onClose={() => setViewing(null)}
-          onEdit={() => navigate(`/exclusives/groups/${viewing.id}/edit`)}
+          onEdit={() => openEditor(`/exclusives/groups/${viewing.id}/edit`)}
           onOpenLog={() =>
             navigate('/exclusives/log', { state: { gid: viewing.id, gname: viewing.name } })
           }
