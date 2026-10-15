@@ -74,7 +74,7 @@ containers' own `node_modules` volumes hide the new packages. Add
 Email queue (see Email delivery below):
 
 ```bash
-# Queue dashboard: http://localhost:3005/bullmq locally; staging: <API>/bullmq behind a password
+# Queue dashboard: http://localhost:3005/bullmq locally; Render: <API>/bullmq behind a password
 docker compose exec backend npm run queue:test-email -- you@example.com  # queue one test email
 docker compose exec backend npm run queue:clean-failed-emails            # run the weekly failed-email cleanup now
 docker compose logs -f backend                                           # watch the email worker (inside the API) send
@@ -181,8 +181,9 @@ backend/dist/server.js`, not `npm start`) so it finishes the emails it is
 sending before it stops. The queue dashboard (`queue/dashboard-board.ts`) is
 `http://localhost:3005/bullmq` locally (its own container, no sign-in); the API
 also serves it at `/bullmq` behind HTTP Basic auth when `QUEUE_DASHBOARD_USER`
-and `QUEUE_DASHBOARD_PASSWORD` (16+ characters) are set, which is done on staging
-only. Full design: `docs/architecture.md` §14.
+and `QUEUE_DASHBOARD_PASSWORD` (16+ characters) are set (staging and production,
+each its own pair). Admins open it from the profile page's "Email queue" card,
+which follows `VITE_QUEUE_DASHBOARD_URL`. Full design: `docs/architecture.md` §14.
 
 ### Storage
 `storage/index.ts` selects a backend by `STORAGE_DRIVER`: `memory` (tests) or

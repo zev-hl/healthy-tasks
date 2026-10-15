@@ -623,10 +623,17 @@ setup (`queue/dashboard-board.ts`, `createQueueBoard`) is served in two places:
   `middleware/basic-auth.ts`, compared in constant time). `server.ts` mounts it
   only when `EMAIL_DELIVERY` is `queue` and `QUEUE_DASHBOARD_USER` and
   `QUEUE_DASHBOARD_PASSWORD` are set, the password 16 characters or more
-  (`queueDashboardMode`); otherwise the path is a 404. It is meant for staging,
-  where the API is the only way in; production leaves both settings unset and
-  reads failed emails from the `FailedEmail` table. `createApp` takes it as an
-  option, so the tests never open a Redis connection for it.
+  (`queueDashboardMode`); otherwise the path is a 404. On Render the API is the
+  only way in, so staging and production each switch it on with their own pair.
+  `createApp` takes it as an option, so the tests never open a Redis connection
+  for it.
+
+Admins reach it from the profile page: `components/QueueDashboardCard.tsx` shows
+an "Email queue" card, with a link opening the dashboard in a new tab, to Admins
+only and only when the build has `VITE_QUEUE_DASHBOARD_URL` (docker-compose: the
+local container; Render: each API's `/bullmq`). Hiding the card does not lock the
+dashboard: it checks its shared password, not the HL Central role, so each
+environment's password is given to Admins alone.
 
 Both show sign-in links as `token=[redacted]` (a display formatter on the email
 queue); the job keeps the real link, so Retry sends a working email, while
