@@ -214,6 +214,10 @@ services:
       # Taken from .env. This service has no env_file, so without this line the
       # browser never receives the client id and the Google button cannot load.
       VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Where the profile page's "Open queue dashboard" button goes (Admins
+      # only): the queue-dashboard container below. Set QUEUE_DASHBOARD_URL in
+      # .env to point it elsewhere.
+      VITE_QUEUE_DASHBOARD_URL: ${QUEUE_DASHBOARD_URL:-http://localhost:3005/bullmq}
       # Belt-and-suspenders with vite.config.ts's watch.usePolling for Windows.
       CHOKIDAR_USEPOLLING: 'true'
     ports:

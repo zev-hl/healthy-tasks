@@ -48,7 +48,8 @@ After the environments exist:
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | staging credentials        | **different** production credentials     |
 | `EMAIL_PROVIDER`    | `console` (stay stubbed)                 | `smtp` at go-live (see §5)              |
 | `SEED_ADMIN_*`      | staging admin                            | production admin                        |
-| `QUEUE_DASHBOARD_USER` / `_PASSWORD` | set: the queue dashboard (§6) | unset: no dashboard                |
+| `QUEUE_DASHBOARD_USER` / `_PASSWORD` | its own pair: the queue dashboard (§6) | a **different** pair (§6)   |
+| `VITE_QUEUE_DASHBOARD_URL` | staging API + `/bullmq`                   | production API + `/bullmq`              |
 
 **Never reuse a value across environments — especially `DATABASE_URL`, `JWT_SECRET`,
 and the S3 credentials.**
@@ -122,6 +123,10 @@ Set on `healthy-tasks-web-prod` and `healthy-tasks-web-staging`:
 
 - [ ] **`VITE_API_URL`** — https URL of this env's backend API. **Baked in at
       build time**, so set it before the first build and rebuild if it changes.
+- [ ] **`VITE_QUEUE_DASHBOARD_URL`** — this env's queue dashboard, e.g.
+      `https://hlcentral-api-staging.onrender.com/bullmq`. Purpose: the **Open queue
+      dashboard** button on the profile page, shown to Admins only. Unset, the
+      button is not shown. Also baked in at build time (§6).
 
 ---
 
@@ -194,8 +199,10 @@ What `render.yaml` sets up:
 - `BUSINESS_TIMEZONE=America/New_York` on both APIs (the weekly cleanup's clock).
 - The `FailedEmail` table comes with the migrations, which the pre-deploy step
   applies as usual.
-- `QUEUE_DASHBOARD_USER` and `QUEUE_DASHBOARD_PASSWORD` on the **staging** API
-  only, empty until you fill them in (see **Queue dashboard (staging)** below).
+- `QUEUE_DASHBOARD_USER` and `QUEUE_DASHBOARD_PASSWORD` on each API, and
+  `VITE_QUEUE_DASHBOARD_URL` on each website, empty until you fill them in (see
+  **Queue dashboard** below). Render never fills or syncs them (`sync: false`), so
+  they are set by hand in both environments, Production included.
 
 ### Staging (by hand)
 
@@ -213,14 +220,14 @@ What `render.yaml` sets up:
 4. **Staging API → Environment:** `REDIS_URL` = that internal URL and
    `EMAIL_DELIVERY` = `queue`, in the **same save** (queue mode without `REDIS_URL`
    stops the API from starting). It redeploys.
-5. Optional: switch on the queue dashboard (see **Queue dashboard (staging)**
-   below).
+5. Optional: switch on the queue dashboard (see **Queue dashboard** below).
 
 ### Production (after merging to `main`)
 
 1. Sync the Blueprint (automatic with Auto Sync on). It creates `hlcentral-queue`,
    wires `REDIS_URL` and sets the start command.
 2. **Production API → Environment:** `EMAIL_DELIVERY` = `queue`. It redeploys.
+3. Optional: switch on the queue dashboard (see **Queue dashboard** below).
 
 To check it works (each environment):
 
@@ -237,9 +244,9 @@ When an email fails:
 
 - It is retried every 2 minutes, 10 times. The API's log shows each try and
   `no tries left` at the end.
-- On staging, the queue dashboard (below) shows it under **Failed**, with a
-  **Retry** button.
-- Failed emails are also in the database (production's only view): in Neon's
+- The queue dashboard (below) shows it under **Failed**, with a **Retry**
+  button.
+- Failed emails are also in the database: in Neon's
   SQL editor, `SELECT recipient, subject, status, attempts, "lastError",
   "failedAt" FROM "FailedEmail" ORDER BY "updatedAt" DESC;` (`retrying` = still
   being tried, `failed` = gave up). Sign-in links in them are stored without
@@ -258,33 +265,45 @@ the API):
    values as the API.
 2. On the API: `EMAIL_WORKER_IN_API=false`.
 
-### Queue dashboard (staging)
+### Queue dashboard
 
-The staging API can serve the queue dashboard (Bull Board) itself, at
-`https://hlcentral-api-staging.onrender.com/bullmq`, behind the browser's own
-sign-in box. It is the same dashboard as the local one: waiting, sent and failed
-emails, a **Retry** button, and the weekly cleanup on the `maintenance` queue. It is
-on only when `EMAIL_DELIVERY` is `queue` and both settings below are set, with a
-password of at least 16 characters; otherwise that address is a 404.
+Each API can serve the queue dashboard (Bull Board) itself, at its own `/bullmq`
+(`https://hlcentral-api-staging.onrender.com/bullmq`,
+`https://hlcentral-api.onrender.com/bullmq`), behind the browser's own sign-in
+box. It is the same dashboard as the local one: waiting, sent and failed emails, a
+**Retry** button, and the weekly cleanup on the `maintenance` queue. It is on only
+when `EMAIL_DELIVERY` is `queue` and both settings below are set, with a password
+of at least 16 characters; otherwise that address is a 404.
 
-To switch it on:
+Admins reach it from **Your profile → Email queue → Open queue dashboard**, which
+opens it in a new tab. Nobody else sees that box.
+
+To switch it on (each environment, with its **own** user name and password —
+never Staging's pair on Production):
 
 1. Make a password of 20 or more random characters (a password manager can
    generate one).
-2. **Staging API → Environment:** `QUEUE_DASHBOARD_USER` (any name, e.g. `hl-team`)
-   and `QUEUE_DASHBOARD_PASSWORD`. It redeploys.
+2. **API → Environment:** `QUEUE_DASHBOARD_USER` (any name, e.g. `hl-team`) and
+   `QUEUE_DASHBOARD_PASSWORD`. It redeploys.
 3. The boot log shows `queue dashboard: on at /bullmq (password protected)`. If
    something is missing it shows `⚠️ queue dashboard: off - …` and says what.
-4. Open the address and sign in. The browser keeps the sign-in until it is fully
-   closed; there is no sign-out button.
+4. **Website (static site) → Environment:** `VITE_QUEUE_DASHBOARD_URL` = that API's
+   address + `/bullmq`. Saving rebuilds the site (the address is built into it).
+5. As an Admin, open **Your profile**: the **Email queue** box is under
+   Notifications. Its button opens the dashboard; sign in there. The browser keeps
+   the sign-in until it is fully closed; there is no sign-out button.
 
 Good to know:
 
-- Share the user name and password privately (a direct message or a password
-  manager). Anyone with them sees who got which email, can read the emails, and
-  can retry or delete them.
+- **Only Admins see the button, but the dashboard checks its password, not who
+  is signed in to HL Central.** Anyone given the password could open it by typing
+  the address. So share each environment's user name and password with Admins
+  only, privately (a direct message or a password manager). With them, a person
+  sees who got which email, can read the emails, and can retry or delete them.
 - To change the password, or to shut someone out, change
-  `QUEUE_DASHBOARD_PASSWORD`. To switch the dashboard off, delete both settings.
+  `QUEUE_DASHBOARD_PASSWORD` and give the new one to the Admins. To switch the
+  dashboard off, delete both settings (and `VITE_QUEUE_DASHBOARD_URL`, so the
+  button goes too).
 - Sign-in links (password reset, welcome) are shown as `token=[redacted]`.
   **Retry** sends the real link. **Duplicate** and **Update Data** start from what
   is shown, so their copy would carry the hidden link: use **Retry** for those
@@ -292,10 +311,9 @@ Good to know:
 - It needs no access to the Key Value from outside Render (`ipAllowList: []`). If
   you added your own address under the Key Value's **Networking** to reach it
   from your computer, remove it.
-- Production has no dashboard: the settings are not in its part of `render.yaml`.
-  Setting them there would switch it on, so treat that as a deliberate choice.
 - Locally the dashboard is its own container, `http://localhost:3005/bullmq`, with
-  no sign-in and reachable from your computer only.
+  no sign-in and reachable from your computer only; docker-compose points the
+  profile button there.
 
 ---
 
@@ -317,6 +335,7 @@ Good to know:
       hand; production gets it from `render.yaml`).
 - [ ] `EMAIL_DELIVERY` on each API stays unset (`direct`) until its Key Value
       exists and `REDIS_URL` is set.
-- [ ] If the staging queue dashboard is wanted: its boot line says `queue
-      dashboard: on at /bullmq (password protected)`, and the production API's
-      says `queue dashboard: off` (§6).
+- [ ] Where the queue dashboard is wanted: that API's boot line says `queue
+      dashboard: on at /bullmq (password protected)`, its website has
+      `VITE_QUEUE_DASHBOARD_URL`, and Staging and Production use different
+      passwords (§6).

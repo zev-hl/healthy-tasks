@@ -134,6 +134,14 @@ projects:
                   type: keyvalue
                   name: hlcentral-queue
                   property: connectionString
+              # The queue dashboard at /bullmq on this API, behind the browser's
+              # sign-in box. Off unless both are set (password 16+ characters)
+              # and EMAIL_DELIVERY is "queue". Its own pair, not Staging's: give
+              # it to Admins only (the profile page shows them the button).
+              - key: QUEUE_DASHBOARD_USER
+                sync: false
+              - key: QUEUE_DASHBOARD_PASSWORD
+                sync: false
               # ----- Object storage for attachments (Phase 4) ------------------
               # Cloudflare R2. Attachment bytes never pass through this service:
               # the browser uploads and downloads straight to the bucket with
@@ -259,6 +267,11 @@ projects:
               # is shown.
               - key: VITE_GOOGLE_CLIENT_ID # same value as the API's GOOGLE_CLIENT_ID
                 sync: false
+              # Where the profile page's "Open queue dashboard" button goes
+              # (Admins only), baked in at build time: hlcentral-api's /bullmq.
+              # Unset, the button is not shown.
+              - key: VITE_QUEUE_DASHBOARD_URL # https://hlcentral-api.onrender.com/bullmq
+                sync: false
 
       # =======================================================================
       # STAGING  —  cheap, disposable, safe to break. Points at a SEPARATE Neon
@@ -352,7 +365,7 @@ projects:
                   property: connectionString
               # The queue dashboard at /bullmq on this API, behind the browser's
               # sign-in box. Off unless both are set (password 16+ characters)
-              # and EMAIL_DELIVERY is "queue". Staging only: Production has none.
+              # and EMAIL_DELIVERY is "queue". Its own pair, not Production's.
               - key: QUEUE_DASHBOARD_USER
                 sync: false
               - key: QUEUE_DASHBOARD_PASSWORD
@@ -448,6 +461,10 @@ projects:
               # Baked into the bundle at build time. Without it the Google button
               # does not render and staging shows only the password form.
               - key: VITE_GOOGLE_CLIENT_ID # same value as the API's GOOGLE_CLIENT_ID
+                sync: false
+              # The profile page's "Open queue dashboard" button (Admins only);
+              # unset, it is not shown. Baked in at build time.
+              - key: VITE_QUEUE_DASHBOARD_URL # https://hlcentral-api-staging.onrender.com/bullmq
                 sync: false
 
 # =============================================================================
