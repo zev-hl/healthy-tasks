@@ -45,9 +45,9 @@ backend/
     middleware/               # auth, validation, error handler
     validation/schemas.ts     # all zod schemas + inferred input types
     utils/                    # HttpError, jwt, password, mailer, account-emails, async-handler…
-    queue/                    # email queue: Redis connections, jobs, email worker, processor, failed-email recorder, maintenance (§14)
+    queue/                    # email queue: Redis connections, jobs, email worker, processor, failed-email recorder, maintenance, dashboard board (§14)
     worker.ts                 # the email worker as a process of its own, when not run inside the API (§14)
-    queue-dashboard.ts        # local queue dashboard, Bull Board (§14)
+    queue-dashboard.ts        # local queue dashboard container, Bull Board (§14)
   scripts/                    # one-off commands (queue:test-email, queue:clean-failed-emails)
   test/integration.test.ts    # the whole integration suite (node:test + supertest)
   test/unit/                  # unit tests (no database)
@@ -613,10 +613,24 @@ status is `failed`.
 `npm run queue:clean-failed-emails` adds a one-off job. Do not use Promote on the
 scheduled job: that runs the week's slot early, so the schedule skips a week.
 
-**Dashboard.** Bull Board (`src/queue-dashboard.ts`) at
-`http://localhost:3005/bullmq` shows both queues, with Retry for failed emails. It
-has no login, so it is local only and never deployed; on Render, failed emails
-are read from the `FailedEmail` table.
+**Dashboard.** Bull Board shows both queues, with Retry for failed emails. One
+setup (`queue/dashboard-board.ts`, `createQueueBoard`) is served in two places:
+
+- locally, by its own container (`src/queue-dashboard.ts`) at
+  `http://localhost:3005/bullmq`, with no sign-in and published to this computer
+  only;
+- by the API itself at `/bullmq`, behind the browser's sign-in box (HTTP Basic,
+  `middleware/basic-auth.ts`, compared in constant time). `server.ts` mounts it
+  only when `EMAIL_DELIVERY` is `queue` and `QUEUE_DASHBOARD_USER` and
+  `QUEUE_DASHBOARD_PASSWORD` are set, the password 16 characters or more
+  (`queueDashboardMode`); otherwise the path is a 404. It is meant for staging,
+  where the API is the only way in; production leaves both settings unset and
+  reads failed emails from the `FailedEmail` table. `createApp` takes it as an
+  option, so the tests never open a Redis connection for it.
+
+Both show sign-in links as `token=[redacted]` (a display formatter on the email
+queue); the job keeps the real link, so Retry sends a working email, while
+Bull Board's Duplicate and Update Data would copy the hidden one.
 
 **Connections** (`queue/redis.ts`). The connection the API adds emails on fails
 fast instead of holding commands while Redis is down, so a request never waits
@@ -626,7 +640,8 @@ which prints each distinct message at most once a minute. Redis must run with
 `maxmemory-policy noeviction`, or a full Redis would silently drop queued emails.
 
 **Shutdown.** On SIGTERM the email worker stops taking jobs and finishes the
-sends under way, then the process closes Prisma, the queue and the SMTP pool,
+sends under way, then the process closes Prisma, the queue, the dashboard's
+queues (when served) and the SMTP pool,
 within 25 s (Render waits 30 s for a web service; docker-compose 30 s). The
 signal must reach node: Render starts the API with `node backend/dist/server.js`
 and docker-compose runs tsx directly behind `init`, because npm and a plain

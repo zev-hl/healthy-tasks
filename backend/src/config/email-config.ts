@@ -67,4 +67,9 @@ export const emailConfig = {
   // delay, up to maxRetries times after the first try.
   retryDelayMs: wholeNumber('EMAIL_RETRY_DELAY_SECONDS', 120, 1, 3600) * 1000,
   maxRetries: wholeNumber('EMAIL_MAX_RETRIES', 10, 0, 100),
+  // Sign-in for the queue dashboard the API serves itself (e.g. on staging),
+  // behind the browser's own sign-in box. Off unless both are set; see
+  // queueDashboardMode in startup-checks.ts for the other conditions.
+  dashboardUser: process.env.QUEUE_DASHBOARD_USER || undefined,
+  dashboardPassword: process.env.QUEUE_DASHBOARD_PASSWORD || undefined,
 } as const;

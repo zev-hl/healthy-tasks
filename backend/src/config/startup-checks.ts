@@ -87,6 +87,57 @@ export function deliverySummary(emailDelivery: string, workerInApi: boolean): st
     : 'email delivery: queued for the separate email worker';
 }
 
+/** Where the API serves the queue dashboard: the same path as the local one. */
+export const QUEUE_DASHBOARD_PATH = '/bullmq';
+
+/** Shortest password the API's queue dashboard accepts; it is open to the internet. */
+export const QUEUE_DASHBOARD_MIN_PASSWORD = 16;
+
+export type QueueDashboardMode =
+  | { on: true; summary: string; misconfigured: false; user: string; password: string }
+  | {
+      on: false;
+      /** One line for the boot log. */
+      summary: string;
+      /** Settings were given but cannot be used: logged as a warning. */
+      misconfigured: boolean;
+    };
+
+/**
+ * Whether this API serves the queue dashboard (QUEUE_DASHBOARD_USER and
+ * QUEUE_DASHBOARD_PASSWORD). It needs the queue, both settings and a password
+ * long enough that guessing it over the internet is hopeless; anything less
+ * leaves it off rather than open.
+ */
+export function queueDashboardMode(cfg: {
+  emailDelivery: string;
+  user?: string | undefined;
+  password?: string | undefined;
+}): QueueDashboardMode {
+  const off = (reason?: string): QueueDashboardMode => ({
+    on: false,
+    summary: reason ? `queue dashboard: off - ${reason}` : 'queue dashboard: off',
+    misconfigured: Boolean(reason),
+  });
+  if (!cfg.user && !cfg.password) return off();
+  if (!cfg.user || !cfg.password) {
+    return off('set both QUEUE_DASHBOARD_USER and QUEUE_DASHBOARD_PASSWORD');
+  }
+  if (cfg.emailDelivery !== 'queue') return off('EMAIL_DELIVERY is not "queue"');
+  if (cfg.password.length < QUEUE_DASHBOARD_MIN_PASSWORD) {
+    return off(
+      `QUEUE_DASHBOARD_PASSWORD is shorter than ${QUEUE_DASHBOARD_MIN_PASSWORD} characters`,
+    );
+  }
+  return {
+    on: true,
+    summary: `queue dashboard: on at ${QUEUE_DASHBOARD_PATH} (password protected)`,
+    misconfigured: false,
+    user: cfg.user,
+    password: cfg.password,
+  };
+}
+
 /** One line naming the mail path actually in use, logged on every boot. */
 export function mailerSummary(emailProvider: string, smtpHost?: string | undefined): string {
   return emailProvider === 'smtp'

@@ -1,4 +1,4 @@
-import { createApp } from './app.js';
+import { createApp, type AppOptions } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './db/prisma.js';
 import {
@@ -10,8 +10,11 @@ import {
   deliverySummary,
   mailerSummary,
   productionReadinessGaps,
+  QUEUE_DASHBOARD_PATH,
+  queueDashboardMode,
   runsEmailWorker,
 } from './config/startup-checks.js';
+import { createQueueBoard, type QueueBoard } from './queue/dashboard-board.js';
 import { closeEmailQueue, getEmailQueue } from './queue/email-queue.js';
 import { startEmailWorker, type EmailWorkerHandle } from './queue/email-worker.js';
 import { mailer } from './utils/mailer.js';
@@ -19,7 +22,26 @@ import { mailer } from './utils/mailer.js';
 /** Longest a shutdown may take before the process is stopped regardless. */
 const SHUTDOWN_LIMIT_MS = 25_000;
 
-const app = createApp();
+// The queue dashboard behind a password, e.g. on staging; off unless
+// QUEUE_DASHBOARD_USER and QUEUE_DASHBOARD_PASSWORD allow it.
+const dashboardMode = queueDashboardMode({
+  emailDelivery: env.email.delivery,
+  user: env.email.dashboardUser,
+  password: env.email.dashboardPassword,
+});
+let queueBoard: QueueBoard | undefined;
+const appOptions: AppOptions = {};
+if (dashboardMode.on) {
+  queueBoard = createQueueBoard(QUEUE_DASHBOARD_PATH);
+  appOptions.queueDashboard = {
+    path: QUEUE_DASHBOARD_PATH,
+    router: queueBoard.router,
+    user: dashboardMode.user,
+    password: dashboardMode.password,
+  };
+}
+
+const app = createApp(appOptions);
 let emailWorker: EmailWorkerHandle | undefined;
 
 const server = app.listen(env.port, () => {
@@ -31,6 +53,13 @@ const server = app.listen(env.port, () => {
   console.log(`   ${mailerSummary(env.email.provider, env.email.smtpHost)}`);
   // eslint-disable-next-line no-console
   console.log(`   ${deliverySummary(env.email.delivery, env.email.workerInApi)}`);
+  if (dashboardMode.misconfigured) {
+    // eslint-disable-next-line no-console
+    console.warn(`⚠️  ${dashboardMode.summary}`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`   ${dashboardMode.summary}`);
+  }
   // Connect to the queue now, so the first email of the day finds the
   // connection ready instead of falling back to a direct send.
   if (env.email.delivery === 'queue') getEmailQueue();
@@ -74,7 +103,7 @@ const server = app.listen(env.port, () => {
 let stopping = false;
 
 // Graceful shutdown: the email worker finishes the sends under way, then Prisma,
-// the queue and the mail server connection are released.
+// the queue, the queue dashboard and the mail server connection are released.
 async function shutdown(signal: string): Promise<void> {
   if (stopping) return;
   stopping = true;
@@ -90,7 +119,14 @@ async function shutdown(signal: string): Promise<void> {
   const workerStopped = emailWorker?.close();
   server.close(() => {
     void Promise.allSettled([workerStopped])
-      .then(() => Promise.allSettled([prisma.$disconnect(), closeEmailQueue(), mailer.close?.()]))
+      .then(() =>
+        Promise.allSettled([
+          prisma.$disconnect(),
+          closeEmailQueue(),
+          queueBoard?.close(),
+          mailer.close?.(),
+        ]),
+      )
       .finally(() => process.exit(0));
   });
 }
