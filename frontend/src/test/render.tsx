@@ -35,7 +35,8 @@ export function renderWithDataRouter(
     extraRoutes = [],
   }: {
     path?: string | string[];
-    initialEntries?: string[];
+    /** A string, or an object carrying router state (as the Groups list hands the editor). */
+    initialEntries?: (string | { pathname: string; search?: string; state?: unknown })[];
     /** Somewhere for the screen to navigate to, so a redirect is assertable. */
     extraRoutes?: RouteObject[];
   } = {},

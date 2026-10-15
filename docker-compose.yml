@@ -1,4 +1,4 @@
-# Local development stack: Postgres + backend API + frontend dev server.
+# Local development stack: Postgres + Redis + backend API + frontend dev server.
 # Bring it all up with:  docker compose up --build
 #
 # The backend applies migrations on startup. Create the first admin afterwards
@@ -23,6 +23,26 @@ services:
       timeout: 5s
       retries: 10
 
+  # Holds the email queue (BullMQ). Valkey is the open-source Redis that
+  # Render's Key Value runs, so this behaves like the hosted one.
+  #  - appendonly: queued emails and pending retries survive a restart.
+  #  - noeviction: BullMQ requires it. An evicting Redis silently drops jobs
+  #    when memory runs out instead of refusing new ones.
+  redis:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ['valkey-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      # This computer only (no password is set), for inspecting with valkey-cli.
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'valkey-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   # Watches packages/shared and rebuilds its dist on change, so edits to the
   # shared package hot-reload into backend + frontend the same way their own
   # src does. Without this, packages/shared is baked into each image at build
@@ -45,8 +65,23 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    # Replaces the image's `sh -c "... && npm run dev"`: a plain shell and npm
+    # both drop Docker's stop signal, so the API was killed after 10 seconds
+    # without finishing the emails its built-in email worker was sending. `exec`
+    # hands the process over to tsx (what `npm run dev` runs), and init passes
+    # the signal on to it.
+    command:
+      [
+        'sh',
+        '-c',
+        'npx prisma migrate deploy && exec /app/node_modules/.bin/tsx watch src/server.ts',
+      ]
+    init: true
+    stop_grace_period: 30s
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       minio:
         condition: service_started
@@ -87,6 +122,14 @@ services:
       # switch would silently do nothing.
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-console}
       EMAIL_FROM: ${EMAIL_FROM:-HL Central <no-reply@healthy-tasks.local>}
+      # Email queue. `queue` (the local default) puts each email on the queue
+      # in Redis, and the email worker running inside this API sends it,
+      # retrying failed sends (EMAIL_WORKER_IN_API, as on Render). `direct`
+      # sends from the API itself, with no retries, as before the queue. Set
+      # either in .env to switch.
+      REDIS_URL: 'redis://redis:6379'
+      EMAIL_DELIVERY: ${EMAIL_DELIVERY:-queue}
+      EMAIL_WORKER_IN_API: ${EMAIL_WORKER_IN_API:-true}
       SEED_ADMIN_EMAIL: 'admin@healthy-tasks.local'
       SEED_ADMIN_PASSWORD: 'ChangeMe123!'
       # Google sign-in. Taken from .env so the client id is not committed, with
@@ -130,6 +173,34 @@ services:
       - /app/backend/node_modules
       - /app/node_modules
 
+  # The queue dashboard (Bull Board) at http://localhost:3005/bullmq: what is
+  # waiting, sent and failed, with a Retry button for failed emails. Local only
+  # — it has no login, so it is published to this computer alone and is not
+  # part of the Render setup.
+  queue-dashboard:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ['/app/node_modules/.bin/tsx', 'watch', 'src/queue-dashboard.ts']
+    init: true
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      REDIS_URL: 'redis://redis:6379'
+      QUEUE_DASHBOARD_PORT: '3005'
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
+    ports:
+      - '127.0.0.1:3005:3005'
+    volumes:
+      - ./backend:/app/backend
+      - ./packages/shared:/app/packages/shared
+      - /app/backend/node_modules
+      - /app/node_modules
+
   frontend:
     build:
       context: .
@@ -143,6 +214,10 @@ services:
       # Taken from .env. This service has no env_file, so without this line the
       # browser never receives the client id and the Google button cannot load.
       VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Where the profile page's "Open queue dashboard" button goes (Admins
+      # only): the queue-dashboard container below. Set QUEUE_DASHBOARD_URL in
+      # .env to point it elsewhere.
+      VITE_QUEUE_DASHBOARD_URL: ${QUEUE_DASHBOARD_URL:-http://localhost:3005/bullmq}
       # Belt-and-suspenders with vite.config.ts's watch.usePolling for Windows.
       CHOKIDAR_USEPOLLING: 'true'
     ports:
@@ -159,8 +234,14 @@ services:
       - /app/node_modules
 
   # S3-compatible object storage for attachments (Phase 4).
+  #
+  # Pinned by digest to RELEASE.2025-09-07T16-13-09Z, the build already cached
+  # on this machine. MinIO has stopped publishing images: `minio/minio` can no
+  # longer be pulled from Docker Hub, and quay.io now refuses anonymous pulls
+  # too. So this runs only where the image is already cached; a new machine
+  # needs another source for local object storage.
   minio:
-    image: minio/minio:latest
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -177,7 +258,8 @@ services:
   # One-shot: wait for MinIO, then create the attachments bucket. Objects are
   # served only through pre-signed URLs, so the bucket stays private.
   minio-setup:
-    image: minio/mc:latest
+    # Same reason as minio above. RELEASE.2025-08-13T08-35-41Z.
+    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       - minio
     restart: 'no'
@@ -192,4 +274,5 @@ services:
 
 volumes:
   db-data:
+  redis-data:
   minio-data:

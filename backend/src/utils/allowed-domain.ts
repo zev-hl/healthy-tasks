@@ -73,6 +73,15 @@ export function isCompanyAccount(email: string): boolean {
 }
 
 /**
+ * How someone with this address signs in: Google for a company account on a
+ * server where Google sign-in is set up, otherwise a password. It decides
+ * which welcome a new account gets, and what an address change tells them.
+ */
+export function signInMethodFor(email: string): 'google' | 'password' {
+  return isCompanyAccount(email) && env.google.clientId ? 'google' : 'password';
+}
+
+/**
  * For the Google door only. The message names the domain on purpose: it tells
  * someone using the wrong account what to do, points them at the other door,
  * and reveals nothing about whether any particular account exists here.

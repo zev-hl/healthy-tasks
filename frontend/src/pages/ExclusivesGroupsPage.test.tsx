@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, screen, within } from '@testing-library/react';
+import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import type {
   ExclusivesGroupRowDto,
   ExclusivesSummaryDto,
@@ -271,5 +272,148 @@ describe('ExclusivesGroupsPage', () => {
     renderWithRouter(<ExclusivesGroupsPage />);
     await settle();
     expect(screen.getByText('Internal server error')).toBeInTheDocument();
+  });
+});
+
+describe('ExclusivesGroupsPage — keeping its place', () => {
+  /** The address the list is on, shown so the tests can read it. */
+  function Address() {
+    const { pathname, search } = useLocation();
+    return <output aria-label="address">{pathname + search}</output>;
+  }
+
+  /** Stands in for the editor: shows what the list handed it. */
+  function Editor() {
+    return <p>editor opened with {JSON.stringify(useLocation().state)}</p>;
+  }
+
+  const renderList = (address = '/exclusives/groups') =>
+    renderWithRouter(
+      <>
+        <Routes>
+          <Route path="/exclusives/groups" element={<ExclusivesGroupsPage />} />
+          <Route path="/exclusives/groups/new" element={<Editor />} />
+          <Route path="/exclusives/groups/:id/edit" element={<Editor />} />
+        </Routes>
+        <Address />
+        {/* Like the sidebar's Alert Groups link. */}
+        <Link to="/exclusives/groups">Sidebar link</Link>
+      </>,
+      [address],
+    );
+
+  const address = () => screen.getByLabelText('address').textContent;
+
+  /** Sixty groups: three pages of 25. */
+  const sixty = () =>
+    queryGroups.mockImplementation(async (q: { page: number; pageSize: number }) => ({
+      rows: [group({ id: q.page })],
+      total: 60,
+      page: q.page,
+      pageSize: q.pageSize,
+    }));
+
+  it('opens on the page, rows per page, search and sort in its address', async () => {
+    renderList('/exclusives/groups?page=2&size=50&q=rasasi&sort=name.asc');
+    await settle();
+
+    expect(queryGroups).toHaveBeenCalledTimes(1);
+    expect(queryGroups).toHaveBeenLastCalledWith({
+      text: 'rasasi',
+      sort: [{ field: 'name', dir: 'asc' }],
+      page: 2,
+      pageSize: 50,
+    });
+    expect(screen.getByLabelText('Search alert groups')).toHaveValue('rasasi');
+  });
+
+  it('starts from the first page when the address cannot be read', async () => {
+    renderList('/exclusives/groups?page=abc&size=7&sort=bogus.up');
+    await settle();
+    expect(queryGroups).toHaveBeenLastCalledWith({
+      text: undefined,
+      sort: undefined,
+      page: 1,
+      pageSize: 25,
+    });
+  });
+
+  it('puts the page in its address and hands it to the editor', async () => {
+    sixty();
+    renderList();
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    await settle();
+    expect(address()).toBe('/exclusives/groups?page=2');
+    expect(queryGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByText('editor opened with {"listSearch":"?page=2"}')).toBeInTheDocument();
+  });
+
+  it('hands the place to the editor from New group too', async () => {
+    sixty();
+    renderList('/exclusives/groups?page=3');
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: 'New group' }));
+    expect(screen.getByText('editor opened with {"listSearch":"?page=3"}')).toBeInTheDocument();
+  });
+
+  it('keeps rows per page, search and sort in its address, each back on page 1', async () => {
+    sixty();
+    renderList('/exclusives/groups?page=2');
+    await settle();
+
+    fireEvent.click(screen.getByRole('button', { name: '50' }));
+    await settle();
+    expect(address()).toBe('/exclusives/groups?size=50');
+
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    await settle();
+    type('Search alert groups', 'rasasi');
+    await advance(400);
+    expect(address()).toBe('/exclusives/groups?size=50&q=rasasi');
+
+    fireEvent.click(screen.getByText(/ASIN title \/ group name/));
+    await settle();
+    expect(address()).toBe('/exclusives/groups?size=50&q=rasasi&sort=name.asc');
+    expect(queryGroups).toHaveBeenLastCalledWith({
+      text: 'rasasi',
+      sort: [{ field: 'name', dir: 'asc' }],
+      page: 1,
+      pageSize: 50,
+    });
+  });
+
+  it('shows the last page when its page is past the end', async () => {
+    queryGroups.mockImplementation(async (q: { page: number; pageSize: number }) => ({
+      rows: q.page > 2 ? [] : [group({ id: q.page })],
+      total: 30,
+      page: q.page,
+      pageSize: q.pageSize,
+    }));
+    renderList('/exclusives/groups?page=5');
+    await settle();
+    await settle();
+
+    expect(address()).toBe('/exclusives/groups?page=2');
+    expect(queryGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }));
+    expect(screen.queryByText('No alert groups yet')).not.toBeInTheDocument();
+  });
+
+  it('empties the search box when the address is cleared', async () => {
+    renderList('/exclusives/groups?q=rasasi');
+    await settle();
+    expect(screen.getByLabelText('Search alert groups')).toHaveValue('rasasi');
+
+    fireEvent.click(screen.getByText('Sidebar link'));
+    await settle();
+    await advance(400);
+
+    expect(screen.getByLabelText('Search alert groups')).toHaveValue('');
+    expect(address()).toBe('/exclusives/groups');
+    expect(queryGroups).toHaveBeenLastCalledWith(expect.objectContaining({ text: undefined }));
   });
 });

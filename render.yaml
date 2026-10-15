@@ -69,10 +69,12 @@ projects:
             # is missing tables. Uses `migrate deploy` (non-interactive, prod-safe
             # — never `migrate dev`).
             preDeployCommand: npm run prisma:deploy --workspace backend
-            # backend/package.json "start" = `node dist/server.js` (the compiled
-            # build, not the TS source). Render binds to the PORT it injects; the
-            # app already reads process.env.PORT.
-            startCommand: npm start --workspace backend
+            # The compiled build, started with node itself rather than
+            # `npm start`: npm exits on Render's stop signal without passing it
+            # on, which would cut off the emails this service is sending (the
+            # email worker runs inside it; see EMAIL_DELIVERY below). Render
+            # binds to the PORT it injects; the app already reads process.env.PORT.
+            startCommand: node backend/dist/server.js
             healthCheckPath: /health
             envVars:
               # ----- Differs per environment (secret) --------------------------
@@ -117,6 +119,28 @@ projects:
               - key: SMTP_USER
                 sync: false
               - key: SMTP_PASS
+                sync: false
+              # ----- Email queue (BullMQ) --------------------------------------
+              # "direct" (the default when unset): this service sends each email
+              # itself, with no retries. "queue": each email goes through
+              # hlcentral-redis and the email worker that runs inside this
+              # service (EMAIL_WORKER_IN_API, on by default) sends it, retrying a
+              # failure every 2 minutes, 10 times. There is no separate worker
+              # service; set EMAIL_WORKER_IN_API=false only if one is added.
+              - key: EMAIL_DELIVERY
+                sync: false
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: hlcentral-redis
+                  property: connectionString
+              # The queue dashboard at /bullmq on this API, behind the browser's
+              # sign-in box. Off unless both are set (password 16+ characters)
+              # and EMAIL_DELIVERY is "queue". Its own pair, not Staging's: give
+              # it to Admins only (the profile page shows them the button).
+              - key: QUEUE_DASHBOARD_USER
+                sync: false
+              - key: QUEUE_DASHBOARD_PASSWORD
                 sync: false
               # ----- Object storage for attachments (Phase 4) ------------------
               # Cloudflare R2. Attachment bytes never pass through this service:
@@ -198,6 +222,26 @@ projects:
                 sync: false
 
           # -------------------------------------------------------------------
+          # Key Value (Valkey, Redis-compatible) — holds the email queue.
+          #  - noeviction: BullMQ requires it. Render's default (allkeys-lru)
+          #    silently deletes queued emails when memory runs out.
+          #  - ipAllowList []: nothing outside Render can connect; this
+          #    environment's services reach it over Render's private network.
+          #  - 256mb, not free: a free instance keeps nothing through a restart,
+          #    so queued emails and pending retries would be lost.
+          # Created by hand in the dashboard with exactly these settings; the
+          # Blueprint takes it over by its name on the first sync, so keep the
+          # name and settings as they are there.
+          # -------------------------------------------------------------------
+          - name: hlcentral-redis
+            type: keyvalue
+            plan: 256mb
+            region: virginia
+            maxmemoryPolicy: noeviction
+            persistenceMode: journal-snapshot
+            ipAllowList: []
+
+          # -------------------------------------------------------------------
           # Frontend — Vite React SPA, served as static files.
           # VITE_API_URL is baked in at BUILD time, so it must be set before the
           # build runs and points at THIS environment's backend.
@@ -226,6 +270,11 @@ projects:
               # is shown.
               - key: VITE_GOOGLE_CLIENT_ID # same value as the API's GOOGLE_CLIENT_ID
                 sync: false
+              # Where the profile page's "Open queue dashboard" button goes
+              # (Admins only), baked in at build time: hlcentral-api's /bullmq.
+              # Unset, the button is not shown.
+              - key: VITE_QUEUE_DASHBOARD_URL # https://hlcentral-api.onrender.com/bullmq
+                sync: false
 
       # =======================================================================
       # STAGING  —  cheap, disposable, safe to break. Points at a SEPARATE Neon
@@ -246,7 +295,7 @@ projects:
               npm run prisma:generate --workspace backend &&
               npm run build --workspace backend
             preDeployCommand: npm run prisma:deploy --workspace backend
-            startCommand: npm start --workspace backend
+            startCommand: node backend/dist/server.js # node itself; see hlcentral-api
             healthCheckPath: /health
             envVars:
               - key: DATABASE_URL # Neon STAGING BRANCH connection string (NOT prod)
@@ -306,6 +355,23 @@ projects:
               - key: SMTP_USER
                 sync: false
               - key: SMTP_PASS
+                sync: false
+              # ----- Email queue (BullMQ) --------------------------------------
+              # Same as Production: "direct" when unset; "queue" sends through
+              # hlcentral-queue-staging, from the email worker inside this service.
+              - key: EMAIL_DELIVERY
+                sync: false
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: hlcentral-queue-staging
+                  property: connectionString
+              # The queue dashboard at /bullmq on this API, behind the browser's
+              # sign-in box. Off unless both are set (password 16+ characters)
+              # and EMAIL_DELIVERY is "queue". Its own pair, not Production's.
+              - key: QUEUE_DASHBOARD_USER
+                sync: false
+              - key: QUEUE_DASHBOARD_PASSWORD
                 sync: false
               - key: STORAGE_DRIVER
                 value: s3
@@ -367,6 +433,17 @@ projects:
               - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
                 sync: false
 
+          # Key Value for staging's email queue — see hlcentral-redis under
+          # Production. Free here to save cost: it keeps nothing through a
+          # restart, so emails waiting or awaiting a retry at that moment are
+          # lost. Change to 256mb if staging must behave exactly like Production.
+          - name: hlcentral-queue-staging
+            type: keyvalue
+            plan: free
+            region: virginia
+            maxmemoryPolicy: noeviction
+            ipAllowList: []
+
           - name: hlcentral-staging
             type: web
             runtime: static
@@ -387,6 +464,10 @@ projects:
               # Baked into the bundle at build time. Without it the Google button
               # does not render and staging shows only the password form.
               - key: VITE_GOOGLE_CLIENT_ID # same value as the API's GOOGLE_CLIENT_ID
+                sync: false
+              # The profile page's "Open queue dashboard" button (Admins only);
+              # unset, it is not shown. Baked in at build time.
+              - key: VITE_QUEUE_DASHBOARD_URL # https://hlcentral-api-staging.onrender.com/bullmq
                 sync: false
 
 # =============================================================================

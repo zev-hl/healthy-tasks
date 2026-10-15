@@ -1,4 +1,4 @@
-import { createApp } from './app.js';
+import { createApp, type AppOptions } from './app.js';
 import { env } from './config/env.js';
 import { prisma } from './db/prisma.js';
 import {
@@ -6,9 +6,43 @@ import {
   startScheduler,
   stopScheduler,
 } from './services/scheduler.service.js';
-import { mailerSummary, productionReadinessGaps } from './config/startup-checks.js';
+import {
+  deliverySummary,
+  mailerSummary,
+  productionReadinessGaps,
+  QUEUE_DASHBOARD_PATH,
+  queueDashboardMode,
+  runsEmailWorker,
+} from './config/startup-checks.js';
+import { createQueueBoard, type QueueBoard } from './queue/dashboard-board.js';
+import { closeEmailQueue, getEmailQueue } from './queue/email-queue.js';
+import { startEmailWorker, type EmailWorkerHandle } from './queue/email-worker.js';
+import { mailer } from './utils/mailer.js';
 
-const app = createApp();
+/** Longest a shutdown may take before the process is stopped regardless. */
+const SHUTDOWN_LIMIT_MS = 25_000;
+
+// The queue dashboard behind a password, e.g. on staging; off unless
+// QUEUE_DASHBOARD_USER and QUEUE_DASHBOARD_PASSWORD allow it.
+const dashboardMode = queueDashboardMode({
+  emailDelivery: env.email.delivery,
+  user: env.email.dashboardUser,
+  password: env.email.dashboardPassword,
+});
+let queueBoard: QueueBoard | undefined;
+const appOptions: AppOptions = {};
+if (dashboardMode.on) {
+  queueBoard = createQueueBoard(QUEUE_DASHBOARD_PATH);
+  appOptions.queueDashboard = {
+    path: QUEUE_DASHBOARD_PATH,
+    router: queueBoard.router,
+    user: dashboardMode.user,
+    password: dashboardMode.password,
+  };
+}
+
+const app = createApp(appOptions);
+let emailWorker: EmailWorkerHandle | undefined;
 
 const server = app.listen(env.port, () => {
   // eslint-disable-next-line no-console
@@ -17,6 +51,24 @@ const server = app.listen(env.port, () => {
   // there is a boot line confirming it took.
   // eslint-disable-next-line no-console
   console.log(`   ${mailerSummary(env.email.provider, env.email.smtpHost)}`);
+  // eslint-disable-next-line no-console
+  console.log(`   ${deliverySummary(env.email.delivery, env.email.workerInApi)}`);
+  if (dashboardMode.misconfigured) {
+    // eslint-disable-next-line no-console
+    console.warn(`⚠️  ${dashboardMode.summary}`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log(`   ${dashboardMode.summary}`);
+  }
+  // Connect to the queue now, so the first email of the day finds the
+  // connection ready instead of falling back to a direct send.
+  if (env.email.delivery === 'queue') getEmailQueue();
+  // By default this API also sends what it queues (queue/email-worker.ts), so
+  // no separate worker service is needed. Never under tests, which import
+  // createApp and send directly.
+  if (runsEmailWorker(env.email.delivery, env.email.workerInApi)) {
+    emailWorker = startEmailWorker();
+  }
 
   // Production dependencies otherwise fail silently; Phase 14's health alerting
   // is worthless if the mailer it uses is a no-op, so say so out loud.
@@ -24,6 +76,7 @@ const server = app.listen(env.port, () => {
     isProduction: env.isProduction,
     emailProvider: env.email.provider,
     smtpHost: env.email.smtpHost,
+    emailDelivery: env.email.delivery,
     storageDriver: env.storage.driver,
     schedulerEnabled: env.schedulerEnabled,
     googleClientId: env.google.clientId,
@@ -47,13 +100,34 @@ const server = app.listen(env.port, () => {
   }
 });
 
-// Graceful shutdown so Prisma releases its connections.
+let stopping = false;
+
+// Graceful shutdown: the email worker finishes the sends under way, then Prisma,
+// the queue, the queue dashboard and the mail server connection are released.
 async function shutdown(signal: string): Promise<void> {
+  if (stopping) return;
+  stopping = true;
   // eslint-disable-next-line no-console
   console.log(`\n${signal} received, shutting down...`);
+  setTimeout(() => {
+    // eslint-disable-next-line no-console
+    console.error('shutdown took too long; stopping now');
+    process.exit(1);
+  }, SHUTDOWN_LIMIT_MS).unref();
   stopScheduler();
+  // Started at once, so no new email is picked up while requests drain.
+  const workerStopped = emailWorker?.close();
   server.close(() => {
-    void prisma.$disconnect().finally(() => process.exit(0));
+    void Promise.allSettled([workerStopped])
+      .then(() =>
+        Promise.allSettled([
+          prisma.$disconnect(),
+          closeEmailQueue(),
+          queueBoard?.close(),
+          mailer.close?.(),
+        ]),
+      )
+      .finally(() => process.exit(0));
   });
 }
 

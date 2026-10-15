@@ -17,6 +17,7 @@ import type {
   UserSearchInput,
 } from '../validation/schemas.js';
 import { hashPassword } from '../utils/password.js';
+import { signInMethodFor } from '../utils/allowed-domain.js';
 import { recordHistory, type HistoryEntryInput } from './task-history.service.js';
 import crypto from 'node:crypto';
 
@@ -227,6 +228,14 @@ export async function updateMyProfile(
 }
 
 /**
+ * The hash of a random secret nobody knows: an account with it can only be
+ * reached by a password reset (or, for a company account, Google).
+ */
+function unusablePasswordHash(): Promise<string> {
+  return hashPassword(crypto.randomBytes(32).toString('hex'));
+}
+
+/**
  * Create a user with a random unusable password. The admin is expected to send
  * a reset link (see auth.service.createPasswordReset) so the user sets their
  * own password — we never generate a plaintext password the admin can see.
@@ -236,9 +245,7 @@ export async function createUser(input: CreateUserInput): Promise<User> {
     await assertValidSupervisor(input.supervisorId);
   }
 
-  // Placeholder hash of a random secret — the account can only be accessed
-  // after the user completes a password reset.
-  const placeholderHash = await hashPassword(crypto.randomBytes(32).toString('hex'));
+  const placeholderHash = await unusablePasswordHash();
 
   return prisma.user.create({
     data: {
@@ -265,13 +272,39 @@ async function assertEmailAvailable(email: string, exceptUserId: string): Promis
   }
 }
 
-export async function updateUser(id: string, input: UpdateUserInput): Promise<User> {
+/** A sign-in address an admin has just changed, and what it does to signing in. */
+export interface EmailChange {
+  from: string;
+  to: string;
+  fromMethod: 'google' | 'password';
+  toMethod: 'google' | 'password';
+}
+
+export interface UpdatedUser {
+  user: User;
+  /** Set only when the sign-in address really changed. */
+  emailChange: EmailChange | null;
+}
+
+export async function updateUser(id: string, input: UpdateUserInput): Promise<UpdatedUser> {
   // Ensure the target exists (throws 404 otherwise).
   const existing = await getUserById(id);
 
   if (input.supervisorId) {
     await assertValidSupervisor(input.supervisorId, id);
   }
+
+  // A real change of sign-in address, not the same one retyped with other
+  // capitals or spaces (the schema trims and lowercases the new one).
+  const emailChange: EmailChange | null =
+    input.email !== undefined && input.email !== existing.email.trim().toLowerCase()
+      ? {
+          from: existing.email,
+          to: input.email,
+          fromMethod: signInMethodFor(existing.email),
+          toMethod: signInMethodFor(input.email),
+        }
+      : null;
 
   // Email change: reject a collision with another account before writing.
   if (input.email !== undefined && input.email !== existing.email) {
@@ -297,6 +330,15 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Us
   // and drop this user as a supervisor from any reports.
   const deactivating = input.isActive === false && existing.isActive;
 
+  // A new address starts clean: the Google account linked to the old one is
+  // let go, so the new address can link its own on first Google sign-in (a
+  // different Google account was otherwise refused for good). Moving from a
+  // password onto Google also retires the password, so it cannot quietly come
+  // back if the address is ever switched back.
+  const retirePassword =
+    emailChange?.fromMethod === 'password' && emailChange.toMethod === 'google';
+  const passwordHash = retirePassword ? await unusablePasswordHash() : undefined;
+
   const data: Prisma.UserUpdateInput = {
     ...(input.email !== undefined ? { email: input.email } : {}),
     ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
@@ -307,20 +349,26 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Us
     ...(input.supervisorId !== undefined ? { supervisorId: input.supervisorId } : {}),
     ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
     ...(deactivating ? { tokenVersion: { increment: 1 } } : {}),
+    ...(emailChange ? { googleSub: null } : {}),
+    ...(passwordHash ? { passwordHash } : {}),
   };
 
-  if (!deactivating) {
-    return prisma.user.update({ where: { id }, data });
-  }
-
-  const [updated] = await prisma.$transaction([
+  const [user] = await prisma.$transaction([
     prisma.user.update({ where: { id }, data }),
-    prisma.user.updateMany({
-      where: { supervisorId: id },
-      data: { supervisorId: null },
-    }),
+    ...(deactivating
+      ? [prisma.user.updateMany({ where: { supervisorId: id }, data: { supervisorId: null } })]
+      : []),
+    // A reset link sent to the old mailbox must not open the account now.
+    ...(emailChange
+      ? [
+          prisma.passwordResetToken.updateMany({
+            where: { userId: id, usedAt: null },
+            data: { usedAt: new Date() },
+          }),
+        ]
+      : []),
   ]);
-  return updated;
+  return { user, emailChange };
 }
 
 /**

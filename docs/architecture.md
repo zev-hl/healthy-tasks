@@ -24,7 +24,8 @@ goal approval and visibility.
 - **Monorepo** (npm workspaces): `backend`, `frontend`, `packages/shared`.
 - **Backend**: Node + Express + TypeScript (ESM), Prisma ORM over PostgreSQL.
   Object storage (attachments) via an S3-compatible driver (MinIO in dev; an
-  in-memory fake under tests). JWT auth.
+  in-memory fake under tests). JWT auth. Email through a BullMQ queue in Redis
+  (Valkey), sent by an email worker that runs inside the API process (§14).
 - **Frontend**: React + Vite + TypeScript, React Router **data router**
   (`createBrowserRouter`, so screens can use `useBlocker` for unsaved-changes
   guards), TipTap rich-text editor.
@@ -43,8 +44,13 @@ backend/
     services/                 # business logic + Prisma access + *.mapper.ts
     middleware/               # auth, validation, error handler
     validation/schemas.ts     # all zod schemas + inferred input types
-    utils/                    # HttpError, jwt, password, mailer, async-handler…
+    utils/                    # HttpError, jwt, password, mailer, account-emails, async-handler…
+    queue/                    # email queue: Redis connections, jobs, email worker, processor, failed-email recorder, maintenance, dashboard board (§14)
+    worker.ts                 # the email worker as a process of its own, when not run inside the API (§14)
+    queue-dashboard.ts        # local queue dashboard container, Bull Board (§14)
+  scripts/                    # one-off commands (queue:test-email, queue:clean-failed-emails)
   test/integration.test.ts    # the whole integration suite (node:test + supertest)
+  test/unit/                  # unit tests (no database)
 frontend/
   src/
     pages/                    # one component per screen
@@ -58,9 +64,12 @@ docs/                         # this doc + the Phase 9/10 design handoff
 ## 3. Runtime topology (dev)
 
 `docker compose up` starts: **frontend** (Vite :5173), **backend** (Express :4000),
-**Postgres** (:5432), **MinIO** (:9000 API / :9001 console). The backend applies
-migrations on start and runs the background scheduler (§8). Attachments upload
-directly to MinIO via pre-signed URLs; only metadata passes through the API.
+**Postgres** (:5432), **MinIO** (:9000 API / :9001 console), **Redis** (Valkey,
+:6379, this computer only) and the **queue dashboard** (:3005, this computer
+only). The backend applies migrations on start and runs the background
+scheduler (§8) and the email worker (§14). Attachments upload directly to MinIO
+via pre-signed URLs; only metadata passes through the API. Emails go from the
+backend to Redis and are sent by the email worker inside the backend (§14).
 
 ## 4. Cross-cutting conventions
 
@@ -96,6 +105,31 @@ Every feature is built the same way, which keeps the codebase predictable:
   `X-Refreshed-Token` header, so the idle window is measured from the last request.
 - `requireRole(...roles)` gates a route to a set of roles; per-record authorization
   (e.g. "the goal's supervisor") lives in the service.
+- **Two ways in, decided by the address** (`utils/allowed-domain.ts`). With
+  `GOOGLE_ALLOWED_DOMAIN` set, a company address (`isCompanyAccount`) signs in with
+  Google only — the password form refuses it — and any other address with a password
+  only — the Google door refuses it. `signInMethodFor(email)` (company address *and*
+  Google sign-in configured → `google`, else `password`) decides which welcome a new
+  account gets and what an address change tells the person. A Google sign-in is matched
+  by Google's id (`User.googleSub`) first, then by email, and links the account on the
+  first sign-in.
+- **Changing someone's sign-in address** (an Admin's `PATCH /api/users/:id`;
+  `updateUser` + `tellAboutEmailChange` in `users.controller.ts`). Only a real change
+  counts (the address is trimmed and lowercased first). In the same write: the old
+  Google link is cleared (`googleSub = null`, so the new address can link its own Google
+  account — a different one was otherwise refused for good), unused reset links are
+  retired (one sent to the old mailbox must not open the account), and moving from a
+  password onto Google replaces the password with an unusable one (so it cannot come
+  back if the address is switched back). Then **both addresses are emailed**, through
+  the queue (§14): `email-changed` to the new one with how to sign in now — Google, the
+  same password, or, when moving off Google, a set-password link — and
+  `email-change-notice` to the old one, with no links. An inactive account (or one
+  deactivated in the same save) is emailed too: the new address is told the account is
+  inactive until reactivated, and gets no link, since a reset is refused while inactive
+  ("Forgot password" once reactivated). The reply is the saved `UserDto` plus
+  `emailChange` (`EmailChangeSummary`: from, to, sign-in method, `inactive`, and the
+  set-password link when one was made), which the Users page turns into its saved
+  message and "Reset link" banner.
 
 ### Errors & validation
 
@@ -540,3 +574,114 @@ duty rule, 422 `DUTY_NOT_HELD`), `time.service.ts` (My Time + Time Review). The
 rules — archive-don't-delete, the Review hand-off exemption, team-scoped Manager
 edits, the Completed-day lock, automatic-creation mismatches — are specified in
 `docs/department-duties-spec.md`.
+
+## 14. Email delivery (BullMQ queue)
+
+Every email goes through one function, `queueEmail(email, { kind, emailId? })` in
+`src/queue/email-queue.ts`; nothing else calls the mailer. The callers are the
+account emails (`utils/account-emails.ts`: `new-account`, `google-welcome`,
+`password-reset`, and `email-changed` / `email-change-notice` when an Admin changes a
+sign-in address — §4), the notification emails (`notification.service.ts`:
+`mention`, `assignment`, `reminder`) and the scheduler's alerts
+(`scheduler.service.ts`: `admin-alert`). Where a reply must not wait, the caller
+wraps it in `sendInBackground`. `EMAIL_DELIVERY` decides what `queueEmail` does:
+
+- **`queue`** (the docker-compose default): the email is added to the `email`
+  queue in Redis, with the job id = `emailId`, and the **email worker** sends it
+  (see below for where it runs). If Redis cannot take it, the API sends it
+  directly and logs a warning, so an email is never lost to a Redis outage.
+- **`direct`** (the app's own default: tests, a backend run outside Docker, and
+  Render until its Key Value is in place): the API's mailer sends it at once. The send
+  starts synchronously, so the console mailer's outbox is filled when the call
+  returns; the tests rely on that. Production logs a NOT PRODUCTION READY warning
+  in this mode.
+
+**Where the email worker runs.** `queue/email-worker.ts` (`startEmailWorker()`)
+is the worker: it sends, records failures and runs the weekly cleanup. By
+default it runs **inside the API process** (`EMAIL_WORKER_IN_API`, unset or
+`true`), started from `server.ts` when delivery is `queue`. With
+`EMAIL_WORKER_IN_API=false` the API only adds emails, and the same worker runs
+as a process of its own (`src/worker.ts`, e.g. a Render background worker).
+Inside the API was chosen because Render has no free background worker and both
+APIs are on always-on plans, so the worker never sleeps; the cost is that sending
+shares the API's CPU and pauses while it restarts. If email volume ever slows the
+API, move it out by setting the switch and adding the service; no code changes.
+
+**Retries.** A failed send is retried after `EMAIL_RETRY_DELAY_SECONDS` (120),
+`EMAIL_MAX_RETRIES` (10) times after the first try: 11 tries over about 20
+minutes. Every error is retried the same way. The policy is stamped on each job
+when it is queued, so changing the settings affects new emails only. Sent jobs
+stay in Redis for a day, failed ones for 14 days (retryable by hand).
+
+**Duplicates.** `emailId` is a fresh UUID unless the caller passes one. Reminders
+pass `reminder-<reminder id>`: on top of the `emailSentAt` claim, the queue then
+ignores a second job for the same reminder while the first is kept.
+
+**`FailedEmail` table.** Written only by the worker
+(`queue/failed-email.recorder.ts`, which never throws, so a database hiccup
+cannot change whether an email is retried):
+
+- sent on the first try: nothing is written (a normal day never touches the
+  database);
+- failed with tries left: a `retrying` row with `nextRetryAt`;
+- failed with none left, including a failed retry pressed on the dashboard:
+  `failed`, with `failedAt`; never retried automatically;
+- sent after failing: the row is deleted.
+
+Tokens in sign-in links are stored as `token=[redacted]`; `lastError` is capped at
+500 characters. CHECK constraints in the migration keep `status` to
+`retrying`/`failed`, `attempts` at least 1, and `failedAt` set exactly when the
+status is `failed`.
+
+**Weekly cleanup.** On start the worker registers a BullMQ job scheduler on the
+`maintenance` queue (`queue/maintenance.ts`): every Sunday 04:00
+`BUSINESS_TIMEZONE`, it deletes the `failed` rows, and only those. To run it now,
+`npm run queue:clean-failed-emails` adds a one-off job. Do not use Promote on the
+scheduled job: that runs the week's slot early, so the schedule skips a week.
+
+**Dashboard.** Bull Board shows both queues, with Retry for failed emails. One
+setup (`queue/dashboard-board.ts`, `createQueueBoard`) is served in two places:
+
+- locally, by its own container (`src/queue-dashboard.ts`) at
+  `http://localhost:3005/bullmq`, with no sign-in and published to this computer
+  only;
+- by the API itself at `/bullmq`, behind the browser's sign-in box (HTTP Basic,
+  `middleware/basic-auth.ts`, compared in constant time). `server.ts` mounts it
+  only when `EMAIL_DELIVERY` is `queue` and `QUEUE_DASHBOARD_USER` and
+  `QUEUE_DASHBOARD_PASSWORD` are set, the password 16 characters or more
+  (`queueDashboardMode`); otherwise the path is a 404. On Render the API is the
+  only way in, so staging and production each switch it on with their own pair.
+  `createApp` takes it as an option, so the tests never open a Redis connection
+  for it.
+
+Admins reach it from the profile page: `components/QueueDashboardCard.tsx` shows
+a "Queues Dashboard" card, with a link opening the dashboard in a new tab, to Admins
+only and only when the build has `VITE_QUEUE_DASHBOARD_URL` (docker-compose: the
+local container; Render: each API's `/bullmq`). Hiding the card does not lock the
+dashboard: it checks its shared password, not the HL Central role, so each
+environment's password is given to Admins alone.
+
+Both show sign-in links as `token=[redacted]` (a display formatter on the email
+queue); the job keeps the real link, so Retry sends a working email, while
+Bull Board's Duplicate and Update Data would copy the hidden one.
+
+**Connections** (`queue/redis.ts`). The connection the API adds emails on fails
+fast instead of holding commands while Redis is down, so a request never waits
+on it; the email worker's own connection (inside the API or not) and the
+dashboard's wait and reconnect. Their error listeners use `quietErrorLog`,
+which prints each distinct message at most once a minute. Redis must run with
+`maxmemory-policy noeviction`, or a full Redis would silently drop queued emails.
+
+**Shutdown.** On SIGTERM the email worker stops taking jobs and finishes the
+sends under way, then the process closes Prisma, the queue, the dashboard's
+queues (when served) and the SMTP pool,
+within 25 s (Render waits 30 s for a web service; docker-compose 30 s). The
+signal must reach node: Render starts the API with `node backend/dist/server.js`
+and docker-compose runs tsx directly behind `init`, because npm and a plain
+shell both exit on SIGTERM without passing it on. A process killed mid-send can
+send one email twice (rare; accepted).
+
+**Known limits.** Set-password and reset links last 60 minutes and the retries
+finish in about 20, so a retried link still works; a long outage of the email
+worker (the API, by default) could deliver a link that has expired. Retried emails, tokens included, wait in Redis,
+which is reachable only from inside Render (and only from this computer locally).

@@ -8,6 +8,7 @@ import {
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar, userLabel } from '../components/ui/Avatar';
+import { QueueDashboardCard } from '../components/QueueDashboardCard';
 
 // Per-list label + one-line description shown on each preference row (frame 1g).
 const PREF_META: Record<NotificationList, { label: string; desc: string }> = {
@@ -192,59 +193,65 @@ export function ProfilePage() {
           </div>
         </div>
 
-        {/* Notification preferences */}
-        <div className="card">
-          <div className="profile-card-head">
-            <h3>Notifications</h3>
-          </div>
-          <p className="profile-card-sub">Choose what reaches you, and where.</p>
-          {error && <div className="alert error">{error}</div>}
-
-          <div className="prefs-list">
-            <div className="prefs-head">
-              <span />
-              <span>In app</span>
-              <span>Email</span>
+        {/* The right-hand column: preferences, then the queue link under them. */}
+        <div className="profile-col">
+          {/* Notification preferences */}
+          <div className="card">
+            <div className="profile-card-head">
+              <h3>Notifications</h3>
             </div>
-            {PREF_ORDER.filter((l) => NOTIFICATION_LISTS.includes(l)).map((list) => {
-              const inAppKey = `${list}InApp` as keyof NotificationPreferencesDto;
-              const emailKey = `${list}Email` as keyof NotificationPreferencesDto;
-              const inApp = prefs[inAppKey];
-              const email = prefs[emailKey];
-              const meta = PREF_META[list];
-              return (
-                <div key={list} className="prefs-row">
-                  <div className="prefs-row-main">
-                    <div className="prefs-row-label">{meta.label}</div>
-                    <div className="prefs-row-desc">{meta.desc}</div>
+            <p className="profile-card-sub">Choose what reaches you, and where.</p>
+            {error && <div className="alert error">{error}</div>}
+
+            <div className="prefs-list">
+              <div className="prefs-head">
+                <span />
+                <span>In app</span>
+                <span>Email</span>
+              </div>
+              {PREF_ORDER.filter((l) => NOTIFICATION_LISTS.includes(l)).map((list) => {
+                const inAppKey = `${list}InApp` as keyof NotificationPreferencesDto;
+                const emailKey = `${list}Email` as keyof NotificationPreferencesDto;
+                const inApp = prefs[inAppKey];
+                const email = prefs[emailKey];
+                const meta = PREF_META[list];
+                return (
+                  <div key={list} className="prefs-row">
+                    <div className="prefs-row-main">
+                      <div className="prefs-row-label">{meta.label}</div>
+                      <div className="prefs-row-desc">{meta.desc}</div>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={inApp}
+                        aria-label={`Receive ${meta.label} notifications in the app`}
+                        onChange={(e) => void update(inAppKey, e.target.checked)}
+                      />
+                      <span className="switch-track" aria-hidden="true" />
+                    </label>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={email}
+                        disabled={!inApp}
+                        aria-label={`Also email me ${meta.label} notifications`}
+                        onChange={(e) => void update(emailKey, e.target.checked)}
+                      />
+                      <span className="switch-track" aria-hidden="true" />
+                    </label>
                   </div>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      checked={inApp}
-                      aria-label={`Receive ${meta.label} notifications in the app`}
-                      onChange={(e) => void update(inAppKey, e.target.checked)}
-                    />
-                    <span className="switch-track" aria-hidden="true" />
-                  </label>
-                  <label className="switch">
-                    <input
-                      type="checkbox"
-                      checked={email}
-                      disabled={!inApp}
-                      aria-label={`Also email me ${meta.label} notifications`}
-                      onChange={(e) => void update(emailKey, e.target.checked)}
-                    />
-                    <span className="switch-track" aria-hidden="true" />
-                  </label>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            <p className="muted" style={{ fontSize: '0.8rem', marginBottom: 0, marginTop: '1rem' }}>
+              Changes save as you make them. Email goes to {user?.email}.
+            </p>
           </div>
 
-          <p className="muted" style={{ fontSize: '0.8rem', marginBottom: 0, marginTop: '1rem' }}>
-            Changes save as you make them. Email goes to {user?.email}.
-          </p>
+          {/* Admins only: the email queue dashboard. */}
+          <QueueDashboardCard />
         </div>
       </div>
     </div>
