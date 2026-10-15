@@ -14,6 +14,8 @@ export type EmailKind =
   | 'assignment'
   | 'reminder'
   | 'admin-alert'
+  | 'email-changed'
+  | 'email-change-notice'
   | 'test';
 
 /**

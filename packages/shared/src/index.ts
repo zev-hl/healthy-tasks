@@ -181,6 +181,31 @@ export interface AdminResetLinkResponse {
   signInMethod: 'google' | 'password';
 }
 
+/** What changing someone's sign-in address did, for the admin who saved it. */
+export interface EmailChangeSummary {
+  from: string;
+  to: string;
+  /** How they sign in from now on. */
+  signInMethod: 'google' | 'password';
+  /**
+   * Both addresses are always emailed: the new one how to sign in, the old one
+   * a notice. True when the account is inactive: the new address is told so,
+   * and no set-password link is made (a reset is refused while inactive).
+   */
+  inactive: boolean;
+  /** Moving from Google to a password only: the link to choose one (also emailed). */
+  resetLink?: string;
+  expiresAt?: string;
+}
+
+/**
+ * PATCH /api/users/:id — the saved user, as before, plus `emailChange` when
+ * the sign-in address changed. Kept a UserDto so an older page still reads it.
+ */
+export interface UpdateUserResponse extends UserDto {
+  emailChange?: EmailChangeSummary;
+}
+
 // ---------------------------------------------------------------------------
 // Generic API error shape
 // ---------------------------------------------------------------------------

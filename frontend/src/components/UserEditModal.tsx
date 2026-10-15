@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import type { Role, UpdateUserRequest, UserDto } from '@healthy-tasks/shared';
+import type { EmailChangeSummary, Role, UpdateUserRequest, UserDto } from '@healthy-tasks/shared';
 import { ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 
@@ -8,7 +8,36 @@ interface Props {
   /** Eligible supervisors (active Managers/Admins) for the dropdown. */
   supervisors: UserDto[];
   onClose: () => void;
-  onSaved: (message: string) => void;
+  /** `resetLink`: the set-password link, when the new address needs a password. */
+  onSaved: (message: string, resetLink?: string) => void;
+}
+
+/**
+ * What the admin is told after saving. A changed sign-in address emails both
+ * addresses (see the server's account-emails.ts), so say who was told what.
+ */
+export function savedMessage(email: string, change?: EmailChangeSummary): string {
+  if (!change) return `Saved changes to ${email}.`;
+  const { from, to } = change;
+  if (change.inactive) {
+    return (
+      `Saved. Both ${to} and ${from} were emailed about the new sign-in address. ` +
+      'The account is inactive, so they can sign in once it is reactivated.'
+    );
+  }
+  if (change.resetLink) {
+    return (
+      `Saved. ${to} was emailed a link to set a password (it is also shown below, in case ` +
+      `the email does not arrive), and ${from} was told about the change.`
+    );
+  }
+  if (change.signInMethod === 'google') {
+    return `Saved. ${to} was emailed to sign in with Google from now on, and ${from} was told about the change.`;
+  }
+  return (
+    `Saved. ${to} was emailed that their sign-in address changed (their password stays ` +
+    `the same), and ${from} was told about the change.`
+  );
 }
 
 /**
@@ -56,8 +85,8 @@ export function UserEditModal({ user, supervisors, onClose, onSaved }: Props) {
     }
     setSaving(true);
     try {
-      await api.updateUser(user.id, patch);
-      onSaved(`Saved changes to ${email.trim()}.`);
+      const saved = await api.updateUser(user.id, patch);
+      onSaved(savedMessage(saved.email, saved.emailChange), saved.emailChange?.resetLink);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save changes');
     } finally {

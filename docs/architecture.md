@@ -105,6 +105,31 @@ Every feature is built the same way, which keeps the codebase predictable:
   `X-Refreshed-Token` header, so the idle window is measured from the last request.
 - `requireRole(...roles)` gates a route to a set of roles; per-record authorization
   (e.g. "the goal's supervisor") lives in the service.
+- **Two ways in, decided by the address** (`utils/allowed-domain.ts`). With
+  `GOOGLE_ALLOWED_DOMAIN` set, a company address (`isCompanyAccount`) signs in with
+  Google only — the password form refuses it — and any other address with a password
+  only — the Google door refuses it. `signInMethodFor(email)` (company address *and*
+  Google sign-in configured → `google`, else `password`) decides which welcome a new
+  account gets and what an address change tells the person. A Google sign-in is matched
+  by Google's id (`User.googleSub`) first, then by email, and links the account on the
+  first sign-in.
+- **Changing someone's sign-in address** (an Admin's `PATCH /api/users/:id`;
+  `updateUser` + `tellAboutEmailChange` in `users.controller.ts`). Only a real change
+  counts (the address is trimmed and lowercased first). In the same write: the old
+  Google link is cleared (`googleSub = null`, so the new address can link its own Google
+  account — a different one was otherwise refused for good), unused reset links are
+  retired (one sent to the old mailbox must not open the account), and moving from a
+  password onto Google replaces the password with an unusable one (so it cannot come
+  back if the address is switched back). Then **both addresses are emailed**, through
+  the queue (§14): `email-changed` to the new one with how to sign in now — Google, the
+  same password, or, when moving off Google, a set-password link — and
+  `email-change-notice` to the old one, with no links. An inactive account (or one
+  deactivated in the same save) is emailed too: the new address is told the account is
+  inactive until reactivated, and gets no link, since a reset is refused while inactive
+  ("Forgot password" once reactivated). The reply is the saved `UserDto` plus
+  `emailChange` (`EmailChangeSummary`: from, to, sign-in method, `inactive`, and the
+  set-password link when one was made), which the Users page turns into its saved
+  message and "Reset link" banner.
 
 ### Errors & validation
 
@@ -555,7 +580,8 @@ edits, the Completed-day lock, automatic-creation mismatches — are specified i
 Every email goes through one function, `queueEmail(email, { kind, emailId? })` in
 `src/queue/email-queue.ts`; nothing else calls the mailer. The callers are the
 account emails (`utils/account-emails.ts`: `new-account`, `google-welcome`,
-`password-reset`), the notification emails (`notification.service.ts`:
+`password-reset`, and `email-changed` / `email-change-notice` when an Admin changes a
+sign-in address — §4), the notification emails (`notification.service.ts`:
 `mention`, `assignment`, `reminder`) and the scheduler's alerts
 (`scheduler.service.ts`: `admin-alert`). Where a reply must not wait, the caller
 wraps it in `sendInBackground`. `EMAIL_DELIVERY` decides what `queueEmail` does:

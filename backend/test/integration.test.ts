@@ -2361,6 +2361,207 @@ describe('admin user edit in place (Phase 5)', () => {
   });
 });
 
+// --- Changing a sign-in address tells both addresses -----------------------
+
+describe('admin changes a sign-in address: both addresses are told', () => {
+  const DOMAIN = 'healthlifeny.com';
+  let mailer: typeof import('../src/utils/mailer.js');
+  let restoreDomain: () => void;
+
+  before(async () => {
+    mailer = await import('../src/utils/mailer.js');
+  });
+  beforeEach(() => {
+    restoreDomain = __setAllowedDomain(DOMAIN);
+  });
+  afterEach(() => restoreDomain());
+
+  /** PATCH the user as an admin, with the outbox emptied just before. */
+  async function change(userId: string, body: Record<string, unknown>) {
+    const admin = await adminToken();
+    mailer.__resetSentEmails();
+    return request(app).patch(`/api/users/${userId}`).set(auth(admin)).send(body);
+  }
+  const mailTo = (to: string) => mailer.sentEmails.filter((e) => e.to === to);
+  const signInWithPassword = (email: string, password: string) =>
+    request(app).post('/api/auth/login').send({ email, password });
+
+  it('outside to outside: the password stays, and both addresses are told', async () => {
+    const u = await seedUser({
+      email: 'mover@gmail.com',
+      role: 'Member',
+      password: 'Original123!',
+    });
+    const res = await change(u.id, { email: 'moved@gmail.com' });
+
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.email, 'moved@gmail.com', 'still the saved user, as before');
+    assert.deepEqual(res.body.emailChange, {
+      from: 'mover@gmail.com',
+      to: 'moved@gmail.com',
+      signInMethod: 'password',
+      inactive: false,
+    });
+    assert.equal(mailer.sentEmails.length, 2);
+    const [toNew] = mailTo('moved@gmail.com');
+    assert.equal(toNew!.subject, 'Your HL Central sign-in email has changed');
+    assert.match(toNew!.text, /Your password stays the same/);
+    const [toOld] = mailTo('mover@gmail.com');
+    assert.equal(toOld!.subject, 'Your HL Central sign-in email was changed');
+    assert.ok(toOld!.text.includes('moved@gmail.com'));
+
+    assert.equal((await signInWithPassword('moved@gmail.com', 'Original123!')).status, 200);
+  });
+
+  it('onto the company domain: told to use Google, and the old password is retired', async () => {
+    const u = await seedUser({
+      email: 'joiner@gmail.com',
+      role: 'Member',
+      password: 'Original123!',
+    });
+    const res = await change(u.id, { email: 'joiner@healthlifeny.com' });
+
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.emailChange.signInMethod, 'google');
+    assert.equal(res.body.emailChange.resetLink, undefined, 'no password to set');
+    const [toNew] = mailTo('joiner@healthlifeny.com');
+    assert.match(toNew!.text, /now signs in with Google/);
+    assert.match(toNew!.text, /old password no longer works/);
+    assert.equal(mailTo('joiner@gmail.com').length, 1);
+
+    // Retired, not just refused at the form: with the company rule switched
+    // off again, the old password still does not open the account.
+    restoreDomain();
+    assert.equal((await signInWithPassword('joiner@healthlifeny.com', 'Original123!')).status, 401);
+  });
+
+  it('off the company domain: a link to choose a password, for them and for the admin', async () => {
+    const u = await seedUser({ email: 'leaver@healthlifeny.com', role: 'Member' });
+    const res = await change(u.id, { email: 'leaver@gmail.com' });
+
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const summary = res.body.emailChange;
+    assert.equal(summary.signInMethod, 'password');
+    assert.equal(summary.emailed, true);
+    assert.ok(summary.resetLink.includes('/reset-password?token='), 'the admin gets the link');
+    assert.ok(summary.expiresAt);
+    const [toNew] = mailTo('leaver@gmail.com');
+    assert.match(toNew!.text, /signs in with a password/);
+    assert.ok(toNew!.text.includes(summary.resetLink), 'the same link is emailed');
+    assert.doesNotMatch(mailTo('leaver@healthlifeny.com')[0]!.text, /token=/);
+
+    // And it works: set a password, then sign in with it at the new address.
+    const token = new URL(summary.resetLink).searchParams.get('token');
+    const reset = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token, newPassword: 'BrandNew123!' });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    assert.equal((await signInWithPassword('leaver@gmail.com', 'BrandNew123!')).status, 200);
+  });
+
+  it('company to company with a different Google account: the old Google link is let go', async () => {
+    const u = await seedUser({ email: 'old.name@healthlifeny.com', role: 'Member' });
+    await prisma.user.update({ where: { id: u.id }, data: { googleSub: 'google-old' } });
+
+    const res = await change(u.id, { email: 'new.name@healthlifeny.com' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.emailChange.signInMethod, 'google');
+    assert.match(mailTo('new.name@healthlifeny.com')[0]!.text, /Keep using "Sign in with Google"/);
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
+    assert.equal(after.googleSub, null);
+
+    // The new address's own Google account links on its first sign-in. Before,
+    // the old link made it "a different Google account" and it was refused.
+    const restoreGoogle = __setGoogleVerifier(async () => ({
+      googleSub: 'google-new',
+      email: 'new.name@healthlifeny.com',
+      emailVerified: true,
+      hostedDomain: DOMAIN,
+    }));
+    try {
+      const signIn = await request(app).post('/api/auth/google').send({ idToken: 'pretend' });
+      assert.equal(signIn.status, 200, JSON.stringify(signIn.body));
+    } finally {
+      restoreGoogle();
+    }
+    const linked = await prisma.user.findUniqueOrThrow({ where: { id: u.id } });
+    assert.equal(linked.googleSub, 'google-new');
+  });
+
+  it('a reset link sent to the old address stops working', async () => {
+    const u = await seedUser({ email: 'oldbox@gmail.com', role: 'Member' });
+    const admin = await adminToken();
+    const sent = await request(app).post(`/api/users/${u.id}/reset-password`).set(auth(admin));
+    assert.equal(sent.status, 200, JSON.stringify(sent.body));
+    const oldToken = new URL(sent.body.resetLink).searchParams.get('token');
+
+    assert.equal((await change(u.id, { email: 'newbox@gmail.com' })).status, 200);
+
+    const reset = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: oldToken, newPassword: 'Hijacked123!' });
+    assert.equal(reset.status, 400);
+    assert.match(reset.body.error, /invalid or has expired/);
+  });
+
+  it('an inactive account: both addresses are told, the new one that it is inactive', async () => {
+    const gone = await seedUser({ email: 'gone@gmail.com', role: 'Member', isActive: false });
+    const res = await change(gone.id, { email: 'gone2@gmail.com' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual(res.body.emailChange, {
+      from: 'gone@gmail.com',
+      to: 'gone2@gmail.com',
+      signInMethod: 'password',
+      inactive: true,
+    });
+    assert.equal(mailer.sentEmails.length, 2);
+    const [toNew] = mailTo('gone2@gmail.com');
+    assert.equal(toNew!.subject, 'Your HL Central sign-in email has changed');
+    assert.match(toNew!.text, /currently inactive/);
+    assert.match(toNew!.text, /Your password stays the same/);
+    // The old address hears too, so someone who still reads only it knows.
+    const [toOld] = mailTo('gone@gmail.com');
+    assert.equal(toOld!.subject, 'Your HL Central sign-in email was changed');
+    assert.ok(toOld!.text.includes('gone2@gmail.com'));
+  });
+
+  it('deactivated in the same save, off Google: no link, which would be refused', async () => {
+    const leaving = await seedUser({ email: 'leaving@healthlifeny.com', role: 'Member' });
+    const res = await change(leaving.id, { email: 'leaving@gmail.com', isActive: false });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.emailChange.inactive, true);
+    assert.equal(res.body.emailChange.resetLink, undefined, 'no link for an inactive account');
+    assert.equal(
+      await prisma.passwordResetToken.count({ where: { userId: leaving.id, usedAt: null } }),
+      0,
+      'none minted behind the scenes either',
+    );
+    assert.equal(mailer.sentEmails.length, 2);
+    const [toNew] = mailTo('leaving@gmail.com');
+    assert.match(toNew!.text, /currently inactive/);
+    assert.match(toNew!.text, /"Forgot password"/);
+    assert.doesNotMatch(toNew!.text, /token=/);
+    const [toOld] = mailTo('leaving@healthlifeny.com');
+    assert.doesNotMatch(toOld!.text, /https?:\/\//, 'the notice has nothing to click');
+  });
+
+  it('the same address retyped is no change, and sends nothing', async () => {
+    const u = await seedUser({ email: 'same@gmail.com', role: 'Member' });
+    const res = await change(u.id, { email: '  SAME@gmail.com ', title: 'Lead' });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.emailChange, undefined);
+    assert.equal(mailer.sentEmails.length, 0);
+  });
+
+  it('an address already taken is refused, and nobody is emailed', async () => {
+    await seedUser({ email: 'taken2@gmail.com', role: 'Member' });
+    const u = await seedUser({ email: 'wants@gmail.com', role: 'Member' });
+    const res = await change(u.id, { email: 'taken2@gmail.com' });
+    assert.equal(res.status, 400);
+    assert.equal(mailer.sentEmails.length, 0);
+  });
+});
+
 // --- Phase 5: account merge ------------------------------------------------
 
 describe('account merge (Phase 5)', () => {
@@ -7679,9 +7880,15 @@ describe('template anchoring: business-timezone calendar helpers', () => {
 
   it('resolves a calendar date and hour to the right instant on both sides of DST', () => {
     // October is EDT (UTC-4) ...
-    assert.equal(bt.fromBusinessDate('2026-10-08', 19, NY).toISOString(), '2026-10-08T23:00:00.000Z');
+    assert.equal(
+      bt.fromBusinessDate('2026-10-08', 19, NY).toISOString(),
+      '2026-10-08T23:00:00.000Z',
+    );
     // ... December is EST (UTC-5).
-    assert.equal(bt.fromBusinessDate('2026-12-08', 19, NY).toISOString(), '2026-12-09T00:00:00.000Z');
+    assert.equal(
+      bt.fromBusinessDate('2026-12-08', 19, NY).toISOString(),
+      '2026-12-09T00:00:00.000Z',
+    );
   });
 
   it('keeps the wall-clock hour when an offset crosses a DST boundary', () => {
@@ -7800,9 +8007,7 @@ describe('template anchoring: instantiation end to end', () => {
     const admin = await adminToken();
     const tpl = await createTemplate(admin, {
       name: 'Hours check',
-      nodes: [
-        { key: 'root', parentKey: null, name: 'Only', startOffsetDays: 0, dueOffsetDays: 3 },
-      ],
+      nodes: [{ key: 'root', parentKey: null, name: 'Only', startOffsetDays: 0, dueOffsetDays: 3 }],
     });
 
     const res = await request(app)
