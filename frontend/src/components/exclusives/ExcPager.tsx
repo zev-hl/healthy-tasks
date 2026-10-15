@@ -2,7 +2,9 @@
  * Exclusives table pager (HLAI-71) — matches the design: a range label, the
  * 25/50/100 size chips, and Previous · numbered-page · Next controls.
  */
-const SIZES = [25, 50, 100] as const;
+import type { MouseEvent } from 'react';
+
+export const PAGE_SIZES = [25, 50, 100] as const;
 
 /** Pages either side of the current one that always get a button. */
 const WINDOW = 2;
@@ -27,6 +29,19 @@ export function pageWindow(current: number, totalPages: number): (number | 'gap'
     previous = page;
   }
   return out;
+}
+
+/**
+ * Previous and Next act on the first click of a double-click only. A
+ * double-click is two clicks, and each moved one page, so it went from page 1
+ * to 3. `detail` counts the clicks in a row: 1 for a click, 2 for the second
+ * of a double-click, 0 for Enter or Space. Numbered pages need no guard:
+ * clicking one twice lands on the same page.
+ */
+function firstClickOnly(action: () => void) {
+  return (e: MouseEvent) => {
+    if (e.detail <= 1) action();
+  };
 }
 
 export function ExcPager({
@@ -55,7 +70,7 @@ export function ExcPager({
       <div className="exc-pager-right">
         <span className="exc-pager-rows-label">Rows</span>
         <div className="exc-sizes">
-          {SIZES.map((n) => (
+          {PAGE_SIZES.map((n) => (
             <button
               key={n}
               type="button"
@@ -71,7 +86,7 @@ export function ExcPager({
           type="button"
           className="exc-page-btn"
           disabled={page <= 1}
-          onClick={() => onPage(page - 1)}
+          onClick={firstClickOnly(() => onPage(page - 1))}
         >
           Previous
         </button>
@@ -96,7 +111,7 @@ export function ExcPager({
           type="button"
           className="exc-page-btn"
           disabled={page >= totalPages}
-          onClick={() => onPage(page + 1)}
+          onClick={firstClickOnly(() => onPage(page + 1))}
         >
           Next
         </button>
