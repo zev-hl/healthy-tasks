@@ -144,6 +144,12 @@ request — continuous use never logs you out, but a full idle window with no
 requests expires the session and the SPA bounces to login. No self-registration
 — Admins create users.
 
+The address decides the way in: with `GOOGLE_ALLOWED_DOMAIN` set, a company
+address signs in with Google only and any other with a password only
+(`utils/allowed-domain.ts`, `signInMethodFor`). When an Admin changes someone's
+address, both addresses are emailed (how to sign in now; a notice to the old one),
+the old Google link and reset links are cleared — see `docs/architecture.md` §4.
+
 ### Access control (Phase 13)
 `services/access-control.service.ts` is central and non-trivial: per-task access
 levels, parent/child tree inheritance, list scoping, assignee restrictions,
