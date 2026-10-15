@@ -21,13 +21,12 @@ describe('QueueDashboardCard', () => {
     vi.stubEnv('VITE_QUEUE_DASHBOARD_URL', STAGING);
     render(<QueueDashboardCard />);
 
-    expect(screen.getByRole('heading', { name: 'Email queue' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Queues Dashboard' })).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /Open queue dashboard/ });
     expect(link).toHaveAttribute('href', STAGING);
     expect(link).toHaveAttribute('target', '_blank');
     // The new tab gets no handle back to the app.
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
-    expect(screen.getByText(/Opens in a new tab/)).toBeInTheDocument();
   });
 
   it('is not there for anyone but an Admin', () => {

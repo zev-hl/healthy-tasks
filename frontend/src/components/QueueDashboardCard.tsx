@@ -20,17 +20,14 @@ export function QueueDashboardCard() {
   return (
     <div className="card">
       <div className="profile-card-head">
-        <h3>Email queue</h3>
+        <h3>Queues Dashboard</h3>
       </div>
       <p className="profile-card-sub">
-        See emails waiting, sent and failed, and retry failed ones.
+        Track the status of pending, completed, and failed queues.
       </p>
       <a className="button-link secondary" href={url} target="_blank" rel="noopener noreferrer">
         Open queue dashboard <span aria-hidden="true">↗</span>
       </a>
-      <p className="muted" style={{ fontSize: '0.8rem', marginBottom: 0, marginTop: '1rem' }}>
-        Opens in a new tab.
-      </p>
     </div>
   );
 }
