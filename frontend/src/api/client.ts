@@ -47,6 +47,7 @@ import type {
   UpdateCommentRequest,
   UpdateTaskRequest,
   UpdateUserRequest,
+  UpdateUserResponse,
   UserDto,
   UpdateMyProfileRequest,
   UserCountsDto,
@@ -281,7 +282,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   updateUser: (id: string, body: UpdateUserRequest) =>
-    request<UserDto>(`/api/users/${id}`, {
+    request<UpdateUserResponse>(`/api/users/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

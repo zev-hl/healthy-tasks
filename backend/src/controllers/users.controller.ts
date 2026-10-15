@@ -1,13 +1,16 @@
 import type { Request, Response } from 'express';
+import type { User } from '@prisma/client';
 import type {
   ActiveUserDto,
   AdminResetLinkResponse,
+  EmailChangeSummary,
   OrgHierarchyNode,
   PaginatedResult,
   TaskUserRef,
   UserCountsDto,
   UserDto,
   UserFilterOptions,
+  UpdateUserResponse,
 } from '@healthy-tasks/shared';
 import { getScopedHierarchy } from '../services/access-control.service.js';
 import {
@@ -22,16 +25,19 @@ import {
   deactivateUser,
   mergeUsers,
   getUserById,
+  type EmailChange,
 } from '../services/user.service.js';
 import { createPasswordReset } from '../services/auth.service.js';
 import { toActiveUserDto, toUserDto, toUserRef } from '../services/user.mapper.js';
+import { sendInBackground } from '../utils/mailer.js';
 import {
+  sendEmailChangedEmail,
+  sendEmailChangeNoticeEmail,
   sendGoogleWelcomeEmail,
-  sendInBackground,
   sendNewAccountEmail,
   sendPasswordResetEmail,
-} from '../utils/mailer.js';
-import { isCompanyAccount } from '../utils/allowed-domain.js';
+} from '../utils/account-emails.js';
+import { signInMethodFor } from '../utils/allowed-domain.js';
 import { env } from '../config/env.js';
 import { HttpError } from '../utils/http-error.js';
 import type {
@@ -115,7 +121,7 @@ export async function createUserController(req: Request, res: Response): Promise
 
   // The emails go out in the background: the user is saved either way, and the
   // admin should not wait on the mail provider to hear so.
-  if (isCompanyAccount(user.email) && env.google.clientId) {
+  if (signInMethodFor(user.email) === 'google') {
     sendInBackground(`welcome to ${user.email}`, () =>
       sendGoogleWelcomeEmail(user.email, env.frontendUrl),
     );
@@ -140,8 +146,52 @@ export async function createUserController(req: Request, res: Response): Promise
 export async function updateUserController(req: Request, res: Response): Promise<void> {
   const { id } = req.params as { id: string };
   const input = req.body as UpdateUserInput;
-  const user = await updateUser(id, input);
-  res.json(toUserDto(user) satisfies UserDto);
+  const { user, emailChange } = await updateUser(id, input);
+  const body: UpdateUserResponse = toUserDto(user);
+  if (emailChange) body.emailChange = await tellAboutEmailChange(user, emailChange);
+  res.json(body);
+}
+
+/**
+ * After an admin changes someone's sign-in address: tell the new address how
+ * to sign in now, and the old one that the account moved — and report what
+ * was sent. Moving from Google to a password needs a password, so that case
+ * gets a set-password link, handed to the admin too in case the email is lost.
+ *
+ * An inactive account (or one deactivated in the same save) is told too: both
+ * addresses, the new one with a note that it is inactive, but no link — a
+ * reset is refused while inactive.
+ */
+async function tellAboutEmailChange(user: User, change: EmailChange): Promise<EmailChangeSummary> {
+  const summary: EmailChangeSummary = {
+    from: change.from,
+    to: change.to,
+    signInMethod: change.toMethod,
+    inactive: !user.isActive,
+  };
+
+  const ticket =
+    user.isActive && change.fromMethod === 'google' && change.toMethod === 'password'
+      ? await createPasswordReset(user.id)
+      : undefined;
+  if (ticket) {
+    summary.resetLink = ticket.resetLink;
+    summary.expiresAt = ticket.expiresAt.toISOString();
+  }
+
+  sendInBackground(`sign-in email change to ${change.to}`, () =>
+    sendEmailChangedEmail(change.to, {
+      fromMethod: change.fromMethod,
+      toMethod: change.toMethod,
+      signInUrl: env.frontendUrl,
+      ...(ticket && { setPassword: { link: ticket.resetLink, expiresAt: ticket.expiresAt } }),
+      ...(!user.isActive && { inactive: true }),
+    }),
+  );
+  sendInBackground(`sign-in email change notice to ${change.from}`, () =>
+    sendEmailChangeNoticeEmail(change.from, change.to),
+  );
+  return summary;
 }
 
 export async function deactivateUserController(req: Request, res: Response): Promise<void> {

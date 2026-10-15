@@ -563,9 +563,12 @@ export function UsersPage() {
           user={editing}
           supervisors={supervisors}
           onClose={() => setEditing(null)}
-          onSaved={(message) => {
+          onSaved={(message, link) => {
             setEditing(null);
             setNotice(message);
+            // A set-password link when the new address needs one; otherwise
+            // clear any link left from an earlier reset.
+            setResetLink(link ?? null);
             void load();
             loadSupervisors();
             loadOptions();

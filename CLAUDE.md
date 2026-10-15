@@ -64,8 +64,22 @@ npm run test --workspace frontend        # vitest run
 npm run test:watch --workspace frontend
 ```
 
-Full local stack (Postgres + backend + frontend + MinIO) via `docker compose up
+Full local stack (Postgres + backend + frontend + MinIO + Redis + queue
+dashboard; the email worker runs inside the backend) via `docker compose up
 --build`. The backend runs `prisma migrate deploy` automatically on startup.
+After adding backend packages, use `docker compose up --build -V`, or the
+containers' own `node_modules` volumes hide the new packages. Add
+`--remove-orphans` once to drop the old separate `worker` container.
+
+Email queue (see Email delivery below):
+
+```bash
+# Queue dashboard: http://localhost:3005/bullmq locally; Render: <API>/bullmq behind a password
+docker compose exec backend npm run queue:test-email -- you@example.com  # queue one test email
+docker compose exec backend npm run queue:clean-failed-emails            # run the weekly failed-email cleanup now
+docker compose logs -f backend                                           # watch the email worker (inside the API) send
+npm run worker:dev --workspace backend    # the worker as its own process (with EMAIL_WORKER_IN_API=false on the API)
+```
 
 ## Testing
 
@@ -79,6 +93,10 @@ Full local stack (Postgres + backend + frontend + MinIO) via `docker compose up
 - The suite imports `createApp` and drives services directly. The recurrence
   **scheduler is never started under tests** — tests call `runScheduler`
   themselves for determinism.
+- Tests always use `EMAIL_DELIVERY=direct` and need no Redis.
+- **Backend unit tests** (`backend/test/unit/`, no database):
+  `npm run test:unit --workspace backend`. A few load `config/env.ts`, so on the
+  host set any `DATABASE_URL` and `JWT_SECRET` (placeholders are fine).
 
 ## Architecture
 
@@ -126,6 +144,12 @@ request — continuous use never logs you out, but a full idle window with no
 requests expires the session and the SPA bounces to login. No self-registration
 — Admins create users.
 
+The address decides the way in: with `GOOGLE_ALLOWED_DOMAIN` set, a company
+address signs in with Google only and any other with a password only
+(`utils/allowed-domain.ts`, `signInMethodFor`). When an Admin changes someone's
+address, both addresses are emailed (how to sign in now; a notice to the old one),
+the old Google link and reset links are cleared — see `docs/architecture.md` §4.
+
 ### Access control (Phase 13)
 `services/access-control.service.ts` is central and non-trivial: per-task access
 levels, parent/child tree inheritance, list scoping, assignee restrictions,
@@ -146,6 +170,26 @@ staying awake 24/7 — meaning recurrences/reminders don't fire there). Design i
 two-clock model (coarse ceiling + earlier-only fine wake), re-derived from the DB
 every pass so nothing caches into staleness; a watchdog emails admins if the
 heartbeat stalls.
+
+### Email delivery
+Every email goes through `queueEmail(email, { kind })` (`queue/email-queue.ts`);
+never call `mailer.send` directly. With `EMAIL_DELIVERY=queue` (the
+docker-compose default) it goes on a BullMQ queue in Redis and the **email
+worker** (`queue/email-worker.ts`) sends it, retrying a failure every 2 minutes,
+10 times. The worker runs inside the API process by default
+(`EMAIL_WORKER_IN_API`, started from `server.ts`), locally and on Render; set it
+to `false` to run `src/worker.ts` as a separate service instead. With `direct`
+(the app's default, always under tests) the API sends it itself; if Redis is
+down in queue mode, it falls back to that. Emails that run out of tries are kept
+in the `FailedEmail` table, which the worker empties of `failed` rows every
+Sunday 04:00 business time. The API must get SIGTERM itself (Render: `node
+backend/dist/server.js`, not `npm start`) so it finishes the emails it is
+sending before it stops. The queue dashboard (`queue/dashboard-board.ts`) is
+`http://localhost:3005/bullmq` locally (its own container, no sign-in); the API
+also serves it at `/bullmq` behind HTTP Basic auth when `QUEUE_DASHBOARD_USER`
+and `QUEUE_DASHBOARD_PASSWORD` (16+ characters) are set (staging and production,
+each its own pair). Admins open it from the profile page's "Queues Dashboard" card,
+which follows `VITE_QUEUE_DASHBOARD_URL`. Full design: `docs/architecture.md` §14.
 
 ### Storage
 `storage/index.ts` selects a backend by `STORAGE_DRIVER`: `memory` (tests) or
@@ -180,5 +224,11 @@ enforces `roles`.
 Backend config is centralized and validated in `backend/src/config/env.ts`
 (missing required vars throw at boot). Copy `.env.example` → `.env`. Notable
 vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `EMAIL_PROVIDER`
-(`console` dev / `smtp`), `STORAGE_DRIVER`, `SCHEDULER_ENABLED`, the `S3_*` set,
-and `SEED_ADMIN_*`.
+(`console` dev / `smtp`), `EMAIL_DELIVERY` (`direct` / `queue`),
+`EMAIL_WORKER_IN_API` (`true` default / `false`), `REDIS_URL`,
+`EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `QUEUE_DASHBOARD_USER` /
+`QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
+`SCHEDULER_ENABLED`, the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
+the email worker loads only `config/email-config.ts` and
+`config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's
+secrets.

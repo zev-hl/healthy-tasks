@@ -19,8 +19,18 @@ import { departmentsRouter } from './routes/departments.routes.js';
 import { orgRouter } from './routes/org.routes.js';
 import { timeRouter } from './routes/time.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { requireBasicAuth } from './middleware/basic-auth.js';
 
-export function createApp() {
+export interface AppOptions {
+  /**
+   * The queue dashboard, served behind its own user name and password. Passed
+   * only by server.ts when QUEUE_DASHBOARD_* allow it; the tests never pass
+   * it, so they open no Redis connection.
+   */
+  queueDashboard?: { path: string; router: express.Router; user: string; password: string };
+}
+
+export function createApp(options: AppOptions = {}) {
   const app = express();
 
   app.use(
@@ -60,6 +70,15 @@ export function createApp() {
   app.use('/api/departments', departmentsRouter);
   app.use('/api/org', orgRouter);
   app.use('/api/time', timeRouter);
+
+  const dashboard = options.queueDashboard;
+  if (dashboard) {
+    app.use(
+      dashboard.path,
+      requireBasicAuth(dashboard.user, dashboard.password, 'HL Central queues'),
+      dashboard.router,
+    );
+  }
 
   // Fallbacks
   app.use(notFoundHandler);

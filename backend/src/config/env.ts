@@ -1,4 +1,6 @@
 import dotenv from 'dotenv';
+import { businessTimeZone } from './business-time-zone.js';
+import { emailConfig } from './email-config.js';
 
 // Load .env from the repo root (docker-compose also injects these directly).
 dotenv.config();
@@ -40,7 +42,8 @@ export const env = {
   // NOT "the app's timezone". Staff are spread across several countries, and
   // dates a user types into a task form are already converted in that user's own
   // zone, which is correct for an absolute deadline. Do not apply this to them.
-  businessTimeZone: optional('BUSINESS_TIMEZONE', 'America/New_York'),
+  // Read in business-time-zone.ts, so the email worker can use it too.
+  businessTimeZone,
 
   // Whether this process runs the recurrence scheduler (Phase 14 / S3). Default
   // on; set false on staging, where an always-ticking timer keeps the Neon
@@ -55,14 +58,9 @@ export const env = {
   frontendUrl: optional('FRONTEND_URL', 'http://localhost:5173'),
   corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173'),
 
-  email: {
-    provider: optional('EMAIL_PROVIDER', 'console'),
-    from: optional('EMAIL_FROM', 'HL Central <no-reply@healthy-tasks.local>'),
-    smtpHost: process.env.SMTP_HOST,
-    smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
-    smtpUser: process.env.SMTP_USER,
-    smtpPass: process.env.SMTP_PASS,
-  },
+  // Lives in email-config.ts so the email worker can read it without the
+  // required settings above.
+  email: emailConfig,
 
   seed: {
     // Must satisfy GOOGLE_ALLOWED_DOMAIN, or a fresh environment seeds an

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { mailer } from '../utils/mailer.js';
+import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
 import {
   addDays,
@@ -674,11 +674,14 @@ async function alertAdmins(subject: string, lines: string[]): Promise<void> {
   });
   for (const a of admins) {
     try {
-      await mailer.send({
-        to: a.email,
-        subject,
-        text: [...lines, '', `Check the API service (${env.frontendUrl.replace(/\/$/, '')}).`].join('\n'),
-      });
+      await queueEmail(
+        {
+          to: a.email,
+          subject,
+          text: [...lines, '', `Check the API service (${env.frontendUrl.replace(/\/$/, '')}).`].join('\n'),
+        },
+        { kind: 'admin-alert' },
+      );
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('failed to email admin about scheduler health', a.email, err);
