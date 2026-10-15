@@ -123,7 +123,7 @@ projects:
               # ----- Email queue (BullMQ) --------------------------------------
               # "direct" (the default when unset): this service sends each email
               # itself, with no retries. "queue": each email goes through
-              # hlcentral-queue and the email worker that runs inside this
+              # hlcentral-redis and the email worker that runs inside this
               # service (EMAIL_WORKER_IN_API, on by default) sends it, retrying a
               # failure every 2 minutes, 10 times. There is no separate worker
               # service; set EMAIL_WORKER_IN_API=false only if one is added.
@@ -132,7 +132,7 @@ projects:
               - key: REDIS_URL
                 fromService:
                   type: keyvalue
-                  name: hlcentral-queue
+                  name: hlcentral-redis
                   property: connectionString
               # The queue dashboard at /bullmq on this API, behind the browser's
               # sign-in box. Off unless both are set (password 16+ characters)
@@ -229,8 +229,11 @@ projects:
           #    environment's services reach it over Render's private network.
           #  - 256mb, not free: a free instance keeps nothing through a restart,
           #    so queued emails and pending retries would be lost.
+          # Created by hand in the dashboard with exactly these settings; the
+          # Blueprint takes it over by its name on the first sync, so keep the
+          # name and settings as they are there.
           # -------------------------------------------------------------------
-          - name: hlcentral-queue
+          - name: hlcentral-redis
             type: keyvalue
             plan: 256mb
             region: virginia
@@ -430,7 +433,7 @@ projects:
               - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
                 sync: false
 
-          # Key Value for staging's email queue — see hlcentral-queue under
+          # Key Value for staging's email queue — see hlcentral-redis under
           # Production. Free here to save cost: it keeps nothing through a
           # restart, so emails waiting or awaiting a retry at that moment are
           # lost. Change to 256mb if staging must behave exactly like Production.

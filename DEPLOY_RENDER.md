@@ -178,14 +178,16 @@ Sunday 04:00 `BUSINESS_TIMEZONE`.
 
 | | Production | Staging |
 | --- | --- | --- |
-| Key Value | `hlcentral-queue`: `256mb`, $10/month, kept on disk | `hlcentral-queue-staging`: `free`, $0, nothing kept through a restart |
-| Created by | the Blueprint, on the sync after merging to `main` | you, by hand (the Blueprint only syncs from `main`) |
+| Key Value | `hlcentral-redis`: `256mb`, $10/month, kept on disk | `hlcentral-queue-staging`: `free`, $0, nothing kept through a restart |
+| Created by | you, by hand; the Blueprint takes it over by its name on the first sync after merging to `main` | you, by hand; taken over the same way |
 | Email worker | inside `hlcentral-api` | inside `hlcentral-api-staging` |
 
-> **Cost:** $10/month, for the production Key Value. With Auto Sync on, it is
-> created and billed on the merge to `main`; with Auto Sync off, when you click
-> **Sync**. Only one free Key Value is allowed per workspace: if another already
-> exists, staging needs `256mb` too.
+> **Cost:** $10/month, for the production Key Value, billed since it was created
+> by hand (not from the merge). Because `render.yaml` names it `hlcentral-redis`
+> with the same settings, the sync takes it over instead of creating a second one;
+> renaming either side would make Render create (and bill) another. Only one free
+> Key Value is allowed per workspace: if another already exists, staging needs
+> `256mb` too.
 
 What `render.yaml` sets up:
 
@@ -224,8 +226,9 @@ What `render.yaml` sets up:
 
 ### Production (after merging to `main`)
 
-1. Sync the Blueprint (automatic with Auto Sync on). It creates `hlcentral-queue`,
-   wires `REDIS_URL` and sets the start command.
+1. Sync the Blueprint (automatic with Auto Sync on). It takes over
+   `hlcentral-redis` (no new Key Value), wires `REDIS_URL` to it — the same internal
+   address set by hand before — and sets the start command.
 2. **Production API → Environment:** `EMAIL_DELIVERY` = `queue`. It redeploys.
 3. Optional: switch on the queue dashboard (see **Queue dashboard** below).
 
@@ -275,7 +278,7 @@ box. It is the same dashboard as the local one: waiting, sent and failed emails,
 when `EMAIL_DELIVERY` is `queue` and both settings below are set, with a password
 of at least 16 characters; otherwise that address is a 404.
 
-Admins reach it from **Your profile → Email queue → Open queue dashboard**, which
+Admins reach it from **Your profile → Queues Dashboard → Open queue dashboard**, which
 opens it in a new tab. Nobody else sees that box.
 
 To switch it on (each environment, with its **own** user name and password —
@@ -289,7 +292,7 @@ never Staging's pair on Production):
    something is missing it shows `⚠️ queue dashboard: off - …` and says what.
 4. **Website (static site) → Environment:** `VITE_QUEUE_DASHBOARD_URL` = that API's
    address + `/bullmq`. Saving rebuilds the site (the address is built into it).
-5. As an Admin, open **Your profile**: the **Email queue** box is under
+5. As an Admin, open **Your profile**: the **Queues Dashboard** box is under
    Notifications. Its button opens the dashboard; sign in there. The browser keeps
    the sign-in until it is fully closed; there is no sign-out button.
 

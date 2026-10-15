@@ -629,7 +629,7 @@ setup (`queue/dashboard-board.ts`, `createQueueBoard`) is served in two places:
   for it.
 
 Admins reach it from the profile page: `components/QueueDashboardCard.tsx` shows
-an "Email queue" card, with a link opening the dashboard in a new tab, to Admins
+a "Queues Dashboard" card, with a link opening the dashboard in a new tab, to Admins
 only and only when the build has `VITE_QUEUE_DASHBOARD_URL` (docker-compose: the
 local container; Render: each API's `/bullmq`). Hiding the card does not lock the
 dashboard: it checks its shared password, not the HL Central role, so each
