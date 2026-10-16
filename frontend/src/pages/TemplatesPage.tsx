@@ -26,6 +26,7 @@ import { todayLocalDate } from '../lib/datetime';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useAuth } from '../auth/AuthContext';
 import { ModalShell } from '../components/exclusives/ModalShell';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { DutyTag } from '../components/duties/DutyTag';
 import { GroupedOptions } from '../components/duties/GroupedOptions';
 import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from '../lib/duties';
@@ -365,6 +366,12 @@ function TemplateEditor({
   const [pendingFuture, setPendingFuture] = useState<FutureOccurrenceDto[] | null>(null);
   const [savedId, setSavedId] = useState<number | null>(null);
   const [showRecurrence, setShowRecurrence] = useState(editor.recurrence.recurrenceType !== 'None');
+  // Unsaved-work guard: the whole template (nodes, descriptions, dependencies,
+  // recurrence) lives only here until saved, so leaving the page asks first.
+  // Once saved (incl. while the "update future instances?" prompt is up) it's clean.
+  const [original] = useState(() => JSON.stringify(editor));
+  const dirty = savedId === null && JSON.stringify(editor) !== original;
+  useUnsavedChangesWarning(dirty && !saving);
   // Collapsed node keys (display-only; never affects drag/order). Drag state for
   // sibling reordering within the tree.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -411,6 +418,14 @@ function TemplateEditor({
   function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
     if (!node) return;
+    // A node with anything typed into it asks first; a blank one just goes.
+    const hasContent = node.name.trim() !== '' || node.description !== '';
+    if (
+      hasContent &&
+      !window.confirm(`Remove “${node.name.trim() || 'this node'}” and its description and settings?`)
+    ) {
+      return;
+    }
     // Reparent this node's children to its parent; drop deps that touch it.
     const nodes = editor.nodes
       .filter((n) => n.key !== key)
@@ -720,7 +735,14 @@ function TemplateEditor({
       <div className="tasks-toolbar">
         <h1>{editor.id ? 'Edit template' : 'New template'}</h1>
         <div className="spacer" />
-        <button className="secondary" onClick={onCancel} disabled={saving}>
+        <button
+          className="secondary"
+          onClick={() => {
+            if (dirty && !window.confirm('Discard your changes to this template?')) return;
+            onCancel();
+          }}
+          disabled={saving}
+        >
           Cancel
         </button>
         <button onClick={() => void doSave()} disabled={saving}>

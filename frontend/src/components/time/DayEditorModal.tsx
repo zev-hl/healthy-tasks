@@ -17,6 +17,7 @@ import { DutyTag, Swatch } from '../duties/DutyTag';
 import type { CatalogDuty } from '../../lib/duties';
 import { addDays, formatLongDay, splitMinutes, todayISO } from '../../lib/calendar';
 import { isStaleWriteError } from '../../lib/useStaleWriteGuard';
+import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
 
 /**
  * One day of time: minutes per duty, the Completed flag and a note.
@@ -114,6 +115,10 @@ export function DayEditorModal({
   );
   const dirty = !!day && (JSON.stringify({ e: entries, n: note }) !== original || markDone);
   const next = addDays(date, 1);
+
+  // Leaving the page with unsaved edits — a related-task link below, the
+  // sidebar, Back, or a refresh — asks first instead of silently discarding them.
+  useUnsavedChangesWarning(dirty);
 
   // Escape closes — unless there are unsaved edits to lose.
   useEffect(() => {
@@ -447,7 +452,15 @@ export function DayEditorModal({
           related.map((t) => (
             <div key={t.id} className="dd-rel-item">
               <span className="dd-task-id">#{t.id}</span>
-              <Link to={`/tasks/${t.id}`} style={{ fontWeight: 600 }}>
+              {/* A new tab: these are for reference while logging, and leaving
+                  the page would throw away the time being entered. */}
+              <Link
+                to={`/tasks/${t.id}`}
+                target="_blank"
+                rel="noreferrer"
+                title="Opens in a new tab"
+                style={{ fontWeight: 600 }}
+              >
                 {t.name}
               </Link>
               <span className="spacer" />
