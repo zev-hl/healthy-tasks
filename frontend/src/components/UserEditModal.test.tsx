@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import type { EmailChangeSummary, UserDto } from '@healthy-tasks/shared';
 
 vi.mock('../api/client', () => ({
@@ -9,6 +9,8 @@ vi.mock('../api/client', () => ({
 
 const { api } = await import('../api/client');
 const { UserEditModal, savedMessage } = await import('./UserEditModal');
+// A data router: the modal's unsaved-changes guard uses useBlocker.
+const { renderWithDataRouter } = await import('../test/render');
 const updateUser = api.updateUser as unknown as ReturnType<typeof vi.fn>;
 
 const user = {
@@ -79,7 +81,9 @@ describe('UserEditModal', () => {
     });
     updateUser.mockResolvedValue({ ...user, email: 'user2@gmail.com', emailChange: summary });
     const onSaved = vi.fn();
-    render(<UserEditModal user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />);
+    renderWithDataRouter(
+      <UserEditModal user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />,
+    );
 
     fireEvent.change(screen.getByLabelText('Email (login id)'), {
       target: { value: 'user2@gmail.com' },
@@ -98,7 +102,9 @@ describe('UserEditModal', () => {
   it('a save without an address change hands over no link', async () => {
     updateUser.mockResolvedValue({ ...user, title: 'Lead' });
     const onSaved = vi.fn();
-    render(<UserEditModal user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />);
+    renderWithDataRouter(
+      <UserEditModal user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />,
+    );
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Lead' } });
     await act(async () => {

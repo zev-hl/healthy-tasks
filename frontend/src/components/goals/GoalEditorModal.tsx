@@ -10,6 +10,8 @@ import { ApiError } from '../../api/client';
 import { useStaleWriteGuard } from '../../lib/useStaleWriteGuard';
 import { ConflictBanner } from '../ConflictBanner';
 import { isoToDateInput, dateInputToIso } from './goalUi';
+import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
+import { useBackdropDismiss } from '../../lib/useBackdropDismiss';
 
 interface Props {
   /** Present ⇒ edit that draft; absent ⇒ create a new goal. */
@@ -39,6 +41,25 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
   const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
 
   const needsUnit = GOAL_METRIC_TYPES_NEEDING_UNIT.includes(metricType);
+
+  // Unsaved-work guard: while anything differs from how the form opened, a
+  // stray backdrop click doesn't close it and leaving the page asks first.
+  const fields = () =>
+    JSON.stringify([
+      ownerId,
+      specific,
+      metricType,
+      unitLabel,
+      targetValue,
+      deadline,
+      risks,
+      mitigations,
+      notes,
+    ]);
+  const [original] = useState(fields);
+  const dirty = fields() !== original;
+  useUnsavedChangesWarning(dirty && !submitting);
+  const backdrop = useBackdropDismiss(onClose, dirty);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -124,7 +145,7 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdrop}>
       <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>{editing ? 'Edit goal' : 'New goal'}</h3>
         {error && <div className="alert error">{error}</div>}

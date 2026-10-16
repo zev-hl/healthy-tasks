@@ -25,7 +25,7 @@ vi.mock('../api/client', () => ({
 
 const { api } = await import('../api/client');
 const { TeamGoalsPage } = await import('./TeamGoalsPage');
-const { renderWithRouter } = await import('../test/render');
+const { renderWithDataRouter } = await import('../test/render');
 const m = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
 
 const ref = (id: string, firstName: string): TaskUserRef => ({
@@ -88,7 +88,7 @@ describe('TeamGoalsPage — the open goal', () => {
     // First load shows the pending goal; after Approve the reload no longer
     // includes it (as with a "Pending approval" status filter).
     m(api.listTeamGoals).mockResolvedValueOnce([PENDING]).mockResolvedValue([]);
-    renderWithRouter(<TeamGoalsPage />);
+    renderWithDataRouter(<TeamGoalsPage />);
 
     fireEvent.click(await screen.findByText('Ship 100 orders a day'));
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));

@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import type { EmailChangeSummary, Role, UpdateUserRequest, UserDto } from '@healthy-tasks/shared';
 import { ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 
 interface Props {
   user: UserDto;
@@ -75,6 +77,11 @@ export function UserEditModal({ user, supervisors, onClose, onSaved }: Props) {
   const patch = buildPatch();
   const dirty = Object.keys(patch).length > 0;
 
+  // Unsaved-work guard: with changes pending, a stray backdrop click doesn't
+  // close the form and leaving the page asks first.
+  useUnsavedChangesWarning(dirty && !saving);
+  const backdrop = useBackdropDismiss(onClose, dirty);
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!dirty) return;
@@ -97,7 +104,7 @@ export function UserEditModal({ user, supervisors, onClose, onSaved }: Props) {
   const supervisorOptions = supervisors.filter((s) => s.id !== user.id);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdrop}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>Edit user</h3>
         {error && <div className="alert error">{error}</div>}

@@ -17,6 +17,15 @@ import { userLabel } from './ui/Avatar';
 import { DutyCrossCheck } from './duties/DutyCrossCheck';
 import { GroupedOptions } from './duties/GroupedOptions';
 import { RichTextEditor } from './RichTextEditor';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+
+/** Visible text of rich-text HTML, for "did anything change" checks only. */
+function richTextAsText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
 import {
   isoToParts,
   partsToIso,
@@ -69,6 +78,52 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [dutyId, setDutyId] = useState(initial?.dutyId ?? '');
+
+  // Unsaved-work guard: anything typed or picked asks before the page is left.
+  // The description is compared as text, since the rich-text editor may turn
+  // an empty value into empty markup on its own. Off while submitting, so the
+  // redirect to the new task isn't blocked.
+  const snapshot = (s: {
+    name: string;
+    description: string;
+    assigneeId: string;
+    priority: string;
+    status: string;
+    tags: string[];
+    tagDraft: string;
+    start: string;
+    due: string;
+    dutyId: string;
+  }) => JSON.stringify({ ...s, description: richTextAsText(s.description) });
+  const [original] = useState(() =>
+    snapshot({
+      name,
+      description,
+      assigneeId,
+      priority,
+      status,
+      tags,
+      tagDraft: '',
+      start: initialStart.date + initialStart.time,
+      due: initialDue.date + initialDue.time,
+      dutyId,
+    }),
+  );
+  const dirty =
+    snapshot({
+      name,
+      description,
+      assigneeId,
+      priority,
+      status,
+      tags,
+      tagDraft: tagDraft.trim(),
+      start: startDate + startTime,
+      due: dueDate + dueTime,
+      dutyId,
+    }) !== original;
+  useUnsavedChangesWarning(dirty && !submitting);
 
   useEffect(() => {
     api
@@ -81,7 +136,6 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
   // An unassigned new task goes to its creator, so the check runs against them.
   const { user: me } = useAuth();
   const catalog = useDutyCatalog();
-  const [dutyId, setDutyId] = useState(initial?.dutyId ?? '');
   const [granting, setGranting] = useState(false);
   const assigneeRef = useRef<HTMLSelectElement>(null);
   const doerId = assigneeId || me?.id || null;

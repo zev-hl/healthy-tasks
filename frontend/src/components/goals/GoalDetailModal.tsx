@@ -8,6 +8,8 @@ import { ConflictBanner } from '../ConflictBanner';
 import { UserChip } from '../ui/Avatar';
 import { GoalStatusPill, formatGoalValue, formatDeadline } from './goalUi';
 import { GoalEditorModal } from './GoalEditorModal';
+import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
+import { useBackdropDismiss } from '../../lib/useBackdropDismiss';
 
 interface Props {
   goal: GoalDto;
@@ -38,6 +40,23 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
   const [supervisorComments, setSupervisorComments] = useState('');
 
   const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
+
+  // Unsaved-work guard for the open panel (progress / send back / resolve):
+  // while it holds typed changes, a stray backdrop click doesn't close the
+  // goal and leaving the page asks first. The Edit form guards itself.
+  const panelDirty =
+    panel === 'progress'
+      ? resultValue !== (goal.resultValue != null ? String(goal.resultValue) : '') ||
+        notes !== (goal.notes ?? '') ||
+        risks !== (goal.risks ?? '') ||
+        mitigations !== (goal.mitigations ?? '')
+      : panel === 'reject'
+        ? rejectComments.trim() !== ''
+        : panel === 'resolve'
+          ? supervisorComments.trim() !== '' || resolution !== 'Met'
+          : false;
+  useUnsavedChangesWarning(panelDirty && !busy);
+  const backdrop = useBackdropDismiss(onClose, panelDirty);
 
   // Sync the editable panel fields (results/notes/risks/mitigations) to a goal.
   function syncPanelFields(g: GoalDto) {
@@ -145,7 +164,7 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
   const showResults = goal.status !== 'Draft' && goal.status !== 'PendingApproval';
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdrop}>
       <div className="modal modal-wide goal-detail" onClick={(e) => e.stopPropagation()}>
         <div className="goal-detail-head">
           <div>

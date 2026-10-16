@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { CreateUserRequest, Role, UserDto } from '@healthy-tasks/shared';
 import { ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 
 interface Props {
   onClose: () => void;
@@ -22,6 +24,15 @@ export function UserFormModal({ onClose, onCreated }: Props) {
   const [supervisors, setSupervisors] = useState<UserDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Unsaved-work guard: once anything is filled in, a stray backdrop click
+  // doesn't close the form and leaving the page asks first.
+  const dirty =
+    [email, firstName, lastName, title, jobDescription, supervisorId].some(
+      (v) => v.trim() !== '',
+    ) || role !== 'Member';
+  useUnsavedChangesWarning(dirty && !submitting);
+  const backdrop = useBackdropDismiss(onClose, dirty);
 
   useEffect(() => {
     api
@@ -58,7 +69,7 @@ export function UserFormModal({ onClose, onCreated }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdrop}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ marginTop: 0 }}>Add user</h3>
         {error && <div className="alert error">{error}</div>}
