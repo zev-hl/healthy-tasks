@@ -240,6 +240,10 @@ export const updateTaskSchema = z.object({
   startAt: optionalDateTime,
   dueAt: optionalDateTime,
   dutyId: optionalDutyId,
+  // HLAI-118 special attributes: null clears one; an unknown group is a 400
+  // from the service.
+  alertGroupId: z.number().int().positive().nullable().optional(),
+  alertType: z.enum(EXCLUSIVES_ALERT_TYPES).nullable().optional(),
   // Phase 10: reviewer chosen when sending a task to Review (required by the
   // service only on a transition into Review).
   reviewerId: optionalUserId,
@@ -377,6 +381,14 @@ const taskFiltersSchema = z.object({
   departmentIds: z.array(z.string().uuid()).max(200).optional(),
   dutyIds: z.array(z.string().uuid()).max(500).optional(),
   dutyMismatch: z.boolean().optional(),
+  // Special attribute filters (HLAI-118): chosen values, plus "(not set)".
+  alertGroupIds: z.array(z.number().int().positive()).max(500).optional(),
+  includeNoAlertGroup: z.boolean().optional(),
+  alertTypes: z
+    .array(z.enum(EXCLUSIVES_ALERT_TYPES))
+    .max(EXCLUSIVES_ALERT_TYPES.length)
+    .optional(),
+  includeNoAlertType: z.boolean().optional(),
 });
 
 export const taskSearchSchema = z.object({

@@ -2442,7 +2442,7 @@ describe('admin changes a sign-in address: both addresses are told', () => {
     assert.equal(res.status, 200, JSON.stringify(res.body));
     const summary = res.body.emailChange;
     assert.equal(summary.signInMethod, 'password');
-    assert.equal(summary.emailed, true);
+    assert.equal(summary.inactive, false);
     assert.ok(summary.resetLink.includes('/reset-password?token='), 'the admin gets the link');
     assert.ok(summary.expiresAt);
     const [toNew] = mailTo('leaver@gmail.com');

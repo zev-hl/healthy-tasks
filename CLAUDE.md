@@ -162,6 +162,14 @@ Mutable records carry a version; services call `assertNotStale`
 (`utils/optimistic.ts`) to reject stale writes (409). The frontend surfaces this
 via `useStaleWriteGuard` / `ConflictBanner`.
 
+### Task special attributes (HLAI-118)
+Optional, fixed-list attributes on a task — Alert Group (`Task.alertGroupId` →
+`AlertGroup`) and Alert Type (`Task.alertType`, one of `EXCLUSIVES_ALERT_TYPES`) —
+shown under the task page's property row (pencil → searchable dropdowns, saved
+together with Save), as a capsule column in the task list, and as a list filter with "(not
+set)". One list drives all of it: `TASK_ATTRIBUTE_KEYS` (shared) +
+`lib/taskAttributes.ts`. See `docs/architecture.md` §15.
+
 ### Background scheduler
 `services/scheduler.service.ts` runs recurrence materialization, reminder-email
 dispatch, and goal-review passes. Started only from `server.ts` and only when

@@ -26,6 +26,7 @@ import {
   getTaskAccessScope,
 } from './access-control.service.js';
 import { dutyRefSelect, heldDutiesSelect, isDutyMismatch, toDutyRef } from './duty.mapper.js';
+import { alertGroupRefSelect, toAlertType } from './task.mapper.js';
 import { mismatchedTaskIds } from './duty-check.service.js';
 
 // Hard cap on export size to bound memory (well above realistic result sets).
@@ -51,6 +52,8 @@ export const rowInclude = {
   // flag is judged against them while the task is in Review).
   priorAssignee: { select: heldDutiesSelect },
   duty: dutyRefSelect,
+  // HLAI-118: the special attributes.
+  alertGroup: alertGroupRefSelect,
   _count: { select: { children: true } },
   // Phase 10: the predecessor ids that feed the Gantt view's dependency arrows.
   blockedBy: { select: { blockerId: true } },
@@ -84,6 +87,8 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     ...classifyRow(scope, t.id),
     duty: t.duty ? toDutyRef(t.duty) : null,
     dutyMismatch: isDutyMismatch(t),
+    alertGroup: t.alertGroup ? { id: t.alertGroup.id, name: t.alertGroup.name } : null,
+    alertType: toAlertType(t.alertType),
   };
 }
 
@@ -225,6 +230,20 @@ export async function buildWhere(
   }
   if (f.dutyIds && f.dutyIds.length > 0) and.push({ dutyId: { in: f.dutyIds } });
   if (f.dutyMismatch) and.push({ id: { in: await mismatchedTaskIds() } });
+
+  // Special attributes (HLAI-118): per attribute, one of the chosen values OR
+  // "(not set)" when asked for — the same shape as Assignee + "Unassigned".
+  const alertGroupOr: Prisma.TaskWhereInput[] = [];
+  if (f.alertGroupIds && f.alertGroupIds.length > 0) {
+    alertGroupOr.push({ alertGroupId: { in: f.alertGroupIds } });
+  }
+  if (f.includeNoAlertGroup) alertGroupOr.push({ alertGroupId: null });
+  if (alertGroupOr.length > 0) and.push({ OR: alertGroupOr });
+
+  const alertTypeOr: Prisma.TaskWhereInput[] = [];
+  if (f.alertTypes && f.alertTypes.length > 0) alertTypeOr.push({ alertType: { in: f.alertTypes } });
+  if (f.includeNoAlertType) alertTypeOr.push({ alertType: null });
+  if (alertTypeOr.length > 0) and.push({ OR: alertTypeOr });
 
   return and.length > 0 ? { AND: and } : {};
 }

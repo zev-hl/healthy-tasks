@@ -101,6 +101,12 @@ export interface TaskFieldValues {
    * callers that can't change the duty simply leave it out (never diffed then).
    */
   duty?: string | null;
+  /**
+   * HLAI-118: the Alert Group's name and the Alert Type's label, or null for
+   * none. Optional like `duty`: left out, never diffed.
+   */
+  alertGroup?: string | null;
+  alertType?: string | null;
 }
 
 function dateValue(d: Date | null): string | null {
@@ -165,6 +171,10 @@ export function buildTaskFieldEntries(params: {
     updated(F.dueAt, dateValue(before.dueAt), dateValue(after.dueAt));
   if ((before.duty ?? null) !== (after.duty ?? null))
     updated(F.duty, before.duty ?? null, after.duty ?? null);
+  if ((before.alertGroup ?? null) !== (after.alertGroup ?? null))
+    updated(F.alertGroup, before.alertGroup ?? null, after.alertGroup ?? null);
+  if ((before.alertType ?? null) !== (after.alertType ?? null))
+    updated(F.alertType, before.alertType ?? null, after.alertType ?? null);
 
   return entries;
 }
