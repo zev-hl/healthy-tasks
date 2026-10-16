@@ -1044,11 +1044,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </div>
           )}
 
-          {tab === 'comments' && (
-            <section className="card">
-              <Comments task={task} currentUser={currentUser} onChanged={applyTask} onDirtyChange={setCommentsDirty} />
-            </section>
-          )}
+          {/* Always mounted, only hidden on other tabs: unmounting would throw
+              away a comment being written when someone flips to Work or History. */}
+          <section className="card" hidden={tab !== 'comments'}>
+            <Comments task={task} currentUser={currentUser} onChanged={applyTask} onDirtyChange={setCommentsDirty} />
+          </section>
 
           {tab === 'history' && (
             <section className="card">
