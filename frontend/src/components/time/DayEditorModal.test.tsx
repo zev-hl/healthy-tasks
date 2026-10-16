@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
-import type { TimeDayDto } from '@healthy-tasks/shared';
+import { Link } from 'react-router-dom';
+import type { RelatedTaskDto, TimeDayDto } from '@healthy-tasks/shared';
 import type { CatalogDuty } from '../../lib/duties';
 
 vi.mock('../../api/client', () => ({
@@ -23,7 +24,7 @@ vi.mock('../../api/client', () => ({
 
 const { api } = await import('../../api/client');
 const { DayEditorModal } = await import('./DayEditorModal');
-const { renderWithRouter } = await import('../../test/render');
+const { renderWithDataRouter } = await import('../../test/render');
 
 const listDays = api.listTimeDays as unknown as ReturnType<typeof vi.fn>;
 const listRelated = api.listTimeRelatedTasks as unknown as ReturnType<typeof vi.fn>;
@@ -59,7 +60,8 @@ const day = (over: Partial<TimeDayDto> = {}): TimeDayDto => ({
 function open(props: Partial<Parameters<typeof DayEditorModal>[0]> = {}) {
   const onClose = vi.fn();
   const onChanged = vi.fn();
-  renderWithRouter(
+  // A data router: the editor's unsaved-changes guard uses useBlocker.
+  renderWithDataRouter(
     <DayEditorModal
       date="2026-09-21"
       readOnly={false}
@@ -71,6 +73,7 @@ function open(props: Partial<Parameters<typeof DayEditorModal>[0]> = {}) {
       onNavigate={vi.fn()}
       {...props}
     />,
+    { extraRoutes: [{ path: '/tasks/:id', element: <div>Task page</div> }] },
   );
   return { onClose, onChanged };
 }
@@ -79,6 +82,23 @@ beforeEach(() => {
   vi.clearAllMocks();
   listRelated.mockResolvedValue([]);
 });
+
+const RELATED: RelatedTaskDto = {
+  id: 42,
+  name: 'Pack the Tuesday orders',
+  status: 'InProgress',
+  assignee: { id: 'me', email: 'me@x', firstName: 'Me', lastName: 'Test', title: null },
+  duty: {
+    id: 'pack',
+    name: 'Packing',
+    departmentId: 'ful',
+    departmentName: 'Fulfillment',
+    color: '#b8720a',
+    archived: false,
+  },
+  startAt: '2026-09-21T13:00:00Z',
+  dueAt: null,
+};
 
 describe('DayEditorModal', () => {
   it('logs time against held duties with the quick buttons and saves the day', async () => {
@@ -165,5 +185,77 @@ describe('DayEditorModal', () => {
     expect(listDays).toHaveBeenCalledWith('2026-09-21', '2026-09-21', 'grace');
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reopen day' })).not.toBeInTheDocument();
+  });
+
+  it('opens a related task in a new tab, so the day being edited stays put', async () => {
+    listDays.mockResolvedValue([]);
+    listRelated.mockResolvedValue([RELATED]);
+    open();
+    const link = await screen.findByRole('link', { name: RELATED.name });
+    expect(link).toHaveAttribute('href', '/tasks/42');
+    expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  describe('leaving the page with unsaved time', () => {
+    // Stands in for the sidebar (or any in-app link outside the editor).
+    function openWithSidebar() {
+      renderWithDataRouter(
+        <>
+          <Link to="/tasks/42">Sidebar link</Link>
+          <DayEditorModal
+            date="2026-09-21"
+            readOnly={false}
+            person={null}
+            duties={DUTIES}
+            heldDutyIds={['pack', 'recv']}
+            onClose={vi.fn()}
+            onChanged={vi.fn()}
+            onNavigate={vi.fn()}
+          />
+        </>,
+        { extraRoutes: [{ path: '/tasks/:id', element: <div>Task page</div> }] },
+      );
+    }
+    beforeEach(() => listDays.mockResolvedValue([]));
+
+    it('asks first, and staying keeps the edits', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      openWithSidebar();
+      await screen.findByLabelText('Packing hours');
+      fireEvent.click(screen.getAllByRole('button', { name: '+1h' })[0]!);
+
+      fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
+
+      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+      expect(screen.queryByText('Task page')).not.toBeInTheDocument();
+      expect(screen.getByText('1:00')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save day' })).toBeEnabled();
+      confirm.mockRestore();
+    });
+
+    it('leaves when the person confirms', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      openWithSidebar();
+      await screen.findByLabelText('Packing hours');
+      fireEvent.click(screen.getAllByRole('button', { name: '+1h' })[0]!);
+
+      fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
+
+      expect(await screen.findByText('Task page')).toBeInTheDocument();
+      expect(confirm).toHaveBeenCalledTimes(1);
+      confirm.mockRestore();
+    });
+
+    it('does not ask when nothing has changed', async () => {
+      const confirm = vi.spyOn(window, 'confirm');
+      openWithSidebar();
+      await screen.findByLabelText('Packing hours');
+
+      fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
+
+      expect(await screen.findByText('Task page')).toBeInTheDocument();
+      expect(confirm).not.toHaveBeenCalled();
+      confirm.mockRestore();
+    });
   });
 });
