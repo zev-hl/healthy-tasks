@@ -37,6 +37,8 @@ import { assigneeOptionGroups, dutyOptionGroups, isMismatch, useDutyCatalog } fr
 import { DutyTag } from './duties/DutyTag';
 import { DutyCrossCheck } from './duties/DutyCrossCheck';
 import { GroupedOptions } from './duties/GroupedOptions';
+import { TaskAttributesBar } from './TaskAttributesBar';
+import { TaskAttributesModal } from './TaskAttributesModal';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
 
@@ -72,6 +74,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // HLAI-118: the attributes pop-up behind the pencil.
+  const [editingAttrs, setEditingAttrs] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [copyAttachments, setCopyAttachments] = useState(false);
@@ -865,6 +869,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           )}
         </div>
 
+        {/* HLAI-118: the special attributes, under the property row. */}
+        <TaskAttributesBar task={task} canEdit={canEdit} onEdit={() => setEditingAttrs(true)} />
+
         {dutyMismatch && stagedDuty && doer && doerId && (
           <DutyCrossCheck
             personName={userLabel(doer)}
@@ -1412,6 +1419,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             )}
           </div>
         </div>
+      )}
+
+      {editingAttrs && (
+        <TaskAttributesModal
+          task={task}
+          onClose={() => setEditingAttrs(false)}
+          onSaved={applyTask}
+        />
       )}
 
       {confirmDelete && (

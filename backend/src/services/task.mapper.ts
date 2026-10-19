@@ -1,11 +1,14 @@
 import type { Task, TaskRecurrence, User } from '@prisma/client';
-import type {
-  RecurrenceType,
-  TaskAccessLevel,
-  TaskDto,
-  TaskDetailDto,
-  TaskRecurrenceDto,
-  TaskRef,
+import {
+  EXCLUSIVES_ALERT_TYPES,
+  type ExclusivesAlertType,
+  type RecurrenceType,
+  type TaskAccessLevel,
+  type TaskAlertGroupRef,
+  type TaskDto,
+  type TaskDetailDto,
+  type TaskRecurrenceDto,
+  type TaskRef,
 } from '@healthy-tasks/shared';
 import { toUserRef } from './user.mapper.js';
 import {
@@ -35,7 +38,26 @@ export type TaskWithRefs = Task & {
   reviewInitiator: UserRefSelect | null;
   priorAssignee: (UserRefSelect & HolderWithDuties) | null;
   duty: DutyWithDepartment | null;
+  alertGroup: TaskAlertGroupRef | null;
 };
+
+/** HLAI-118: as much of a task's Alert Group as the task views show. */
+export const alertGroupRefSelect = { select: { id: true, name: true, isActive: true } } as const;
+
+/** HLAI-118: a task's Alert Group as the task views show it. */
+export function toAlertGroupRef(group: TaskAlertGroupRef): TaskAlertGroupRef {
+  return { id: group.id, name: group.name, isActive: group.isActive };
+}
+
+/**
+ * A stored Alert Type, if the app still knows it. Types are checked when
+ * written; one later removed from EXCLUSIVES_ALERT_TYPES reads as not set.
+ */
+export function toAlertType(value: string | null): ExclusivesAlertType | null {
+  return value !== null && (EXCLUSIVES_ALERT_TYPES as readonly string[]).includes(value)
+    ? (value as ExclusivesAlertType)
+    : null;
+}
 
 const userRefSelect = {
   select: { id: true, email: true, firstName: true, lastName: true, title: true },
@@ -52,6 +74,7 @@ export const taskInclude = {
   reviewInitiator: userRefSelect,
   priorAssignee: holderRefSelect,
   duty: dutyRefSelect,
+  alertGroup: alertGroupRefSelect,
 } as const;
 
 const taskRefSelect = { id: true, name: true, status: true } as const;
@@ -131,6 +154,8 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     dutyId: task.dutyId,
     duty: task.duty ? toDutyRef(task.duty) : null,
     dutyMismatch: isDutyMismatch(task),
+    alertGroup: task.alertGroup ? toAlertGroupRef(task.alertGroup) : null,
+    alertType: toAlertType(task.alertType),
   };
 }
 
