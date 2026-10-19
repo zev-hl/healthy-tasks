@@ -383,6 +383,12 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ parentId }),
     }),
+  // A brand-new sub-task by name; returns the PARENT's refreshed detail.
+  createSubtask: (parentId: number, name: string) =>
+    request<TaskDetailDto>(`/api/tasks/${parentId}/subtasks`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
   clearParent: (id: number) =>
     request<TaskDetailDto>(`/api/tasks/${id}/parent`, { method: 'DELETE' }),
   addDependency: (id: number, type: DependencyType, otherTaskId: number) =>

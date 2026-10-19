@@ -1229,6 +1229,71 @@ describe('task hierarchy (parent/child)', () => {
   });
 });
 
+describe('new sub-task by name', () => {
+  it('creates the task already under the parent, with the defaults', async () => {
+    const tok = await adminToken();
+    const parent = await makeTask(tok, 'Parent for new sub-task');
+
+    const res = await request(app)
+      .post(`/api/tasks/${parent.id}/subtasks`)
+      .set(auth(tok))
+      .send({ name: '  Order the labels  ' });
+    assert.equal(res.status, 201);
+    // The response is the parent's refreshed detail, showing the new child.
+    assert.equal(res.body.id, parent.id);
+    const kid = (res.body.children as { id: number; name: string }[]).find(
+      (c) => c.name === 'Order the labels',
+    );
+    assert.ok(kid, 'the new sub-task is listed under the parent');
+
+    const child = await request(app).get(`/api/tasks/${kid.id}`).set(auth(tok));
+    assert.equal(child.body.parentId, parent.id);
+    assert.equal(child.body.status, 'Open');
+    assert.equal(child.body.priority, 'Medium');
+    assert.equal(child.body.startAt, null);
+    assert.equal(child.body.dueAt, null);
+    assert.equal(child.body.assigneeId, child.body.creatorId);
+
+    // Its history records the parent, as linking an existing task would.
+    const hist = await request(app).get(`/api/tasks/${kid.id}/history`).set(auth(tok));
+    const parentEntries = (hist.body as { field: string; changeType: string }[]).filter(
+      (h) => h.field === 'parentTask' && h.changeType === 'added',
+    );
+    assert.equal(parentEntries.length, 1);
+  });
+
+  it('rejects a name that is too short, and creates nothing', async () => {
+    const tok = await adminToken();
+    const parent = await makeTask(tok, 'Parent for short name');
+    const res = await request(app)
+      .post(`/api/tasks/${parent.id}/subtasks`)
+      .set(auth(tok))
+      .send({ name: 'x' });
+    assert.equal(res.status, 400);
+    const detail = await request(app).get(`/api/tasks/${parent.id}`).set(auth(tok));
+    assert.equal(detail.body.children.length, 0);
+  });
+
+  it('needs edit access to the parent', async () => {
+    const admin = await adminToken();
+    const parent = await makeTask(admin, 'Admin-only parent');
+    await seedUser({
+      email: 'subtask-outsider@test.local',
+      role: 'Member',
+      password: 'Secret123!',
+    });
+    const outsider = await login('subtask-outsider@test.local', 'Secret123!');
+
+    const res = await request(app)
+      .post(`/api/tasks/${parent.id}/subtasks`)
+      .set(auth(outsider))
+      .send({ name: 'Sneaky child' });
+    assert.ok([403, 404].includes(res.status), `expected 403/404, got ${res.status}`);
+    const detail = await request(app).get(`/api/tasks/${parent.id}`).set(auth(admin));
+    assert.equal(detail.body.children.length, 0);
+  });
+});
+
 describe('task dependencies (blocks / is blocked by)', () => {
   it('adds and removes a Blocks edge, reflected on both tasks', async () => {
     const tok = await adminToken();
