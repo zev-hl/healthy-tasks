@@ -374,8 +374,9 @@ export async function updateTask(
     if (doer) await assertHoldsDuty(doer, afterDutyId);
   }
 
-  // HLAI-118 special attributes. A group being set must still exist: it may
-  // have been deleted since the page was loaded.
+  // HLAI-118 special attributes. A group being set must still exist and be
+  // active: it may have been deleted or switched off since the page was loaded.
+  // A task keeps an inactive group it already has; it just cannot be picked.
   const alertGroupChanging =
     input.alertGroupId !== undefined && input.alertGroupId !== existing.alertGroupId;
   const alertTypeChanging =
@@ -386,8 +387,17 @@ export async function updateTask(
         alertGroupHistoryLabel(input.alertGroupId ?? null),
       ])
     : [null, null];
-  if (alertGroupChanging && input.alertGroupId != null && alertGroupAfter === null) {
-    throw HttpError.badRequest('That Alert Group no longer exists. Pick another one.');
+  if (alertGroupChanging && input.alertGroupId != null) {
+    if (alertGroupAfter === null) {
+      throw HttpError.badRequest('That Alert Group no longer exists. Pick another one.');
+    }
+    const group = await prisma.alertGroup.findUnique({
+      where: { id: input.alertGroupId },
+      select: { isActive: true },
+    });
+    if (!group?.isActive) {
+      throw HttpError.badRequest('That Alert Group is inactive. Pick another one.');
+    }
   }
 
   // Validate Start < Due using the values that WILL be in effect after this

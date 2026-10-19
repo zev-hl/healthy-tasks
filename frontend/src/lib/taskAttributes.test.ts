@@ -11,7 +11,7 @@ import {
 
 describe("a task's attributes as text", () => {
   const task = {
-    alertGroup: { id: 4, name: 'Versure Exclusives' },
+    alertGroup: { id: 4, name: 'Versure Exclusives', isActive: true },
     alertType: 'BuyBoxLost' as const,
   };
 

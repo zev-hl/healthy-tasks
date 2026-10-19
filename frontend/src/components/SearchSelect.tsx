@@ -13,6 +13,8 @@ interface Props {
   label: string;
   /** Shown when nothing is chosen, and as the first option, which clears the value. */
   noneLabel?: string;
+  /** The button's text for a current value that is not among the options (no longer offered). */
+  valueLabel?: string;
   disabled?: boolean;
 }
 
@@ -32,6 +34,7 @@ export function SearchSelect({
   onChange,
   label,
   noneLabel = '— None —',
+  valueLabel,
   disabled = false,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -43,7 +46,9 @@ export function SearchSelect({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  const selected = options.find((o) => o.value === value) ?? null;
+  const selected =
+    options.find((o) => o.value === value) ??
+    (value !== null && valueLabel ? { value, label: valueLabel } : null);
 
   // While searching, only matches; otherwise the clearing option first.
   const shown = useMemo<Shown[]>(() => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   EXCLUSIVES_ALERT_TYPES,
   EXCLUSIVES_ALERT_TYPE_LABELS,
@@ -11,6 +11,7 @@ import {
   type UpdateTaskRequest,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 import { SearchSelect, type SearchSelectOption } from './SearchSelect';
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
   onSaved: (task: TaskDetailDto) => void;
 }
 
+const UNSAVED_MESSAGE = 'You have unsaved changes. Leave this page and discard them?';
+
 const ALERT_TYPE_OPTIONS: SearchSelectOption[] = EXCLUSIVES_ALERT_TYPES.map((t) => ({
   value: t,
   label: EXCLUSIVES_ALERT_TYPE_LABELS[t],
@@ -28,8 +31,10 @@ const ALERT_TYPE_OPTIONS: SearchSelectOption[] = EXCLUSIVES_ALERT_TYPES.map((t) 
 /**
  * The pop-up behind the attributes pencil (HLAI-118): each attribute with a
  * dropdown that can be searched. The picks are held here until Save, which
- * sends the changed ones in one request and closes; Cancel, Escape or a click
- * outside close it without saving anything.
+ * sends the changed ones in one request and closes; Cancel closes it without
+ * saving anything. Escape or a click outside close it without saving too; if a
+ * pick had changed, the browser asks first: OK closes it, and Cancel keeps it
+ * open with the picks, ready to Save.
  */
 export function TaskAttributesModal({ task, onClose, onSaved }: Props) {
   const [groups, setGroups] = useState<ExclusivesGroupOptionDto[] | null>(null);
@@ -55,24 +60,23 @@ export function TaskAttributesModal({ task, onClose, onSaved }: Props) {
     };
   }, []);
 
-  // Escape closes the pop-up without saving (an open dropdown takes the key first).
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // The task's own group, if an Admin has switched it off (now or since the
+  // task was loaded): it stays the current value, but cannot be picked again.
+  const own = task.alertGroup;
+  const ownInactive =
+    own !== null && (!own.isActive || groups?.find((g) => g.id === own.id)?.isActive === false);
 
+  // Only active groups are offered.
   const groupOptions = useMemo<SearchSelectOption[]>(() => {
-    const list = (groups ?? []).map((g) => ({ value: String(g.id), label: g.name }));
+    const list = (groups ?? [])
+      .filter((g) => g.isActive)
+      .map((g) => ({ value: String(g.id), label: g.name }));
     // The task's own group stays choosable even if the list has not caught up.
-    const own = task.alertGroup;
-    if (own && !list.some((o) => o.value === String(own.id))) {
+    if (own && !ownInactive && !list.some((o) => o.value === String(own.id))) {
       list.unshift({ value: String(own.id), label: own.name });
     }
     return list;
-  }, [groups, task.alertGroup]);
+  }, [groups, own, ownInactive]);
 
   // Only what differs from the task is sent.
   const changes: UpdateTaskRequest = {
@@ -80,6 +84,22 @@ export function TaskAttributesModal({ task, onClose, onSaved }: Props) {
     ...(alertType !== task.alertType && { alertType }),
   };
   const dirty = Object.keys(changes).length > 0;
+
+  /** Escape or a click outside: close, first asking when picks are not saved. */
+  const dismiss = useCallback(() => {
+    if (dirty && !window.confirm(UNSAVED_MESSAGE)) return; // Cancel: keep the picks
+    onClose();
+  }, [dirty, onClose]);
+  const backdrop = useBackdropDismiss(dismiss);
+
+  // An open dropdown takes Escape first.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') dismiss();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dismiss]);
 
   async function save() {
     if (!dirty) return;
@@ -102,6 +122,7 @@ export function TaskAttributesModal({ task, onClose, onSaved }: Props) {
           label={label}
           options={groupOptions}
           value={groupId}
+          valueLabel={own && ownInactive ? `${own.name} (inactive)` : undefined}
           disabled={groups === null || saving}
           onChange={setGroupId}
         />
@@ -119,7 +140,7 @@ export function TaskAttributesModal({ task, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" {...backdrop}>
       <div
         className="modal task-attrs-modal"
         role="dialog"

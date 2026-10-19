@@ -329,6 +329,10 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Up
   // Deactivating (active → inactive) mirrors deactivateUser: revoke live tokens
   // and drop this user as a supervisor from any reports.
   const deactivating = input.isActive === false && existing.isActive;
+  // A new sign-in address also signs the person out everywhere, like a password
+  // reset: the old mailbox is told of the change, so whoever is signed in must
+  // sign in again with the new address.
+  const revokeSessions = deactivating || emailChange !== null;
 
   // A new address starts clean: the Google account linked to the old one is
   // let go, so the new address can link its own on first Google sign-in (a
@@ -348,7 +352,7 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<Up
     ...(input.jobDescription !== undefined ? { jobDescription: input.jobDescription } : {}),
     ...(input.supervisorId !== undefined ? { supervisorId: input.supervisorId } : {}),
     ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-    ...(deactivating ? { tokenVersion: { increment: 1 } } : {}),
+    ...(revokeSessions ? { tokenVersion: { increment: 1 } } : {}),
     ...(emailChange ? { googleSub: null } : {}),
     ...(passwordHash ? { passwordHash } : {}),
   };

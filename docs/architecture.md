@@ -115,7 +115,9 @@ Every feature is built the same way, which keeps the codebase predictable:
   first sign-in.
 - **Changing someone's sign-in address** (an Admin's `PATCH /api/users/:id`;
   `updateUser` + `tellAboutEmailChange` in `users.controller.ts`). Only a real change
-  counts (the address is trimmed and lowercased first). In the same write: the old
+  counts (the address is trimmed and lowercased first). In the same write: the
+  person is signed out everywhere (`tokenVersion` bumped, as for a password reset:
+  the old mailbox is told of the change, so a session there must not carry on), the old
   Google link is cleared (`googleSub = null`, so the new address can link its own Google
   account — a different one was otherwise refused for good), unused reset links are
   retired (one sent to the old mailbox must not open the account), and moving from a
@@ -704,23 +706,32 @@ tasks can be filtered by them reliably.
   a task; the filter's ticks ⇄ request) drive the page, the column and the filter.
   A future attribute is a Task field + validation + mapper + filter + an entry in
   that list and its `switch`es.
-- **API.** `TaskDto` / `TaskRowDto` carry `alertGroup: { id, name } | null` and
-  `alertType | null`. `PATCH /api/tasks/:id` takes `alertGroupId` / `alertType`
-  (null clears; an unknown group is a 400). Changes go to History (the group's name,
+- **API.** `TaskDto` / `TaskRowDto` carry `alertGroup: { id, name, isActive } | null`
+  and `alertType | null`. `PATCH /api/tasks/:id` takes `alertGroupId` / `alertType`
+  (null clears; an unknown or inactive group is a 400). Changes go to History (the group's name,
   the type's label). Duplicate and task-level recurrence copy both. Filters:
   `alertGroupIds` + `includeNoAlertGroup`, `alertTypes` + `includeNoAlertType` —
   per attribute, one of the values OR "(not set)", ANDed with every other filter
   (the Due Date report shares them). The xlsx export has a column each.
+- **Inactive groups.** A group an Admin switches off stays on the tasks that have
+  it, until someone picks another: the task page shows the Alert Groups page's red
+  mark before its name, and the list column still shows it. It can no longer be
+  picked: the pencil's dropdown leaves it out (its own value reads "(inactive)",
+  through `SearchSelect`'s `valueLabel`), and the server refuses it. The group
+  options endpoint still lists every group, with `isActive`, for the filters.
 - **Task page.** `TaskAttributesBar` sits under the property row: everyone who
   can see the task sees the values; editors get a pencil opening
   `TaskAttributesModal`, with one `SearchSelect` per attribute (a dropdown with a
   search box at the top, opening in place so the dialog never clips it). The
   picks are held until **Save**, which sends only what changed in one request (no
-  staleness token, like Tags) and closes; Cancel, Escape or a click outside close
-  it without saving.
-- **Task list.** The `attributes` column (`TaskAttributesCell`): up to three
-  small capsules (an Alert Type in its Exclusives tone) and a "+" opening a window
-  that lists every attribute. The "Attributes" filter picks an attribute, then a
+  staleness token, like Tags) and closes; Cancel, Escape or a click outside
+  (`useBackdropDismiss`) close it without saving. With picks not saved, Escape
+  or a click outside first ask with a browser `confirm()`: OK closes it, Cancel
+  keeps it open with the picks.
+- **Task list.** The `attributes` column (`TaskAttributesCell`): up to two
+  small capsules (an Alert Type in its Exclusives tone) and a button opening a
+  window that lists every attribute. It reads "+", or the number not shown ("+1",
+  "+2") once more than two are set, and "−" while the window is open. The "Attributes" filter picks an attribute, then a
   searchable `MultiSelect` of "(not set)" and its values; one chip per filtered
   attribute.
 - **Not covered:** the Kanban, Calendar and Gantt views, templates, and setting

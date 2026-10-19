@@ -26,7 +26,7 @@ import {
   getTaskAccessScope,
 } from './access-control.service.js';
 import { dutyRefSelect, heldDutiesSelect, isDutyMismatch, toDutyRef } from './duty.mapper.js';
-import { alertGroupRefSelect, toAlertType } from './task.mapper.js';
+import { alertGroupRefSelect, toAlertGroupRef, toAlertType } from './task.mapper.js';
 import { mismatchedTaskIds } from './duty-check.service.js';
 
 // Hard cap on export size to bound memory (well above realistic result sets).
@@ -87,7 +87,7 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     ...classifyRow(scope, t.id),
     duty: t.duty ? toDutyRef(t.duty) : null,
     dutyMismatch: isDutyMismatch(t),
-    alertGroup: t.alertGroup ? { id: t.alertGroup.id, name: t.alertGroup.name } : null,
+    alertGroup: t.alertGroup ? toAlertGroupRef(t.alertGroup) : null,
     alertType: toAlertType(t.alertType),
   };
 }

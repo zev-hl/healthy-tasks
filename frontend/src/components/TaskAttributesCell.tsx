@@ -3,16 +3,18 @@ import { createPortal } from 'react-dom';
 import { alertTone } from './exclusives/AlertBadge';
 import { taskAttributeList, type TaskAttributeValues } from '../lib/taskAttributes';
 
-/** Capsules shown in the cell before the rest wait behind the "+". */
-const SHOWN = 3;
+/** Capsules shown in the cell; the rest are counted on the button ("+1"). */
+const SHOWN = 2;
 /** The window's width, to line its right edge up with the "+". */
 const POP_WIDTH = 260;
 
 /**
  * The task list's Attributes column (HLAI-118): the attributes that are set,
- * as small capsules (at most three), and a "+" in the corner that opens a
- * window listing every attribute with its value. An Alert Type capsule takes
- * that type's colour from the Exclusives screens.
+ * as small capsules (at most two), and a button in the corner that opens a
+ * window listing every attribute with its value. The button reads "+", or how
+ * many capsules are not shown ("+1", "+2") when more than two are set, and "−"
+ * while the window is open. An Alert Type capsule takes that type's colour from
+ * the Exclusives screens.
  *
  * The window is portalled to the page so the table's scrolling cannot clip it,
  * and clicks inside it never open the row's task.
@@ -23,6 +25,10 @@ export function TaskAttributesCell({ task }: { task: TaskAttributeValues }) {
   const popRef = useRef<HTMLDivElement>(null);
   const all = taskAttributeList(task);
   const set = all.filter((a) => a.value !== null);
+  const hidden = Math.max(0, set.length - SHOWN);
+  const moreLabel = hidden > 0 ? `Show all attributes (${hidden} more)` : 'Show all attributes';
+  // Closed with capsules not shown: the button counts them instead of a "+".
+  const counted = hidden > 0 && !pos;
 
   useEffect(() => {
     if (!pos) return;
@@ -86,24 +92,28 @@ export function TaskAttributesCell({ task }: { task: TaskAttributeValues }) {
       <button
         ref={btnRef}
         type="button"
-        className="attrs-more"
-        aria-label={pos ? 'Hide attributes' : 'Show all attributes'}
+        className={counted ? 'attrs-more has-count' : 'attrs-more'}
+        aria-label={pos ? 'Hide attributes' : moreLabel}
         aria-expanded={pos !== null}
-        title={pos ? 'Hide attributes' : 'Show all attributes'}
+        title={pos ? 'Hide attributes' : moreLabel}
         onClick={(e) => {
           e.stopPropagation();
           toggle();
         }}
-        data-sign={pos ? 'minus' : 'plus'}
+        data-sign={pos ? 'minus' : counted ? 'count' : 'plus'}
       >
         {/* Drawn, not typed. As a text character the sign sits on the font's
             math axis rather than the middle of its text box, so it rendered a
             shade off-centre however the box was aligned. These strokes are
             centred on the viewBox, so the sign is exactly in the circle. */}
-        <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
-          <line x1="1.5" y1="5" x2="8.5" y2="5" />
-          {!pos && <line x1="5" y1="1.5" x2="5" y2="8.5" />}
-        </svg>
+        {counted ? (
+          `+${hidden}`
+        ) : (
+          <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+            <line x1="1.5" y1="5" x2="8.5" y2="5" />
+            {!pos && <line x1="5" y1="1.5" x2="5" y2="8.5" />}
+          </svg>
+        )}
       </button>
       {pos &&
         createPortal(

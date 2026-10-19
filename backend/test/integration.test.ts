@@ -2545,12 +2545,40 @@ describe('admin changes a sign-in address: both addresses are told', () => {
     assert.doesNotMatch(toOld!.text, /https?:\/\//, 'the notice has nothing to click');
   });
 
-  it('the same address retyped is no change, and sends nothing', async () => {
-    const u = await seedUser({ email: 'same@gmail.com', role: 'Member' });
+  it('signs the person out at once; they sign in again with the new address', async () => {
+    const u = await seedUser({
+      email: 'signedin@gmail.com',
+      role: 'Member',
+      password: 'Original123!',
+    });
+    const session = (await signInWithPassword('signedin@gmail.com', 'Original123!')).body
+      .token as string;
+    const me = (token: string) => request(app).get('/api/auth/me').set(auth(token));
+    assert.equal((await me(session)).status, 200);
+
+    assert.equal((await change(u.id, { email: 'signedout@gmail.com' })).status, 200);
+
+    const after = await me(session);
+    assert.equal(after.status, 401, 'the old session no longer works');
+    assert.match(after.body.error, /Session has been revoked/);
+    const again = await signInWithPassword('signedout@gmail.com', 'Original123!');
+    assert.equal(again.status, 200);
+    assert.equal((await me(again.body.token as string)).status, 200);
+  });
+
+  it('the same address retyped is no change, sends nothing, and keeps the session', async () => {
+    const u = await seedUser({ email: 'same@gmail.com', role: 'Member', password: 'Original123!' });
+    const session = (await signInWithPassword('same@gmail.com', 'Original123!')).body
+      .token as string;
     const res = await change(u.id, { email: '  SAME@gmail.com ', title: 'Lead' });
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(res.body.emailChange, undefined);
     assert.equal(mailer.sentEmails.length, 0);
+    assert.equal(
+      (await request(app).get('/api/auth/me').set(auth(session))).status,
+      200,
+      'still signed in',
+    );
   });
 
   it('an address already taken is refused, and nobody is emailed', async () => {

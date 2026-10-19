@@ -114,7 +114,10 @@ function patch(token: string, id: number, body: Record<string, unknown>) {
 async function getTask(token: string, id: number) {
   const res = await request(app).get(`/api/tasks/${id}`).set(auth(token));
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  return res.body as { alertGroup: { id: number; name: string } | null; alertType: string | null };
+  return res.body as {
+    alertGroup: { id: number; name: string; isActive: boolean } | null;
+    alertType: string | null;
+  };
 }
 
 async function history(token: string, id: number, field: string) {
@@ -142,13 +145,17 @@ describe('task special attributes', () => {
 
     const set = await patch(admin, t.id, { alertGroupId: versure, alertType: 'BuyBoxLost' });
     assert.equal(set.status, 200, JSON.stringify(set.body));
-    assert.deepEqual(set.body.alertGroup, { id: versure, name: 'Versure Exclusives' });
+    assert.deepEqual(set.body.alertGroup, {
+      id: versure,
+      name: 'Versure Exclusives',
+      isActive: true,
+    });
     assert.equal(set.body.alertType, 'BuyBoxLost');
 
     // One at a time: the other stays.
     await patch(admin, t.id, { alertGroupId: sports }).expect(200);
     task = await getTask(admin, t.id);
-    assert.deepEqual(task.alertGroup, { id: sports, name: 'Sports Nutrition' });
+    assert.deepEqual(task.alertGroup, { id: sports, name: 'Sports Nutrition', isActive: true });
     assert.equal(task.alertType, 'BuyBoxLost');
 
     // The same value again is no change.
@@ -187,6 +194,42 @@ describe('task special attributes', () => {
     assert.equal(task.alertType, null);
   });
 
+  it('an inactive Alert Group stays on its tasks, but cannot be picked', async () => {
+    const admin = await adminToken();
+    const versure = await makeGroup('Versure Exclusives');
+    const sports = await makeGroup('Sports Nutrition');
+    const t = await makeTask(admin, { name: 'Has it' });
+    const other = await makeTask(admin, { name: 'Does not' });
+    await patch(admin, t.id, { alertGroupId: versure, alertType: 'PriceChanged' }).expect(200);
+
+    await prisma.alertGroup.update({ where: { id: versure }, data: { isActive: false } });
+
+    // The task keeps it, marked inactive.
+    assert.deepEqual((await getTask(admin, t.id)).alertGroup, {
+      id: versure,
+      name: 'Versure Exclusives',
+      isActive: false,
+    });
+    // Saving the type alone, or the same group again, leaves it in place.
+    await patch(admin, t.id, { alertType: 'BuyBoxLost' }).expect(200);
+    await patch(admin, t.id, { alertGroupId: versure }).expect(200);
+    assert.equal((await getTask(admin, t.id)).alertGroup?.id, versure);
+
+    // Another task cannot pick it, and nothing of that request is saved.
+    const refused = await patch(admin, other.id, {
+      alertGroupId: versure,
+      alertType: 'PriceChanged',
+    });
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error, /That Alert Group is inactive\. Pick another one\./);
+    assert.equal((await getTask(admin, other.id)).alertGroup, null);
+    assert.equal((await getTask(admin, other.id)).alertType, null);
+
+    // Once changed, it cannot be picked back.
+    await patch(admin, t.id, { alertGroupId: sports }).expect(200);
+    assert.equal((await patch(admin, t.id, { alertGroupId: versure })).status, 400);
+  });
+
   it('a deleted Alert Group empties the attribute on its tasks, and the type stays', async () => {
     const admin = await adminToken();
     const versure = await makeGroup('Versure Exclusives');
@@ -221,7 +264,7 @@ describe('task special attributes', () => {
     const dup = await request(app).post(`/api/tasks/${t.id}/duplicate`).set(auth(admin)).send({});
     assert.equal(dup.status, 201, JSON.stringify(dup.body));
     const copy = await getTask(admin, dup.body.id);
-    assert.deepEqual(copy.alertGroup, { id: versure, name: 'Versure Exclusives' });
+    assert.deepEqual(copy.alertGroup, { id: versure, name: 'Versure Exclusives', isActive: true });
     assert.equal(copy.alertType, 'ListingSuppressed');
   });
 
@@ -277,7 +320,7 @@ describe('task list: attribute filters and export', () => {
     return res.body as {
       rows: {
         id: number;
-        alertGroup: { id: number; name: string } | null;
+        alertGroup: { id: number; name: string; isActive: boolean } | null;
         alertType: string | null;
       }[];
     };
@@ -312,7 +355,16 @@ describe('task list: attribute filters and export', () => {
     const { admin, versure, a, d } = await fourTasks();
     const rows = (await query(admin, {})).rows;
     const rowA = rows.find((r) => r.id === a)!;
-    assert.deepEqual(rowA.alertGroup, { id: versure, name: 'Versure Exclusives' });
+    assert.deepEqual(rowA.alertGroup, { id: versure, name: 'Versure Exclusives', isActive: true });
+
+    // A group switched off stays on the row, marked inactive.
+    await prisma.alertGroup.update({ where: { id: versure }, data: { isActive: false } });
+    const paused = (await query(admin, {})).rows.find((r) => r.id === a)!;
+    assert.deepEqual(paused.alertGroup, {
+      id: versure,
+      name: 'Versure Exclusives',
+      isActive: false,
+    });
     assert.equal(rowA.alertType, 'BuyBoxLost');
     const rowD = rows.find((r) => r.id === d)!;
     assert.equal(rowD.alertGroup, null);

@@ -133,7 +133,7 @@ controllers in `asyncHandler`. Validate input with `validateBody(zodSchema)`.
 Stateless JWT with a revocation path. `requireAuth` (`middleware/auth.ts`)
 verifies the token **and** re-checks on every request that the user exists, is
 active, and `token.tv === user.tokenVersion`. Bumping `tokenVersion`
-(deactivation / password reset) instantly invalidates outstanding tokens.
+(deactivation / password reset / a new sign-in address) instantly invalidates outstanding tokens.
 Authorize with `requireRole('Admin', ...)` / `requireAdmin` after `requireAuth`.
 
 Sessions are **sliding/idle**, not fixed-lifetime: every authenticated response
@@ -148,7 +148,8 @@ The address decides the way in: with `GOOGLE_ALLOWED_DOMAIN` set, a company
 address signs in with Google only and any other with a password only
 (`utils/allowed-domain.ts`, `signInMethodFor`). When an Admin changes someone's
 address, both addresses are emailed (how to sign in now; a notice to the old one),
-the old Google link and reset links are cleared — see `docs/architecture.md` §4.
+the old Google link and reset links are cleared, and `tokenVersion` is bumped so
+they are signed out everywhere — see `docs/architecture.md` §4.
 
 ### Access control (Phase 13)
 `services/access-control.service.ts` is central and non-trivial: per-task access
@@ -168,7 +169,8 @@ Optional, fixed-list attributes on a task — Alert Group (`Task.alertGroupId` �
 shown under the task page's property row (pencil → searchable dropdowns, saved
 together with Save), as a capsule column in the task list, and as a list filter with "(not
 set)". One list drives all of it: `TASK_ATTRIBUTE_KEYS` (shared) +
-`lib/taskAttributes.ts`. See `docs/architecture.md` §15.
+`lib/taskAttributes.ts`. A group an Admin switches off stays on its tasks (red
+mark on the task page) but can no longer be picked. See `docs/architecture.md` §15.
 
 ### Background scheduler
 `services/scheduler.service.ts` runs recurrence materialization, reminder-email

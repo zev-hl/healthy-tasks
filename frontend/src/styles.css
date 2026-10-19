@@ -1664,6 +1664,13 @@ textarea:focus-visible {
 .task-attrs-edit {
   margin-left: -8px;
 }
+/* A switched-off Alert Group: the Alert Groups page's red mark, before the name. */
+.task-attr-inactive {
+  display: inline-flex;
+  align-self: center;
+  margin-right: -3px;
+  color: var(--danger);
+}
 .task-attrs-field-label {
   display: block;
   font-size: 0.82rem;
@@ -3873,9 +3880,10 @@ th.sortable:hover .sort-hint {
   cursor: default;
 }
 
-/* HLAI-118: the task list's Attributes column — small capsules (an Alert
-   Type's takes its colour from the Exclusives screens) and a "+" in the
-   corner that opens a window with every attribute. */
+/* HLAI-118: the task list's Attributes column — up to two small capsules
+   (an Alert Type's takes its colour from the Exclusives screens) and a "+"
+   (or "+1", "+2" for the ones not shown) in the corner that opens a window
+   with every attribute. */
 .attrs-cell {
   display: flex;
   align-items: center;
@@ -3925,6 +3933,14 @@ th.sortable:hover .sort-hint {
   stroke: currentColor;
   stroke-width: 1.6;
   stroke-linecap: round;
+}
+/* "+1", "+2": how many capsules are not shown; a pill instead of a circle. */
+.attrs-more.has-count {
+  width: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
 }
 .attrs-more:hover,
 .attrs-more[aria-expanded='true'] {
@@ -5900,6 +5916,12 @@ tr.just-completed > td {
   transition:
     border-color var(--dur) var(--ease),
     transform var(--dur) var(--ease);
+}
+/* The card is a <button>: without its own background here, the default
+   button fill (dark accent) painted it on hover and press, hiding the text. */
+.goal-card:hover,
+.goal-card:active {
+  background: var(--surface);
 }
 .goal-card:hover {
   border-color: var(--accent-mid);

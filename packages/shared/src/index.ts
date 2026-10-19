@@ -2006,6 +2006,11 @@ export const TASK_ATTRIBUTE_LABELS: Record<TaskAttributeKey, string> = {
 export interface TaskAlertGroupRef {
   id: number;
   name: string;
+  /**
+   * False once an Admin switches the group off. The task keeps it until someone
+   * picks another, but an inactive group can no longer be picked.
+   */
+  isActive: boolean;
 }
 
 /**
@@ -2313,6 +2318,8 @@ export interface ExclusivesGroupOptionDto {
   id: number;
   name: string;
   groupType: ExclusivesGroupType;
+  /** Filters list every group; the task attributes picker offers only active ones. */
+  isActive: boolean;
 }
 
 // ===========================================================================

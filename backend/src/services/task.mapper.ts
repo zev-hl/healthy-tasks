@@ -42,7 +42,12 @@ export type TaskWithRefs = Task & {
 };
 
 /** HLAI-118: as much of a task's Alert Group as the task views show. */
-export const alertGroupRefSelect = { select: { id: true, name: true } } as const;
+export const alertGroupRefSelect = { select: { id: true, name: true, isActive: true } } as const;
+
+/** HLAI-118: a task's Alert Group as the task views show it. */
+export function toAlertGroupRef(group: TaskAlertGroupRef): TaskAlertGroupRef {
+  return { id: group.id, name: group.name, isActive: group.isActive };
+}
 
 /**
  * A stored Alert Type, if the app still knows it. Types are checked when
@@ -149,7 +154,7 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     dutyId: task.dutyId,
     duty: task.duty ? toDutyRef(task.duty) : null,
     dutyMismatch: isDutyMismatch(task),
-    alertGroup: task.alertGroup ? { id: task.alertGroup.id, name: task.alertGroup.name } : null,
+    alertGroup: task.alertGroup ? toAlertGroupRef(task.alertGroup) : null,
     alertType: toAlertType(task.alertType),
   };
 }
