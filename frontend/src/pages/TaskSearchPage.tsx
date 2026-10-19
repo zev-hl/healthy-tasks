@@ -3,7 +3,11 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_TASK_COLUMN_ORDER,
+  EXCLUSIVES_ALERT_TYPES,
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   MAX_PAGE_SIZE,
+  TASK_ATTRIBUTE_KEYS,
+  TASK_ATTRIBUTE_LABELS,
   TASK_COLUMN_KEYS,
   TASK_COLUMN_LABELS,
   TASK_PRIORITIES,
@@ -13,8 +17,10 @@ import {
   isSupervisorRole,
   type ActiveUserDto,
   type DepartmentDto,
+  type ExclusivesGroupOptionDto,
   type GhostOccurrenceDto,
   type OrgHierarchyNode,
+  type TaskAttributeKey,
   type TaskColumnKey,
   type TaskDashboardDto,
   type TaskRowDto,
@@ -37,8 +43,16 @@ import {
   nowContext,
   statusStat,
 } from '../lib/taskSearch';
+import {
+  NOT_SET,
+  attributeFilterChips,
+  attributeFilterCleared,
+  attributeFilterPatch,
+  attributeFilterSelected,
+} from '../lib/taskAttributes';
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
+import { TaskAttributesCell } from '../components/TaskAttributesCell';
 import { FilterPopover } from '../components/FilterPopover';
 import { HierarchyTree, toggleSubtree } from '../components/HierarchyTree';
 import { UserChip, UnassignedAvatar } from '../components/ui/Avatar';
@@ -90,6 +104,7 @@ const FILTERABLE: TaskColumnKey[] = [
   'dueAt',
   'statusChangedAt',
   'duty',
+  'attributes',
 ];
 
 const defaultFilters: TaskSearchFilters = { includeNoStart: true, includeNoDue: true };
@@ -160,6 +175,10 @@ export function TaskSearchPage() {
   const [allTags, setAllTags] = useState<string[]>([]);
   // Department Duties: the catalog for the Department / Duty filters.
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
+  // HLAI-118: the Alert Groups for the attribute filter, and which attribute
+  // that filter is showing.
+  const [alertGroups, setAlertGroups] = useState<ExclusivesGroupOptionDto[]>([]);
+  const [filterAttr, setFilterAttr] = useState<TaskAttributeKey>('alertGroup');
   const [hierarchy, setHierarchy] = useState<OrgHierarchyNode[]>([]);
   const [dash, setDash] = useState<TaskDashboardDto | null>(null);
   const [showColumns, setShowColumns] = useState(false);
@@ -206,6 +225,10 @@ export function TaskSearchPage() {
       .listDepartments()
       .then(setDepartments)
       .catch(() => setDepartments([]));
+    void api
+      .listExclusivesGroupOptions()
+      .then(setAlertGroups)
+      .catch(() => setAlertGroups([]));
     void api
       .getUserHierarchy()
       .then(setHierarchy)
@@ -550,6 +573,8 @@ export function TaskSearchPage() {
       chips.push({ id: 'duty', label: `Duty · ${filters.dutyIds.length}`, clear: { dutyIds: [] } });
     if (filters.dutyMismatch)
       chips.push({ id: 'dutyMismatch', label: 'Duty mismatches', clear: { dutyMismatch: undefined } });
+    for (const chip of attributeFilterChips(filters))
+      chips.push({ id: `attr-${chip.key}`, label: chip.label, clear: attributeFilterCleared(chip.key) });
   }
   const filtersActive = chips.length > 0;
 
@@ -766,6 +791,45 @@ export function TaskSearchPage() {
           </FilterPopover>
         );
       }
+      case 'attributes': {
+        // HLAI-118: pick an attribute, then tick any of its values and/or
+        // "(not set)". Each attribute keeps its own ticks.
+        const values =
+          filterAttr === 'alertGroup'
+            ? alertGroups.map((g) => ({ value: String(g.id), label: g.name }))
+            : EXCLUSIVES_ALERT_TYPES.map((t) => ({ value: t, label: EXCLUSIVES_ALERT_TYPE_LABELS[t] }));
+        return (
+          <FilterPopover
+            label="Attributes"
+            active={TASK_ATTRIBUTE_KEYS.some((k) => attributeFilterSelected(k, filters).length > 0)}
+          >
+            <div className="pop-range">
+              <span className="u-label">Attribute</span>
+              <select
+                className="attr-filter-pick"
+                aria-label="Attribute to filter by"
+                value={filterAttr}
+                onChange={(e) => setFilterAttr(e.target.value as TaskAttributeKey)}
+              >
+                {TASK_ATTRIBUTE_KEYS.map((k) => (
+                  <option key={k} value={k}>
+                    {TASK_ATTRIBUTE_LABELS[k]}
+                    {attributeFilterSelected(k, filters).length > 0 ? ' ●' : ''}
+                  </option>
+                ))}
+              </select>
+              <span className="u-label">Values</span>
+              <MultiSelect
+                key={filterAttr}
+                searchable
+                options={[{ value: NOT_SET, label: '(not set)' }, ...values]}
+                selected={attributeFilterSelected(filterAttr, filters)}
+                onChange={(v) => patchFilters(attributeFilterPatch(filterAttr, v))}
+              />
+            </div>
+          </FilterPopover>
+        );
+      }
       default:
         return null;
     }
@@ -854,6 +918,8 @@ export function TaskSearchPage() {
         return <span className="muted">—</span>;
       case 'tags':
         return <TagsCell tags={row.tags} />;
+      case 'attributes':
+        return <TaskAttributesCell task={row} />;
       case 'duty':
         return row.duty ? (
           <span className="duty-cell">

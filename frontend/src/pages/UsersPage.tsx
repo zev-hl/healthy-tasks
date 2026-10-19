@@ -14,6 +14,7 @@ import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { UserFormModal } from '../components/UserFormModal';
 import { UserEditModal } from '../components/UserEditModal';
+import { PencilIcon } from '../components/ui/PencilIcon';
 import { MergeUsersModal } from '../components/MergeUsersModal';
 import { SortHeader } from '../components/SortHeader';
 import { MultiSelect } from '../components/MultiSelect';
@@ -35,25 +36,6 @@ const SORT_LABELS: Record<UserSortField, string> = {
   supervisor: 'supervisor',
   status: 'status',
 };
-
-function PencilIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  );
-}
 
 interface PersistedUsersState {
   filters: UserSearchFilters;

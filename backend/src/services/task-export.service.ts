@@ -1,5 +1,11 @@
 import ExcelJS from 'exceljs';
-import { TASK_STATUS_LABELS, dutyLabel, type TaskRowDto } from '@healthy-tasks/shared';
+import {
+  EXCLUSIVES_ALERT_TYPE_LABELS,
+  TASK_ATTRIBUTE_LABELS,
+  TASK_STATUS_LABELS,
+  dutyLabel,
+  type TaskRowDto,
+} from '@healthy-tasks/shared';
 import { toExcelLocalDate } from '../utils/excel-date.js';
 
 /** "Department › Duty" for a spreadsheet cell, flagged when archived or held by no one. */
@@ -39,6 +45,9 @@ export async function buildTasksWorkbook(
     { header: 'Parent / Child', key: 'parentChild', width: 20 },
     { header: 'Tags', key: 'tags', width: 32 },
     { header: 'Department › Duty', key: 'duty', width: 34 },
+    // HLAI-118 special attributes, one column each.
+    { header: TASK_ATTRIBUTE_LABELS.alertGroup, key: 'alertGroup', width: 28 },
+    { header: TASK_ATTRIBUTE_LABELS.alertType, key: 'alertType', width: 26 },
   ];
   ws.getRow(1).font = { bold: true };
 
@@ -61,6 +70,8 @@ export async function buildTasksWorkbook(
           : '',
       tags: r.tags.join(', '),
       duty: exportDutyLabel(r),
+      alertGroup: r.alertGroup?.name ?? '',
+      alertType: r.alertType ? EXCLUSIVES_ALERT_TYPE_LABELS[r.alertType] : '',
     });
   }
 

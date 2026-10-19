@@ -177,12 +177,13 @@ export async function getGroup(id: number): Promise<ExclusivesGroupDto> {
  */
 export async function listGroupOptions(): Promise<ExclusivesGroupOptionDto[]> {
   const rows = await prisma.alertGroup.findMany({
-    select: { id: true, name: true, groupType: true },
+    select: { id: true, name: true, groupType: true, isActive: true },
     orderBy: [{ name: 'asc' }],
   });
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     groupType: r.groupType as ExclusivesGroupType,
+    isActive: r.isActive,
   }));
 }
