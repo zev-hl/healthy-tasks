@@ -263,6 +263,14 @@ model Task {
   dutyId String?
   duty   Duty?   @relation(fields: [dutyId], references: [id], onDelete: Restrict)
 
+  // HLAI-118: the task's special attributes, linking it to the Amazon alert it
+  // is about. Both optional. A deleted Alert Group empties alertGroupId.
+  // alertType is one of the shared EXCLUSIVES_ALERT_TYPES, checked in the app
+  // like the Exclusives list fields (see the note above AlertGroup).
+  alertGroupId Int?
+  alertGroup   AlertGroup? @relation(fields: [alertGroupId], references: [id], onDelete: SetNull)
+  alertType    String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -292,6 +300,9 @@ model Task {
   @@index([instanceLabel])
   @@index([recurrenceSourceId])
   @@index([dutyId])
+  // HLAI-118: filter by attribute.
+  @@index([alertGroupId])
+  @@index([alertType])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -969,6 +980,8 @@ model AlertGroup {
   listings Listing[]
   settings AlertSetting[]
   logs     AlertLog[]
+  // HLAI-118: tasks that carry this group as their Alert Group attribute.
+  tasks    Task[]
 
   @@index([createdById])
   @@index([updatedById])

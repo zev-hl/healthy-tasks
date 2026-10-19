@@ -38,6 +38,7 @@ import {
 import {
   BLOCKED_RESTRICTED_STATUSES,
   DEFAULT_TASK_STATUS,
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   TASK_HISTORY_FIELDS,
   TASK_STATUS_LABELS,
   TERMINAL_TASK_STATUSES,
@@ -46,6 +47,7 @@ import {
   type Role,
   type TaskDetailDto,
   type TaskDto,
+  type ExclusivesAlertType,
   type TaskStatus,
   dutyLabel,
 } from '@healthy-tasks/shared';
@@ -59,6 +61,22 @@ async function dutyHistoryLabel(dutyId: string | null): Promise<string | null> {
   if (!dutyId) return null;
   const duty = await prisma.duty.findUnique({ where: { id: dutyId }, ...dutyRefSelect });
   return duty ? dutyLabel(toDutyRef(duty)) : null;
+}
+
+/** HLAI-118: an Alert Group's name (history snapshots), or null when none or gone. */
+async function alertGroupHistoryLabel(alertGroupId: number | null): Promise<string | null> {
+  if (alertGroupId === null) return null;
+  const group = await prisma.alertGroup.findUnique({
+    where: { id: alertGroupId },
+    select: { name: true },
+  });
+  return group?.name ?? null;
+}
+
+/** HLAI-118: an Alert Type's label (history snapshots), or null for none. */
+function alertTypeHistoryLabel(alertType: string | null): string | null {
+  if (alertType === null) return null;
+  return EXCLUSIVES_ALERT_TYPE_LABELS[alertType as ExclusivesAlertType] ?? alertType;
 }
 
 /**
@@ -356,6 +374,32 @@ export async function updateTask(
     if (doer) await assertHoldsDuty(doer, afterDutyId);
   }
 
+  // HLAI-118 special attributes. A group being set must still exist and be
+  // active: it may have been deleted or switched off since the page was loaded.
+  // A task keeps an inactive group it already has; it just cannot be picked.
+  const alertGroupChanging =
+    input.alertGroupId !== undefined && input.alertGroupId !== existing.alertGroupId;
+  const alertTypeChanging =
+    input.alertType !== undefined && input.alertType !== existing.alertType;
+  const [alertGroupBefore, alertGroupAfter] = alertGroupChanging
+    ? await Promise.all([
+        alertGroupHistoryLabel(existing.alertGroupId),
+        alertGroupHistoryLabel(input.alertGroupId ?? null),
+      ])
+    : [null, null];
+  if (alertGroupChanging && input.alertGroupId != null) {
+    if (alertGroupAfter === null) {
+      throw HttpError.badRequest('That Alert Group no longer exists. Pick another one.');
+    }
+    const group = await prisma.alertGroup.findUnique({
+      where: { id: input.alertGroupId },
+      select: { isActive: true },
+    });
+    if (!group?.isActive) {
+      throw HttpError.badRequest('That Alert Group is inactive. Pick another one.');
+    }
+  }
+
   // Validate Start < Due using the values that WILL be in effect after this
   // patch (incoming value if provided, otherwise the existing stored value).
   const effectiveStart = input.startAt !== undefined ? input.startAt : existing.startAt;
@@ -393,6 +437,8 @@ export async function updateTask(
     startAt: existing.startAt,
     dueAt: existing.dueAt,
     duty: dutyBefore,
+    alertGroup: alertGroupBefore,
+    alertType: alertTypeChanging ? alertTypeHistoryLabel(existing.alertType) : null,
   };
   const after: TaskFieldValues = {
     name: input.name ?? existing.name,
@@ -403,6 +449,8 @@ export async function updateTask(
     startAt: input.startAt !== undefined ? input.startAt : existing.startAt,
     dueAt: input.dueAt !== undefined ? input.dueAt : existing.dueAt,
     duty: dutyAfter,
+    alertGroup: alertGroupAfter,
+    alertType: alertTypeChanging ? alertTypeHistoryLabel(input.alertType ?? null) : null,
   };
 
   // Reminders overhaul (removal + notify): a Save that clears the Start Date
@@ -445,6 +493,8 @@ export async function updateTask(
         ...(input.startAt !== undefined ? { startAt: input.startAt } : {}),
         ...(input.dueAt !== undefined ? { dueAt: input.dueAt } : {}),
         ...(dutyChanging ? { dutyId: afterDutyId } : {}),
+        ...(alertGroupChanging ? { alertGroupId: input.alertGroupId ?? null } : {}),
+        ...(alertTypeChanging ? { alertType: input.alertType ?? null } : {}),
         ...(statusChanged ? { statusChangedAt: new Date() } : {}),
         ...reviewData,
         // creatorId, createdAt, and id are never updatable.
@@ -786,6 +836,9 @@ export async function duplicateTask(
           dueAt: o.dueAt,
           // A copy keeps its duty (an existing mismatch stays flagged ⚠).
           dutyId: o.dutyId,
+          // HLAI-118: and its special attributes.
+          alertGroupId: o.alertGroupId,
+          alertType: o.alertType,
           parentId,
           // status/statusChangedAt reset to the defaults: a copy is fresh work.
         },

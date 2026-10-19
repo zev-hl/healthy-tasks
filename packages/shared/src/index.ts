@@ -341,6 +341,9 @@ export interface TaskDto {
   dutyId: string | null;
   duty: DutyRef | null;
   dutyMismatch: boolean;
+  /** HLAI-118 special attributes (see TASK_ATTRIBUTE_KEYS); null when not set. */
+  alertGroup: TaskAlertGroupRef | null;
+  alertType: ExclusivesAlertType | null;
 }
 
 /**
@@ -434,6 +437,9 @@ export interface UpdateTaskRequest {
    * mismatch doesn't block saving unrelated fields.
    */
   dutyId?: string | null;
+  /** HLAI-118 attributes: an Exclusives Alert Group id, and one of the alert types. */
+  alertGroupId?: number | null;
+  alertType?: ExclusivesAlertType | null;
   // Phase 10: required by the server only on a transition INTO Review — the
   // chosen reviewer becomes the temporary assignee.
   reviewerId?: string | null;
@@ -609,6 +615,9 @@ export const TASK_HISTORY_FIELDS = {
   template: 'template',
   // Department Duties: the task's Department › Duty.
   duty: 'duty',
+  // HLAI-118: the special attributes.
+  alertGroup: 'alertGroup',
+  alertType: 'alertType',
 } as const;
 
 /** Human-readable label for a history `field` key (falls back to the key). */
@@ -629,6 +638,8 @@ export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
   merge: 'Account merge',
   template: 'Template',
   duty: 'Department › Duty',
+  alertGroup: 'Alert Group',
+  alertType: 'Alert Type',
 };
 
 /** A single change-history entry for a task, newest-first in listings. */
@@ -696,6 +707,8 @@ export const TASK_COLUMN_KEYS = [
   'parentChild',
   'tags',
   'duty',
+  // HLAI-118: the special attributes (TASK_ATTRIBUTE_KEYS) as small capsules.
+  'attributes',
 ] as const;
 export type TaskColumnKey = (typeof TASK_COLUMN_KEYS)[number];
 
@@ -713,6 +726,7 @@ export const TASK_COLUMN_LABELS: Record<TaskColumnKey, string> = {
   parentChild: 'Parent / Child',
   tags: 'Tags',
   duty: 'Department › Duty',
+  attributes: 'Attributes',
 };
 
 /** Default left-to-right column order (mirrors the spec's column order, tags last). */
@@ -806,6 +820,17 @@ export interface TaskSearchFilters {
   dutyIds?: string[];
   /** Only tasks whose assignee doesn't hold the task's duty (the ⚠ flag). */
   dutyMismatch?: boolean;
+  // --- Special attributes (HLAI-118) -----------------------------------------
+  // Per attribute: tasks with one of the chosen values, OR (when the matching
+  // include flag is set) tasks with none. Neither given = no filter.
+  /** Tasks whose Alert Group is one of these. */
+  alertGroupIds?: number[];
+  /** Also tasks with no Alert Group (the "(not set)" option). */
+  includeNoAlertGroup?: boolean;
+  /** Tasks whose Alert Type is one of these. */
+  alertTypes?: ExclusivesAlertType[];
+  /** Also tasks with no Alert Type (the "(not set)" option). */
+  includeNoAlertType?: boolean;
 }
 
 export interface TaskSearchRequest {
@@ -910,6 +935,9 @@ export interface TaskRowDto {
   /** Department Duties: the task's duty and the assignee ⇄ duty ⚠ flag. */
   duty: DutyRef | null;
   dutyMismatch: boolean;
+  /** HLAI-118 special attributes; null when not set. */
+  alertGroup: TaskAlertGroupRef | null;
+  alertType: ExclusivesAlertType | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1958,6 +1986,33 @@ export const EXCLUSIVES_ALERT_TYPE_LABELS: Record<ExclusivesAlertType, string> =
   DimensionsChanged: 'Dimensions Changed',
 };
 
+// --- Task special attributes (HLAI-118) --------------------------------------
+
+/**
+ * The special attributes a task can carry, in display order. Each is optional,
+ * holds one value from a fixed list, and is shown on the task page, in the
+ * task list's Attributes column and in its filter. A future attribute is a new
+ * Task field plus an entry here.
+ */
+export const TASK_ATTRIBUTE_KEYS = ['alertGroup', 'alertType'] as const;
+export type TaskAttributeKey = (typeof TASK_ATTRIBUTE_KEYS)[number];
+
+export const TASK_ATTRIBUTE_LABELS: Record<TaskAttributeKey, string> = {
+  alertGroup: 'Alert Group',
+  alertType: 'Alert Type',
+};
+
+/** A task's Alert Group: the Exclusives group it is about. */
+export interface TaskAlertGroupRef {
+  id: number;
+  name: string;
+  /**
+   * False once an Admin switches the group off. The task keeps it until someone
+   * picks another, but an inactive group can no longer be picked.
+   */
+  isActive: boolean;
+}
+
 /**
  * Colour family for an alert type's dot/badge (brief §10.4). The frontend maps
  * each tone onto the app's existing pill palette:
@@ -2263,6 +2318,8 @@ export interface ExclusivesGroupOptionDto {
   id: number;
   name: string;
   groupType: ExclusivesGroupType;
+  /** Filters list every group; the task attributes picker offers only active ones. */
+  isActive: boolean;
 }
 
 // ===========================================================================

@@ -117,6 +117,8 @@ interface SourceTask {
   creatorId: string;
   instanceLabel: string | null;
   dutyId: string | null;
+  alertGroupId: number | null;
+  alertType: string | null;
 }
 
 /** The assignee to carry forward: the most recent instance's assignee (the last
@@ -164,6 +166,9 @@ async function generateTaskOccurrence(params: {
         recurrenceSeq: seq,
         // Department Duties: each copy carries the series' duty.
         dutyId: source.dutyId,
+        // HLAI-118: and its special attributes.
+        alertGroupId: source.alertGroupId,
+        alertType: source.alertType,
       },
       select: { id: true },
     });
@@ -239,6 +244,8 @@ const ghostSourceSelect = {
   creatorId: true,
   instanceLabel: true,
   dutyId: true,
+  alertGroupId: true,
+  alertType: true,
   startAt: true,
   dueAt: true,
   recurrence: true,

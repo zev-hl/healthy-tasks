@@ -1394,8 +1394,20 @@ describe('exclusives: group options (HLAI-71 ticket 3)', () => {
       ['Alpha', 'Zulu'],
       'sorted by name',
     );
-    assert.deepEqual(Object.keys(res.body[0]).sort(), ['groupType', 'id', 'name']);
+    assert.deepEqual(Object.keys(res.body[0]).sort(), ['groupType', 'id', 'isActive', 'name']);
     assert.equal(res.body[0].groupType, 'INDIVIDUAL');
+    assert.equal(res.body[0].isActive, true);
+  });
+
+  it('lists inactive groups too, marked, since filters still need them', async () => {
+    const id = await seedGroup({ name: 'Paused' });
+    await prisma.alertGroup.update({ where: { id }, data: { isActive: false } });
+
+    const res = await options();
+    assert.deepEqual(
+      res.body.map((g: { name: string; isActive: boolean }) => [g.name, g.isActive]),
+      [['Paused', false]],
+    );
   });
 
   it('answers an empty list rather than an error when there are no groups', async () => {
