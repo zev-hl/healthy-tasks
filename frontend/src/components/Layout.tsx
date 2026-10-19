@@ -117,6 +117,11 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         <NavLink to="/exclusives/log" className={navItemClass}>
           Alert Log
         </NavLink>
+        {user?.role === 'Admin' && (
+          <NavLink to="/exclusives/alert-tasks" className={navItemClass}>
+            Alert Tasks
+          </NavLink>
+        )}
       </div>
 
       <div className="side-group">

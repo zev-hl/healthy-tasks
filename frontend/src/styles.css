@@ -411,9 +411,21 @@ textarea:focus-visible {
   color: var(--ink);
   font-weight: 600;
 }
+/* A plain heading, not a filled button: on hover the label and caret take
+   the accent, like a link, instead of the default dark button fill. */
+.recur-collapse-head:hover,
+.recur-collapse-head:active {
+  background: transparent;
+  color: var(--accent-active);
+}
 .recur-collapse-head .recur-caret {
   color: var(--muted);
-  transition: transform 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
+}
+.recur-collapse-head:hover .recur-caret {
+  color: var(--accent-active);
 }
 .recur-collapse-head[aria-expanded='true'] .recur-caret {
   transform: rotate(90deg);
@@ -2408,6 +2420,7 @@ button:hover:where(
       .notif-snooze-opt,
       .seg-btn,
       .tpl-collapse,
+      .recur-collapse-head,
       .exc-legend-chip,
       .exc-clear,
       .exc-seg-btn,
@@ -2442,6 +2455,7 @@ button:active:where(
       .notif-snooze-opt,
       .seg-btn,
       .tpl-collapse,
+      .recur-collapse-head,
       .exc-legend-chip,
       .exc-clear,
       .exc-seg-btn,
@@ -2481,6 +2495,7 @@ button:active:where(
   button.notif-snooze-opt:hover,
   button.seg-btn:hover,
   button.tpl-collapse:hover,
+  button.recur-collapse-head:hover,
   button.exc-legend-chip:hover,
   button.exc-clear:hover,
   button.exc-seg-btn:hover,
@@ -3904,6 +3919,75 @@ th.sortable:hover .sort-hint {
   text-overflow: ellipsis;
   display: inline-block;
   line-height: 1.5;
+}
+/* HLAI-112: the Alert Tasks screen — one row per alert type. Rows grow when a
+   template dropdown opens in place, so cells line up at the top. */
+.alert-tasks-table td {
+  vertical-align: top;
+}
+.alert-tasks-type {
+  width: 220px;
+  padding-top: 0.85rem;
+}
+.alert-tasks-template {
+  width: 290px;
+}
+/* Slimmer dropdowns on this screen, with their arrows a little in from the
+   right edge (6px more than the usual right padding). */
+.alert-tasks-table .search-select-trigger {
+  padding: 7px 19px 7px 13px;
+}
+/* The browser's own select arrow ignores padding, so the person dropdown draws
+   its own, the same distance in from the edge as the template dropdown's. */
+.alert-tasks-table select {
+  appearance: none;
+  padding: 7px 37px 7px 13px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235c554d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 19px center;
+}
+/* A one-line message in the Role Assignment cell, level with the dropdowns. */
+.alert-tasks-roles > .muted,
+.alert-tasks-roles > .alert-tasks-warn {
+  display: inline-block;
+  padding-top: 0.55rem;
+}
+/* One line per role of the template: the role, its person, and any ⚠ —
+   the Create tasks window's role rows, fitted to a table cell. */
+.alert-tasks-role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.alert-tasks-role {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(170px, 210px) minmax(160px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.alert-tasks-role + .alert-tasks-role {
+  padding-top: 10px;
+  border-top: 1px dashed var(--row-line);
+}
+.alert-tasks-role-meta {
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+.alert-tasks-role-status {
+  font-size: 12px;
+}
+.alert-tasks-warn {
+  color: var(--danger-deep);
+}
+/* Plain sentences: keep words whole (the info alert breaks anywhere, for links). */
+.alert.info.alert-tasks-note {
+  word-break: normal;
+}
+.alert-tasks-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 }
 .attr-capsule.is-alertGroup {
   background: var(--accent-soft);

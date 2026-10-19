@@ -172,6 +172,13 @@ set)". One list drives all of it: `TASK_ATTRIBUTE_KEYS` (shared) +
 `lib/taskAttributes.ts`. A group an Admin switches off stays on its tasks (red
 mark on the task page) but can no longer be picked. See `docs/architecture.md` §15.
 
+### Alert Tasks (HLAI-112)
+An Admin screen (`/exclusives/alert-tasks`) linking each Exclusives alert type to a
+template and a person per role of that template, for tasks to be made from alerts
+automatically. Only the screen exists so far: it saves through a stand-in
+(`api/alertTaskSetupStub.ts`) until the server part is built. See
+`docs/architecture.md` §16.
+
 ### Background scheduler
 `services/scheduler.service.ts` runs recurrence materialization, reminder-email
 dispatch, and goal-review passes. Started only from `server.ts` and only when

@@ -736,3 +736,36 @@ tasks can be filtered by them reliably.
   attribute.
 - **Not covered:** the Kanban, Calendar and Gantt views, templates, and setting
   the attributes while creating a task.
+
+## 16. Alert Tasks (HLAI-112) — screen only so far
+
+The goal: every Exclusives alert becomes a task for the right person without
+anyone creating it by hand. Each of the 12 alert types is linked to a template,
+with a person for each of the template's role placeholders — the same for every
+alert group. **Immediate** alerts are to make a task each as soon as they are
+found; **Daily** alerts one task per group and type at 8:30 AM New York time,
+listing every alert since the last one. Only the setup screen exists so far.
+
+- **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
+  Tasks" under *E-commerce exclusives*), Admins only. One row per alert type in
+  `EXCLUSIVES_ALERT_TYPES` order: the type's badge, a template `SearchSelect`
+  ("— None —" = no task; one template may serve several types), and the Role
+  Assignment cell — one line per role of the chosen template (fetched once with
+  `GET /api/templates/:id`) with a person dropdown of active people, worked like
+  the template's Create tasks window: ⚠ for someone missing a duty that role's
+  tasks carry (`useDutyCatalog`), "✓ Holds every duty needed", and a saved person
+  who is no longer active flagged. A new template keeps the people for roles of
+  the same name; only the chosen template's roles are saved.
+- **Save / Cancel** at the top right, both off until something changed. Save
+  sends all 12 settings at once with `expectedUpdatedAt`, and stays off while a
+  ⚠ remains or a template's roles are loading; Cancel puts back what was last
+  saved. Leaving with changes asks first (`useUnsavedChangesWarning`). Loading,
+  load-error (with "Try again") and no-templates (a link to Templates) states.
+- **Contract.** `ExclusivesAlertTaskSettingDto` (alertType, templateId,
+  roleAssignments), `ExclusivesAlertTaskSetupDto`, `SaveExclusivesAlertTaskSetupRequest`
+  in `packages/shared`.
+- **No server yet.** `api.getExclusivesAlertTaskSetup` / `saveExclusivesAlertTaskSetup`
+  call a stand-in (`frontend/src/api/alertTaskSetupStub.ts`) that keeps the setup in
+  the tab's memory until a reload; a banner on the screen says so. The server part
+  (storage, endpoints, a link from each alert to its task, Immediate and Daily task
+  creation) replaces it — see `.claude/docs/plans/HLAI-112.md`.

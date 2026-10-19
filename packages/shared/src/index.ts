@@ -2322,6 +2322,34 @@ export interface ExclusivesGroupOptionDto {
   isActive: boolean;
 }
 
+// --- Exclusives: a template and its people per alert type (HLAI-112) ------
+
+/**
+ * Which template an alert type's tasks are made from, and who fills each of the
+ * template's roles. One per alert type, the same for every alert group. With no
+ * template, that alert type's alerts make no task.
+ */
+export interface ExclusivesAlertTaskSettingDto {
+  alertType: ExclusivesAlertType;
+  templateId: number | null;
+  /** A person per role of the template; a role left out (or null) is unassigned. */
+  roleAssignments: RoleAssignment[];
+}
+
+/** The Alert Tasks screen: every alert type's setting, in EXCLUSIVES_ALERT_TYPES order. */
+export interface ExclusivesAlertTaskSetupDto {
+  settings: ExclusivesAlertTaskSettingDto[];
+  /** When it was last saved (null: never); sent back with the next save. */
+  updatedAt: string | null;
+}
+
+/** Saving the Alert Tasks screen: every alert type's setting at once. */
+export interface SaveExclusivesAlertTaskSetupRequest {
+  settings: ExclusivesAlertTaskSettingDto[];
+  /** The `updatedAt` the screen was loaded with, to refuse a save over someone else's. */
+  expectedUpdatedAt: string | null;
+}
+
 // ===========================================================================
 // Department Duties
 // ---------------------------------------------------------------------------
