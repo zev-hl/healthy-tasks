@@ -70,4 +70,21 @@ describe('TaskAttributesCell', () => {
     fireEvent.click(plus);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('shows a plus when closed and a minus while open', () => {
+    render(<TaskAttributesCell task={both} />);
+    const button = screen.getByRole('button', { name: 'Show all attributes' });
+    // The sign is drawn: the plus is the same bar as the minus plus an upright.
+    expect(button).toHaveAttribute('data-sign', 'plus');
+    expect(button.querySelectorAll('line')).toHaveLength(2);
+
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('data-sign', 'minus');
+    expect(button.querySelectorAll('line')).toHaveLength(1);
+    expect(button).toHaveAccessibleName('Hide attributes');
+
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('data-sign', 'plus');
+    expect(button).toHaveAccessibleName('Show all attributes');
+  });
 });

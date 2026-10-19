@@ -3904,6 +3904,11 @@ th.sortable:hover .sort-hint {
 .attrs-more {
   flex: none;
   margin-left: auto;
+  /* Centres the + / − in the circle. As a plain button the glyph sat on the
+     text baseline, which left it low and slightly right of centre. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   height: 20px;
   padding: 0;
@@ -3911,9 +3916,15 @@ th.sortable:hover .sort-hint {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--ink-3);
-  font-size: 13px;
-  font-weight: 600;
   line-height: 1;
+}
+.attrs-more svg {
+  display: block;
+  width: 10px;
+  height: 10px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
 }
 .attrs-more:hover,
 .attrs-more[aria-expanded='true'] {

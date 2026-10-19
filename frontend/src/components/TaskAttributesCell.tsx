@@ -87,15 +87,23 @@ export function TaskAttributesCell({ task }: { task: TaskAttributeValues }) {
         ref={btnRef}
         type="button"
         className="attrs-more"
-        aria-label="Show all attributes"
+        aria-label={pos ? 'Hide attributes' : 'Show all attributes'}
         aria-expanded={pos !== null}
-        title="Show all attributes"
+        title={pos ? 'Hide attributes' : 'Show all attributes'}
         onClick={(e) => {
           e.stopPropagation();
           toggle();
         }}
+        data-sign={pos ? 'minus' : 'plus'}
       >
-        +
+        {/* Drawn, not typed. As a text character the sign sits on the font's
+            math axis rather than the middle of its text box, so it rendered a
+            shade off-centre however the box was aligned. These strokes are
+            centred on the viewBox, so the sign is exactly in the circle. */}
+        <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
+          <line x1="1.5" y1="5" x2="8.5" y2="5" />
+          {!pos && <line x1="5" y1="1.5" x2="5" y2="8.5" />}
+        </svg>
       </button>
       {pos &&
         createPortal(
