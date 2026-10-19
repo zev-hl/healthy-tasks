@@ -36,11 +36,13 @@ import type { TaskDashboardInput, TaskSearchInput } from '../validation/schemas.
 import {
   addDependency,
   clearParent,
+  createSubtask,
   removeDependency,
   searchTasks,
   setParent,
 } from '../services/task.relationships.service.js';
 import type {
+  CreateSubtaskInput,
   CreateTaskInput,
   DependencyInput,
   DuplicateTaskInput,
@@ -183,6 +185,13 @@ export async function setParentController(req: Request, res: Response): Promise<
   const { parentId } = req.body as SetParentInput;
   const task = await setParent(actorOf(req), parseTaskId(req), parentId);
   res.json(task satisfies TaskDetailDto);
+}
+
+/** POST /api/tasks/:id/subtasks — a new task, by name, under this one. */
+export async function createSubtaskController(req: Request, res: Response): Promise<void> {
+  const { name } = req.body as CreateSubtaskInput;
+  const task = await createSubtask(actorOf(req), parseTaskId(req), name);
+  res.status(201).json(task satisfies TaskDetailDto);
 }
 
 export async function clearParentController(req: Request, res: Response): Promise<void> {

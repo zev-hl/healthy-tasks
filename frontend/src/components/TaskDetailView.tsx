@@ -33,6 +33,7 @@ import { StatusPill, PriorityRamp } from './ui/indicators';
 import { DueDate, AgoDate } from './ui/dates';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 import { assigneeOptionGroups, dutyOptionGroups, isMismatch, useDutyCatalog } from '../lib/duties';
 import { DutyTag } from './duties/DutyTag';
 import { DutyCrossCheck } from './duties/DutyCrossCheck';
@@ -81,6 +82,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [copyAttachments, setCopyAttachments] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   // Save-as-Template (task -> template conversion) modal state.
+  // "New" sub-task prompt: just a name; the server creates it under this task.
+  const [newSubOpen, setNewSubOpen] = useState(false);
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubError, setNewSubError] = useState<string | null>(null);
+  const [creatingSub, setCreatingSub] = useState(false);
+  const newSubDirty = newSubOpen && newSubName.trim() !== '';
+  const closeNewSub = () => {
+    setNewSubOpen(false);
+    setNewSubName('');
+    setNewSubError(null);
+  };
+  const newSubBackdrop = useBackdropDismiss(closeNewSub, newSubDirty || creatingSub);
   const [tplOpen, setTplOpen] = useState(false);
   const [tplName, setTplName] = useState('');
   const [tplScope, setTplScope] = useState<'single' | 'tree'>('single');
@@ -391,6 +404,21 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
+  async function createSubtask() {
+    const name = newSubName.trim();
+    if (name.length < TASK_NAME_MIN_LENGTH) return;
+    setCreatingSub(true);
+    setNewSubError(null);
+    try {
+      applyTask(await api.createSubtask(task.id, name));
+      closeNewSub();
+    } catch (err) {
+      setNewSubError(err instanceof ApiError ? err.message : 'Could not create the sub-task');
+    } finally {
+      setCreatingSub(false);
+    }
+  }
+
   // --- Name / description ---------------------------------------------------
   async function saveName() {
     const name = nameDraft.trim();
@@ -557,7 +585,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
   const nameUnsaved = editingName && nameDraft.trim() !== task.name;
   const descUnsaved = editingDesc && descDraft !== (task.description ?? '');
-  useUnsavedChangesWarning(fieldsDirty || nameUnsaved || descUnsaved || commentsDirty);
+  useUnsavedChangesWarning(
+    fieldsDirty || nameUnsaved || descUnsaved || commentsDirty || newSubDirty,
+  );
 
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
@@ -1006,9 +1036,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   )}
                   <div className="spacer" />
                   {canEdit && (
-                    <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
-                      + Link
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="tertiary btn-sm"
+                        onClick={() => setNewSubOpen(true)}
+                      >
+                        New
+                      </button>
+                      <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
+                        + Link
+                      </button>
+                    </>
                   )}
                 </div>
                 {task.children.length > 0 && (
@@ -1018,7 +1057,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 )}
                 {task.children.length === 0 ? (
                   <p className="muted rel-empty">
-                    No sub-tasks. Use “+ Link” to add an existing task to this one.
+                    No sub-tasks. Use “New” to create one, or “+ Link” to add an existing task.
                   </p>
                 ) : (
                   <ul className="subtask-list">
@@ -1326,6 +1365,53 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {newSubOpen && (
+        <div className="modal-backdrop" {...newSubBackdrop}>
+          <div className="modal" role="dialog" aria-labelledby="new-sub-title">
+            <h3 id="new-sub-title" style={{ marginTop: 0 }}>
+              New sub-task
+            </h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void createSubtask();
+              }}
+            >
+              {newSubError && <div className="alert error">{newSubError}</div>}
+              <div className="field">
+                <label htmlFor="new-sub-name">Task name</label>
+                <input
+                  id="new-sub-name"
+                  value={newSubName}
+                  autoFocus
+                  maxLength={300}
+                  onChange={(e) => setNewSubName(e.target.value)}
+                />
+              </div>
+              <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+                It will be assigned to you, with no dates. You can fill in the rest later.
+              </p>
+              <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={closeNewSub}
+                  disabled={creatingSub}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingSub || newSubName.trim().length < TASK_NAME_MIN_LENGTH}
+                >
+                  {creatingSub ? 'Creating…' : 'Create sub-task'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

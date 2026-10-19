@@ -134,6 +134,40 @@ export async function setParent(
   return getTaskDetail(taskId, actor);
 }
 
+/**
+ * Create a brand-new task as a sub-task of `parentId`, from just a name.
+ *
+ * Created already attached, in one transaction, so a failure can never leave
+ * an orphan task behind (which creating then linking from the browser could).
+ * Everything else takes createTask's defaults: assigned to the person creating
+ * it, Medium priority, Open, no dates, duty or description.
+ *
+ * Needs edit access to the parent, the same as the "+ Link" button beside it.
+ * A new leaf can't form a cycle, so no relationship lock is needed.
+ */
+export async function createSubtask(
+  actor: Actor,
+  parentId: number,
+  name: string,
+): Promise<TaskDetailDto> {
+  await assertCanEditTask(actor, parentId);
+  await prisma.$transaction(async (tx) => {
+    const child = await tx.task.create({
+      data: { name, creatorId: actor.id, assigneeId: actor.id, tags: [], parentId },
+      select: { id: true },
+    });
+    // History on the new task, as when an existing task is given this parent.
+    await recordHistory(tx, {
+      taskId: child.id,
+      userId: actor.id,
+      field: TASK_HISTORY_FIELDS.parentTask,
+      changeType: 'added',
+      detail: await taskLabel(tx, parentId),
+    });
+  });
+  return getTaskDetail(parentId, actor);
+}
+
 export async function clearParent(actor: Actor, taskId: number): Promise<TaskDetailDto> {
   const actorId = actor.id;
   await assertCanEditTask(actor, taskId);

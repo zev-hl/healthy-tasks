@@ -9,6 +9,7 @@ import {
   saveTaskAsTemplateSchema,
   setTaskPrivateSchema,
   setParentSchema,
+  createSubtaskSchema,
   dependencySchema,
   presignAttachmentSchema,
   confirmAttachmentSchema,
@@ -31,6 +32,7 @@ import {
   exportTasksController,
   setParentController,
   clearParentController,
+  createSubtaskController,
   addDependencyController,
   removeDependencyController,
   deleteTaskController,
@@ -117,6 +119,12 @@ tasksRouter.post(
 // Parent / Child
 tasksRouter.put('/:id/parent', validateBody(setParentSchema), asyncHandler(setParentController));
 tasksRouter.delete('/:id/parent', asyncHandler(clearParentController));
+// A brand-new sub-task, created by name directly under this task.
+tasksRouter.post(
+  '/:id/subtasks',
+  validateBody(createSubtaskSchema),
+  asyncHandler(createSubtaskController),
+);
 
 // Dependencies (Blocks / Is Blocked By)
 tasksRouter.post(

@@ -276,12 +276,18 @@ export const setParentSchema = z.object({
   parentId: taskId,
 });
 
+// A brand-new sub-task: just its name; everything else takes the defaults.
+export const createSubtaskSchema = z.object({
+  name: taskName,
+});
+
 export const dependencySchema = z.object({
   type: z.enum(['blocks', 'blockedBy']),
   otherTaskId: taskId,
 });
 
 export type SetParentInput = z.infer<typeof setParentSchema>;
+export type CreateSubtaskInput = z.infer<typeof createSubtaskSchema>;
 export type DependencyInput = z.infer<typeof dependencySchema>;
 
 // --- Attachments & comments (Phase 4) --------------------------------------
