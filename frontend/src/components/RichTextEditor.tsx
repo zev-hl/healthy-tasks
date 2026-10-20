@@ -8,7 +8,7 @@ import Mention from '@tiptap/extension-mention';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
-import { RICH_TEXT_MAX_CHARS, type TaskUserRef } from '@healthy-tasks/shared';
+import { RICH_TEXT_MAX_CHARS, isAlertLogHref, type TaskUserRef } from '@healthy-tasks/shared';
 import { createMentionSuggestion } from './mentionSuggestion';
 
 // Task-list item that serializes to a compact `<li data-type="taskItem"
@@ -163,6 +163,17 @@ export function RichTextEditor({
         code: false,
         strike: false,
         horizontalRule: false,
+        // HLAI-112: the only link a description may hold opens the Alert Log
+        // (the Daily alert task's). Editing keeps it; nobody makes links by
+        // typing or pasting an address, and clicking one while editing just
+        // places the cursor.
+        link: {
+          isAllowedUri: (url) => isAlertLogHref(url),
+          autolink: false,
+          linkOnPaste: false,
+          openOnClick: false,
+          HTMLAttributes: { target: null, rel: null },
+        },
       }),
       Underline,
       TextStyle,

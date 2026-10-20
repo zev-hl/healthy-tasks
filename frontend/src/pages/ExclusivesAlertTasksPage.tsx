@@ -6,19 +6,20 @@ import {
   dutyLabel,
   type ActiveUserDto,
   type ExclusivesAlertTaskSettingDto,
+  type ExclusivesAlertTaskSetupDto,
   type ExclusivesAlertType,
   type RoleAssignment,
   type TemplateDto,
   type TemplateSummaryDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { ALERT_TASK_SETUP_IS_STUB } from '../api/alertTaskSetupStub';
+import { ConflictBanner } from '../components/ConflictBanner';
 import { AlertTypeBadge } from '../components/exclusives/AlertBadge';
-import { WarningIcon } from '../components/exclusives/icons';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { SearchSelect, type SearchSelectOption } from '../components/SearchSelect';
 import { userLabel } from '../components/ui/Avatar';
 import { holdsDuty, useDutyCatalog, type CatalogDuty } from '../lib/duties';
+import { useStaleWriteGuard } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 
 /** Every alert type's setting, by type. */
@@ -82,7 +83,8 @@ const roleNeeds = (template: TemplateDto, role: string): string[] => [
  * ⚠ for someone missing a duty that role's tasks carry. Nothing is kept until
  * Save, which sends every row at once; Cancel puts back what was last saved.
  * Both stay off until something has changed, and leaving with changes not
- * saved asks first.
+ * saved asks first. If another Admin saved first, Save turns into Refresh, as
+ * in the group editor.
  */
 export function ExclusivesAlertTasksPage() {
   const [templates, setTemplates] = useState<TemplateSummaryDto[] | null>(null);
@@ -97,6 +99,15 @@ export function ExclusivesAlertTasksPage() {
   const [attempt, setAttempt] = useState(0); // "Try again" loads once more
   const [notice, setNotice] = useState<string | null>(null);
   const catalog = useDutyCatalog();
+  const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
+
+  /** Show a setup as saved: on screen, with nothing changed yet. */
+  function load(setup: ExclusivesAlertTaskSetupDto) {
+    const loaded = toSetup(setup.settings);
+    setSaved(loaded);
+    setDraft(loaded);
+    setUpdatedAt(setup.updatedAt);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -105,10 +116,7 @@ export function ExclusivesAlertTasksPage() {
         if (!alive) return;
         setTemplates(list);
         setUsers([...people].sort((a, b) => userLabel(a).localeCompare(userLabel(b))));
-        const loaded = toSetup(setup.settings);
-        setSaved(loaded);
-        setDraft(loaded);
-        setUpdatedAt(setup.updatedAt);
+        load(setup);
       })
       .catch((err) => {
         if (!alive) return;
@@ -228,15 +236,16 @@ export function ExclusivesAlertTasksPage() {
     setError(null);
     setNotice(null);
     try {
-      const res = await api.saveExclusivesAlertTaskSetup({
-        settings: inOrder(draft, details),
-        expectedUpdatedAt: updatedAt,
+      const ok = await guard(async () => {
+        load(
+          await api.saveExclusivesAlertTaskSetup({
+            settings: inOrder(draft, details),
+            expectedUpdatedAt: updatedAt,
+          }),
+        );
+        setNotice('Saved.');
       });
-      const next = toSetup(res.settings);
-      setSaved(next);
-      setDraft(next);
-      setUpdatedAt(res.updatedAt);
-      setNotice('Saved.');
+      if (!ok) return; // another Admin saved first; the conflict banner explains
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the alert tasks.');
     } finally {
@@ -244,11 +253,21 @@ export function ExclusivesAlertTasksPage() {
     }
   }
 
+  async function refreshAfterConflict() {
+    try {
+      load(await api.getExclusivesAlertTaskSetup());
+      reset();
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reload the alert tasks.');
+    }
+  }
+
   return (
     <div className="exc-page alert-tasks">
       <header className="page-head exc-head">
         <div>
-          <h1>Alert Tasks</h1>
+          <h1>Alert Task Setup</h1>
           <p className="muted">
             The template each alert type&apos;s tasks are made from, and who does them. The same for
             every alert group.
@@ -265,26 +284,24 @@ export function ExclusivesAlertTasksPage() {
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saveBlocker !== undefined || saving}
-            title={saveBlocker}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          {conflict ? (
+            <button type="button" onClick={() => void refreshAfterConflict()}>
+              Refresh
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saveBlocker !== undefined || saving}
+              title={saveBlocker}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </div>
       </header>
 
-      {ALERT_TASK_SETUP_IS_STUB && (
-        <div className="alert warning">
-          <WarningIcon />
-          <span>
-            Not saved to the server yet: that part comes next. Until then, this setup lasts until
-            the page is reloaded.
-          </span>
-        </div>
-      )}
+      {bannerShown && <ConflictBanner entity="alert task setup" onReview={review} />}
       {error && <div className="alert error">{error}</div>}
       {catalog.error && (
         <div className="alert error">Could not load the duties, so they are not checked.</div>

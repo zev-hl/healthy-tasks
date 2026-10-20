@@ -195,6 +195,7 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!dirty) return; // nothing entered yet
     setError(null);
 
     const startAt = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
@@ -402,7 +403,11 @@ export function TaskForm({ initial, submitLabel, onSubmit }: Props) {
         </div>
       </div>
 
-      <button type="submit" disabled={submitting || mismatch}>
+      <button
+        type="submit"
+        disabled={submitting || mismatch || !dirty}
+        title={dirty ? undefined : 'Nothing has changed yet'}
+      >
         {submitting ? 'Saving…' : submitLabel}
       </button>
       {mismatch && (

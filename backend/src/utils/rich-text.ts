@@ -1,15 +1,25 @@
 import sanitizeHtml from 'sanitize-html';
-import { RICH_TEXT_MAX_CHARS } from '@healthy-tasks/shared';
+import { RICH_TEXT_MAX_CHARS, isAlertLogHref } from '@healthy-tasks/shared';
 import { HttpError } from './http-error.js';
 
 // Rich text (Phase 4) is stored as sanitized HTML. We allow ONLY bold/italic/
 // underline plus paragraph/line-break structure — and, for comments, a
 // restricted mention <span>. Everything else (scripts, styles, event handlers,
-// links, images, arbitrary attributes) is stripped. The server is the source of
-// truth: all HTML is run through sanitizeRichText on write, never trusting the
-// client.
+// images, arbitrary attributes) is stripped, and so is every link except one to
+// the Alert Log (HLAI-112). The server is the source of truth: all HTML is run
+// through sanitizeRichText on write, never trusting the client.
 
-const BASE_ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'ul', 'ol', 'li'];
+const BASE_ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'ul', 'ol', 'li', 'a'];
+
+// HLAI-112: the only link rich text may hold opens the Alert Log (the Daily
+// alert task's "View these alerts in the Alert Log"). Any other <a> keeps its
+// text as a plain <span> and loses the link.
+const alertLogLinkOnly: sanitizeHtml.Transformer = (_tagName, attribs): sanitizeHtml.Tag => {
+  const href = attribs['href'];
+  return href && isAlertLogHref(href)
+    ? { tagName: 'a', attribs: { href } }
+    : { tagName: 'span', attribs: {} };
+};
 
 // List attributes: `data-type` marks a task list (`ul`) / task item (`li`), and
 // `data-checked` carries a task item's checked state. We store checkboxes as a
@@ -47,20 +57,28 @@ export function sanitizeRichText(html: string, opts: SanitizeOptions = {}): stri
   if (!opts.allowMentions) {
     return sanitizeHtml(html, {
       allowedTags: BASE_ALLOWED_TAGS,
-      allowedAttributes: { span: ['style'], ...LIST_ATTRIBUTES },
+      allowedAttributes: { span: ['style'], a: ['href'], ...LIST_ATTRIBUTES },
       allowedStyles: ALLOWED_STYLES,
       allowedSchemes: [],
+      allowProtocolRelative: false,
       disallowedTagsMode: 'discard',
+      transformTags: { a: alertLogLinkOnly },
     });
   }
 
   return sanitizeHtml(html, {
     allowedTags: BASE_ALLOWED_TAGS,
-    allowedAttributes: { span: ['data-type', 'data-id', 'data-label', 'class', 'style'], ...LIST_ATTRIBUTES },
+    allowedAttributes: {
+      span: ['data-type', 'data-id', 'data-label', 'class', 'style'],
+      a: ['href'],
+      ...LIST_ATTRIBUTES,
+    },
     allowedStyles: ALLOWED_STYLES,
     allowedSchemes: [],
+    allowProtocolRelative: false,
     disallowedTagsMode: 'discard',
     transformTags: {
+      a: alertLogLinkOnly,
       // Normalize genuine mention spans (data-type="mention" + data-id). Any
       // other <span> keeps only its style (color), with data-* stripped so it
       // can't spoof a mention.

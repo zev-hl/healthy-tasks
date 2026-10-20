@@ -95,6 +95,22 @@ describe('ExclusivesLogPage', () => {
     expect(screen.getByText(/1 alert · newest first/)).toBeInTheDocument();
   });
 
+  it('opens filtered as a Daily alert task’s link says (HLAI-112)', async () => {
+    renderWithRouter(<ExclusivesLogPage />, [
+      '/exclusives/log?from=2026-10-19T12%3A30%3A00.000Z&to=2026-10-20T12%3A30%3A00.000Z&type=ListingSuppressed&group=2',
+    ]);
+    await settle();
+
+    expect(queryAlerts).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        from: '2026-10-19T12:30:00.000Z',
+        to: '2026-10-20T12:30:00.000Z',
+        alertTypes: ['ListingSuppressed'],
+        groupIds: [2],
+      }),
+    );
+  });
+
   it('opens filtered to a group when the Groups screen sends one', async () => {
     renderWithRouter(<ExclusivesLogPage />, [
       { pathname: '/exclusives/log', state: { gid: 2, gname: 'Versure Exclusives' } },

@@ -11,6 +11,7 @@ import { useLocation } from 'react-router-dom';
 import {
   EXCLUSIVES_ALERT_TYPES,
   EXCLUSIVES_ALERT_TYPE_LABELS,
+  readAlertLogLink,
   type ExclusivesAlertQueryRequest,
   type ExclusivesAlertRowDto,
   type ExclusivesAlertType,
@@ -59,24 +60,38 @@ function toIso(local: string): string | undefined {
 }
 
 export function ExclusivesLogPage() {
-  const link = (useLocation().state ?? {}) as LogLinkState;
+  const location = useLocation();
+  const link = (location.state ?? {}) as LogLinkState;
+  // HLAI-112: a Daily alert task's link carries its dates, alert type and group
+  // in the address. Read once, as the page opens; the filters are then the
+  // page's own, as always.
+  const [fromAddress] = useState(() => readAlertLogLink(location.search));
 
   const [search, setSearch] = useState('');
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
-  const [active, setActive] = useState<Set<ExclusivesAlertType>>(new Set());
+  const [active, setActive] = useState<Set<ExclusivesAlertType>>(
+    () => new Set(fromAddress.alertTypes),
+  );
   // Which filter is open, if any. Three separate flags let two be open at
   // once, and each button had to remember to close every other one.
   const [openFilter, setOpenFilter] = useState<'dates' | 'types' | 'groups' | null>(null);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() =>
+    fromAddress.from ? toLocalInput(new Date(fromAddress.from)) : '',
+  );
+  const [dateTo, setDateTo] = useState(() =>
+    fromAddress.to ? toLocalInput(new Date(fromAddress.to)) : '',
+  );
   // Which quick range filled the fields in, if any — remembered only so the
   // chosen one can look chosen. Typing a date by hand forgets it.
   const [quickRange, setQuickRange] = useState<number | null>(null);
   // Seeded from the Groups screen's row click, and clearable from the chip.
   // A set, so the log can be narrowed to several groups at once. Seeded from
-  // the Groups screen when someone arrived by clicking a group there.
-  const [groupIds, setGroupIds] = useState<number[]>(link.gid ? [link.gid] : []);
+  // the Groups screen when someone arrived by clicking a group there, or from
+  // a Daily alert task's link.
+  const [groupIds, setGroupIds] = useState<number[]>(() =>
+    fromAddress.groupIds.length > 0 ? fromAddress.groupIds : link.gid ? [link.gid] : [],
+  );
   const [groupOptions, setGroupOptions] = useState<ExclusivesGroupOptionDto[]>([]);
 
   const [rows, setRows] = useState<ExclusivesAlertRowDto[]>([]);

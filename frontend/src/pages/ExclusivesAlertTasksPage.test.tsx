@@ -23,9 +23,11 @@ vi.mock('../api/client', () => ({
   },
   ApiError: class ApiError extends Error {
     status: number;
-    constructor(status: number, message: string) {
+    details?: unknown;
+    constructor(status: number, message: string, details?: unknown) {
       super(message);
       this.status = status;
+      this.details = details;
     }
   },
 }));
@@ -191,6 +193,7 @@ afterEach(() => {
 describe('ExclusivesAlertTasksPage', () => {
   it('lists the twelve alert types, one per row, in order', async () => {
     await renderPage();
+    expect(screen.getByRole('heading', { name: 'Alert Task Setup' })).toBeInTheDocument();
     const labels = screen
       .getAllByRole('row')
       .slice(1)
@@ -304,18 +307,60 @@ describe('ExclusivesAlertTasksPage', () => {
   });
 
   it('a failed save says so and keeps the changes', async () => {
-    saveSetup.mockRejectedValue(new ApiError(409, 'Someone else saved first. Reload to see it.'));
+    saveSetup.mockRejectedValue(
+      new ApiError(422, '1 required duty is not held by the people picked'),
+    );
     await renderPage();
     await pickTemplate('Buy Box Lost', 'Price Review');
     fireEvent.click(saveButton());
     await settle();
-    expect(screen.getByText('Someone else saved first. Reload to see it.')).toBeInTheDocument();
+    expect(
+      screen.getByText('1 required duty is not held by the people picked'),
+    ).toBeInTheDocument();
     expect(saveButton()).toBeEnabled();
   });
 
-  it('says the setup is not on the server yet', async () => {
+  it('if another Admin saved first, says so, and Refresh shows what they saved', async () => {
+    saveSetup.mockRejectedValue(
+      new ApiError(409, 'Changed by someone else', { code: 'STALE_WRITE' }),
+    );
     await renderPage();
-    expect(screen.getByText(/Not saved to the server yet/)).toBeInTheDocument();
+    await pickTemplate('Buy Box Lost', 'Price Review');
+    fireEvent.click(saveButton());
+    await settle();
+    expect(
+      screen.getByText(/The alert task setup was updated while viewed here/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull();
+
+    // What the other Admin saved, as Refresh finds it.
+    getSetup.mockResolvedValue({
+      settings: emptySetup().settings.map((s) =>
+        s.alertType === 'TitleChanged' ? { ...s, templateId: 5 } : s,
+      ),
+      updatedAt: '2026-10-20T12:00:00.000Z',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await settle();
+    expect(screen.queryByText(/updated while viewed here/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Template for Title Changed: Plain checklist' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Template for Buy Box Lost: — None —' }),
+    ).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+
+    // The next Save is made from the version Refresh brought.
+    saveSetup.mockImplementation(async (body) => ({
+      ...body,
+      updatedAt: '2026-10-20T12:05:00.000Z',
+    }));
+    await pickTemplate('Buy Box Lost', 'Price Review');
+    fireEvent.click(saveButton());
+    await settle();
+    expect(saveSetup.mock.calls.at(-1)![0].expectedUpdatedAt).toBe('2026-10-20T12:00:00.000Z');
+    expect(screen.getByText('Saved.')).toBeInTheDocument();
   });
 
   // --- Step 2: the Role Assignment column ------------------------------------------

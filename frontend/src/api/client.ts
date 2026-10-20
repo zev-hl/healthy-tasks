@@ -95,7 +95,6 @@ import type {
   UpdateDepartmentRequest,
   UpdateDutyRequest,
 } from '@healthy-tasks/shared';
-import { getAlertTaskSetupStub, saveAlertTaskSetupStub } from './alertTaskSetupStub';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -225,12 +224,14 @@ export const api = {
   listExclusivesGroupOptions: () =>
     request<ExclusivesGroupOptionDto[]>('/api/exclusives/groups/options'),
 
-  // HLAI-112: the Alert Tasks screen. Stand-ins until the server part exists
-  // (see alertTaskSetupStub.ts); the shapes are the real ones.
-  getExclusivesAlertTaskSetup: (): Promise<ExclusivesAlertTaskSetupDto> => getAlertTaskSetupStub(),
-  saveExclusivesAlertTaskSetup: (
-    body: SaveExclusivesAlertTaskSetupRequest,
-  ): Promise<ExclusivesAlertTaskSetupDto> => saveAlertTaskSetupStub(body),
+  // HLAI-112: the Alert Tasks screen (Admins only).
+  getExclusivesAlertTaskSetup: () =>
+    request<ExclusivesAlertTaskSetupDto>('/api/exclusives/alert-tasks'),
+  saveExclusivesAlertTaskSetup: (body: SaveExclusivesAlertTaskSetupRequest) =>
+    request<ExclusivesAlertTaskSetupDto>('/api/exclusives/alert-tasks', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   queryExclusivesGroups: (body: ExclusivesGroupQueryRequest) =>
     request<PaginatedResult<ExclusivesGroupRowDto>>('/api/exclusives/groups/query', {

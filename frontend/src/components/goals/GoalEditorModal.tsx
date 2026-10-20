@@ -63,6 +63,7 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!dirty) return; // nothing changed yet
     setError(null);
 
     const target = Number(targetValue);
@@ -252,7 +253,11 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
                 {submitting ? 'Refreshing…' : 'Refresh'}
               </button>
             ) : (
-              <button type="submit" disabled={submitting}>
+              <button
+                type="submit"
+                disabled={submitting || !dirty}
+                title={dirty ? undefined : 'Nothing has changed yet'}
+              >
                 {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create goal'}
               </button>
             )}

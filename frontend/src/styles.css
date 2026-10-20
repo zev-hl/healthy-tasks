@@ -3143,6 +3143,17 @@ th {
 .rich-text p:last-child {
   margin-bottom: 0;
 }
+/* HLAI-112: the one link rich text may hold — a Daily alert task's way to the
+   Alert Log, shown and edited alike. */
+.rich-text a,
+.rte-content a {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rich-text a:hover {
+  color: var(--accent);
+}
 
 /* --- Lists (bulleted / numbered / task) — editor + read-only view --------- */
 /* Compact list control: a small icon+caret button that opens a popover menu. */
@@ -3931,6 +3942,12 @@ th.sortable:hover .sort-hint {
 }
 .alert-tasks-template {
   width: 290px;
+}
+/* The shared table keeps cells on one line; here the role cell wraps, so a long
+   "⚠ Doesn't hold …" stays inside the table instead of running off its edge. */
+.alert-tasks-table td.alert-tasks-roles {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 /* Slimmer dropdowns on this screen, with their arrows a little in from the
    right edge (6px more than the usual right padding). */
@@ -7445,9 +7462,12 @@ tr.just-completed > td {
   inset: 0;
   z-index: 40;
 }
+/* Above the sidebar (50): in a narrow window a panel lined up with its button's
+   right edge reaches past the content and must not slide under it. Still under
+   the group drawer (55/56) and toasts (60). */
 .exc-filter-wrap {
   position: relative;
-  z-index: 45;
+  z-index: 52;
 }
 .exc-filter-pop {
   position: absolute;

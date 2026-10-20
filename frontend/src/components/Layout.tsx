@@ -119,7 +119,7 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
         </NavLink>
         {user?.role === 'Admin' && (
           <NavLink to="/exclusives/alert-tasks" className={navItemClass}>
-            Alert Tasks
+            Alert Task Setup
           </NavLink>
         )}
       </div>

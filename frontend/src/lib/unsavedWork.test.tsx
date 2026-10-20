@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
+import type { GoalDto } from '@healthy-tasks/shared';
 
 vi.mock('../api/client', () => ({
   api: {
@@ -108,6 +109,20 @@ describe('New task form', () => {
     expect(screen.getByLabelText('Name *')).toHaveValue('Count the pallets');
   });
 
+  it('keeps Create task off until something is entered', async () => {
+    const onSubmit = vi.fn();
+    renderWithSidebar(<TaskForm submitLabel="Create task" onSubmit={onSubmit} />);
+    const name = await screen.findByLabelText('Name *');
+    expect(screen.getByRole('button', { name: 'Create task' })).toBeDisabled();
+    fireEvent.submit(name.closest('form')!);
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.change(name, { target: { value: 'Count the pallets' } });
+    expect(screen.getByRole('button', { name: 'Create task' })).toBeEnabled();
+    fireEvent.change(name, { target: { value: '' } });
+    expect(screen.getByRole('button', { name: 'Create task' })).toBeDisabled();
+  });
+
   it('leaves without asking when nothing was entered', async () => {
     renderWithSidebar(<TaskForm submitLabel="Create task" onSubmit={vi.fn()} />);
     await screen.findByLabelText('Name *');
@@ -139,6 +154,37 @@ describe('Goal editor', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps Create goal off until something is filled in', () => {
+    renderWithSidebar(<GoalEditorModal onClose={vi.fn()} onSaved={vi.fn()} />);
+    const create = () => screen.getByRole('button', { name: 'Create goal' });
+    expect(create()).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
+    expect(create()).toBeEnabled();
+    fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: '' } });
+    expect(create()).toBeDisabled();
+  });
+
+  it('keeps Save changes off until the goal is changed', () => {
+    const goal = {
+      id: 7,
+      ownerId: 'u-1',
+      specific: 'Ship faster',
+      metricType: 'Count',
+      unitLabel: null,
+      targetValue: 10,
+      deadline: '2026-12-31T00:00:00.000Z',
+      risks: null,
+      mitigations: null,
+      notes: null,
+      updatedAt: '2026-10-20T12:00:00.000Z',
+    } as unknown as GoalDto;
+    renderWithSidebar(<GoalEditorModal goal={goal} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const save = () => screen.getByRole('button', { name: 'Save changes' });
+    expect(save()).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Notes/), { target: { value: 'Weekly check-in' } });
+    expect(save()).toBeEnabled();
+  });
+
   it('asks before the page is left with a goal half-written', async () => {
     renderWithSidebar(<GoalEditorModal onClose={vi.fn()} onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
@@ -157,5 +203,20 @@ describe('New user form', () => {
     fireEvent.mouseDown(bd);
     fireEvent.click(bd);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('keeps Create user off until something is filled in', () => {
+    renderWithSidebar(<UserFormModal onClose={vi.fn()} onCreated={vi.fn()} />);
+    const create = () => screen.getByRole('button', { name: 'Create user' });
+    expect(create()).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
+    expect(create()).toBeEnabled();
+    fireEvent.change(screen.getByLabelText(/First name/), { target: { value: '' } });
+    expect(create()).toBeDisabled();
+
+    // Picking a role other than the default counts too.
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'Manager' } });
+    expect(create()).toBeEnabled();
   });
 });

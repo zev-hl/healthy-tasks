@@ -611,7 +611,7 @@ export async function instantiateTemplate(
  * the person doesn't hold a duty some of that role's template tasks carry.
  * Unfilled roles produce nothing (their tasks are created unassigned).
  */
-async function templateDutyProblems(
+export async function templateDutyProblems(
   nodes: { id: number; assigneeRole: string | null; dutyId: string | null }[],
   roleMap: Map<string, string | null>,
 ): Promise<TemplateDutyProblemDto[]> {

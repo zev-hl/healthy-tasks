@@ -175,8 +175,14 @@ mark on the task page) but can no longer be picked. See `docs/architecture.md` �
 ### Alert Tasks (HLAI-112)
 An Admin screen (`/exclusives/alert-tasks`) linking each Exclusives alert type to a
 template and a person per role of that template, for tasks to be made from alerts
-automatically. Only the screen exists so far: it saves through a stand-in
-(`api/alertTaskSetupStub.ts`) until the server part is built. See
+automatically. The setup is stored (`AlertTaskSetting`, Admin-only
+`GET`/`PUT /api/exclusives/alert-tasks`). Immediate alerts make their tasks at the
+end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`); an
+alert's `taskHandledAt` makes sure it never makes two, and alerts from before
+go-live none. Daily alerts make one task per group and type at 8:30 AM business
+time (a scheduler pass), listing the day's alerts with a link to the Alert Log —
+the only link rich text may keep. Run both by hand with
+`docker compose exec backend npm run alert-tasks:run --workspace backend`. See
 `docs/architecture.md` §16.
 
 ### Background scheduler
@@ -218,7 +224,8 @@ URLs. For S3, `S3_ENDPOINT` is used for server-side ops while
 ### Rich text
 User-authored HTML (task descriptions, comments) is sanitized server-side
 (`utils/rich-text.ts`, `sanitize-html`) and rendered via TipTap / DOMPurify on
-the frontend. `express.json` limit is raised to 2mb to fit rich-text payloads.
+the frontend. Links are stripped, except one to the Alert Log (HLAI-112's Daily
+alert tasks), which is kept on the server, the display and the editor alike. `express.json` limit is raised to 2mb to fit rich-text payloads.
 
 ### Database invariants live in Postgres
 Some rules can't be a `CHECK` constraint (they depend on other rows) and are

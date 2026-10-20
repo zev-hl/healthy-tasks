@@ -3,6 +3,7 @@ import { env } from '../../config/env.js';
 import { missingSpApiConfig } from './sp-api/config.js';
 import { runIngestion, type IngestionReport } from './ingestion.service.js';
 import { runDetection, type DetectionReport } from './detection.service.js';
+import { makeImmediateAlertTasks, type AlertTaskRunReport } from './alert-tasks.service.js';
 
 // Database-wide lock so two sweeps never run at once — e.g. the timer and a
 // manual `exclusives-run-pass.ts`, or two backend processes — which would double
@@ -23,6 +24,8 @@ export interface ExclusivesPassReport {
   finishedAt: string;
   ingestion?: IngestionReport;
   detection?: DetectionReport;
+  /** HLAI-112: the tasks made from this pass's Immediate alerts (and retries). */
+  alertTasks?: AlertTaskRunReport;
 }
 
 type ReportBody = Omit<ExclusivesPassReport, 'startedAt' | 'finishedAt'>;
@@ -41,7 +44,8 @@ function describeCalls(report: IngestionReport): string {
 /**
  * One Exclusives pass: fetch fresh data for every monitored listing
  * (ingestion), then compare it with each listing's saved snapshot, log alerts
- * for what changed and save the fresh data in place (detection). This is what
+ * for what changed and save the fresh data in place (detection), then make the
+ * tasks of the alerts set to Immediate (HLAI-112). This is what
  * the scheduler runs on its cadence; it can also be run by hand
  * (scripts/exclusives-run-pass.ts). Read-only against Amazon.
  *
@@ -92,7 +96,10 @@ export async function runExclusivesPass(
             `(${detection.snapshotsChanged} changed), ${ingestion.skipped.length} skipped, ` +
             `${detection.alertsWritten} alert(s)`,
         );
-        return finish({ status: 'completed', ingestion, detection });
+        // HLAI-112: the Immediate alerts' tasks, still under the lock so two
+        // passes never make the same task. Never throws.
+        const alertTasks = await makeImmediateAlertTasks(onLog);
+        return finish({ status: 'completed', ingestion, detection, alertTasks });
       },
       { maxWait: 10_000, timeout: PASS_LOCK_TIMEOUT_MS },
     );

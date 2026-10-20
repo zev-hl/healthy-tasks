@@ -10,7 +10,9 @@ import { notifyDutyMismatches } from './duty-check.service.js';
 import {
   DEFAULT_DUE_HOUR,
   DEFAULT_START_HOUR,
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   TASK_HISTORY_FIELDS,
+  type ExclusivesAlertType,
   type TaskPriority,
   type TemplateOccurrenceOrigin,
 } from '@healthy-tasks/shared';
@@ -73,6 +75,24 @@ export interface GenerateOccurrenceParams {
   creatorId: string;
   /** Actor that assignment notifications are attributed to. */
   actorId: string;
+  /**
+   * HLAI-112: tasks made from an Exclusives alert (origin `alert`) carry its
+   * group and type as their HLAI-118 attributes, on every task of the tree. Other
+   * origins leave them unset, to be picked on the task page.
+   */
+  alertGroupId?: number | null;
+  alertType?: ExclusivesAlertType | null;
+  /**
+   * Rich text added after the top task's own description (HLAI-112: the Daily
+   * task's list of alerts). Sanitized and size-checked with it.
+   */
+  rootDescriptionExtra?: string | null;
+  /**
+   * HLAI-112: the alerts these tasks are made for. Linked to the top task and
+   * marked handled in the same transaction; if any already was, nothing is made
+   * (409), so an alert never makes two tasks.
+   */
+  alertLogIds?: number[];
 }
 
 export interface GeneratedOccurrence {
@@ -89,10 +109,15 @@ export interface GeneratedOccurrence {
 export async function generateOccurrence(params: GenerateOccurrenceParams): Promise<GeneratedOccurrence> {
   const { templateId, seq, origin, instanceLabel, anchorStart, assigneeByNodeId, creatorId, actorId } =
     params;
+  const alertGroupId = params.alertGroupId ?? null;
+  const alertType = params.alertType ?? null;
 
   const prefixName = (name: string): string => (instanceLabel ? `${instanceLabel}: ${name}` : name);
   const cleanDesc = (d: string | null): string | null =>
     d ? sanitizeAndValidate(d, { fieldLabel: 'Description' }) : null;
+  // The top task's description, then any extra (the template's text comes first).
+  const rootDesc = (d: string | null): string | null =>
+    cleanDesc([d, params.rootDescriptionExtra].filter(Boolean).join('') || null);
 
   const result = await prisma.$transaction(async (tx) => {
     const template = await tx.taskTemplate.findUnique({
@@ -107,6 +132,12 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       where: { blockerNode: { templateId } },
       select: { blockerNodeId: true, blockedNodeId: true },
     });
+
+    const group =
+      alertGroupId === null
+        ? null
+        : await tx.alertGroup.findUnique({ where: { id: alertGroupId }, select: { name: true } });
+    if (alertGroupId !== null && !group) throw HttpError.badRequest('Alert group not found');
 
     const occurrence = await tx.templateOccurrence.create({
       data: { templateId, seq, origin, instanceLabel, anchorStart },
@@ -132,10 +163,13 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           ? offsetFromAnchor(anchorStart, node.dueOffsetDays, DEFAULT_DUE_HOUR)
           : null;
 
-      const task = await tx.task.create({
+      const isRoot = node.parentNodeId === null && rootTaskId === null;
+      const description = isRoot ? rootDesc(node.description) : cleanDesc(node.description);
+      // Typed here: `rootTaskId` (read above) is set from it below, in this loop.
+      const task: { id: number } = await tx.task.create({
         data: {
           name: prefixName(node.name),
-          description: cleanDesc(node.description),
+          description,
           creatorId,
           assigneeId,
           priority: node.defaultPriority,
@@ -148,12 +182,14 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           templateNodeId: node.id,
           templateOccurrenceId: occurrence.id,
           dutyId: node.dutyId,
+          alertGroupId,
+          alertType,
         },
         select: { id: true },
       });
       nodeIdToTaskId.set(node.id, task.id);
       created.push({ taskId: task.id, assigneeId, nodeId: node.id });
-      if (node.parentNodeId === null && rootTaskId === null) rootTaskId = task.id;
+      if (isRoot) rootTaskId = task.id;
     }
 
     if (rootTaskId === null) throw HttpError.badRequest('Template has no root node');
@@ -169,6 +205,17 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
 
     await tx.templateOccurrence.update({ where: { id: occurrence.id }, data: { rootTaskId } });
 
+    const alertLogIds = params.alertLogIds ?? [];
+    if (alertLogIds.length > 0) {
+      const { count } = await tx.alertLog.updateMany({
+        where: { id: { in: alertLogIds }, taskHandledAt: null },
+        data: { taskId: rootTaskId, taskHandledAt: new Date() },
+      });
+      if (count !== alertLogIds.length) {
+        throw new HttpError(409, 'These alerts already have their task.');
+      }
+    }
+
     // Provenance entry on the root task (History treats the past as immutable, so
     // this records only that the task was generated from a template).
     const labelPart = instanceLabel ? ` (${instanceLabel})` : seq != null ? ` (#${seq})` : '';
@@ -179,6 +226,22 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       changeType: 'added',
       detail: `${template.name}${labelPart}`,
     });
+
+    // HLAI-112: every task made from an alert says so, so nobody takes it for one
+    // its creator made by hand.
+    if (origin === 'alert') {
+      const what = alertType ? `a ${EXCLUSIVES_ALERT_TYPE_LABELS[alertType]} alert` : 'an alert';
+      await recordHistory(
+        tx,
+        created.map((c) => ({
+          taskId: c.taskId,
+          userId: actorId,
+          field: TASK_HISTORY_FIELDS.alert,
+          changeType: 'added' as const,
+          detail: group ? `${what} (${group.name})` : what,
+        })),
+      );
+    }
 
     return { occurrenceId: occurrence.id, rootTaskId, created, ownerId: template.createdById };
   });
@@ -265,14 +328,16 @@ async function copyTemplateAttachmentsToTasks(
 
 /**
  * Build the per-node assignee map for a SCHEDULED occurrence by carrying forward
- * the assignees from the template's most recent prior occurrence (of any
- * origin): for each node, reuse whoever was assigned to the task generated from
+ * the assignees from the template's most recent prior occurrence (manual or
+ * scheduled, never one made from alerts): for each node, reuse whoever was assigned to the task generated from
  * that same node last time. Returns an empty map when there is no prior
  * occurrence (the first scheduled fire is unassigned unless manually seeded).
  */
 export async function carryForwardAssignees(templateId: number): Promise<Map<number, string | null>> {
   const prior = await prisma.templateOccurrence.findFirst({
-    where: { templateId },
+    // Tasks made from alerts have their own people (the Alert Task Setup), so a
+    // schedule never takes its people from them.
+    where: { templateId, origin: { not: 'alert' } },
     orderBy: [{ materializedAt: 'desc' }, { id: 'desc' }],
     select: { id: true },
   });
