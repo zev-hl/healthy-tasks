@@ -1010,13 +1010,14 @@ describe('Daily alert tasks', () => {
     alertType: string,
     asin: string,
     createdAt: Date,
+    message = 'Something changed.',
   ) {
     return prisma.alertLog.create({
       data: {
         groupId: group?.id ?? null,
         groupName: group?.name ?? 'Gone',
         alertType,
-        message: 'Something changed.',
+        message,
         asin,
         marketplace: 'USA',
         title: 'Widget',
@@ -1049,7 +1050,7 @@ describe('Daily alert tasks', () => {
   const tops = () => prisma.task.findMany({ where: { parentId: null }, orderBy: { id: 'asc' } });
   const NONE = { made: 0, noTask: 0, failed: 0 };
 
-  it('makes one task per group and type for the day that ended at 8:30, listing its alerts', async () => {
+  it('makes one task per group and type for the day that ended at 8:30, with its alerts in a table', async () => {
     await setUpDaily('ListingSuppressed');
     const group = await watchingGroup('Wasif - CA', { ListingSuppressed: 'daily' });
     const first = await logAlert(
@@ -1086,10 +1087,14 @@ describe('Daily alert tasks', () => {
     assert.equal(
       top!.description,
       '<p>Fix it.</p>' +
-        '<ol>' +
-        '<li><p>B0DAILY001: Wasif - CA - Listing Suppressed - Oct 18, 2026, 3:00 PM</p></li>' +
-        '<li><p>B0DAILY002: Wasif - CA - Listing Suppressed - Oct 19, 2026, 8:00 AM</p></li>' +
-        '</ol>' +
+        '<table><tbody>' +
+        '<tr><th><p>No.</p></th><th><p>ASIN</p></th><th><p>Group</p></th>' +
+        '<th><p>Alert Type</p></th><th><p>Date &amp; time</p></th><th><p>Details</p></th></tr>' +
+        '<tr><td><p>1</p></td><td><p>B0DAILY001</p></td><td><p>Wasif - CA</p></td>' +
+        '<td><p>Listing Suppressed</p></td><td><p>Oct 18, 2026, 3:00 PM</p></td><td><p>Something changed.</p></td></tr>' +
+        '<tr><td><p>2</p></td><td><p>B0DAILY002</p></td><td><p>Wasif - CA</p></td>' +
+        '<td><p>Listing Suppressed</p></td><td><p>Oct 19, 2026, 8:00 AM</p></td><td><p>Something changed.</p></td></tr>' +
+        '</tbody></table>' +
         '<p><a href="/exclusives/log?from=2026-10-18T12%3A30%3A00.000Z&amp;to=2026-10-19T12%3A30%3A00.000Z' +
         `&amp;type=ListingSuppressed&amp;group=${group.id}">View these alerts in the Alert Log</a></p>`,
     );
@@ -1155,6 +1160,39 @@ describe('Daily alert tasks', () => {
     ]);
   });
 
+  it('from the third row on, Details links to that ASIN’s alerts in the Alert Log', async () => {
+    await setUpDaily('ListingSuppressed');
+    const group = await watchingGroup('Wasif - CA', { ListingSuppressed: 'daily' });
+    const at = (h: number) => ny(`2026-10-18T${String(h).padStart(2, '0')}:00:00`);
+    await logAlert(group, 'ListingSuppressed', 'B0ROW00001', at(10), 'First description');
+    await logAlert(group, 'ListingSuppressed', 'B0ROW00002', at(11), 'Second description');
+    await logAlert(group, 'ListingSuppressed', 'B0ROW00003', at(12), 'Third description');
+    await logAlert(group, 'ListingSuppressed', 'B0ROW00004', at(13), 'Fourth description');
+
+    assert.equal((await makeDailyAlertTasks(() => {}, ny('2026-10-19T08:30:00'))).made, 1);
+    const [top] = await tops();
+    const details = [
+      ...top!.description!.matchAll(/<tr>(?:<td>.*?<\/td>){5}<td><p>(.*?)<\/p><\/td><\/tr>/g),
+    ].map((m) => m[1]);
+    const day =
+      'from=2026-10-18T12%3A30%3A00.000Z&amp;to=2026-10-19T12%3A30%3A00.000Z' +
+      `&amp;type=ListingSuppressed&amp;group=${group.id}`;
+    assert.deepEqual(details, [
+      'First description',
+      'Second description',
+      `<a href="/exclusives/log?${day}&amp;q=B0ROW00003">See log for details…</a>`,
+      `<a href="/exclusives/log?${day}&amp;q=B0ROW00004">See log for details…</a>`,
+    ]);
+    assert.doesNotMatch(top!.description!, /Third description|Fourth description/);
+    // The whole day's link stays under the table.
+    assert.match(
+      top!.description!,
+      new RegExp(
+        `</table><p><a href="/exclusives/log\\?${day}">View these alerts in the Alert Log</a></p>$`,
+      ),
+    );
+  });
+
   it('lists at most 100 alerts, then says how many more', async () => {
     await setUpDaily('PriceChanged');
     const group = await watchingGroup('Wasif - US', { PriceChanged: 'daily' });
@@ -1174,7 +1212,7 @@ describe('Daily alert tasks', () => {
 
     assert.equal((await makeDailyAlertTasks(() => {}, ny('2026-10-19T08:30:00'))).made, 1);
     const [top] = await tops();
-    assert.equal(top!.description!.match(/<li>/g)!.length, 100);
+    assert.equal(top!.description!.match(/<tr>/g)!.length, 1 + 100); // the header, then 100
     assert.match(top!.description!, /B0MANY0099/);
     assert.doesNotMatch(top!.description!, /B0MANY0100/);
     assert.match(top!.description!, /<p>…and 5 more: see the Alert Log link<\/p>/);
@@ -1195,7 +1233,7 @@ describe('Daily alert tasks', () => {
       failed: 0,
     });
     const [top] = await tops();
-    const listed = top!.description!.match(/<li>/g)?.length ?? 0;
+    const listed = (top!.description!.match(/<tr>/g)?.length ?? 1) - 1; // less the header
     assert.ok(listed > 0 && listed < 20, `${listed} listed`);
     assert.match(top!.description!, new RegExp(`…and ${20 - listed} more`));
     assert.match(top!.description!, /View these alerts in the Alert Log/);

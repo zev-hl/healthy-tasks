@@ -111,6 +111,22 @@ describe('ExclusivesLogPage', () => {
     );
   });
 
+  it('puts a Daily task row’s ASIN in the search box (HLAI-112)', async () => {
+    renderWithRouter(<ExclusivesLogPage />, [
+      '/exclusives/log?from=2026-10-19T12%3A30%3A00.000Z&type=ListingSuppressed&group=2&q=B0ABC12345',
+    ]);
+    await settle();
+
+    expect(screen.getByPlaceholderText(/Search ASIN/)).toHaveValue('B0ABC12345');
+    expect(queryAlerts).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        text: 'B0ABC12345',
+        alertTypes: ['ListingSuppressed'],
+        groupIds: [2],
+      }),
+    );
+  });
+
   it('opens filtered to a group when the Groups screen sends one', async () => {
     renderWithRouter(<ExclusivesLogPage />, [
       { pathname: '/exclusives/log', state: { gid: 2, gname: 'Versure Exclusives' } },

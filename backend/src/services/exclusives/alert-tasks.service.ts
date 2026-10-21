@@ -28,7 +28,7 @@ import { alertTaskRecipes, type AlertTaskRecipe } from './alert-task-setup.servi
  *   "Immediate" makes its own task tree. No limit: every alert gets its task.
  * - Daily (8:30 AM business time, from the scheduler): one task tree per group
  *   and type for the alerts of the day that has just ended (8:30 AM to 8:30 AM),
- *   listed in the top task's description with a link to the Alert Log.
+ *   in a table in the top task's description, with links to the Alert Log.
  *
  * An alert is picked up only while `taskHandledAt` is empty. It is set with the
  * task, in the same transaction, or when no task is due — no template for its
@@ -55,6 +55,7 @@ interface WaitingAlert {
   alertType: string;
   groupId: number | null;
   asin: string;
+  message: string;
   createdAt: Date;
   group: { name: string; settings: { alertType: string; mode: string }[] } | null;
 }
@@ -64,6 +65,7 @@ const waitingSelect = {
   alertType: true,
   groupId: true,
   asin: true,
+  message: true,
   createdAt: true,
   group: { select: { name: true, settings: { select: { alertType: true, mode: true } } } },
 } as const;
@@ -162,8 +164,8 @@ async function makeImmediate(onLog: Log, now: () => Date): Promise<AlertTaskRunR
 const DAILY_HOUR = 8;
 const DAILY_MINUTE = 30;
 
-/** At most this many alerts are listed in a Daily task; the link shows them all. */
-export const DAILY_LIST_MAX = 100;
+/** At most this many alerts are rows in a Daily task; the link shows them all. */
+export const DAILY_ROWS_MAX = 100;
 
 /** 8:30 AM on this business date. (DST changes at 2 AM, never near 8:30.) */
 function dailyRunOn(date: CalendarDate): Date {
@@ -269,7 +271,7 @@ async function makeDaily(onLog: Log, now: Date): Promise<AlertTaskRunReport> {
         type: day.type,
         at: day.end,
         alertLogIds: day.alerts.map((a) => a.id),
-        rootDescriptionExtra: (room) => dailyList(day, room),
+        rootDescriptionExtra: (room) => dailyTable(day, room),
       });
       made += 1;
     } catch (err) {
@@ -316,46 +318,66 @@ function when(at: Date): string {
 const LINK_TEXT = 'View these alerts in the Alert Log';
 const moreText = (n: number) => `…and ${n} more: see the Alert Log link`;
 
+/** The Daily table's columns, in order. */
+const TABLE_HEADERS = ['No.', 'ASIN', 'Group', 'Alert Type', 'Date & time', 'Details'];
+/** The first rows show the alert's own description; later ones link to it. */
+const ROWS_WITH_DETAILS = 2;
+const DETAILS_LINK_TEXT = 'See log for details…';
+
 /**
- * The Daily task's list: one numbered line per alert, `ASIN: Group - Alert Type
- * - Date`, at most DAILY_LIST_MAX and no more than fit in `room` characters
+ * The Daily task's table: a header row, then one row per alert, oldest first —
+ * No., ASIN, Group, Alert Type, Date & time (business clock), Details. Details is
+ * the alert's own description for the first two rows, and from the third a link
+ * to the Alert Log on that day, type and group with the row's ASIN in the search
+ * box. At most DAILY_ROWS_MAX rows, and no more than fit in `room` characters
  * beside the template's own text; then how many more, and the link to the Alert
- * Log on the whole day (8:30 AM to 8:30 AM), its type and its group.
+ * Log on the whole day (8:30 AM to 8:30 AM).
  */
-export function dailyList(
+export function dailyTable(
   day: {
     groupId: number;
     groupName: string;
     type: ExclusivesAlertType;
     end: Date;
-    alerts: { asin: string; createdAt: Date }[];
+    alerts: { asin: string; message: string; createdAt: Date }[];
   },
   room: number,
 ): string {
   const typeLabel = EXCLUSIVES_ALERT_TYPE_LABELS[day.type];
-  let budget = room - LINK_TEXT.length - moreText(day.alerts.length).length;
-  // A template whose own text leaves no room keeps it, and gets no list.
+  const link = (search?: string) =>
+    alertLogHref({
+      from: dailyRunOn(addCalendarDays(toBusinessDate(day.end), -1)).toISOString(),
+      to: day.end.toISOString(),
+      alertTypes: [day.type],
+      groupIds: [day.groupId],
+      search,
+    });
+  const cell = (tag: 'th' | 'td', html: string) => `<${tag}><p>${html}</p></${tag}>`;
+
+  let budget =
+    room - TABLE_HEADERS.join('').length - moreText(day.alerts.length).length - LINK_TEXT.length;
+  // A template whose own text leaves no room keeps it, and gets no table.
   if (budget < 0) return '';
-  const lines: string[] = [];
-  for (const a of day.alerts) {
-    const line = `${a.asin}: ${day.groupName} - ${typeLabel} - ${when(a.createdAt)}`;
-    if (lines.length === DAILY_LIST_MAX || line.length > budget) break;
-    lines.push(line);
-    budget -= line.length;
+  const rows: string[] = [];
+  for (const [i, a] of day.alerts.entries()) {
+    const texts = [String(i + 1), a.asin, day.groupName, typeLabel, when(a.createdAt)];
+    const withDetails = i < ROWS_WITH_DETAILS;
+    const size = texts.join('').length + (withDetails ? a.message : DETAILS_LINK_TEXT).length;
+    if (rows.length === DAILY_ROWS_MAX || size > budget) break;
+    budget -= size;
+    const details = withDetails
+      ? escapeHtml(a.message)
+      : `<a href="${escapeHtml(link(a.asin))}">${DETAILS_LINK_TEXT}</a>`;
+    rows.push(
+      `<tr>${texts.map((t) => cell('td', escapeHtml(t))).join('')}${cell('td', details)}</tr>`,
+    );
   }
-  const more = day.alerts.length - lines.length;
-  const href = alertLogHref({
-    from: dailyRunOn(addCalendarDays(toBusinessDate(day.end), -1)).toISOString(),
-    to: day.end.toISOString(),
-    alertTypes: [day.type],
-    groupIds: [day.groupId],
-  });
+  const more = day.alerts.length - rows.length;
+  const header = `<tr>${TABLE_HEADERS.map((h) => cell('th', escapeHtml(h))).join('')}</tr>`;
   return (
-    (lines.length > 0
-      ? `<ol>${lines.map((l) => `<li><p>${escapeHtml(l)}</p></li>`).join('')}</ol>`
-      : '') +
+    (rows.length > 0 ? `<table><tbody>${header}${rows.join('')}</tbody></table>` : '') +
     (more > 0 ? `<p>${escapeHtml(moreText(more))}</p>` : '') +
-    `<p><a href="${escapeHtml(href)}">${LINK_TEXT}</a></p>`
+    `<p><a href="${escapeHtml(link())}">${LINK_TEXT}</a></p>`
   );
 }
 

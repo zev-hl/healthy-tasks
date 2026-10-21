@@ -196,7 +196,11 @@ All models live in `backend/prisma/schema.prisma`. Highlights:
   **blocked-status rule**: a task with an incomplete predecessor may not move to
   `Review`/`Completed`; the error names the blocking task(s).
 - **4 Rich content** — sanitized rich-text descriptions/comments, @mentions,
-  attachments via pre-signed S3 URLs.
+  attachments via pre-signed S3 URLs. Tables too (HLAI-112): the editor's Table
+  menu inserts one with a header row and adds or deletes rows and columns; the
+  server and the display keep table, thead, tbody, tr, th, td, a cell only its
+  colspan/rowspan (1–99); shown as a plain bordered grid, scrolling sideways when
+  wider than the box.
 - **5 History & account maintenance** — the change-history trail; admin user edit;
   account merge.
 - **6 Search** — the Task Search screen: text search, multi-select filters,
@@ -825,21 +829,27 @@ listing that day's alerts and linking to them in the Alert Log.
   and type for its waiting Daily alerts — several days at once if a missed 8:30
   left them behind — labelled with that window's 8:30, anchored there, and all
   its alerts linked to the top task in the same transaction. The top task's
-  description is the template's own text, then a numbered list (`dailyList`:
-  `ASIN: Group - Alert Type - Date`, business clock), at most 100 lines and no
-  more than fit in `RICH_TEXT_MAX_CHARS` beside the template's text, then
-  "…and N more: see the Alert Log link", then the link. Daily alerts with no
+  description is the template's own text, then a table (`dailyTable`): a
+  header row — No., ASIN, Group, Alert Type, Date & time (business clock),
+  Details — and a row per alert, oldest first. Details is the alert's own
+  message for the first two rows and, from the third, "See log for details…", a
+  link to the Alert Log on that day, type and group with the row's ASIN in the
+  search box. At most 100 rows and no more than fit in `RICH_TEXT_MAX_CHARS`
+  beside the template's text, then "…and N more: see the Alert Log link", then
+  the whole day's link ("View these alerts in the Alert Log"). Daily alerts with no
   template, or whose group was deleted, are marked handled with no task;
   Immediate ones are left to `makeImmediateAlertTasks`.
 - **The Alert Log link** (`alertLogHref` / `readAlertLogLink` / `isAlertLogHref`
-  in `packages/shared`): `/exclusives/log?from=…&to=…&type=…&group=…`, the
-  window's two 8:30s as instants. The only link rich text may hold:
+  in `packages/shared`): `/exclusives/log?from=…&to=…&type=…&group=…[&q=…]`,
+  the window's two 8:30s as instants and, for a table row, its ASIN as the
+  search. The only link rich text may hold:
   `sanitizeRichText` keeps an `<a href>` to the Alert Log (nothing else on it) and
   turns any other link into plain text; `RichText` lets only that href through
   DOMPurify and opens it in the app (Ctrl/⌘-click still opens a new tab); the
   editor's StarterKit link keeps it while editing (`isAllowedUri`), with automatic
-  links from typing or pasting off. The Alert Log reads the filters from the
-  address as it opens (the viewer sees the dates on their own clock).
+  links from typing or pasting off. The Alert Log reads the filters and the
+  search from the address as it opens (the viewer sees the dates on their own
+  clock).
 - **By hand**: `npm run alert-tasks:run --workspace backend`
   (`scripts/alert-tasks-run.ts`) makes the Immediate tasks waiting (retries
   included), then the Daily ones of every window that has ended — the same work a

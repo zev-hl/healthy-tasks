@@ -8,6 +8,7 @@ import Mention from '@tiptap/extension-mention';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
+import { TableKit } from '@tiptap/extension-table';
 import { RICH_TEXT_MAX_CHARS, isAlertLogHref, type TaskUserRef } from '@healthy-tasks/shared';
 import { createMentionSuggestion } from './mentionSuggestion';
 
@@ -94,6 +95,16 @@ const TaskIcon = (
   </svg>
 );
 
+const TableIcon = (
+  <svg {...iconProps} aria-hidden>
+    <rect x="3" y="4" width="18" height="16" rx="1.5" />
+    <line x1="3" y1="9.5" x2="21" y2="9.5" />
+    <line x1="3" y1="14.75" x2="21" y2="14.75" />
+    <line x1="9" y1="4" x2="9" y2="20" />
+    <line x1="15" y1="4" x2="15" y2="20" />
+  </svg>
+);
+
 // List types offered by the toolbar menu (in display order).
 const LIST_ITEMS: { kind: 'bullet' | 'ordered' | 'task'; label: string; icon: JSX.Element }[] = [
   { kind: 'bullet', label: 'Bulleted list', icon: BulletIcon },
@@ -131,25 +142,10 @@ export function RichTextEditor({
 }: Props) {
   const [listMenuOpen, setListMenuOpen] = useState(false);
   const listMenuRef = useRef<HTMLSpanElement>(null);
-
-  // Close the list menu on an outside click or Escape.
-  useEffect(() => {
-    if (!listMenuOpen) return;
-    function onDown(e: MouseEvent) {
-      if (listMenuRef.current && !listMenuRef.current.contains(e.target as Node)) {
-        setListMenuOpen(false);
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setListMenuOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [listMenuOpen]);
+  useCloseOnOutside(listMenuOpen, listMenuRef, () => setListMenuOpen(false));
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const tableMenuRef = useRef<HTMLSpanElement>(null);
+  useCloseOnOutside(tableMenuOpen, tableMenuRef, () => setTableMenuOpen(false));
 
   const extensions = useMemo(() => {
     const list: Extensions = [
@@ -180,6 +176,9 @@ export function RichTextEditor({
       Color.configure({ types: ['textStyle'] }),
       TaskList,
       CompactTaskItem.configure({ nested: true }),
+      // HLAI-112: tables, for anyone (a Daily alert task's alerts come as one).
+      // Fixed column widths are not kept, so no resizing.
+      TableKit.configure({ table: { resizable: false } }),
       CharacterCount.configure({ limit: RICH_TEXT_MAX_CHARS }),
     ];
     if (withMentions && mentionFetch) {
@@ -241,6 +240,37 @@ export function RichTextEditor({
     else if (editor.isActive('taskList')) chain.toggleTaskList();
     chain.run();
   }
+
+  // The table menu: insert one, or change the one the cursor is in.
+  const inTable = editor?.isActive('table') ?? false;
+  const TABLE_ACTIONS: { label: string; run: () => boolean; can: () => boolean }[] = editor
+    ? [
+        {
+          label: 'Insert table',
+          run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+          can: () => !inTable,
+        },
+        { label: 'Add row above', run: () => editor.chain().focus().addRowBefore().run(), can: () => inTable },
+        { label: 'Add row below', run: () => editor.chain().focus().addRowAfter().run(), can: () => inTable },
+        {
+          label: 'Add column left',
+          run: () => editor.chain().focus().addColumnBefore().run(),
+          can: () => inTable,
+        },
+        {
+          label: 'Add column right',
+          run: () => editor.chain().focus().addColumnAfter().run(),
+          can: () => inTable,
+        },
+        { label: 'Delete row', run: () => editor.chain().focus().deleteRow().run(), can: () => inTable },
+        {
+          label: 'Delete column',
+          run: () => editor.chain().focus().deleteColumn().run(),
+          can: () => inTable,
+        },
+        { label: 'Delete table', run: () => editor.chain().focus().deleteTable().run(), can: () => inTable },
+      ]
+    : [];
 
   return (
     <div className="rte">
@@ -308,6 +338,41 @@ export function RichTextEditor({
             </div>
           )}
         </span>
+        <span className="rte-listmenu" ref={tableMenuRef}>
+          <button
+            type="button"
+            className={`rte-listbtn${inTable ? ' is-active' : ''}`}
+            aria-label="Table"
+            aria-haspopup="menu"
+            aria-expanded={tableMenuOpen}
+            title="Table"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setTableMenuOpen((o) => !o)}
+          >
+            {TableIcon}
+            <span className="rte-listcaret" aria-hidden>▾</span>
+          </button>
+          {tableMenuOpen && (
+            <div className="rte-listpop" role="menu">
+              {TABLE_ACTIONS.map((a) => (
+                <button
+                  key={a.label}
+                  type="button"
+                  role="menuitem"
+                  className="rte-listopt"
+                  disabled={!a.can()}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    a.run();
+                    setTableMenuOpen(false);
+                  }}
+                >
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
         <span className="rte-sep" aria-hidden />
         <span className="rte-colors" role="group" aria-label="Text color">
           {COLORS.map((c) => (
@@ -336,4 +401,29 @@ export function RichTextEditor({
       <EditorContent editor={editor} />
     </div>
   );
+}
+
+/** Close a toolbar menu on a click outside it, or Escape. */
+function useCloseOnOutside(
+  open: boolean,
+  ref: React.RefObject<HTMLElement | null>,
+  close: () => void,
+) {
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') close();
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+    // `close` is a fresh arrow each render; only opening and closing matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, ref]);
 }

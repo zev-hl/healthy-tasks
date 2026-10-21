@@ -28,8 +28,16 @@ describe('Alert Log links', () => {
       to: TO,
       alertTypes: ['ListingSuppressed'],
       groupIds: [113],
+      search: '',
     });
     assert.equal(alertLogHref({}), '/exclusives/log');
+  });
+
+  it('can carry what goes in the search box (a Daily task row’s ASIN)', () => {
+    const href = alertLogHref({ alertTypes: ['BuyBoxLost'], search: 'B0ABC12345' });
+    assert.equal(href, '/exclusives/log?type=BuyBoxLost&q=B0ABC12345');
+    assert.equal(readAlertLogLink(href.slice(href.indexOf('?'))).search, 'B0ABC12345');
+    assert.equal(readAlertLogLink('?q=%20%20B0ABC12345%20').search, 'B0ABC12345');
   });
 
   it('ignore what they do not recognise', () => {
@@ -37,7 +45,7 @@ describe('Alert Log links', () => {
       readAlertLogLink(
         '?from=yesterday&type=Nope&type=BuyBoxLost&type=BuyBoxLost&group=-1&group=x&group=7&utm=1',
       ),
-      { from: '', to: '', alertTypes: ['BuyBoxLost'], groupIds: [7] },
+      { from: '', to: '', alertTypes: ['BuyBoxLost'], groupIds: [7], search: '' },
     );
   });
 

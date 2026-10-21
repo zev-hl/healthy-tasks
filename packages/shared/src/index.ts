@@ -2076,6 +2076,8 @@ export interface AlertLogLinkFilters {
   to?: string;
   alertTypes?: ExclusivesAlertType[];
   groupIds?: number[];
+  /** What goes in the search box (an ASIN, for a Daily task's row). */
+  search?: string;
 }
 
 /** A link that opens the Alert Log with these filters set. */
@@ -2085,6 +2087,7 @@ export function alertLogHref(filters: AlertLogLinkFilters): string {
   if (filters.to) query.set('to', filters.to);
   for (const t of filters.alertTypes ?? []) query.append('type', t);
   for (const g of filters.groupIds ?? []) query.append('group', String(g));
+  if (filters.search) query.set('q', filters.search);
   const q = query.toString();
   return q ? `${ALERT_LOG_PATH}?${q}` : ALERT_LOG_PATH;
 }
@@ -2108,6 +2111,7 @@ export function readAlertLogLink(search: string): Required<AlertLogLinkFilters> 
     to: instant(query.get('to')),
     alertTypes: [...new Set(types)],
     groupIds: [...new Set(groups)],
+    search: (query.get('q') ?? '').trim().slice(0, 200),
   };
 }
 

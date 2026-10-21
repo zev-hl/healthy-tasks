@@ -3,13 +3,34 @@ import { RICH_TEXT_MAX_CHARS, isAlertLogHref } from '@healthy-tasks/shared';
 import { HttpError } from './http-error.js';
 
 // Rich text (Phase 4) is stored as sanitized HTML. We allow ONLY bold/italic/
-// underline plus paragraph/line-break structure — and, for comments, a
-// restricted mention <span>. Everything else (scripts, styles, event handlers,
-// images, arbitrary attributes) is stripped, and so is every link except one to
-// the Alert Log (HLAI-112). The server is the source of truth: all HTML is run
-// through sanitizeRichText on write, never trusting the client.
+// underline plus paragraph/line-break structure, lists and tables — and, for
+// comments, a restricted mention <span>. Everything else (scripts, styles,
+// event handlers, images, arbitrary attributes) is stripped, and so is every
+// link except one to the Alert Log (HLAI-112). The server is the source of
+// truth: all HTML is run through sanitizeRichText on write, never trusting the
+// client.
 
-const BASE_ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 'span', 'ul', 'ol', 'li', 'a'];
+const BASE_ALLOWED_TAGS = [
+  'p',
+  'br',
+  'strong',
+  'b',
+  'em',
+  'i',
+  'u',
+  'span',
+  'ul',
+  'ol',
+  'li',
+  'a',
+  // Tables (HLAI-112: in any description; a Daily alert task's alerts come as one).
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
+];
 
 // HLAI-112: the only link rich text may hold opens the Alert Log (the Daily
 // alert task's "View these alerts in the Alert Log"). Any other <a> keeps its
@@ -20,6 +41,18 @@ const alertLogLinkOnly: sanitizeHtml.Transformer = (_tagName, attribs): sanitize
     ? { tagName: 'a', attribs: { href } }
     : { tagName: 'span', attribs: {} };
 };
+
+// A table cell keeps only how many columns / rows it spans, as a small whole
+// number; widths, styles and anything else go.
+const tableCell: sanitizeHtml.Transformer = (tagName, attribs): sanitizeHtml.Tag => {
+  const kept: sanitizeHtml.Attributes = {};
+  for (const name of ['colspan', 'rowspan']) {
+    const v = attribs[name];
+    if (v && /^[1-9]\d?$/.test(v)) kept[name] = v;
+  }
+  return { tagName, attribs: kept };
+};
+const TABLE_ATTRIBUTES = { th: ['colspan', 'rowspan'], td: ['colspan', 'rowspan'] };
 
 // List attributes: `data-type` marks a task list (`ul`) / task item (`li`), and
 // `data-checked` carries a task item's checked state. We store checkboxes as a
@@ -57,12 +90,12 @@ export function sanitizeRichText(html: string, opts: SanitizeOptions = {}): stri
   if (!opts.allowMentions) {
     return sanitizeHtml(html, {
       allowedTags: BASE_ALLOWED_TAGS,
-      allowedAttributes: { span: ['style'], a: ['href'], ...LIST_ATTRIBUTES },
+      allowedAttributes: { span: ['style'], a: ['href'], ...LIST_ATTRIBUTES, ...TABLE_ATTRIBUTES },
       allowedStyles: ALLOWED_STYLES,
       allowedSchemes: [],
       allowProtocolRelative: false,
       disallowedTagsMode: 'discard',
-      transformTags: { a: alertLogLinkOnly },
+      transformTags: { a: alertLogLinkOnly, th: tableCell, td: tableCell },
     });
   }
 
@@ -72,6 +105,7 @@ export function sanitizeRichText(html: string, opts: SanitizeOptions = {}): stri
       span: ['data-type', 'data-id', 'data-label', 'class', 'style'],
       a: ['href'],
       ...LIST_ATTRIBUTES,
+      ...TABLE_ATTRIBUTES,
     },
     allowedStyles: ALLOWED_STYLES,
     allowedSchemes: [],
@@ -79,6 +113,8 @@ export function sanitizeRichText(html: string, opts: SanitizeOptions = {}): stri
     disallowedTagsMode: 'discard',
     transformTags: {
       a: alertLogLinkOnly,
+      th: tableCell,
+      td: tableCell,
       // Normalize genuine mention spans (data-type="mention" + data-id). Any
       // other <span> keeps only its style (color), with data-* stripped so it
       // can't spoof a mention.

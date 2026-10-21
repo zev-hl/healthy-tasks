@@ -63,11 +63,11 @@ export function ExclusivesLogPage() {
   const location = useLocation();
   const link = (location.state ?? {}) as LogLinkState;
   // HLAI-112: a Daily alert task's link carries its dates, alert type and group
-  // in the address. Read once, as the page opens; the filters are then the
-  // page's own, as always.
+  // in the address — and a row's link its ASIN, for the search box. Read once,
+  // as the page opens; the filters are then the page's own, as always.
   const [fromAddress] = useState(() => readAlertLogLink(location.search));
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(fromAddress.search);
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
   const [active, setActive] = useState<Set<ExclusivesAlertType>>(

@@ -1508,6 +1508,17 @@ textarea:focus-visible {
 /* Keep the Description prose readable even when its card is wide. */
 .detail-desc .rich-text {
   max-width: 78ch;
+  /* Up to 15 lines, then it scrolls rather than pushing Sub-tasks and
+     Attachments far down — a Daily alert task lists up to 100 alerts. Sized so
+     15 list items fit in full: 15 lines (line-height 1.6) plus the 0.15rem
+     margins around list items. */
+  max-height: calc(1.6em * 15 + 0.15rem * 16);
+  overflow-y: auto;
+}
+/* A table needs more than a line of reading text: the card's full width, so a
+   Daily alert task's six columns don't squeeze. */
+.detail-desc .rich-text:has(table) {
+  max-width: none;
 }
 .detail-content .card {
   padding: 18px 20px;
@@ -3123,6 +3134,10 @@ th {
 }
 .rte-content {
   min-height: 6rem;
+  /* Up to 15 lines while editing too (as the task page shows a description),
+     then it scrolls: 15 list items in full, plus this box's own padding. */
+  max-height: calc(1.6em * 15 + 0.15rem * 16 + 1.2rem);
+  overflow-y: auto;
   padding: 0.6rem 0.75rem;
   outline: none;
   line-height: 1.6;
@@ -3224,6 +3239,10 @@ th {
   background: var(--surface-3);
   color: var(--text);
 }
+.rte-listopt:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .rte-listopt.is-active {
   background: var(--accent-tint);
   color: var(--accent-active);
@@ -3254,6 +3273,98 @@ th {
 .rte-content li > p,
 .rich-text li > p {
   margin: 0;
+}
+
+/* Tables (HLAI-112: in any description; a Daily alert task's alerts come as one)
+   — shown and edited alike, as plain text in a grid rather than the app's list
+   tables (no outer frame, no small capitals). As wide as its columns; a table
+   wider than the box scrolls sideways inside it rather than stretching the page. */
+.rte-content table,
+.rich-text table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  border-collapse: collapse;
+  margin: 0 0 0.5rem;
+}
+.rte-content th,
+.rte-content td,
+.rich-text th,
+.rich-text td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  min-width: 3em;
+  vertical-align: top;
+  text-align: left;
+  font-size: inherit;
+}
+.rte-content th,
+.rich-text th {
+  background: var(--surface-sunk);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: inherit;
+}
+.rte-content tbody tr:hover td,
+.rich-text tbody tr:hover td {
+  background: none;
+}
+.rte-content tbody tr:last-child td,
+.rich-text tbody tr:last-child td {
+  border-bottom: 1px solid var(--border);
+}
+.rte-content th > p,
+.rte-content td > p,
+.rich-text th > p,
+.rich-text td > p {
+  margin: 0;
+}
+/* The cells picked for a row or column change, while editing. */
+.rte-content .selectedCell {
+  background: var(--accent-soft);
+}
+/* A long cell in a table's last column (a Daily alert's description): 3 lines
+   (FOLD_LINES in RichText.tsx) ending in "…", then an arrow that opens it in full
+   and folds it back. Shown descriptions only; the editor always shows it all. */
+.rich-text td.rt-fold > .rt-fold-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.rich-text td.rt-fold.is-open > .rt-fold-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  overflow: visible;
+}
+.rich-text .rt-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.rich-text .rt-fold-toggle:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.rich-text .rt-fold-toggle svg {
+  transition: transform var(--dur-fast) var(--ease);
+}
+.rich-text td.is-open > .rt-fold-toggle svg {
+  transform: rotate(180deg);
 }
 
 /* Task lists: no bullets; a checkbox sits to the left of each item. */
