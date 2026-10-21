@@ -850,6 +850,16 @@ listing that day's alerts and linking to them in the Alert Log.
   links from typing or pasting off. The Alert Log reads the filters and the
   search from the address as it opens (the viewer sees the dates on their own
   clock).
+- **Duties the setup needs stay put.** The Organization screen won't take a duty
+  away from someone whose Alert Task Setup role needs it (the role's template
+  tasks carry it). `getOrg` sends each person's `alertTaskPicks` (alert type, role,
+  the duties it needs — `alertTaskPicksByPerson`), so unticking such a duty shows
+  a warning under it (Alert Task Setup would show ⚠ on them; set that role to
+  "Leave unassigned" there first) and keeps Save off. `saveOrgChanges` refuses it too (422
+  `ALERT_TASK_DUTY_NEEDED`, naming the person, role, alert type and duty, and
+  saying an Admin must first set that role to "Leave unassigned" there). Other
+  removals go through as before, the person's existing tasks flagged ⚠; adding a
+  duty is never blocked.
 - **By hand**: `npm run alert-tasks:run --workspace backend`
   (`scripts/alert-tasks-run.ts`) makes the Immediate tasks waiting (retries
   included), then the Daily ones of every window that has ended — the same work a

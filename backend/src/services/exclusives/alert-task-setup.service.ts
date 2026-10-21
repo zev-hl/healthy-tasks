@@ -6,6 +6,7 @@ import {
   type ExclusivesAlertTaskSettingDto,
   type ExclusivesAlertTaskSetupDto,
   type ExclusivesAlertType,
+  type OrgAlertTaskPickDto,
   type TemplateDutyProblemDto,
 } from '@healthy-tasks/shared';
 import { prisma } from '../../db/prisma.js';
@@ -92,6 +93,37 @@ async function readSetup(db: Db): Promise<ExclusivesAlertTaskSetupDto> {
 /** Every alert type's row, in the screen's order (an unsaved type is empty). */
 export async function getAlertTaskSetup(): Promise<ExclusivesAlertTaskSetupDto> {
   return readSetup(prisma);
+}
+
+/**
+ * Per person, the roles they fill on Alert Task Setup whose template tasks carry
+ * duties, and those duties: what the Organization screen must not take away.
+ */
+export async function alertTaskPicksByPerson(): Promise<Map<string, OrgAlertTaskPickDto[]>> {
+  const rows = await prisma.alertTaskSetting.findMany({ where: { templateId: { not: null } } });
+  const byPerson = new Map<string, OrgAlertTaskPickDto[]>();
+  if (rows.length === 0) return byPerson;
+  const nodes = await prisma.taskTemplateNode.findMany({
+    where: { templateId: { in: rows.map((r) => r.templateId as number) }, dutyId: { not: null } },
+    select: { templateId: true, assigneeRole: true, dutyId: true },
+  });
+  const needs = new Map<string, Set<string>>(); // `${templateId}|${role}` → dutyIds
+  for (const n of nodes) {
+    if (!n.assigneeRole || !n.dutyId) continue;
+    const key = `${n.templateId}|${n.assigneeRole}`;
+    needs.set(key, (needs.get(key) ?? new Set()).add(n.dutyId));
+  }
+  for (const r of rows) {
+    if (!(EXCLUSIVES_ALERT_TYPES as readonly string[]).includes(r.alertType)) continue;
+    for (const a of storedAssignments(r.roleAssignments)) {
+      const dutyIds = [...(needs.get(`${r.templateId}|${a.role}`) ?? [])].sort();
+      if (dutyIds.length === 0) continue;
+      const list = byPerson.get(a.assigneeId) ?? [];
+      list.push({ alertType: r.alertType as ExclusivesAlertType, role: a.role, dutyIds });
+      byPerson.set(a.assigneeId, list);
+    }
+  }
+  return byPerson;
 }
 
 /** A saved alert type that makes tasks: its template, its people, and its saver. */

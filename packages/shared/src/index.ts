@@ -2635,6 +2635,22 @@ export interface TemplateDutyCheckDto {
 
 // --- Organization ------------------------------------------------------------
 
+/**
+ * HLAI-112: a role this person fills on Alert Task Setup, and the duties that
+ * role's template tasks carry — which the Organization screen won't let go.
+ */
+export interface OrgAlertTaskPickDto {
+  alertType: ExclusivesAlertType;
+  role: string;
+  dutyIds: string[];
+}
+
+/**
+ * Error code (in `details.code`, HTTP 422) when an Organization save would take
+ * away a duty a person's Alert Task Setup role needs.
+ */
+export const ALERT_TASK_DUTY_NEEDED_CODE = 'ALERT_TASK_DUTY_NEEDED';
+
 /** One person on the Organization screen. */
 export interface OrgPersonDto {
   id: string;
@@ -2648,6 +2664,8 @@ export interface OrgPersonDto {
   dutyIds: string[];
   /** dutyId → this person's open tasks carrying that duty (for removal warnings). */
   openTaskCountByDuty: Record<string, number>;
+  /** HLAI-112: the roles they fill on Alert Task Setup that need duties. */
+  alertTaskPicks: OrgAlertTaskPickDto[];
   /** The viewer may tick/untick this person's duties. */
   canEditDuties: boolean;
   /** The viewer may give this person a new supervisor. */

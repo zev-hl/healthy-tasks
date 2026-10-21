@@ -1285,3 +1285,121 @@ describe('Daily alert tasks', () => {
     );
   });
 });
+
+// --- Step 13: a duty Alert Task Setup needs can't be taken away ---------------------
+
+describe('Organization: duties Alert Task Setup needs', () => {
+  /** Ana holds both Pricing duties and is Pricing Analyst for Buy Box Lost, which needs one. */
+  async function setUpPick() {
+    const admin = await adminToken();
+    const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
+    const ana = await seedUser({ email: 'ana@test.local', role: 'Member' });
+    const needed = await makeDuty(admin); // Pricing › Buy Box Recovery
+    const dept = await prisma.department.findFirstOrThrow({ where: { name: 'Pricing' } });
+    const other = await request(app)
+      .post(`/api/departments/${dept.id}/duties`)
+      .set(auth(admin))
+      .send({ name: 'Price Monitoring' });
+    assert.equal(other.status, 201, JSON.stringify(other.body));
+    const spare = (await prisma.duty.findFirstOrThrow({ where: { name: 'Price Monitoring' } })).id;
+    await prisma.userDuty.createMany({
+      data: [
+        { userId: ana.id, dutyId: needed },
+        { userId: ana.id, dutyId: spare },
+      ],
+    });
+    const tpl = await makeTemplate(admin, 'Buy Box Recovery', [
+      { role: 'Pricing Analyst', dutyId: needed },
+      { role: 'Pricing Manager' },
+    ]);
+    await prisma.alertTaskSetting.create({
+      data: {
+        alertType: 'BuyBoxLost',
+        templateId: tpl,
+        roleAssignments: [{ role: 'Pricing Analyst', assigneeId: ana.id }],
+        savedById: adminUser.id,
+      },
+    });
+    return { admin, ana, needed, spare };
+  }
+
+  const saveDuties = (token: string, userId: string, add: string[], remove: string[]) =>
+    request(app)
+      .put('/api/org')
+      .set(auth(token))
+      .send({ dutyChanges: [{ userId, add, remove }] });
+  const holds = async (userId: string) =>
+    (await prisma.userDuty.findMany({ where: { userId } })).map((d) => d.dutyId).sort();
+
+  it('tells the Organization screen which duties each person’s Alert Task Setup role needs', async () => {
+    const { admin, ana, needed } = await setUpPick();
+    const res = await request(app).get('/api/org').set(auth(admin));
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const person = (res.body.people as { id: string; alertTaskPicks: unknown }[]).find(
+      (p) => p.id === ana.id,
+    )!;
+    assert.deepEqual(person.alertTaskPicks, [
+      { alertType: 'BuyBoxLost', role: 'Pricing Analyst', dutyIds: [needed] },
+    ]);
+  });
+
+  it('refuses to take away a duty the role needs, saying what to do first', async () => {
+    const { admin, ana, needed, spare } = await setUpPick();
+    const res = await saveDuties(admin, ana.id, [], [needed]);
+    assert.equal(res.status, 422);
+    assert.equal(res.body.details.code, 'ALERT_TASK_DUTY_NEEDED');
+    assert.equal(
+      res.body.error,
+      'ana Test is needed as Pricing Analyst for Buy Box Lost on Alert Task Setup, which needs ' +
+        'Pricing › Buy Box Recovery. Set that role to “Leave unassigned” on Alert Task Setup first.',
+    );
+    assert.deepEqual(await holds(ana.id), [needed, spare].sort(), 'nothing saved');
+  });
+
+  it('takes away a duty the role does not need, and lets anyone not picked lose it', async () => {
+    const { admin, ana, needed, spare } = await setUpPick();
+    assert.equal((await saveDuties(admin, ana.id, [], [spare])).status, 200);
+    assert.deepEqual(await holds(ana.id), [needed]);
+
+    const ben = await seedUser({ email: 'ben@test.local', role: 'Member' });
+    await prisma.userDuty.create({ data: { userId: ben.id, dutyId: needed } });
+    assert.equal((await saveDuties(admin, ben.id, [], [needed])).status, 200);
+    assert.deepEqual(await holds(ben.id), []);
+  });
+
+  it('never blocks adding a duty', async () => {
+    const { admin, ana, needed, spare } = await setUpPick();
+    await prisma.userDuty.deleteMany({ where: { userId: ana.id, dutyId: spare } });
+    assert.equal((await saveDuties(admin, ana.id, [spare], [])).status, 200);
+    assert.deepEqual(await holds(ana.id), [needed, spare].sort());
+  });
+
+  it('lets the duty go once the role is set to “Leave unassigned” on Alert Task Setup', async () => {
+    const { admin, ana, needed } = await setUpPick();
+    const setup = await request(app).get(URL).set(auth(admin));
+    const res = await request(app)
+      .put(URL)
+      .set(auth(admin))
+      .send({
+        settings: [
+          {
+            ...setup.body.settings.find((s: { alertType: string }) => s.alertType === 'BuyBoxLost'),
+            roleAssignments: [],
+          },
+        ],
+        expectedUpdatedAt: setup.body.updatedAt,
+      });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal((await saveDuties(admin, ana.id, [], [needed])).status, 200);
+    assert.ok(!(await holds(ana.id)).includes(needed));
+  });
+
+  it('tells a Manager an Admin has to change Alert Task Setup', async () => {
+    const { ana, needed } = await setUpPick();
+    const manager = await seedUser({ email: 'manager@test.local', role: 'Manager' });
+    await prisma.user.update({ where: { id: ana.id }, data: { supervisorId: manager.id } });
+    const res = await saveDuties(await login('manager@test.local'), ana.id, [], [needed]);
+    assert.equal(res.status, 422);
+    assert.match(res.body.error, /\(only an Admin can change Alert Task Setup\)\.$/);
+  });
+});

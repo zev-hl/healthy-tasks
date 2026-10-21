@@ -181,7 +181,9 @@ end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`); an
 alert's `taskHandledAt` makes sure it never makes two, and alerts from before
 go-live none. Daily alerts make one task per group and type at 8:30 AM business
 time (a scheduler pass), the day's alerts in a table with links to the Alert Log —
-the only link rich text may keep. Run both by hand with
+the only link rich text may keep. The Organization screen won't take away a
+duty someone's Alert Task Setup role needs (that role is set to "Leave
+unassigned" there first). Run both by hand with
 `docker compose exec backend npm run alert-tasks:run --workspace backend`. See
 `docs/architecture.md` §16.
 
