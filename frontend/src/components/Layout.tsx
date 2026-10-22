@@ -1,10 +1,11 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import type { ActiveUserDto } from '@healthy-tasks/shared';
 import { useAuth } from '../auth/AuthContext';
 import { NotificationProvider, useNotifications } from '../notifications/NotificationContext';
 import { CommandPalette } from './CommandPalette';
 import { Avatar, userLabel } from './ui/Avatar';
+import { MenuIcon } from './ui/MenuIcon';
 import { SAVED_VIEWS } from '../lib/views';
 import { api } from '../api/client';
 import { nowContext } from '../lib/taskSearch';
@@ -16,8 +17,21 @@ function navItemClass({ isActive }: { isActive: boolean }): string {
   return `side-nav-item${isActive ? ' active' : ''}`;
 }
 
-/** The fixed 232px left rail — brand, primary nav, Views, Admin, user chip. */
-function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
+/**
+ * The fixed 232px left rail — brand, primary nav, Views, Admin, user chip. On a
+ * small screen it hides and slides in over the page while `open`.
+ */
+function Sidebar({
+  onOpenCmdk,
+  open,
+  onClose,
+  closeRef,
+}: {
+  onOpenCmdk: () => void;
+  open: boolean;
+  onClose: () => void;
+  closeRef: React.RefObject<HTMLButtonElement>;
+}) {
   const { user } = useAuth();
   const { unread } = useNotifications();
   const navigate = useNavigate();
@@ -57,7 +71,16 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
   const reportIds = reports.map((r) => r.id);
 
   return (
-    <aside className="sidebar">
+    <aside id="side-menu" className={`sidebar${open ? ' open' : ''}`}>
+      <button
+        ref={closeRef}
+        type="button"
+        className="icon-btn side-close"
+        onClick={onClose}
+        aria-label="Close the menu"
+      >
+        <MenuIcon close />
+      </button>
       <Link to="/" className="side-brand">
         <img className="side-brand-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
         <span className="side-brand-name">HL Central</span>
@@ -235,6 +258,11 @@ function SchedulerBanner() {
 
 export function Layout() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  // Small screens only: the menu slid in over the page.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuCloseRef = useRef<HTMLButtonElement>(null);
+  const location = useLocation();
 
   // Global Cmd/Ctrl+K toggles the command palette.
   useEffect(() => {
@@ -248,10 +276,59 @@ export function Layout() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Going anywhere (a menu link, a Quick View, Back) puts the menu away.
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.key]);
+
+  // While it is open: focus starts on its close button, and Esc closes it.
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuCloseRef.current?.focus();
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      setMenuOpen(false);
+      menuBtnRef.current?.focus();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
+  function closeMenu() {
+    setMenuOpen(false);
+    menuBtnRef.current?.focus();
+  }
+
   return (
     <NotificationProvider>
       <div className="app-shell">
-        <Sidebar onOpenCmdk={() => setCmdkOpen(true)} />
+        <header className="mobile-bar">
+          <button
+            ref={menuBtnRef}
+            type="button"
+            className="icon-btn mobile-menu-btn"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open the menu"
+            aria-expanded={menuOpen}
+            aria-controls="side-menu"
+          >
+            <MenuIcon />
+          </button>
+          <Link to="/" className="side-brand">
+            <img className="side-brand-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
+            <span className="side-brand-name">HL Central</span>
+          </Link>
+        </header>
+        <Sidebar
+          open={menuOpen}
+          onClose={closeMenu}
+          closeRef={menuCloseRef}
+          onOpenCmdk={() => {
+            setMenuOpen(false);
+            setCmdkOpen(true);
+          }}
+        />
+        {menuOpen && <div className="side-backdrop" onClick={closeMenu} aria-hidden="true" />}
         <main className="app-main">
           <SchedulerBanner />
           <Outlet />
