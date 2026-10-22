@@ -9,8 +9,10 @@ import {
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   isSupervisorRole,
   type DepartmentDto,
+  type OrgAlertTaskPickDto,
   type OrgDto,
   type OrgPersonDto,
 } from '@healthy-tasks/shared';
@@ -491,9 +493,23 @@ export function OrganizationPage() {
     },
   });
 
+  // HLAI-112: a duty someone's Alert Task Setup role needs can't be taken away
+  // here; that role is first set to "Leave unassigned" there. While one is
+  // unticked, Save stays off (the server refuses it too).
+  const neededRemoved = people.filter((p) =>
+    p.dutyIds.some(
+      (d) => !(draft.duties[p.id] ?? new Set()).has(d) && picksNeeding(p, d).length > 0,
+    ),
+  );
+  const saveBlockedBy =
+    neededRemoved.length > 0
+      ? `${neededRemoved.map(pname).join(', ')} ${neededRemoved.length === 1 ? 'is' : 'are'} ` +
+        'needed on Alert Task Setup for a duty being removed: see the ⚠ under it'
+      : undefined;
+
   // --- Save / discard ------------------------------------------------------------
   async function save() {
-    if (!org) return;
+    if (!org || saveBlockedBy) return;
     setSaving(true);
     try {
       const supervisorChanges = people
@@ -757,7 +773,18 @@ export function OrganizationPage() {
           >
             Discard
           </button>
-          <button type="button" className="btn-sm" disabled={saving} onClick={() => void save()}>
+          {saveBlockedBy && (
+            <span className="dd-savebar-block">
+              Can’t save: a duty Alert Task Setup needs is being removed
+            </span>
+          )}
+          <button
+            type="button"
+            className="btn-sm"
+            disabled={saving || saveBlockedBy !== undefined}
+            title={saveBlockedBy}
+            onClick={() => void save()}
+          >
             {saving ? 'Saving…' : 'Save changes'}
           </button>
         </div>
@@ -963,6 +990,18 @@ function PersonPanel({
                           flagged.
                         </div>
                       )}
+                      {!has &&
+                        was &&
+                        picksNeeding(p, u.id).map((k) => {
+                          const type = EXCLUSIVES_ALERT_TYPE_LABELS[k.alertType];
+                          return (
+                            <div key={`${k.alertType}:${k.role}`} className="dd-pd-warn is-block">
+                              ⚠ Alert Task Setup would show a warning on {pname(p)} as {k.role} for{' '}
+                              {type}. Set that role to “Leave unassigned” there first
+                              {scope === 'all' ? '' : ' (an Admin has to)'}, then remove the duty.
+                            </div>
+                          );
+                        })}
                     </Fragment>
                   );
                 })}
@@ -1001,4 +1040,9 @@ function TriCheckbox({
       onChange={(e) => onChange(e.target.checked)}
     />
   );
+}
+
+/** The roles this person fills on Alert Task Setup that need this duty. */
+function picksNeeding(p: OrgPersonDto, dutyId: string): OrgAlertTaskPickDto[] {
+  return (p.alertTaskPicks ?? []).filter((k) => k.dutyIds.includes(dutyId));
 }

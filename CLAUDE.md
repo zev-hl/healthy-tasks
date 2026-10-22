@@ -172,6 +172,22 @@ set)". One list drives all of it: `TASK_ATTRIBUTE_KEYS` (shared) +
 `lib/taskAttributes.ts`. A group an Admin switches off stays on its tasks (red
 mark on the task page) but can no longer be picked. See `docs/architecture.md` §15.
 
+### Alert Tasks (HLAI-112)
+An Admin screen (`/exclusives/alert-tasks`) linking each Exclusives alert type to a
+template and a person per role of that template, for tasks to be made from alerts
+automatically. The setup is stored (`AlertTaskSetting`, Admin-only
+`GET`/`PUT /api/exclusives/alert-tasks`). Immediate alerts make their tasks at the
+end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`); an
+alert's `taskHandledAt` makes sure it never makes two, and alerts from before
+go-live none. Daily alerts make one task per group and type a day at
+`EXCLUSIVES_DAILY_TASKS_AT` business time (08:30 by default, a scheduler pass,
+`services/exclusives/daily-window.ts`), the previous day's alerts in a table with
+links to the Alert Log — the only link rich text may keep. The Organization screen won't take away a
+duty someone's Alert Task Setup role needs (that role is set to "Leave
+unassigned" there first). Run both by hand with
+`docker compose exec backend npm run alert-tasks:run --workspace backend`. See
+`docs/architecture.md` §16.
+
 ### Background scheduler
 `services/scheduler.service.ts` runs recurrence materialization, reminder-email
 dispatch, and goal-review passes. Started only from `server.ts` and only when
@@ -211,7 +227,10 @@ URLs. For S3, `S3_ENDPOINT` is used for server-side ops while
 ### Rich text
 User-authored HTML (task descriptions, comments) is sanitized server-side
 (`utils/rich-text.ts`, `sanitize-html`) and rendered via TipTap / DOMPurify on
-the frontend. `express.json` limit is raised to 2mb to fit rich-text payloads.
+the frontend. Links are stripped, except one to the Alert Log (HLAI-112's Daily
+alert tasks), which is kept on the server, the display and the editor alike.
+Tables are allowed (the editor's Table menu, `@tiptap/extension-table`); a cell
+keeps only its colspan/rowspan. `express.json` limit is raised to 2mb to fit rich-text payloads.
 
 ### Database invariants live in Postgres
 Some rules can't be a `CHECK` constraint (they depend on other rows) and are
@@ -238,7 +257,8 @@ vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `EMAIL_PROVIDER`
 `EMAIL_WORKER_IN_API` (`true` default / `false`), `REDIS_URL`,
 `EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `QUEUE_DASHBOARD_USER` /
 `QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
-`SCHEDULER_ENABLED`, the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
+`SCHEDULER_ENABLED`, `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
+made, `HH:MM`), the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
 the email worker loads only `config/email-config.ts` and
 `config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's
 secrets.

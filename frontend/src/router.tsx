@@ -50,6 +50,11 @@ const ExclusivesGroupsPage = lazy(() =>
 const ExclusivesLogPage = lazy(() =>
   import('./pages/ExclusivesLogPage').then((m) => ({ default: m.ExclusivesLogPage })),
 );
+const ExclusivesAlertTasksPage = lazy(() =>
+  import('./pages/ExclusivesAlertTasksPage').then((m) => ({
+    default: m.ExclusivesAlertTasksPage,
+  })),
+);
 const ExclusivesEditorPage = lazy(() =>
   import('./pages/ExclusivesEditorPage').then((m) => ({ default: m.ExclusivesEditorPage })),
 );
@@ -111,6 +116,15 @@ export const router = createBrowserRouter([
           { path: '/exclusives/groups/new', element: <ExclusivesEditorPage /> },
           { path: '/exclusives/groups/:id/edit', element: <ExclusivesEditorPage /> },
           { path: '/exclusives/log', element: <ExclusivesLogPage /> },
+          // HLAI-112: which template and people each alert type's tasks get.
+          {
+            path: '/exclusives/alert-tasks',
+            element: (
+              <RequireAuth roles={['Admin']}>
+                <ExclusivesAlertTasksPage />
+              </RequireAuth>
+            ),
+          },
           { path: '/profile', element: <ProfilePage /> },
           { path: '/reports/due-date', element: <DueDatePerformancePage /> },
           { path: '/goals', element: <MyGoalsPage /> },

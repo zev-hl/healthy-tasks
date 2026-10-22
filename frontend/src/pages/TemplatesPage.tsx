@@ -745,7 +745,11 @@ function TemplateEditor({
         >
           Cancel
         </button>
-        <button onClick={() => void doSave()} disabled={saving}>
+        <button
+          onClick={() => void doSave()}
+          disabled={saving || !dirty}
+          title={dirty ? undefined : 'Nothing has changed yet'}
+        >
           {saving ? 'Saving…' : 'Save template'}
         </button>
       </div>

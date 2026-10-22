@@ -43,6 +43,7 @@ export function UserFormModal({ onClose, onCreated }: Props) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!dirty) return; // nothing filled in yet
     setError(null);
     if (!firstName.trim() || !lastName.trim()) {
       setError('First and last name are required.');
@@ -147,7 +148,11 @@ export function UserFormModal({ onClose, onCreated }: Props) {
             <button type="button" className="secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" disabled={submitting}>
+            <button
+              type="submit"
+              disabled={submitting || !dirty}
+              title={dirty ? undefined : 'Nothing has changed yet'}
+            >
               {submitting ? 'Creating…' : 'Create user'}
             </button>
           </div>

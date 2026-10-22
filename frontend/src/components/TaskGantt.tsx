@@ -17,7 +17,6 @@ const DAY_MS = 86_400_000;
 const PX_PER_DAY = 30;
 const ROW_H = 44;
 const HEADER_H = 34;
-const LABEL_W = 340;
 const MAX_DAYS = 800; // guard against pathological multi-year spans
 
 type DragMode = 'move' | 'start' | 'end';
@@ -269,9 +268,9 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
     <div className="gantt-wrap">
       {error && <div className="alert error">{error}</div>}
       <div className="gantt-scroll">
-        <div className="gantt-inner" style={{ width: LABEL_W + timelineWidth }}>
-          {/* Left label column */}
-          <div className="gantt-labels" style={{ width: LABEL_W }}>
+        <div className="gantt-inner">
+          {/* Left label column (its width is in the styles: narrower on a phone) */}
+          <div className="gantt-labels">
             <div className="gantt-labels-head" style={{ height: HEADER_H }}>
               <span className="mono muted">{loading ? 'Loading…' : `${ordered.length} tasks`}</span>
             </div>

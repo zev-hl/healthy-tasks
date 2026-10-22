@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import type {
   ExclusivesAlertRowDto,
+  ExclusivesAlertTaskSetupDto,
   ExclusivesGroupAlertStatsDto,
   ExclusivesGroupDto,
   ExclusivesGroupOptionDto,
@@ -16,6 +17,10 @@ import { queryAlerts } from '../services/exclusives/alert-log.service.js';
 import { groupAlertStats } from '../services/exclusives/alert-stats.service.js';
 import { lookupAsins } from '../services/exclusives/lookup.service.js';
 import {
+  getAlertTaskSetup,
+  saveAlertTaskSetup,
+} from '../services/exclusives/alert-task-setup.service.js';
+import {
   createGroup,
   deleteGroup,
   updateGroup,
@@ -29,6 +34,7 @@ import type {
   ExclusivesAlertQueryInput,
   ExclusivesGroupQueryInput,
   ExclusivesAlertExportInput,
+  ExclusivesAlertTaskSetupSaveInput,
   ExclusivesGroupCreateInput,
   ExclusivesGroupExportInput,
   ExclusivesGroupUpdateInput,
@@ -136,4 +142,17 @@ export async function exclusivesGroupOptionsController(
   res: Response,
 ): Promise<void> {
   res.json((await listGroupOptions()) satisfies ExclusivesGroupOptionDto[]);
+}
+
+/** HLAI-112: the Alert Tasks screen's setup, every alert type's row. */
+export async function getAlertTaskSetupController(_req: Request, res: Response): Promise<void> {
+  res.json((await getAlertTaskSetup()) satisfies ExclusivesAlertTaskSetupDto);
+}
+
+export async function saveAlertTaskSetupController(req: Request, res: Response): Promise<void> {
+  const setup = await saveAlertTaskSetup(
+    req.body as ExclusivesAlertTaskSetupSaveInput,
+    actorId(req),
+  );
+  res.json(setup satisfies ExclusivesAlertTaskSetupDto);
 }

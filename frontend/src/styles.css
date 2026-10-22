@@ -411,9 +411,21 @@ textarea:focus-visible {
   color: var(--ink);
   font-weight: 600;
 }
+/* A plain heading, not a filled button: on hover the label and caret take
+   the accent, like a link, instead of the default dark button fill. */
+.recur-collapse-head:hover,
+.recur-collapse-head:active {
+  background: transparent;
+  color: var(--accent-active);
+}
 .recur-collapse-head .recur-caret {
   color: var(--muted);
-  transition: transform 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
+}
+.recur-collapse-head:hover .recur-caret {
+  color: var(--accent-active);
 }
 .recur-collapse-head[aria-expanded='true'] .recur-caret {
   transform: rotate(90deg);
@@ -674,6 +686,65 @@ textarea:focus-visible {
   color: var(--muted-2);
 }
 
+/* Small screens (phones, small tablets): the rail hides, a slim bar with a menu
+   button takes its place, and the rail slides in over the page when opened.
+   After the rail's own rules, so these win. */
+.mobile-bar,
+.sidebar > .side-close,
+.side-backdrop {
+  display: none;
+}
+@media (max-width: 760px) {
+  .app-main {
+    margin-left: 0;
+  }
+  .mobile-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .mobile-bar .side-brand {
+    padding: 0 4px;
+  }
+  .mobile-bar .mobile-menu-btn,
+  .sidebar > .side-close {
+    padding: 7px;
+    color: var(--ink-3);
+  }
+  .sidebar {
+    width: min(280px, 86vw);
+    z-index: 80;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform var(--dur-slow) var(--ease),
+      visibility 0s linear var(--dur-slow);
+  }
+  .sidebar.open {
+    transform: none;
+    visibility: visible;
+    box-shadow: var(--shadow-pop);
+    transition: transform var(--dur-slow) var(--ease);
+  }
+  .sidebar > .side-close {
+    display: inline-flex;
+    position: absolute;
+    top: 13px;
+    right: 10px;
+  }
+  .side-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 79;
+    background: rgba(16, 20, 28, 0.42);
+    animation: backdrop-in var(--dur) var(--ease) both;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    My Day (/) — redesign
    --------------------------------------------------------------------------- */
@@ -731,7 +802,7 @@ textarea:focus-visible {
 
 .mday-tiles {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -797,9 +868,11 @@ textarea:focus-visible {
   border-color: var(--border);
 }
 
+/* minmax(0, …): a long task name is cut with "…" rather than widening the
+   column past the window (a sideways scroll). */
 .mday-grid {
   display: grid;
-  grid-template-columns: 1fr 356px;
+  grid-template-columns: minmax(0, 1fr) 356px;
   gap: 20px;
   align-items: start;
 }
@@ -854,6 +927,11 @@ textarea:focus-visible {
   gap: 6px;
   flex: none;
   max-width: 160px;
+}
+/* "Overdue 2d" stays on one line; the task name gives way first. */
+.mday-row .due-primary {
+  flex: none;
+  white-space: nowrap;
 }
 .mday-row-assignee-name {
   font-size: 12px;
@@ -1039,10 +1117,10 @@ textarea:focus-visible {
 
 @media (max-width: 1100px) {
   .mday-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .mday-tiles {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .mday-team-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1055,10 +1133,12 @@ textarea:focus-visible {
 .tasks-page {
   padding: 22px 26px;
 }
+/* The buttons drop to a second line when the row runs out of room. */
 .tasks-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px 12px;
   margin-bottom: 14px;
 }
 .tasks-toolbar h1 {
@@ -1069,8 +1149,8 @@ textarea:focus-visible {
   color: var(--muted-2);
 }
 .tasks-search {
-  width: 300px;
-  max-width: 40vw;
+  flex: 0 1 300px;
+  min-width: 180px;
 }
 
 .tasks-stats {
@@ -1229,7 +1309,15 @@ textarea:focus-visible {
   min-width: 150px;
 }
 
-/* Table look */
+/* Table look: the table and its pager in one box, as on the Alert Log. Only the
+   table scrolls sideways; the pager stays put under it. */
+.card.tasks-table-card {
+  padding: 0;
+  overflow: hidden;
+}
+.tasks-table-card > .tasks-table-wrap {
+  overflow-x: auto;
+}
 .tasks-table {
   min-width: 980px;
 }
@@ -1258,6 +1346,40 @@ textarea:focus-visible {
 .tasks-table td.is-child .task-name-link {
   color: var(--ink-3);
   font-weight: 500;
+}
+
+/* Phones: a 16px edge, the search on its own full-width line under the title
+   and buttons, and the count tiles two to a row. */
+@media (max-width: 560px) {
+  .tasks-page {
+    padding: 16px;
+  }
+  .tasks-toolbar {
+    gap: 10px 8px;
+  }
+  .tasks-toolbar h1 {
+    font-size: 20px;
+  }
+  .tasks-toolbar button {
+    padding: 7px 11px;
+  }
+  .tasks-search {
+    order: 1;
+    flex-basis: 100%;
+  }
+  .tasks-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .tasks-stat {
+    padding: 9px 11px;
+  }
+  /* Two filters to a line, filling it. */
+  .tasks-filter-field {
+    flex: 1 1 130px;
+    min-width: 0;
+  }
 }
 .task-id-link {
   color: var(--muted-2);
@@ -1478,7 +1600,7 @@ textarea:focus-visible {
 
 .detail-work {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -1496,6 +1618,56 @@ textarea:focus-visible {
 /* Keep the Description prose readable even when its card is wide. */
 .detail-desc .rich-text {
   max-width: 78ch;
+  /* Up to 15 lines, then it scrolls rather than pushing Sub-tasks and
+     Attachments far down — a Daily alert task lists up to 100 alerts. Sized so
+     15 list items fit in full: 15 lines (line-height 1.6) plus the 0.15rem
+     margins around list items. */
+  max-height: calc(1.6em * 15 + 0.15rem * 16);
+  overflow-y: auto;
+}
+/* A table needs more than a line of reading text: the card's full width, so a
+   Daily alert task's six columns don't squeeze. */
+.detail-desc .rich-text:has(table) {
+  max-width: none;
+}
+/* The expand button at the right of the Description head, and the pop-up it
+   opens: the description filling the window but for a 25px margin. The text,
+   or the editor, takes the room left under the head (and the toolbar and
+   buttons), up to 30 lines (15 in the card), and then it scrolls, so the pop-up
+   itself never has to, whatever the window's size or the toolbar's lines. */
+.desc-expand {
+  margin-left: auto;
+}
+.modal-backdrop.desc-backdrop {
+  padding: 25px;
+}
+.modal.desc-modal {
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+/* Room between the Description head and what is under it (a table's top border
+   would otherwise touch it), in the card and the pop-up alike. */
+.detail-desc .section-head,
+.desc-modal .section-head {
+  margin-bottom: 0.75rem;
+}
+.desc-modal > .rich-text {
+  min-height: 0;
+  max-height: calc(1.6em * 30 + 0.15rem * 31);
+  overflow-y: auto;
+}
+.desc-modal > .desc-edit,
+.desc-modal > .desc-edit > .rte,
+.desc-modal > .desc-edit > .rte > :not(.rte-toolbar) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.desc-modal .rte-content {
+  max-height: calc(1.6em * 30 + 0.15rem * 31 + 1.2rem);
 }
 .detail-content .card {
   padding: 18px 20px;
@@ -1783,8 +1955,10 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1000px) {
+  /* minmax(0, …): a wide description table scrolls inside its box rather than
+     stretching the column (and the page) to its full width. */
   .detail-cols {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -2408,6 +2582,7 @@ button:hover:where(
       .notif-snooze-opt,
       .seg-btn,
       .tpl-collapse,
+      .recur-collapse-head,
       .exc-legend-chip,
       .exc-clear,
       .exc-seg-btn,
@@ -2442,6 +2617,7 @@ button:active:where(
       .notif-snooze-opt,
       .seg-btn,
       .tpl-collapse,
+      .recur-collapse-head,
       .exc-legend-chip,
       .exc-clear,
       .exc-seg-btn,
@@ -2481,6 +2657,7 @@ button:active:where(
   button.notif-snooze-opt:hover,
   button.seg-btn:hover,
   button.tpl-collapse:hover,
+  button.recur-collapse-head:hover,
   button.exc-legend-chip:hover,
   button.exc-clear:hover,
   button.exc-seg-btn:hover,
@@ -3042,6 +3219,8 @@ th {
 }
 .rte-toolbar {
   display: flex;
+  /* Onto a second line when the box is too narrow (a phone), never off its edge. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem;
   padding: 0.35rem 0.5rem;
@@ -3108,6 +3287,10 @@ th {
 }
 .rte-content {
   min-height: 6rem;
+  /* Up to 15 lines while editing too (as the task page shows a description),
+     then it scrolls: 15 list items in full, plus this box's own padding. */
+  max-height: calc(1.6em * 15 + 0.15rem * 16 + 1.2rem);
+  overflow-y: auto;
   padding: 0.6rem 0.75rem;
   outline: none;
   line-height: 1.6;
@@ -3127,6 +3310,17 @@ th {
 }
 .rich-text p:last-child {
   margin-bottom: 0;
+}
+/* HLAI-112: the one link rich text may hold — a Daily alert task's way to the
+   Alert Log, shown and edited alike. */
+.rich-text a,
+.rte-content a {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rich-text a:hover {
+  color: var(--accent);
 }
 
 /* --- Lists (bulleted / numbered / task) — editor + read-only view --------- */
@@ -3198,6 +3392,10 @@ th {
   background: var(--surface-3);
   color: var(--text);
 }
+.rte-listopt:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .rte-listopt.is-active {
   background: var(--accent-tint);
   color: var(--accent-active);
@@ -3228,6 +3426,98 @@ th {
 .rte-content li > p,
 .rich-text li > p {
   margin: 0;
+}
+
+/* Tables (HLAI-112: in any description; a Daily alert task's alerts come as one)
+   — shown and edited alike, as plain text in a grid rather than the app's list
+   tables (no outer frame, no small capitals). As wide as its columns; a table
+   wider than the box scrolls sideways inside it rather than stretching the page. */
+.rte-content table,
+.rich-text table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  border-collapse: collapse;
+  margin: 0 0 0.5rem;
+}
+.rte-content th,
+.rte-content td,
+.rich-text th,
+.rich-text td {
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  min-width: 3em;
+  vertical-align: top;
+  text-align: left;
+  font-size: inherit;
+}
+.rte-content th,
+.rich-text th {
+  background: var(--surface-sunk);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  color: inherit;
+}
+.rte-content tbody tr:hover td,
+.rich-text tbody tr:hover td {
+  background: none;
+}
+.rte-content tbody tr:last-child td,
+.rich-text tbody tr:last-child td {
+  border-bottom: 1px solid var(--border);
+}
+.rte-content th > p,
+.rte-content td > p,
+.rich-text th > p,
+.rich-text td > p {
+  margin: 0;
+}
+/* The cells picked for a row or column change, while editing. */
+.rte-content .selectedCell {
+  background: var(--accent-soft);
+}
+/* A long cell in a table's last column (a Daily alert's description): 3 lines
+   (FOLD_LINES in RichText.tsx) ending in "…", then an arrow that opens it in full
+   and folds it back. Shown descriptions only; the editor always shows it all. */
+.rich-text td.rt-fold > .rt-fold-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+.rich-text td.rt-fold.is-open > .rt-fold-text {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: none;
+  overflow: visible;
+}
+.rich-text .rt-fold-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.rich-text .rt-fold-toggle:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.rich-text .rt-fold-toggle svg {
+  transition: transform var(--dur-fast) var(--ease);
+}
+.rich-text td.is-open > .rt-fold-toggle svg {
+  transform: rotate(180deg);
 }
 
 /* Task lists: no bullets; a checkbox sits to the left of each item. */
@@ -3905,6 +4195,81 @@ th.sortable:hover .sort-hint {
   display: inline-block;
   line-height: 1.5;
 }
+/* HLAI-112: the Alert Tasks screen — one row per alert type. Rows grow when a
+   template dropdown opens in place, so cells line up at the top. */
+.alert-tasks-table td {
+  vertical-align: top;
+}
+.alert-tasks-type {
+  width: 220px;
+  padding-top: 0.85rem;
+}
+.alert-tasks-template {
+  width: 290px;
+}
+/* The shared table keeps cells on one line; here the role cell wraps, so a long
+   "⚠ Doesn't hold …" stays inside the table instead of running off its edge. */
+.alert-tasks-table td.alert-tasks-roles {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+/* Slimmer dropdowns on this screen, with their arrows a little in from the
+   right edge (6px more than the usual right padding). */
+.alert-tasks-table .search-select-trigger {
+  padding: 7px 19px 7px 13px;
+}
+/* The browser's own select arrow ignores padding, so the person dropdown draws
+   its own, the same distance in from the edge as the template dropdown's. */
+.alert-tasks-table select {
+  appearance: none;
+  padding: 7px 37px 7px 13px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235c554d' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 19px center;
+}
+/* A one-line message in the Role Assignment cell, level with the dropdowns. */
+.alert-tasks-roles > .muted,
+.alert-tasks-roles > .alert-tasks-warn {
+  display: inline-block;
+  padding-top: 0.55rem;
+}
+/* One line per role of the template: the role, its person, and any ⚠ —
+   the Create tasks window's role rows, fitted to a table cell. */
+.alert-tasks-role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.alert-tasks-role {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) minmax(170px, 210px) minmax(160px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.alert-tasks-role + .alert-tasks-role {
+  padding-top: 10px;
+  border-top: 1px dashed var(--row-line);
+}
+.alert-tasks-role-meta {
+  font-size: 11.5px;
+  margin-top: 3px;
+}
+.alert-tasks-role-status {
+  font-size: 12px;
+}
+.alert-tasks-warn {
+  color: var(--danger-deep);
+}
+/* Plain sentences: keep words whole (the info alert breaks anywhere, for links). */
+.alert.info.alert-tasks-note {
+  word-break: normal;
+}
+.alert-tasks-load-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
 .attr-capsule.is-alertGroup {
   background: var(--accent-soft);
   color: var(--accent-deep);
@@ -4014,6 +4379,18 @@ th.sortable:hover .sort-hint {
   margin-top: 0.85rem;
   flex-wrap: wrap;
   font-size: 0.88rem;
+}
+/* "Rows" and its picker on one line; the picker as wide as "200" needs. */
+.pager label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+.pager select {
+  width: auto;
+  padding: 5px 8px;
+  font-size: 13px;
 }
 
 /* Collapsible filter trigger */
@@ -4316,9 +4693,10 @@ button.dash-stat:hover {
    unread tint + dot.
    --------------------------------------------------------------------------- */
 
+/* The same room at the top and left as My Day (.mday), the feed 760px wide. */
 .notif-page {
-  max-width: 760px;
-  margin: 0 auto;
+  max-width: calc(760px + 68px);
+  padding: 28px 34px;
 }
 .notif-topbar {
   display: flex;
@@ -5361,13 +5739,25 @@ tr.just-completed > td {
 
 /* --- Kanban --------------------------------------------------------------- */
 /* Six fixed columns in status order, filling the width as an equal grid — a
-   display of the same data, never grouped/reordered or horizontally scrolled. */
+   display of the same data, never grouped/reordered or horizontally scrolled.
+   On a narrower screen they wrap, still in order: three to a row, then two. */
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   padding-bottom: 8px;
   align-items: start;
+}
+@media (max-width: 1100px) {
+  .kanban-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
 }
 .kanban-col {
   min-width: 0;
@@ -5411,6 +5801,8 @@ tr.just-completed > td {
   gap: 8px;
   padding: 8px;
   overflow-y: auto;
+  /* Cards wrap to the column's width (below); never a sideways scroll. */
+  overflow-x: hidden;
 }
 .kanban-card {
   position: relative;
@@ -5448,6 +5840,8 @@ tr.just-completed > td {
   line-height: 1.3;
   color: var(--text);
   text-decoration: none;
+  /* A long name with no spaces (an alert task's label) breaks to fit the card. */
+  overflow-wrap: anywhere;
 }
 .kanban-card-title:hover {
   color: var(--accent);
@@ -5491,9 +5885,10 @@ tr.just-completed > td {
   font-weight: 650;
   letter-spacing: -0.01em;
 }
+/* Seven equal days: a long task name is cut short, never widening its day. */
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
 }
 .calendar-weekday {
@@ -5519,6 +5914,19 @@ tr.just-completed > td {
 }
 .calendar-grid.week .calendar-cell {
   min-height: 420px;
+}
+/* Phones: tighter days, so a week still fits across the screen. */
+@media (max-width: 560px) {
+  .calendar-grid {
+    gap: 3px;
+  }
+  .calendar-weekday {
+    letter-spacing: 0.02em;
+  }
+  .calendar-cell {
+    min-height: 72px;
+    padding: 4px 3px;
+  }
 }
 .calendar-cell.outside .calendar-daynum {
   color: var(--faint-2);
@@ -5678,14 +6086,23 @@ tr.just-completed > td {
 .gantt-inner {
   display: flex;
   position: relative;
+  width: max-content;
 }
+/* The task names stay in view while the days scroll; narrower on a phone so the
+   days still show beside them. */
 .gantt-labels {
+  width: 340px;
   flex: none;
   position: sticky;
   left: 0;
   z-index: 3;
   background: var(--surface);
   border-right: 1px solid var(--border);
+}
+@media (max-width: 560px) {
+  .gantt-labels {
+    width: 150px;
+  }
 }
 .gantt-labels-head {
   display: flex;
@@ -6621,10 +7038,12 @@ tr.just-completed > td {
 .exc-log-table {
   min-width: 60rem;
 }
+/* On a screen too narrow for one line, the buttons wrap onto a second. */
 .exc-pager {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
+  gap: 8px 0.6rem;
   margin: 0;
   padding: 11px 18px;
   border-top: 1px solid var(--border);
@@ -6635,6 +7054,13 @@ tr.just-completed > td {
 }
 .exc-pager-right {
   margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+.exc-pager-nav {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -7361,9 +7787,12 @@ tr.just-completed > td {
   inset: 0;
   z-index: 40;
 }
+/* Above the sidebar (50): in a narrow window a panel lined up with its button's
+   right edge reaches past the content and must not slide under it. Still under
+   the group drawer (55/56) and toasts (60). */
 .exc-filter-wrap {
   position: relative;
-  z-index: 45;
+  z-index: 52;
 }
 .exc-filter-pop {
   position: absolute;
@@ -8668,6 +9097,16 @@ button.dd-pd-name:hover {
   padding: 0 10px 7px 36px;
   margin-top: -2px;
 }
+/* HLAI-112: a duty Alert Task Setup needs is being removed — this blocks Save. */
+.dd-pd-warn.is-block {
+  color: var(--danger-deep);
+  display: grid;
+  gap: 2px;
+}
+.dd-savebar-block {
+  font-size: 12.5px;
+  color: var(--danger-deep);
+}
 .dd-savebar {
   position: fixed;
   left: 232px;
@@ -8800,15 +9239,17 @@ button.dd-pd-name:hover {
    sideways rather than squeezing the cards until their contents collide. */
 .dd-week {
   display: grid;
-  grid-template-columns: repeat(7, minmax(132px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(7, minmax(128px, 1fr));
+  gap: 8px;
   overflow-x: auto;
   padding: 2px 2px 6px;
 }
 .dd-week.five {
-  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  grid-template-columns: repeat(5, minmax(128px, 1fr));
 }
 .dd-daycard {
+  /* The footer below lays out by the card's own width. */
+  container: daycard / inline-size;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -8983,6 +9424,22 @@ button.dd-done.on:hover {
   background: var(--warn-soft);
   color: var(--warn-deep);
   border-color: #f1d6a8;
+}
+/* A day card too narrow for the total ("10:45") and the capsule side by side
+   (a smaller screen): the total on its own line, the completed capsule centred
+   under it, a touch smaller, clear of the card's edges. */
+@container daycard (max-width: 193px) {
+  .dd-dc-foot {
+    justify-content: center;
+    padding-inline: 8px;
+  }
+  .dd-dc-total {
+    flex-basis: 100%;
+  }
+  .dd-done {
+    gap: 4px;
+    padding: 3px 7px;
+  }
 }
 .dd-done .ck {
   width: 13px;

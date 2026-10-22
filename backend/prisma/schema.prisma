@@ -110,9 +110,11 @@ model User {
   resolvedGoals Goal[] @relation("GoalResolver")
 
   // Exclusives alert groups/listings this user created or last updated.
-  createdAlertGroups AlertGroup[] @relation("AlertGroupCreator")
-  updatedAlertGroups AlertGroup[] @relation("AlertGroupUpdater")
-  createdListings    Listing[]    @relation("ListingCreator")
+  createdAlertGroups     AlertGroup[]       @relation("AlertGroupCreator")
+  updatedAlertGroups     AlertGroup[]       @relation("AlertGroupUpdater")
+  createdListings        Listing[]          @relation("ListingCreator")
+  // HLAI-112: Alert Tasks rows this Admin saved last (they create those tasks).
+  savedAlertTaskSettings AlertTaskSetting[] @relation("AlertTaskSettingSaver")
 
   // Department Duties: the duties this person holds, and the time they log
   // against them (one row per duty per day, plus a per-day completion flag).
@@ -270,6 +272,8 @@ model Task {
   alertGroupId Int?
   alertGroup   AlertGroup? @relation(fields: [alertGroupId], references: [id], onDelete: SetNull)
   alertType    String?
+  // HLAI-112: the Exclusives alerts this task was made from (on its top task).
+  fromAlerts   AlertLog[]  @relation("AlertTask")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -620,12 +624,13 @@ enum RecurrenceEndType {
   AfterOccurrences
 }
 
-// How an occurrence came to be: a user-driven manual instantiation, or an
-// automatic scheduled fire. Only `scheduled` occurrences carry a `seq` and count
-// toward the occurrence limit.
+// How an occurrence came to be: a user-driven manual instantiation, an
+// automatic scheduled fire, or (HLAI-112) tasks made from Exclusives alerts. Only
+// `scheduled` occurrences carry a `seq` and count toward the occurrence limit.
 enum TemplateOccurrenceOrigin {
   manual
   scheduled
+  alert
 }
 
 // A reusable, non-live task-tree definition. It is NOT a real Task — it is not
@@ -662,9 +667,11 @@ model TaskTemplate {
   // Paused series generate no new scheduled occurrences (existing ones remain).
   isActive       Boolean                @default(true)
 
-  nodes       TaskTemplateNode[]
-  occurrences TemplateOccurrence[]
-  tasks       Task[]               @relation("TaskFromTemplate")
+  nodes             TaskTemplateNode[]
+  occurrences       TemplateOccurrence[]
+  tasks             Task[]               @relation("TaskFromTemplate")
+  // HLAI-112: the Exclusives alert types whose tasks are made from this template.
+  alertTaskSettings AlertTaskSetting[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1058,9 +1065,43 @@ model AlertLog {
   groupName     String
   createdAt     DateTime    @default(now())
 
+  /// HLAI-112: the top task made from this alert (Immediate: its own; Daily: the
+  /// day's). Emptied if that task is deleted.
+  taskId        Int?
+  task          Task?     @relation("AlertTask", fields: [taskId], references: [id], onDelete: SetNull)
+  /// HLAI-112: when this alert was dealt with — its task made, or no task due (no
+  /// template for its type, alerts switched off, its group gone). Null until
+  /// then; a task that failed is tried again on the next check. Set in the same
+  /// transaction as the task, so an alert never makes two. Alerts logged before
+  /// go-live were all marked by the migration, so they never make tasks.
+  taskHandledAt DateTime?
+
   @@index([createdAt(sort: Desc)])
   @@index([listingId, createdAt(sort: Desc)])
   @@index([groupId, createdAt(sort: Desc)])
+  @@index([taskId])
+  @@index([taskHandledAt])
+}
+
+/// HLAI-112: the Alert Tasks screen. Per alert type (the same for every group),
+/// the template its tasks are made from and who fills each of that template's
+/// roles. One row per alert type once it has been saved.
+model AlertTaskSetting {
+  id              Int           @id @default(autoincrement())
+  /// One of the shared EXCLUSIVES_ALERT_TYPES, as text (checked in the app).
+  alertType       String        @unique
+  /// Deleting the template empties it: no tasks until another is picked.
+  templateId      Int?
+  template        TaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// [{ role, assigneeId }] for the template's roles, people only, by role.
+  roleAssignments Json          @default("[]")
+  /// The Admin who last changed this row: the creator of the tasks it makes.
+  savedById       String?
+  savedBy         User?         @relation("AlertTaskSettingSaver", fields: [savedById], references: [id], onDelete: SetNull)
+  updatedAt       DateTime      @updatedAt
+
+  @@index([templateId])
+  @@index([savedById])
 }
 
 // ---------------------------------------------------------------------------

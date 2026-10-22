@@ -181,7 +181,9 @@ All models live in `backend/prisma/schema.prisma`. Highlights:
   (mentioned/assigned), time-conditional reminders, and per-list opt-ins.
 - **TaskTemplate / TaskTemplateNode / TaskTemplateDependency / TemplateOccurrence**
   — Phase 11 reusable definition trees, their between-node dependencies, and a
-  record of each materialized instantiation.
+  record of each materialized instantiation (origin `manual`, `scheduled`, or
+  HLAI-112's `alert`; a scheduled fire carries its people forward from the latest
+  manual or scheduled one, never from one made from alerts).
 - **SchedulerState** — singleton health row for the recurrence scheduler watchdog.
 - **Goal** — Phase 12 (see §7).
 
@@ -194,7 +196,11 @@ All models live in `backend/prisma/schema.prisma`. Highlights:
   **blocked-status rule**: a task with an incomplete predecessor may not move to
   `Review`/`Completed`; the error names the blocking task(s).
 - **4 Rich content** — sanitized rich-text descriptions/comments, @mentions,
-  attachments via pre-signed S3 URLs.
+  attachments via pre-signed S3 URLs. Tables too (HLAI-112): the editor's Table
+  menu inserts one with a header row and adds or deletes rows and columns; the
+  server and the display keep table, thead, tbody, tr, th, td, a cell only its
+  colspan/rowspan (1–99); shown as a plain bordered grid, scrolling sideways when
+  wider than the box.
 - **5 History & account maintenance** — the change-history trail; admin user edit;
   account merge.
 - **6 Search** — the Task Search screen: text search, multi-select filters,
@@ -736,3 +742,144 @@ tasks can be filtered by them reliably.
   attribute.
 - **Not covered:** the Kanban, Calendar and Gantt views, templates, and setting
   the attributes while creating a task.
+
+## 16. Alert Tasks (HLAI-112)
+
+The goal: every Exclusives alert becomes a task for the right person without
+anyone creating it by hand. Each of the 12 alert types is linked to a template,
+with a person for each of the template's role placeholders — the same for every
+alert group. **Immediate** alerts make a task each as soon as they are found;
+**Daily** alerts make one task per group and type a day (8:30 AM New York time by
+default; set on Render), listing the day's alerts and linking to them in the
+Alert Log.
+
+- **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
+  Task Setup" under *E-commerce exclusives*), Admins only. One row per alert type in
+  `EXCLUSIVES_ALERT_TYPES` order: the type's badge, a template `SearchSelect`
+  ("— None —" = no task; one template may serve several types), and the Role
+  Assignment cell — one line per role of the chosen template (fetched once with
+  `GET /api/templates/:id`) with a person dropdown of active people, worked like
+  the template's Create tasks window: ⚠ for someone missing a duty that role's
+  tasks carry (`useDutyCatalog`), "✓ Holds every duty needed", and a saved person
+  who is no longer active flagged. A new template keeps the people for roles of
+  the same name; only the chosen template's roles are saved.
+- **Save / Cancel** at the top right, both off until something changed. Save
+  sends all 12 settings at once with `expectedUpdatedAt`, and stays off while a
+  ⚠ remains or a template's roles are loading; Cancel puts back what was last
+  saved. If another Admin saved first, Save turns into Refresh with the shared
+  `ConflictBanner`, as in the group editor. Leaving with changes asks first
+  (`useUnsavedChangesWarning`). Loading, load-error (with "Try again") and
+  no-templates (a link to Templates) states.
+- **Contract.** `ExclusivesAlertTaskSettingDto` (alertType, templateId,
+  roleAssignments), `ExclusivesAlertTaskSetupDto`, `SaveExclusivesAlertTaskSetupRequest`
+  in `packages/shared`.
+- **Storage.** `AlertTaskSetting`, one row per alert type once it has been saved
+  with something in it: `templateId` (deleting the template empties it, so that
+  type makes no tasks until another is picked), `roleAssignments` as JSON
+  `[{ role, assigneeId }]` (people only, by role), and `savedById`, the Admin who
+  last changed the row — the creator of the tasks it will make. A Save rewrites
+  only the rows that changed.
+- **Endpoints** (Admins only, `services/exclusives/alert-task-setup.service.ts`).
+  `GET /api/exclusives/alert-tasks` returns all 12 rows in order (an unsaved type
+  is empty) and the setup's version, its newest row's `updatedAt` (null before
+  the first Save). `PUT` takes `{ settings, expectedUpdatedAt }`; a Save from an
+  older version is refused (409 `STALE_WRITE`), under an advisory lock so two
+  Saves cannot both pass. Behind the screen's own checks it refuses a template
+  that no longer exists, a role the template does not have, people with no
+  template, someone no longer active (400), and someone missing a duty their
+  role's tasks carry (422 `DUTY_NOT_HELD`, each problem with its `alertType`).
+- **Label rule** (`packages/shared`, not used yet). Tasks made from alerts will be
+  labelled `<group part>_<type code>_<YYJJJHHMM>`: `alertGroupLabelPart` (the
+  first 4 letters and digits of the group name, then the first after each "-",
+  en/em dashes counting as "-"), `EXCLUSIVES_ALERT_TYPE_CODES` (LS, BL, BW, …),
+  `julianStamp` (2-digit year, day of the year 001–366, 24-hour time, on the
+  business time zone's clock), put together by `alertTaskInstanceLabel`;
+  `withClashCounter` adds `_2`, `_3`, … to a label already taken. "Wasif - US",
+  Buy Box Won, 19 Oct 2026 08:30 New York → `WasiU_BW_262920830`.
+- **Task maker** (`generateOccurrence`).
+  Optional `alertGroupId` / `alertType` put the HLAI-118 attributes on every task
+  of the tree; `rootDescriptionExtra` is added after the top task's own
+  description (sanitized and size-checked with it). With origin `alert`, every
+  task gets a History line, field `alert`, shown as "Made automatically from a Buy
+  Box Lost alert (Wasif - US)". A group that no longer exists makes nothing.
+  `alertLogIds` links the alerts to the top task and marks them handled in the
+  same transaction (409 if one already was). Manual creation (`POST
+  /api/templates/:id/instantiate`) passes none of these and is unchanged.
+- **Immediate tasks** (`services/exclusives/alert-tasks.service.ts`,
+  `makeImmediateAlertTasks`). Run at the end of every Exclusives pass, still
+  under the pass lock, and never failing it. Each alert waiting for its task
+  (`AlertLog.taskHandledAt` empty) of a type its group has on "Immediate" and
+  that has a template on Alert Task Setup gets its own tree: labelled
+  `alertTaskInstanceLabel` + `withClashCounter` (against existing occurrence
+  labels), tagged, its roles filled from the setup (someone no longer active
+  leaves their role unassigned; a missing duty does not stop it), created by the
+  row's `savedById`, anchored at the moment it is made. An alert with no task due
+  — no template for its type, alerts switched off since, its group deleted — is
+  marked handled with no task, so a template picked later never reaches back to
+  it. Alerts on "Daily" are left waiting. A task that fails is logged and left
+  waiting, so the next pass tries again. `AlertLog.taskId` keeps the top task
+  (emptied if it is deleted).
+- **Go-live.** The migration that added `taskId` / `taskHandledAt` marked every
+  alert already in the log as handled, so only alerts found after it ran (on
+  each server) make tasks.
+- **The Daily run's time** (`services/exclusives/daily-window.ts`), on the
+  business clock: `EXCLUSIVES_DAILY_TASKS_AT`, 24-hour `HH:MM` read at start-up
+  (`env.alertTasks.dailyAt`; a wrong value stops the server), `08:30` when unset.
+  Each Daily task covers the day before it, from the same time the day before to
+  a minute before it (`lastDailyRunAt` / `nextDailyRunAt`, `dailyWindowStart`),
+  so every alert falls in exactly one day. Built from clock times on business
+  dates, so on a DST day that day is 23 or 25 hours and no alert is missed or
+  doubled. The server logs it at start-up ("Daily alert tasks: 8:30 AM New York
+  time, covering the day before (8:30 AM to 8:29 AM)").
+- **Daily tasks** (`makeDailyAlertTasks`, `alert-tasks.service.ts`). Run in every
+  scheduler pass (`runScheduler`), and the scheduler wakes at the next Daily run
+  while any alert type is on Daily with a template (`dailyAlertTasksInUse`). An
+  alert belongs to the day whose run first follows it. Every day that has ended
+  gets one task tree per group and type for its waiting Daily alerts — several
+  days at once if a missed run left them behind — labelled with that day's run,
+  anchored there, and all its alerts linked to the top task in the same
+  transaction. Changing the time: alerts that already made a task stay handled;
+  the waiting ones go into the next run's day, so none makes two tasks (that
+  first day is shorter or longer). The top task's
+  description is the template's own text, then a table (`dailyTable`): a
+  header row — No., ASIN, Group, Alert Type, Date & time (business clock),
+  Details — and a row per alert, oldest first. Details is the alert's own
+  message for the first two rows and, from the third, "See log for details…", a
+  link to the Alert Log on that day, type and group with the row's ASIN in the
+  search box. At most 100 rows and no more than fit in `RICH_TEXT_MAX_CHARS`
+  beside the template's text, then "…and N more: see the Alert Log link", then
+  the whole day's link ("View these alerts in the Alert Log"). Daily alerts with no
+  template, or whose group was deleted, are marked handled with no task;
+  Immediate ones are left to `makeImmediateAlertTasks`.
+- **The Alert Log link** (`alertLogHref` / `readAlertLogLink` / `isAlertLogHref`
+  in `packages/shared`): `/exclusives/log?from=…&to=…&type=…&group=…[&q=…]`,
+  the day's start and end as instants and, for a table row, its ASIN as the
+  search. The only link rich text may hold:
+  `sanitizeRichText` keeps an `<a href>` to the Alert Log (nothing else on it) and
+  turns any other link into plain text; `RichText` lets only that href through
+  DOMPurify and opens it in the app (Ctrl/⌘-click still opens a new tab); the
+  editor's StarterKit link keeps it while editing (`isAllowedUri`), with automatic
+  links from typing or pasting off. The Alert Log reads the filters and the
+  search from the address as it opens (the viewer sees the dates on their own
+  clock).
+- **Duties the setup needs stay put.** The Organization screen won't take a duty
+  away from someone whose Alert Task Setup role needs it (the role's template
+  tasks carry it). `getOrg` sends each person's `alertTaskPicks` (alert type, role,
+  the duties it needs — `alertTaskPicksByPerson`), so unticking such a duty shows
+  a warning under it (Alert Task Setup would show ⚠ on them; set that role to
+  "Leave unassigned" there first) and keeps Save off. `saveOrgChanges` refuses it too (422
+  `ALERT_TASK_DUTY_NEEDED`, naming the person, role, alert type and duty, and
+  saying an Admin must first set that role to "Leave unassigned" there). Other
+  removals go through as before, the person's existing tasks flagged ⚠; adding a
+  duty is never blocked.
+- **By hand**: `npm run alert-tasks:run --workspace backend`
+  (`scripts/alert-tasks-run.ts`) makes the Immediate tasks waiting (retries
+  included), then the Daily ones of every window that has ended — the same work a
+  check and the scheduler's Daily pass do, for where those are off (staging; locally
+  with the sweep off). Safe to run any time.
+- **Known gap.** Saving a template offers "Update future instances?"
+  (`applyTemplateToOccurrences`), which counts every open task tree made from it,
+  alert-made ones included, and sets each task's description back to the
+  template's. On a Daily alert task that drops the list of alerts and the Alert
+  Log link. "Leave them" is safe. Not changed yet: leaving `alert` occurrences out
+  of that update is the suggested fix, awaiting a decision.

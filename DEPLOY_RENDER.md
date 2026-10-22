@@ -88,6 +88,16 @@ Set these on `healthy-tasks-api-prod` **and** `healthy-tasks-api-staging`.
 - [x] `STORAGE_DRIVER=s3` — use real object storage (the `memory` driver is for
       tests only).
 
+### Daily alert tasks (HLAI-112) — optional, you enter these
+
+- [ ] **`EXCLUSIVES_DAILY_TASKS_AT`** — when the Daily alert tasks are made,
+      24-hour `HH:MM` on the business clock (`BUSINESS_TIMEZONE`). Each covers the
+      day before, from the same time to a minute before it. Left unset (or empty):
+      `08:30`. Saving it restarts the API; its boot log then shows e.g. `Daily
+      alert tasks: 8:30 AM New York time, covering the day before (8:30 AM to 8:29
+      AM)`. A wrong value (`8:30 AM`, `8.30`, a lone space) stops the API at
+      start-up, saying what is wanted.
+
 ### Email — see §5
 
 - [ ] **`EMAIL_PROVIDER`** — `console` or `smtp`. Committed as `console`.

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/async-handler.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import {
   exclusivesAlertQuerySchema,
   exclusivesGroupQuerySchema,
   exclusivesAlertExportSchema,
+  exclusivesAlertTaskSetupSaveSchema,
   exclusivesGroupCreateSchema,
   exclusivesGroupExportSchema,
   exclusivesGroupUpdateSchema,
@@ -20,10 +21,12 @@ import {
   exclusivesSummaryController,
   exportExclusivesAlertsController,
   exportExclusivesGroupController,
+  getAlertTaskSetupController,
   getExclusivesGroupController,
   lookupExclusivesListingsController,
   queryExclusivesAlertsController,
   queryExclusivesGroupsController,
+  saveAlertTaskSetupController,
   updateExclusivesGroupController,
 } from '../controllers/exclusives.controller.js';
 
@@ -61,6 +64,15 @@ exclusivesRouter.post(
 );
 
 exclusivesRouter.get('/groups/options', asyncHandler(exclusivesGroupOptionsController));
+
+// HLAI-112: the Alert Tasks screen (Admins only, like the screen itself).
+exclusivesRouter.get('/alert-tasks', requireAdmin, asyncHandler(getAlertTaskSetupController));
+exclusivesRouter.put(
+  '/alert-tasks',
+  requireAdmin,
+  validateBody(exclusivesAlertTaskSetupSaveSchema),
+  asyncHandler(saveAlertTaskSetupController),
+);
 
 exclusivesRouter.post(
   '/groups',

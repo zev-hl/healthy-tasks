@@ -58,6 +58,7 @@ import { HierarchyTree, toggleSubtree } from '../components/HierarchyTree';
 import { UserChip, UnassignedAvatar } from '../components/ui/Avatar';
 import { StatusPill, PriorityRamp } from '../components/ui/indicators';
 import { AnimatedCount } from '../components/ui/AnimatedCount';
+import { ExcPager } from '../components/exclusives/ExcPager';
 import { TableEmptyRow } from '../components/ui/EmptyState';
 import { DueDate, AgoDate } from '../components/ui/dates';
 import { TaskKanban } from '../components/TaskKanban';
@@ -414,8 +415,6 @@ export function TaskSearchPage() {
     setFilters(defaultFilters);
     setPage(1);
   };
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const visibleColumns = columns.filter((c) => c.visible);
   const moveColumn = (index: number, delta: number) => {
@@ -964,9 +963,6 @@ export function TaskSearchPage() {
     ? `${TASK_COLUMN_LABELS[sort[0]!.field]} ${sort[0]!.dir === 'asc' ? '↑' : '↓'}${sort.length > 1 ? ` +${sort.length - 1}` : ''}`
     : null;
 
-  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const lastRow = Math.min(total, page * pageSize);
-
   return (
     <div className="tasks-page">
       {/* Toolbar */}
@@ -1184,8 +1180,8 @@ export function TaskSearchPage() {
 
       {/* Results — List view */}
       {view === 'list' && (
-        <>
-          <div className="table-scroll tasks-table-wrap">
+        <div className="card tasks-table-card">
+          <div className="tasks-table-wrap">
             <table className="results-table tasks-table">
               <thead>
                 <tr>
@@ -1263,47 +1259,19 @@ export function TaskSearchPage() {
             </table>
           </div>
 
-          {/* Pager */}
-          <div className="pager">
-            <span className="mono muted">
-              {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
-            </span>
-            <div className="spacer" />
-            <label className="mono">
-              Rows{' '}
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-              >
-                {PAGE_SIZE_OPTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button
-              className="secondary btn-sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              ← Prev
-            </button>
-            <span className="mono">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              className="secondary btn-sm"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next →
-            </button>
-          </div>
-        </>
+          {/* Pager, the Alert Log's own: inside the table's box, under it. */}
+          <ExcPager
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            sizes={PAGE_SIZE_OPTIONS}
+            onPage={setPage}
+            onPageSize={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+          />
+        </div>
       )}
 
       {/* Kanban / Calendar / Gantt views (Phase 10) share the same rows/filters. */}

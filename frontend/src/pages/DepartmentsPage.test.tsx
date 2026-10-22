@@ -122,4 +122,45 @@ describe('DepartmentsPage', () => {
     expect(screen.queryByText('Packing')).not.toBeInTheDocument();
     expect(api.savePreference).toHaveBeenLastCalledWith('departments', { expanded: [] });
   });
+
+  it('keeps each form’s button off until something in it changes', async () => {
+    renderWithRouter(<DepartmentsPage />);
+    await screen.findByText('Packing');
+    const button = (name: string) => screen.getByRole('button', { name });
+
+    // A new department: off until a name is typed, and off again once it is cleared.
+    fireEvent.click(button('+ New department'));
+    expect(button('Create department')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Department name'), { target: { value: 'Returns' } });
+    expect(button('Create department')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Department name'), { target: { value: '' } });
+    expect(button('Create department')).toBeDisabled();
+    fireEvent.click(button('Cancel'));
+
+    // A new duty: Enter does nothing either until something is typed.
+    fireEvent.click(screen.getByTitle('Add a duty to Fulfillment'));
+    expect(button('Add duty')).toBeDisabled();
+    fireEvent.keyDown(screen.getByLabelText('New duty name'), { key: 'Enter' });
+    expect(api.createDuty).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Sorting' } });
+    expect(button('Add duty')).toBeEnabled();
+    fireEvent.click(button('Cancel'));
+
+    // Renaming a department: Save waits for a change to its name or colour.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Rename' })[0]!);
+    expect(button('Save')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Department name'), {
+      target: { value: 'Facilities team' },
+    });
+    expect(button('Save')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('Department name'), { target: { value: 'Facilities' } });
+    expect(button('Save')).toBeDisabled();
+    fireEvent.click(button('Cancel'));
+
+    // Editing a duty: Save waits for a change to its name or description.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+    expect(button('Save')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Boxes out' } });
+    expect(button('Save')).toBeEnabled();
+  });
 });

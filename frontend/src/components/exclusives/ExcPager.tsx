@@ -1,6 +1,7 @@
 /**
  * Exclusives table pager (HLAI-71) — matches the design: a range label, the
- * 25/50/100 size chips, and Previous · numbered-page · Next controls.
+ * 25/50/100 size chips, and Previous · numbered-page · Next controls. All Tasks
+ * uses it too, with its own sizes (`sizes`).
  */
 import type { MouseEvent } from 'react';
 
@@ -48,12 +49,15 @@ export function ExcPager({
   total,
   page,
   pageSize,
+  sizes = PAGE_SIZES,
   onPage,
   onPageSize,
 }: {
   total: number;
   page: number;
   pageSize: number;
+  /** The row counts offered under "Rows". */
+  sizes?: readonly number[];
   onPage: (p: number) => void;
   onPageSize: (n: number) => void;
 }) {
@@ -70,7 +74,7 @@ export function ExcPager({
       <div className="exc-pager-right">
         <span className="exc-pager-rows-label">Rows</span>
         <div className="exc-sizes">
-          {PAGE_SIZES.map((n) => (
+          {sizes.map((n) => (
             <button
               key={n}
               type="button"
@@ -82,39 +86,42 @@ export function ExcPager({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className="exc-page-btn"
-          disabled={page <= 1}
-          onClick={firstClickOnly(() => onPage(page - 1))}
-        >
-          Previous
-        </button>
-        {pages.map((p, i) =>
-          p === 'gap' ? (
-            <span key={`gap-${i}`} className="exc-page-num muted" aria-hidden="true">
-              …
-            </span>
-          ) : (
-            <button
-              key={p}
-              type="button"
-              className={`exc-page-num${p === page ? ' active' : ''}`}
-              aria-current={p === page ? 'page' : undefined}
-              onClick={() => onPage(p)}
-            >
-              {p}
-            </button>
-          ),
-        )}
-        <button
-          type="button"
-          className="exc-page-btn"
-          disabled={page >= totalPages}
-          onClick={firstClickOnly(() => onPage(page + 1))}
-        >
-          Next
-        </button>
+        {/* One group, so on a narrow screen it moves to its own line whole. */}
+        <div className="exc-pager-nav">
+          <button
+            type="button"
+            className="exc-page-btn"
+            disabled={page <= 1}
+            onClick={firstClickOnly(() => onPage(page - 1))}
+          >
+            Previous
+          </button>
+          {pages.map((p, i) =>
+            p === 'gap' ? (
+              <span key={`gap-${i}`} className="exc-page-num muted" aria-hidden="true">
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                className={`exc-page-num${p === page ? ' active' : ''}`}
+                aria-current={p === page ? 'page' : undefined}
+                onClick={() => onPage(p)}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <button
+            type="button"
+            className="exc-page-btn"
+            disabled={page >= totalPages}
+            onClick={firstClickOnly(() => onPage(page + 1))}
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

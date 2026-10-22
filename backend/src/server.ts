@@ -6,6 +6,7 @@ import {
   startScheduler,
   stopScheduler,
 } from './services/scheduler.service.js';
+import { describeDailyWindow } from './services/exclusives/daily-window.js';
 import {
   deliverySummary,
   mailerSummary,
@@ -92,6 +93,10 @@ const server = app.listen(env.port, () => {
     startScheduler();
     // eslint-disable-next-line no-console
     console.log(`   Exclusives sweep: ${exclusivesSweepMode().summary}`);
+    // HLAI-112: the time EXCLUSIVES_DAILY_TASKS_AT set, so a change on Render
+    // shows in the boot log.
+    // eslint-disable-next-line no-console
+    console.log(`   Daily alert tasks: ${describeDailyWindow()}`);
   } else {
     // eslint-disable-next-line no-console
     console.log('⏸  Recurrence scheduler disabled (SCHEDULER_ENABLED=false)');

@@ -265,6 +265,10 @@ describe('ExclusivesGroupsPage', () => {
     const done = screen.getByRole('alertdialog');
     expect(within(done).getByText('Group deleted successfully')).toBeInTheDocument();
     expect(within(done).getByText(/is no longer monitored/)).toBeInTheDocument();
+
+    // It stays until OK is pressed.
+    fireEvent.click(within(done).getByRole('button', { name: 'OK' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('shows the server message when loading fails', async () => {

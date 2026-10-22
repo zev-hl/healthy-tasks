@@ -391,7 +391,6 @@ export function ExclusivesGroupsPage() {
           title="Group deleted successfully"
           tone="accent"
           message={`“${deleted}” is no longer monitored. Its past alerts stay in the alert log.`}
-          autoCloseMs={2500}
           onClose={() => setDeleted(null)}
         />
       )}

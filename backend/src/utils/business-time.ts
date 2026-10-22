@@ -60,7 +60,7 @@ export function toBusinessDate(instant: Date, timeZone: string = env.businessTim
 }
 
 /**
- * The instant at `hour`:00 on this calendar date, in the business timezone.
+ * The instant at `hour`:`minute` on this calendar date, in the business timezone.
  *
  * Resolves the zone offset twice because the first guess can land on the wrong
  * side of a DST transition. Our default hours (07:00 / 19:00) are nowhere near
@@ -71,8 +71,9 @@ export function fromBusinessDate(
   date: CalendarDate,
   hour: number,
   timeZone: string = env.businessTimeZone,
+  minute = 0,
 ): Date {
-  const wallClock = new Date(`${date}T${pad(hour)}:00:00.000Z`);
+  const wallClock = new Date(`${date}T${pad(hour)}:${pad(minute)}:00.000Z`);
   const firstGuess = new Date(wallClock.getTime() - zoneOffsetMs(wallClock, timeZone));
   const corrected = zoneOffsetMs(firstGuess, timeZone);
   return new Date(wallClock.getTime() - corrected);
