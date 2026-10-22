@@ -8,15 +8,11 @@ import {
 } from '@healthy-tasks/shared';
 import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
-import {
-  addCalendarDays,
-  fromBusinessDate,
-  toBusinessDate,
-  type CalendarDate,
-} from '../../utils/business-time.js';
+import type { ClockTime } from '../../utils/clock-time.js';
 import { richTextLength, sanitizeRichText } from '../../utils/rich-text.js';
 import { generateOccurrence } from '../template-instantiation.service.js';
 import { alertTaskRecipes, type AlertTaskRecipe } from './alert-task-setup.service.js';
+import { dailyWindowStart, lastDailyRunAt, nextDailyRunAt } from './daily-window.js';
 
 /**
  * HLAI-112: tasks made from Exclusives alerts, by the Alert Task Setup — per
@@ -26,9 +22,10 @@ import { alertTaskRecipes, type AlertTaskRecipe } from './alert-task-setup.servi
  *
  * - Immediate (after every check): each new alert of a type its group has on
  *   "Immediate" makes its own task tree. No limit: every alert gets its task.
- * - Daily (8:30 AM business time, from the scheduler): one task tree per group
- *   and type for the alerts of the day that has just ended (8:30 AM to 8:30 AM),
- *   in a table in the top task's description, with links to the Alert Log.
+ * - Daily (from the scheduler, at 8:30 AM business time by default — set by
+ *   EXCLUSIVES_DAILY_TASKS_AT, see daily-window.ts): one task tree per group and
+ *   type for the alerts of the day that has just ended (8:30 AM to 8:29 AM), in
+ *   a table in the top task's description, with links to the Alert Log.
  *
  * An alert is picked up only while `taskHandledAt` is empty. It is set with the
  * task, in the same transaction, or when no task is due — no template for its
@@ -114,7 +111,7 @@ async function makeImmediate(onLog: Log, now: () => Date): Promise<AlertTaskRunR
   const due: WaitingAlert[] = [];
   for (const a of waiting) {
     const mode = modeOf(a);
-    if (a.group !== null && mode === 'daily') continue; // the 8:30 AM Daily task's
+    if (a.group !== null && mode === 'daily') continue; // the Daily task's
     if (a.group === null || mode !== 'immediate' || !recipes.has(a.alertType)) {
       noTask.push(a.id); // group deleted, switched off since, or no template
       continue;
@@ -160,33 +157,10 @@ async function makeImmediate(onLog: Log, now: () => Date): Promise<AlertTaskRunR
 
 // --- Daily -------------------------------------------------------------------
 
-/** When the Daily tasks are made: 8:30 AM business time. */
-const DAILY_HOUR = 8;
-const DAILY_MINUTE = 30;
-
 /** At most this many alerts are rows in a Daily task; the link shows them all. */
 export const DAILY_ROWS_MAX = 100;
 
-/** 8:30 AM on this business date. (DST changes at 2 AM, never near 8:30.) */
-function dailyRunOn(date: CalendarDate): Date {
-  return new Date(fromBusinessDate(date, DAILY_HOUR).getTime() + DAILY_MINUTE * 60_000);
-}
-
-/** The latest 8:30 AM at or before `now`: where the last full Daily window ends. */
-export function lastDailyRunAt(now: Date): Date {
-  const today = toBusinessDate(now);
-  const at = dailyRunOn(today);
-  return at.getTime() <= now.getTime() ? at : dailyRunOn(addCalendarDays(today, -1));
-}
-
-/** The first 8:30 AM after `at`: when the Daily window `at` falls in ends. */
-export function nextDailyRunAt(at: Date): Date {
-  const today = toBusinessDate(at);
-  const run = dailyRunOn(today);
-  return run.getTime() > at.getTime() ? run : dailyRunOn(addCalendarDays(today, 1));
-}
-
-/** Whether any group has an alert type on Daily that has a template (the 8:30 wake). */
+/** Whether any group has an alert type on Daily that has a template (the Daily wake). */
 export async function dailyAlertTasksInUse(): Promise<boolean> {
   const withTemplate = await prisma.alertTaskSetting.findMany({
     where: { templateId: { not: null } },
@@ -200,25 +174,27 @@ export async function dailyAlertTasksInUse(): Promise<boolean> {
 }
 
 /**
- * Make the Daily tasks of every 8:30 AM window that has ended: one task tree per
- * group, alert type and day, for the alerts waiting in it. Catches up on days a
- * missed 8:30 left behind, each with its own day's label. Never throws.
+ * Make the Daily tasks of every day that has ended (at `at`, the Daily run's
+ * time): one task tree per group, alert type and day, for the alerts waiting in
+ * it. Catches up on days a missed run left behind, each with its own day's
+ * label. Never throws.
  */
 export async function makeDailyAlertTasks(
   onLog: Log = () => {},
   now: Date = new Date(),
+  at: ClockTime = env.alertTasks.dailyAt,
 ): Promise<AlertTaskRunReport> {
   try {
-    return await makeDaily(onLog, now);
+    return await makeDaily(onLog, now, at);
   } catch (err) {
     onLog(`[alert-tasks] Daily tasks not made this time: ${(err as Error).message}`);
     return NOTHING;
   }
 }
 
-async function makeDaily(onLog: Log, now: Date): Promise<AlertTaskRunReport> {
+async function makeDaily(onLog: Log, now: Date, at: ClockTime): Promise<AlertTaskRunReport> {
   const waiting: WaitingAlert[] = await prisma.alertLog.findMany({
-    where: { taskHandledAt: null, createdAt: { lt: lastDailyRunAt(now) } },
+    where: { taskHandledAt: null, createdAt: { lt: lastDailyRunAt(now, at) } },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     select: waitingSelect,
   });
@@ -226,13 +202,14 @@ async function makeDaily(onLog: Log, now: Date): Promise<AlertTaskRunReport> {
 
   const recipes = await alertTaskRecipes();
   const noTask: number[] = [];
-  // One task per group, type and window, in the order the windows ended.
+  // One task per group, type and day, in the order the days ended.
   const days = new Map<
     string,
     {
       groupId: number;
       groupName: string;
       type: ExclusivesAlertType;
+      start: Date;
       end: Date;
       alerts: WaitingAlert[];
     }
@@ -244,12 +221,13 @@ async function makeDaily(onLog: Log, now: Date): Promise<AlertTaskRunReport> {
       noTask.push(a.id);
       continue;
     }
-    const end = nextDailyRunAt(a.createdAt);
+    const end = nextDailyRunAt(a.createdAt, at);
     const key = `${end.toISOString()}|${a.groupId}|${a.alertType}`;
     const day = days.get(key) ?? {
       groupId: a.groupId as number,
       groupName: a.group.name,
       type: a.alertType as ExclusivesAlertType,
+      start: dailyWindowStart(end, at),
       end,
       alerts: [],
     };
@@ -331,13 +309,14 @@ const DETAILS_LINK_TEXT = 'See log for details…';
  * to the Alert Log on that day, type and group with the row's ASIN in the search
  * box. At most DAILY_ROWS_MAX rows, and no more than fit in `room` characters
  * beside the template's own text; then how many more, and the link to the Alert
- * Log on the whole day (8:30 AM to 8:30 AM).
+ * Log on the whole day (`start` to `end`).
  */
 export function dailyTable(
   day: {
     groupId: number;
     groupName: string;
     type: ExclusivesAlertType;
+    start: Date;
     end: Date;
     alerts: { asin: string; message: string; createdAt: Date }[];
   },
@@ -346,7 +325,7 @@ export function dailyTable(
   const typeLabel = EXCLUSIVES_ALERT_TYPE_LABELS[day.type];
   const link = (search?: string) =>
     alertLogHref({
-      from: dailyRunOn(addCalendarDays(toBusinessDate(day.end), -1)).toISOString(),
+      from: day.start.toISOString(),
       to: day.end.toISOString(),
       alertTypes: [day.type],
       groupIds: [day.groupId],

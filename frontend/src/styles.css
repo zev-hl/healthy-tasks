@@ -743,7 +743,7 @@ textarea:focus-visible {
 
 .mday-tiles {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -809,9 +809,11 @@ textarea:focus-visible {
   border-color: var(--border);
 }
 
+/* minmax(0, …): a long task name is cut with "…" rather than widening the
+   column past the window (a sideways scroll). */
 .mday-grid {
   display: grid;
-  grid-template-columns: 1fr 356px;
+  grid-template-columns: minmax(0, 1fr) 356px;
   gap: 20px;
   align-items: start;
 }
@@ -866,6 +868,11 @@ textarea:focus-visible {
   gap: 6px;
   flex: none;
   max-width: 160px;
+}
+/* "Overdue 2d" stays on one line; the task name gives way first. */
+.mday-row .due-primary {
+  flex: none;
+  white-space: nowrap;
 }
 .mday-row-assignee-name {
   font-size: 12px;
@@ -1051,10 +1058,10 @@ textarea:focus-visible {
 
 @media (max-width: 1100px) {
   .mday-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .mday-tiles {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .mday-team-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -1490,7 +1497,7 @@ textarea:focus-visible {
 
 .detail-work {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -1519,6 +1526,45 @@ textarea:focus-visible {
    Daily alert task's six columns don't squeeze. */
 .detail-desc .rich-text:has(table) {
   max-width: none;
+}
+/* The expand button at the right of the Description head, and the pop-up it
+   opens: the description filling the window but for a 25px margin. The text,
+   or the editor, takes the room left under the head (and the toolbar and
+   buttons), up to 30 lines (15 in the card), and then it scrolls, so the pop-up
+   itself never has to, whatever the window's size or the toolbar's lines. */
+.desc-expand {
+  margin-left: auto;
+}
+.modal-backdrop.desc-backdrop {
+  padding: 25px;
+}
+.modal.desc-modal {
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+}
+/* Room between the Description head and what is under it (a table's top border
+   would otherwise touch it), in the card and the pop-up alike. */
+.detail-desc .section-head,
+.desc-modal .section-head {
+  margin-bottom: 0.75rem;
+}
+.desc-modal > .rich-text {
+  min-height: 0;
+  max-height: calc(1.6em * 30 + 0.15rem * 31);
+  overflow-y: auto;
+}
+.desc-modal > .desc-edit,
+.desc-modal > .desc-edit > .rte,
+.desc-modal > .desc-edit > .rte > :not(.rte-toolbar) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.desc-modal .rte-content {
+  max-height: calc(1.6em * 30 + 0.15rem * 31 + 1.2rem);
 }
 .detail-content .card {
   padding: 18px 20px;
@@ -1806,8 +1852,10 @@ textarea:focus-visible {
 }
 
 @media (max-width: 1000px) {
+  /* minmax(0, …): a wide description table scrolls inside its box rather than
+     stretching the column (and the page) to its full width. */
   .detail-cols {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -3068,6 +3116,8 @@ th {
 }
 .rte-toolbar {
   display: flex;
+  /* Onto a second line when the box is too narrow (a phone), never off its edge. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem;
   padding: 0.35rem 0.5rem;
@@ -4227,6 +4277,18 @@ th.sortable:hover .sort-hint {
   flex-wrap: wrap;
   font-size: 0.88rem;
 }
+/* "Rows" and its picker on one line; the picker as wide as "200" needs. */
+.pager label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+.pager select {
+  width: auto;
+  padding: 5px 8px;
+  font-size: 13px;
+}
 
 /* Collapsible filter trigger */
 .filter-trigger {
@@ -4528,9 +4590,10 @@ button.dash-stat:hover {
    unread tint + dot.
    --------------------------------------------------------------------------- */
 
+/* The same room at the top and left as My Day (.mday), the feed 760px wide. */
 .notif-page {
-  max-width: 760px;
-  margin: 0 auto;
+  max-width: calc(760px + 68px);
+  padding: 28px 34px;
 }
 .notif-topbar {
   display: flex;
@@ -5623,6 +5686,8 @@ tr.just-completed > td {
   gap: 8px;
   padding: 8px;
   overflow-y: auto;
+  /* Cards wrap to the column's width (below); never a sideways scroll. */
+  overflow-x: hidden;
 }
 .kanban-card {
   position: relative;
@@ -5660,6 +5725,8 @@ tr.just-completed > td {
   line-height: 1.3;
   color: var(--text);
   text-decoration: none;
+  /* A long name with no spaces (an alert task's label) breaks to fit the card. */
+  overflow-wrap: anywhere;
 }
 .kanban-card-title:hover {
   color: var(--accent);
@@ -9025,15 +9092,17 @@ button.dd-pd-name:hover {
    sideways rather than squeezing the cards until their contents collide. */
 .dd-week {
   display: grid;
-  grid-template-columns: repeat(7, minmax(132px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(7, minmax(128px, 1fr));
+  gap: 8px;
   overflow-x: auto;
   padding: 2px 2px 6px;
 }
 .dd-week.five {
-  grid-template-columns: repeat(5, minmax(132px, 1fr));
+  grid-template-columns: repeat(5, minmax(128px, 1fr));
 }
 .dd-daycard {
+  /* The footer below lays out by the card's own width. */
+  container: daycard / inline-size;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -9208,6 +9277,22 @@ button.dd-done.on:hover {
   background: var(--warn-soft);
   color: var(--warn-deep);
   border-color: #f1d6a8;
+}
+/* A day card too narrow for the total ("10:45") and the capsule side by side
+   (a smaller screen): the total on its own line, the completed capsule centred
+   under it, a touch smaller, clear of the card's edges. */
+@container daycard (max-width: 193px) {
+  .dd-dc-foot {
+    justify-content: center;
+    padding-inline: 8px;
+  }
+  .dd-dc-total {
+    flex-basis: 100%;
+  }
+  .dd-done {
+    gap: 4px;
+    padding: 3px 7px;
+  }
 }
 .dd-done .ck {
   width: 13px;

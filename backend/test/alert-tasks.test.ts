@@ -30,6 +30,7 @@ type Scheduler = typeof import('../src/services/scheduler.service.js');
 let runScheduler: Scheduler['runScheduler'];
 let computeNextWakeAt: Scheduler['computeNextWakeAt'];
 let runDetection: (typeof import('../src/services/exclusives/detection.service.js'))['runDetection'];
+let env: (typeof import('../src/config/env.js'))['env'];
 
 const PASSWORD = 'TestPass123!';
 const ADMIN_EMAIL = 'admin@test.local';
@@ -54,6 +55,8 @@ before(async () => {
   process.env.SP_API_REFRESH_TOKEN = 'test-refresh';
   process.env.SP_API_MERCHANT_TOKEN = 'A1UWLDVGZSXGKG';
   process.env.EXCLUSIVES_SWEEP_ENABLED = 'false';
+  // The Daily run's default time (08:30), whatever this machine has set.
+  delete process.env.EXCLUSIVES_DAILY_TASKS_AT;
 
   const [appMod, prismaMod, pwMod, cacheMod, genMod, alertTasksMod, detectionMod, schedMod] =
     await Promise.all([
@@ -77,6 +80,7 @@ before(async () => {
   resetUnreadCache = cacheMod.__resetUnreadCache;
   generateOccurrence = genMod.generateOccurrence;
   carryForwardAssignees = genMod.carryForwardAssignees;
+  env = (await import('../src/config/env.js')).env;
 });
 
 after(async () => {
@@ -1283,6 +1287,84 @@ describe('Daily alert tasks', () => {
       (await tops()).map((t) => t.name),
       ['WasiC_LS_262920830: Work through the alerts'],
     );
+  });
+
+  // --- Steps 15-16: the time from EXCLUSIVES_DAILY_TASKS_AT -------------------
+
+  const TWO_PM = { hour: 14, minute: 0 };
+
+  it('set to 14:00, makes the task at 2:00 PM from the 24 hours before it', async () => {
+    await setUpDaily('ListingSuppressed');
+    const group = await watchingGroup('Wasif - CA', { ListingSuppressed: 'daily' });
+    const first = await logAlert(
+      group,
+      'ListingSuppressed',
+      'B0TIME0001',
+      ny('2026-10-18T14:00:00'),
+    );
+    const last = await logAlert(
+      group,
+      'ListingSuppressed',
+      'B0TIME0002',
+      ny('2026-10-19T13:59:00'),
+    );
+    const next = await logAlert(
+      group,
+      'ListingSuppressed',
+      'B0TIME0003',
+      ny('2026-10-19T14:00:00'),
+    );
+
+    // Nothing is due before 2:00 PM; at 2:00 the day from 2:00 PM yesterday is.
+    assert.deepEqual(await makeDailyAlertTasks(() => {}, ny('2026-10-19T13:59:00'), TWO_PM), NONE);
+    assert.deepEqual(await makeDailyAlertTasks(() => {}, ny('2026-10-19T14:00:00'), TWO_PM), {
+      made: 1,
+      noTask: 0,
+      failed: 0,
+    });
+    const [top] = await tops();
+    assert.equal(top!.name, 'WasiC_LS_262921400: Work through the alerts');
+    assert.match(top!.description!, /B0TIME0001[\s\S]*B0TIME0002/);
+    assert.doesNotMatch(top!.description!, /B0TIME0003/);
+    // The Alert Log link covers that day: 2:00 PM to 2:00 PM (EDT).
+    assert.match(
+      top!.description!,
+      /from=2026-10-18T18%3A00%3A00\.000Z&amp;to=2026-10-19T18%3A00%3A00\.000Z/,
+    );
+    assert.deepEqual(
+      (await prisma.alertLog.findMany({ orderBy: { id: 'asc' } })).map((a) => [
+        a.id,
+        a.taskId,
+        a.taskHandledAt !== null,
+      ]),
+      [
+        [first.id, top!.id, true],
+        [last.id, top!.id, true],
+        [next.id, null, false], // waits for tomorrow's 2:00 PM
+      ],
+    );
+  });
+
+  it('takes the time from the settings: the scheduler wakes and makes the task then', async () => {
+    const settings = env as unknown as { alertTasks: { dailyAt: typeof TWO_PM } };
+    const saved = settings.alertTasks.dailyAt;
+    settings.alertTasks.dailyAt = TWO_PM;
+    try {
+      await setUpDaily('ListingSuppressed');
+      const group = await watchingGroup('Wasif - CA', { ListingSuppressed: 'daily' });
+      await logAlert(group, 'ListingSuppressed', 'B0TIME0011', ny('2026-10-19T11:00:00'));
+      assert.equal(
+        (await computeNextWakeAt(ny('2026-10-19T12:00:00'))).toISOString(),
+        ny('2026-10-19T14:00:00').toISOString(),
+      );
+      await runScheduler(ny('2026-10-19T14:00:05'));
+      assert.deepEqual(
+        (await tops()).map((t) => t.name),
+        ['WasiC_LS_262921400: Work through the alerts'],
+      );
+    } finally {
+      settings.alertTasks.dailyAt = saved;
+    }
   });
 });
 

@@ -220,6 +220,12 @@ projects:
                 sync: false
               - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
                 sync: false
+              # HLAI-112: when the Daily alert tasks are made, 24-hour HH:MM,
+              # business time (BUSINESS_TIMEZONE); each covers the day before, from
+              # the same time to a minute before it. Unset: 08:30. A wrong value
+              # stops the server at start-up.
+              - key: EXCLUSIVES_DAILY_TASKS_AT # e.g. "08:30"
+                sync: false
 
           # -------------------------------------------------------------------
           # Key Value (Valkey, Redis-compatible) — holds the email queue.
@@ -431,6 +437,12 @@ projects:
               - key: EXCLUSIVES_SWEEP_ENABLED # "true" only where alerts should run
                 sync: false
               - key: EXCLUSIVES_SWEEP_MINUTES # whole minutes, 5-1440
+                sync: false
+              # HLAI-112: when the Daily alert tasks are made, 24-hour HH:MM,
+              # business time (BUSINESS_TIMEZONE); each covers the day before, from
+              # the same time to a minute before it. Unset: 08:30. A wrong value
+              # stops the server at start-up.
+              - key: EXCLUSIVES_DAILY_TASKS_AT # e.g. "08:30"
                 sync: false
 
           # Key Value for staging's email queue — see hlcentral-redis under

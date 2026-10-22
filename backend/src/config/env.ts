@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { businessTimeZone } from './business-time-zone.js';
 import { emailConfig } from './email-config.js';
+import { parseClockTime, type ClockTime } from '../utils/clock-time.js';
 
 // Load .env from the repo root (docker-compose also injects these directly).
 dotenv.config();
@@ -24,6 +25,13 @@ function minutes(name: string, fallback: number, min: number, max: number): numb
   if (!Number.isInteger(value) || value < min || value > max) {
     throw new Error(`${name} must be a whole number of minutes from ${min} to ${max}`);
   }
+  return value;
+}
+
+/** A time of day, 24-hour `HH:MM` (e.g. "08:30"); a typo fails loudly at boot. */
+function clockTime(name: string, fallback: string): ClockTime {
+  const value = parseClockTime(optional(name, fallback));
+  if (!value) throw new Error(`${name} must be a 24-hour time, HH:MM (e.g. 08:30 or 16:59)`);
   return value;
 }
 
@@ -113,5 +121,12 @@ export const env = {
     sweepEnabled: optional('EXCLUSIVES_SWEEP_ENABLED', 'false') === 'true',
     // A sweep takes ~1 min; one a day is the slowest that still makes sense.
     sweepMinutes: minutes('EXCLUSIVES_SWEEP_MINUTES', 30, 5, 24 * 60),
+  },
+
+  // HLAI-112: when the Daily alert tasks are made, on the business clock. Each
+  // covers the day before, from the same time to a minute before it
+  // (services/exclusives/daily-window.ts).
+  alertTasks: {
+    dailyAt: clockTime('EXCLUSIVES_DAILY_TASKS_AT', '08:30'),
   },
 } as const;

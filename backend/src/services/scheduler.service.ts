@@ -20,10 +20,10 @@ import { dispatchDueReminderEmails } from './notification.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
 import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
+import { nextDailyRunAt } from './exclusives/daily-window.js';
 import {
   dailyAlertTasksInUse,
   makeDailyAlertTasks,
-  nextDailyRunAt,
 } from './exclusives/alert-tasks.service.js';
 
 /**
@@ -473,7 +473,7 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
     }
   }
 
-  // HLAI-112: the next 8:30 AM Daily alert tasks, while any alert type uses them.
+  // HLAI-112: the next Daily run (8:30 AM by default), while any alert type uses it.
   if (await dailyAlertTasksInUse()) consider(nextDailyRunAt(now).getTime());
 
   // Task-level recurrence (Fixed only; relative series wake on completion).
@@ -504,7 +504,7 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
 /**
  * One scheduler pass: materialize all due occurrences across active recurring
  * templates and tasks, run the goal review, dispatch due reminder emails, make
- * the Daily alert tasks whose 8:30 AM has passed (HLAI-112), then
+ * the Daily alert tasks whose day has ended (HLAI-112), then
  * verify the overdue invariant and refresh the in-memory heartbeat + next wake.
  * Exposed so tests can drive it deterministically with an explicit `now`.
  * Returns the number materialized.
@@ -567,8 +567,8 @@ export async function runScheduler(now: Date): Promise<number> {
     console.error('scheduler: reminder dispatch failed', err);
   }
 
-  // HLAI-112: the Daily alert tasks of every 8:30 AM window that has ended,
-  // including any a missed 8:30 left behind. Never throws.
+  // HLAI-112: the Daily alert tasks of every day that has ended, including any
+  // a missed run left behind. Never throws.
   // eslint-disable-next-line no-console
   await makeDailyAlertTasks((msg) => console.log(msg), now);
 

@@ -749,8 +749,9 @@ The goal: every Exclusives alert becomes a task for the right person without
 anyone creating it by hand. Each of the 12 alert types is linked to a template,
 with a person for each of the template's role placeholders — the same for every
 alert group. **Immediate** alerts make a task each as soon as they are found;
-**Daily** alerts make one task per group and type at 8:30 AM New York time,
-listing that day's alerts and linking to them in the Alert Log.
+**Daily** alerts make one task per group and type a day (8:30 AM New York time by
+default; set on Render), listing the day's alerts and linking to them in the
+Alert Log.
 
 - **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
   Task Setup" under *E-commerce exclusives*), Admins only. One row per alert type in
@@ -821,14 +822,25 @@ listing that day's alerts and linking to them in the Alert Log.
 - **Go-live.** The migration that added `taskId` / `taskHandledAt` marked every
   alert already in the log as handled, so only alerts found after it ran (on
   each server) make tasks.
-- **Daily tasks** (`makeDailyAlertTasks`, same file). Run in every scheduler
-  pass (`runScheduler`), and the scheduler wakes at the next 8:30 AM business time
-  while any alert type is on Daily with a template (`dailyAlertTasksInUse`). A
-  Daily window runs from 8:30 AM to 8:30 AM; an alert belongs to the window whose
-  8:30 first follows it. Every window that has ended gets one task tree per group
-  and type for its waiting Daily alerts — several days at once if a missed 8:30
-  left them behind — labelled with that window's 8:30, anchored there, and all
-  its alerts linked to the top task in the same transaction. The top task's
+- **The Daily run's time** (`services/exclusives/daily-window.ts`), on the
+  business clock: `EXCLUSIVES_DAILY_TASKS_AT`, 24-hour `HH:MM` read at start-up
+  (`env.alertTasks.dailyAt`; a wrong value stops the server), `08:30` when unset.
+  Each Daily task covers the day before it, from the same time the day before to
+  a minute before it (`lastDailyRunAt` / `nextDailyRunAt`, `dailyWindowStart`),
+  so every alert falls in exactly one day. Built from clock times on business
+  dates, so on a DST day that day is 23 or 25 hours and no alert is missed or
+  doubled. The server logs it at start-up ("Daily alert tasks: 8:30 AM New York
+  time, covering the day before (8:30 AM to 8:29 AM)").
+- **Daily tasks** (`makeDailyAlertTasks`, `alert-tasks.service.ts`). Run in every
+  scheduler pass (`runScheduler`), and the scheduler wakes at the next Daily run
+  while any alert type is on Daily with a template (`dailyAlertTasksInUse`). An
+  alert belongs to the day whose run first follows it. Every day that has ended
+  gets one task tree per group and type for its waiting Daily alerts — several
+  days at once if a missed run left them behind — labelled with that day's run,
+  anchored there, and all its alerts linked to the top task in the same
+  transaction. Changing the time: alerts that already made a task stay handled;
+  the waiting ones go into the next run's day, so none makes two tasks (that
+  first day is shorter or longer). The top task's
   description is the template's own text, then a table (`dailyTable`): a
   header row — No., ASIN, Group, Alert Type, Date & time (business clock),
   Details — and a row per alert, oldest first. Details is the alert's own
@@ -841,7 +853,7 @@ listing that day's alerts and linking to them in the Alert Log.
   Immediate ones are left to `makeImmediateAlertTasks`.
 - **The Alert Log link** (`alertLogHref` / `readAlertLogLink` / `isAlertLogHref`
   in `packages/shared`): `/exclusives/log?from=…&to=…&type=…&group=…[&q=…]`,
-  the window's two 8:30s as instants and, for a table row, its ASIN as the
+  the day's start and end as instants and, for a table row, its ASIN as the
   search. The only link rich text may hold:
   `sanitizeRichText` keeps an `<a href>` to the Alert Log (nothing else on it) and
   turns any other link into plain text; `RichText` lets only that href through
@@ -863,7 +875,7 @@ listing that day's alerts and linking to them in the Alert Log.
 - **By hand**: `npm run alert-tasks:run --workspace backend`
   (`scripts/alert-tasks-run.ts`) makes the Immediate tasks waiting (retries
   included), then the Daily ones of every window that has ended — the same work a
-  check and the 8:30 scheduler pass do, for where those are off (staging; locally
+  check and the scheduler's Daily pass do, for where those are off (staging; locally
   with the sweep off). Safe to run any time.
 - **Known gap.** Saving a template offers "Update future instances?"
   (`applyTemplateToOccurrences`), which counts every open task tree made from it,

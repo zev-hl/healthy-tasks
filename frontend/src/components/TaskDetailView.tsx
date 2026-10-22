@@ -40,6 +40,7 @@ import { DutyCrossCheck } from './duties/DutyCrossCheck';
 import { GroupedOptions } from './duties/GroupedOptions';
 import { TaskAttributesBar } from './TaskAttributesBar';
 import { TaskAttributesModal } from './TaskAttributesModal';
+import { ExpandIcon } from './ui/ExpandIcon';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
 
@@ -141,6 +142,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Inline description edit.
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState(initialTask.description ?? '');
+  // The description in a pop-up filling the window (the expand button), for reading
+  // and editing alike. The shrink button closes it.
+  const [descExpanded, setDescExpanded] = useState(false);
+  const descModalRef = useRef<HTMLDivElement>(null);
+  // Escape closes it too, unless one of the editor's menus is open (Escape closes that first).
+  // Listened to before the menu's own listener, which would already have closed it.
+  useEffect(() => {
+    if (!descExpanded) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && !descModalRef.current?.querySelector('.rte-listpop')) setDescExpanded(false);
+    }
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [descExpanded]);
   const [savingDesc, setSavingDesc] = useState(false);
 
   // Tags quick-add.
@@ -651,6 +666,58 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
+  // The Description head and body, shown in the card or, expanded, in the pop-up.
+  // The editor is in one place only: the pop-up while expanded, the card otherwise.
+  const descHead = (expanded: boolean) => (
+    <div className="section-head">
+      <h3 id={expanded ? 'desc-modal-title' : undefined}>Description</h3>
+      {!editingDesc && canEdit && (
+        <button type="button" className="edit-chip" onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}>
+          Edit
+        </button>
+      )}
+      {(expanded || editingDesc || task.description) && (
+        <button
+          type="button"
+          className="icon-btn desc-expand"
+          aria-label={expanded ? 'Shrink the description' : 'Expand the description'}
+          title={expanded ? 'Shrink' : 'Expand'}
+          onClick={() => setDescExpanded(!expanded)}
+        >
+          <ExpandIcon shrink={expanded} />
+        </button>
+      )}
+    </div>
+  );
+  const descText = task.description ? (
+    <RichText html={task.description} />
+  ) : (
+    <p className="muted" style={{ margin: 0 }}>
+      No description yet.
+    </p>
+  );
+  const descBody = editingDesc ? (
+    <div className="desc-edit">
+      <RichTextEditor value={descDraft} onChange={setDescDraft} ariaLabel="Task description" autoFocus />
+      <div className="btn-row">
+        {conflict ? (
+          <button type="button" disabled={savingDesc} onClick={() => void handleConflictRefresh()}>
+            {savingDesc ? 'Refreshing…' : 'Refresh'}
+          </button>
+        ) : (
+          <button type="button" disabled={savingDesc} onClick={saveDesc}>
+            {savingDesc ? 'Saving…' : 'Save'}
+          </button>
+        )}
+        <button type="button" className="secondary" onClick={() => { setEditingDesc(false); setDescDraft(task.description ?? ''); }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  ) : (
+    descText
+  );
+
   return (
     <div className="detail-page">
       {/* Top bar */}
@@ -990,39 +1057,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <div className="detail-work">
               {/* Description */}
               <section className="card detail-desc">
-                <div className="section-head">
-                  <h3>Description</h3>
-                  {!editingDesc && canEdit && (
-                    <button type="button" className="edit-chip" onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}>
-                      Edit
-                    </button>
-                  )}
-                </div>
-                {editingDesc ? (
-                  <div>
-                    <RichTextEditor value={descDraft} onChange={setDescDraft} ariaLabel="Task description" autoFocus />
-                    <div className="btn-row">
-                      {conflict ? (
-                        <button type="button" disabled={savingDesc} onClick={() => void handleConflictRefresh()}>
-                          {savingDesc ? 'Refreshing…' : 'Refresh'}
-                        </button>
-                      ) : (
-                        <button type="button" disabled={savingDesc} onClick={saveDesc}>
-                          {savingDesc ? 'Saving…' : 'Save'}
-                        </button>
-                      )}
-                      <button type="button" className="secondary" onClick={() => { setEditingDesc(false); setDescDraft(task.description ?? ''); }}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : task.description ? (
-                  <RichText html={task.description} />
-                ) : (
-                  <p className="muted" style={{ margin: 0 }}>
-                    No description yet.
-                  </p>
-                )}
+                {descHead(false)}
+                {descExpanded ? descText : descBody}
               </section>
 
               {/* Sub-tasks */}
@@ -1283,6 +1319,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           onClose={() => setPendingReview(false)}
           onPick={(reviewerId) => saveReview(reviewerId)}
         />
+      )}
+
+      {descExpanded && (
+        <div className="modal-backdrop desc-backdrop">
+          <div ref={descModalRef} className="modal desc-modal" role="dialog" aria-modal="true" aria-labelledby="desc-modal-title">
+            {descHead(true)}
+            {descBody}
+          </div>
+        </div>
       )}
 
       {pendingReminderRemoval && (

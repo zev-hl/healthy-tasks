@@ -6,8 +6,9 @@ import {
 } from '../src/services/exclusives/alert-tasks.service.js';
 
 // HLAI-112: make the alert tasks that are due now, by hand — Immediate (and any
-// retries), then Daily for every 8:30 AM window that has ended. The same work a
-// check and the 8:30 AM scheduler pass do; for where those are off (staging, or
+// retries), then Daily for every day that has ended (at 8:30 AM by default;
+// EXCLUSIVES_DAILY_TASKS_AT). The same work a check and the scheduler's Daily
+// pass do; for where those are off (staging, or
 // locally with the sweep off). Safe to run any time: an alert never makes two
 // tasks.
 async function main() {

@@ -179,9 +179,10 @@ automatically. The setup is stored (`AlertTaskSetting`, Admin-only
 `GET`/`PUT /api/exclusives/alert-tasks`). Immediate alerts make their tasks at the
 end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`); an
 alert's `taskHandledAt` makes sure it never makes two, and alerts from before
-go-live none. Daily alerts make one task per group and type at 8:30 AM business
-time (a scheduler pass), the day's alerts in a table with links to the Alert Log —
-the only link rich text may keep. The Organization screen won't take away a
+go-live none. Daily alerts make one task per group and type a day at
+`EXCLUSIVES_DAILY_TASKS_AT` business time (08:30 by default, a scheduler pass,
+`services/exclusives/daily-window.ts`), the previous day's alerts in a table with
+links to the Alert Log — the only link rich text may keep. The Organization screen won't take away a
 duty someone's Alert Task Setup role needs (that role is set to "Leave
 unassigned" there first). Run both by hand with
 `docker compose exec backend npm run alert-tasks:run --workspace backend`. See
@@ -256,7 +257,8 @@ vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `EMAIL_PROVIDER`
 `EMAIL_WORKER_IN_API` (`true` default / `false`), `REDIS_URL`,
 `EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `QUEUE_DASHBOARD_USER` /
 `QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
-`SCHEDULER_ENABLED`, the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
+`SCHEDULER_ENABLED`, `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
+made, `HH:MM`), the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
 the email worker loads only `config/email-config.ts` and
 `config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's
 secrets.
