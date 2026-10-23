@@ -104,6 +104,9 @@ Set these on `healthy-tasks-api-prod` **and** `healthy-tasks-api-staging`.
       **Flip Production to `smtp` at go-live** (you've said you want real emails).
 - [ ] **`SMTP_HOST`**, **`SMTP_PORT`**, **`SMTP_USER`**, **`SMTP_PASS`** — from your
       email provider. Only used when `EMAIL_PROVIDER=smtp`. Production only.
+- [ ] **`EMAIL_SEND_TEXT`** (HLAI-135) — optional. Leave it unset (or `"true"`) to send
+      every email as HTML with its text version; `"false"` sends the HTML only. Any
+      other value stops the server at start-up.
 
 ### Object storage (attachments) — you enter these
 
@@ -174,6 +177,17 @@ via env vars — no code change needed.
   you've verified with that provider. Until you do, admins can still create users
   and reset passwords, but recipients won't get an email — the reset link only
   appears in the logs.
+
+**HTML emails (HLAI-135).** Every email is sent as HTML — the logo and "HL
+Central" at the top of a white card, the message, the main link as a button with
+the plain link under it — with
+its text version alongside, for mail apps that can't show HTML (spam filters
+also trust an email with both a little more). `EMAIL_SEND_TEXT="false"` sends
+the HTML only; nothing else needs setting. The logo travels inside each email (a
+small picture attached to it, `backend/assets/email-logo.png`), so it needs no
+setting and shows even in mail apps that block pictures from the internet.
+To see every email without sending one, run `npm run email:preview --workspace
+backend` on your own computer and open the `index.html` it prints.
 
 ---
 

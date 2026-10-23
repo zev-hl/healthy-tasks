@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import { closeEmailQueue, getEmailQueue } from '../src/queue/email-queue.js';
 import { emailJobData } from '../src/queue/email-job.js';
+import { testEmail } from '../src/utils/notification-emails.js';
 
 // Put one test email on the email queue, whatever EMAIL_DELIVERY says, and show
 // the queue's counts. Proves the queue end to end before any real email uses
@@ -18,19 +19,7 @@ async function main() {
   const queue = getEmailQueue();
   await queue.waitUntilReady();
 
-  const sentAt = new Date().toISOString();
-  const data = emailJobData(
-    {
-      to,
-      subject: 'HL Central test email (queue)',
-      text: [
-        'This is a test email from the HL Central email queue.',
-        '',
-        `Queued at ${sentAt}. If you are reading it, the queue and the email worker are working.`,
-      ].join('\n'),
-    },
-    'test',
-  );
+  const data = emailJobData(testEmail(to, new Date().toISOString()), 'test');
   const job = await queue.add(data.kind, data, { jobId: data.emailId });
   console.log(`Queued test email to ${to} as job ${job.id}.`);
   console.log(

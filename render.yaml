@@ -120,6 +120,10 @@ projects:
                 sync: false
               - key: SMTP_PASS
                 sync: false
+              # HLAI-135: every email is HTML with its text version. "false" sends
+              # the HTML only. Unset: "true"; anything else stops the server.
+              - key: EMAIL_SEND_TEXT # optional, "true" or "false"
+                sync: false
               # ----- Email queue (BullMQ) --------------------------------------
               # "direct" (the default when unset): this service sends each email
               # itself, with no retries. "queue": each email goes through
@@ -361,6 +365,10 @@ projects:
               - key: SMTP_USER
                 sync: false
               - key: SMTP_PASS
+                sync: false
+              # HLAI-135: as Production — HTML with its text version; "false" for
+              # HTML only.
+              - key: EMAIL_SEND_TEXT # optional, "true" or "false"
                 sync: false
               # ----- Email queue (BullMQ) --------------------------------------
               # Same as Production: "direct" when unset; "queue" sends through
