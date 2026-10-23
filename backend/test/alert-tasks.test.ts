@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import type { Express } from 'express';
 import type { PrismaClient, Role } from '@prisma/client';
+import { EXCLUSIVES_ALERT_TYPES } from '@healthy-tasks/shared';
 import { startTestDb, type TestDb } from './db.js';
 
 /**
@@ -182,9 +183,9 @@ const row = (setup: Setup, alertType: string) =>
 // --- Reading and saving ----------------------------------------------------
 
 describe('Alert Tasks setup', () => {
-  it('starts with all 12 alert types empty and no version', async () => {
+  it('starts with every alert type empty and no version', async () => {
     const setup = await getSetup(await adminToken());
-    assert.equal(setup.settings.length, 12);
+    assert.equal(setup.settings.length, EXCLUSIVES_ALERT_TYPES.length);
     assert.equal(setup.settings[0]!.alertType, 'ListingSuppressed');
     assert.ok(setup.settings.every((s) => s.templateId === null && s.roleAssignments.length === 0));
     assert.equal(setup.updatedAt, null);

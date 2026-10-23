@@ -7331,7 +7331,8 @@ describe('exclusives: change detection (HLAI-71 6c)', () => {
     });
   }
 
-  // The listing's saved snapshot (its last known state).
+  // The listing's saved snapshot (its last known state), as saved since the
+  // competitive price is read (HLAI-124).
   function saveSnapshot(listingId: number, fields: SnapshotFields = {}) {
     return prisma.listingSnapshot.create({
       data: {
@@ -7340,6 +7341,7 @@ describe('exclusives: change detection (HLAI-71 6c)', () => {
         listedPrice: fields.listedPrice ?? 34.99,
         currency: fields.currency ?? 'USD',
         bulletPoints: [],
+        competitiveRecorded: true,
         ...(fields.capturedAt ? { capturedAt: fields.capturedAt } : {}),
       },
     });
@@ -7485,6 +7487,105 @@ describe('exclusives: change detection (HLAI-71 6c)', () => {
     assert.equal(report.alertsWritten, 0, 'no alert type watches currency');
     assert.equal(report.snapshotsChanged, 1);
     assert.equal((await snapshotsOf(listing.id))[0]?.currency, 'CAD');
+  });
+
+  it("saves Amazon's competitive price and our price + shipping (HLAI-124)", async () => {
+    const listing = await seedListing('B0DETECT12');
+    const entry = fresh(listing);
+    await D.runDetection([
+      { ...entry, draft: { ...entry.draft, competitivePrice: 30.5, ourLandedPrice: 34.99 } },
+    ]);
+    const [row] = await snapshotsOf(listing.id);
+    assert.equal(row!.competitivePrice?.toNumber(), 30.5);
+    assert.equal(row!.ourLandedPrice?.toNumber(), 34.99);
+    assert.equal(row!.competitiveRecorded, true);
+
+    const moved = await D.runDetection([
+      { ...entry, draft: { ...entry.draft, competitivePrice: 29, ourLandedPrice: 34.99 } },
+    ]);
+    assert.equal(moved.snapshotsChanged, 1);
+    assert.equal((await snapshotsOf(listing.id))[0]!.competitivePrice?.toNumber(), 29);
+  });
+
+  it('rewrites a snapshot saved before the release once, marking it recorded', async () => {
+    const listing = await seedListing('B0DETECT13', ['PriceChanged', 'TitleChanged']);
+    await prisma.listingSnapshot.create({
+      data: {
+        listingId: listing.id,
+        title: 'Widget',
+        listedPrice: 34.99,
+        currency: 'USD',
+        bulletPoints: [],
+      },
+    });
+    assert.equal(
+      (await snapshotsOf(listing.id))[0]!.competitiveRecorded,
+      false,
+      'as the migration leaves it',
+    );
+
+    const entry = fresh(listing);
+    const draft = { ...entry.draft, competitivePrice: 30 };
+    const first = await D.runDetection([{ ...entry, draft }]);
+    assert.equal(first.snapshotsChanged, 1);
+    assert.equal(first.alertsWritten, 0);
+    const [row] = await snapshotsOf(listing.id);
+    assert.equal(row!.competitiveRecorded, true);
+    assert.equal(row!.competitivePrice?.toNumber(), 30);
+
+    const next = await D.runDetection([{ ...entry, draft }]);
+    assert.equal(next.snapshotsUnchanged, 1, 'only once');
+  });
+
+  it('lists the listings already below ours on the first check after the release, then only new moves', async () => {
+    const types = [
+      'CompetitivePriceBelowOurs',
+      'CompetitivePriceIncreased',
+      'CompetitivePriceChanged',
+    ];
+    const below = await seedListing('B0DETECT14', types);
+    const above = await seedListing('B0DETECT15', types);
+    for (const l of [below, above]) {
+      await prisma.listingSnapshot.create({
+        data: { listingId: l.id, title: 'Widget', listedPrice: 34.99, bulletPoints: [] },
+      });
+    }
+    const priced = (
+      listing: { id: number; asin: string; sku: string },
+      competitivePrice: number,
+    ) => {
+      const entry = fresh(listing);
+      return { ...entry, draft: { ...entry.draft, competitivePrice, ourLandedPrice: 9.49 } };
+    };
+
+    const first = await D.runDetection([priced(below, 6.04), priced(above, 12)]);
+    assert.equal(first.alertsWritten, 1, 'the starting list: no rises or moves yet');
+    const [start] = await alertsFor(below.id);
+    assert.equal(start!.alertType, 'CompetitivePriceBelowOurs');
+    assert.equal(
+      start!.message,
+      "Amazon's competitive price is $6.04, below our $9.49 (price + shipping): the Buy Box is at risk.",
+    );
+    assert.equal(start!.previousValue, null);
+    assert.equal(start!.newValue, '6.04');
+
+    const same = await D.runDetection([priced(below, 6.04), priced(above, 12)]);
+    assert.equal(same.alertsWritten, 0, 'staying below does not repeat');
+
+    const moved = await D.runDetection([priced(below, 9.99), priced(above, 8)]);
+    assert.equal(moved.alertsWritten, 4);
+    assert.deepEqual(
+      (await alertsFor(below.id)).map((a) => a.message),
+      [
+        "Amazon's competitive price is $6.04, below our $9.49 (price + shipping): the Buy Box is at risk.",
+        "Amazon's competitive price changed from $6.04 to $9.99 (we are at $9.49).",
+        "Amazon's competitive price rose from $6.04 to $9.99 (we are at $9.49), now at or above our price.",
+      ],
+    );
+    assert.deepEqual(
+      (await alertsFor(above.id)).map((a) => a.alertType),
+      ['CompetitivePriceBelowOurs', 'CompetitivePriceChanged'],
+    );
   });
 });
 

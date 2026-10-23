@@ -23,7 +23,7 @@ export type GroupDetailRow = Prisma.AlertGroupGetPayload<{ include: typeof GROUP
 type ListingRow = GroupDetailRow['listings'][number];
 
 /**
- * All 12 alert types, always. A group may hold fewer setting rows — one written
+ * Every alert type, always. A group may hold fewer setting rows — one written
  * before a type existed, or none at all — and a missing row means off
  * (see alert-gating.ts), so the screen must not have to guess.
  */

@@ -126,8 +126,21 @@ export const mailer: Mailer =
  * when this returns.
  */
 export function sendInBackground(what: string, send: () => Promise<void>): void {
-  send().catch((err: unknown) => {
+  const sending = send().catch((err: unknown) => {
     // eslint-disable-next-line no-console
     console.error(`Email not sent (${what}):`, err);
   });
+  inFlight.add(sending);
+  void sending.finally(() => inFlight.delete(sending));
+}
+
+const inFlight = new Set<Promise<void>>();
+
+/**
+ * Wait until every email `sendInBackground` started has been handed over (to
+ * the queue, or sent). For scripts, before they close the queue and exit: the
+ * API never waits on these.
+ */
+export async function backgroundEmailsSent(): Promise<void> {
+  while (inFlight.size > 0) await Promise.all(inFlight);
 }
