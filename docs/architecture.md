@@ -593,7 +593,34 @@ account emails (`utils/account-emails.ts`: `new-account`, `google-welcome`,
 sign-in address — §4), the notification emails (`notification.service.ts`:
 `mention`, `assignment`, `reminder`) and the scheduler's alerts
 (`scheduler.service.ts`: `admin-alert`). Where a reply must not wait, the caller
-wraps it in `sendInBackground`. `EMAIL_DELIVERY` decides what `queueEmail` does:
+wraps it in `sendInBackground`.
+
+**HTML and text (HLAI-135).** Every email is HTML with a text version, both made by
+`renderEmail` (`utils/email-content.ts`) from one list of blocks — paragraphs (a line
+break stays one) and a button (`label`, `url`, optional `lead`): in the HTML a
+table-cell button with the plain link under it, in the text the `lead` and the link on
+the next line. The HTML is the shared look, written as mail apps can show it (tables,
+inline styles, Arial): the logo (32 x 30, empty alt text) with "HL Central" written
+beside it, as in the app's menu, at the top of a white card (a picture that can't show
+leaves the name), the message, "Sent by HL Central." under
+it, and a hidden inbox preview line (the first paragraph unless given). The logo
+travels **inside** each email: the HTML shows `cid:hl-logo@hlcentral`, and
+`smtpMessage` attaches `backend/assets/email-logo.png` (the app's logo at 64 x 60,
+8 KB) inline under that id, so it shows from a local copy, if the site is down, and in
+mail apps that block pictures from the internet; the queue carries only text, the file
+is added at send time. All typed text
+is escaped; a link must be `http(s)` or `renderEmail` throws. The account emails build
+their blocks in `account-emails.ts`; the mention, assignment, reminder, Admin alert and
+queue test emails in `utils/notification-emails.ts`, which needs no database (the
+callers look up names and build links). Both versions are queued and kept (dashboard,
+`FailedEmail`, the console mailer prints the text); `EMAIL_SEND_TEXT` (`"true"` when
+unset) decides only whether the text part is sent — `smtpMessage` in `mailer.ts` drops
+it when `"false"`, except for an email with no HTML (one queued before this). It lives
+in `email-config.ts`, as the standalone worker reads only that. `npm run email:preview
+--workspace backend` writes every email (sample data, nothing sent) as HTML files, each
+also with images off, plus an `index.html`.
+
+`EMAIL_DELIVERY` decides what `queueEmail` does:
 
 - **`queue`** (the docker-compose default): the email is added to the `email`
   queue in Redis, with the job id = `emailId`, and the **email worker** sends it

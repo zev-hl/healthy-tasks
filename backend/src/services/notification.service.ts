@@ -1,6 +1,7 @@
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { sendInBackground } from '../utils/mailer.js';
+import { assignmentEmail, mentionEmail, reminderEmail } from '../utils/notification-emails.js';
 import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
@@ -392,15 +393,7 @@ async function emailMention(taskId: number, commentId: string, userIds: string[]
   for (const u of users) {
     sendInBackground(`mention to ${u.email}`, () =>
       queueEmail(
-        {
-          to: u.email,
-          subject: `You were mentioned on “${task.name}”`,
-          text: [
-            `${by} mentioned you in a comment on task #${taskId} (“${task.name}”).`,
-            '',
-            `Open the task: ${taskLink(taskId)}`,
-          ].join('\n'),
-        },
+        mentionEmail({ to: u.email, by, taskId, taskName: task.name, link: taskLink(taskId) }),
         { kind: 'mention' },
       ),
     );
@@ -413,19 +406,16 @@ async function emailAssignment(userId: string, taskId: number, action: AssignAct
     prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
   ]);
   if (!task || !user) return;
-  const verb = action === 'added' ? 'assigned to' : 'unassigned from';
   // In the background, so saving the task does not wait on the mail provider.
   sendInBackground(`assignment to ${user.email}`, () =>
     queueEmail(
-      {
+      assignmentEmail({
         to: user.email,
-        subject: `You were ${verb} “${task.name}”`,
-        text: [
-          `You were ${verb} task #${taskId} (“${task.name}”).`,
-          '',
-          `Open the task: ${taskLink(taskId)}`,
-        ].join('\n'),
-      },
+        action,
+        taskId,
+        taskName: task.name,
+        link: taskLink(taskId),
+      }),
       { kind: 'assignment' },
     ),
   );
@@ -437,22 +427,17 @@ async function emailReminder(
   timeZone: string | null,
 ): Promise<void> {
   await queueEmail(
-    {
+    reminderEmail({
       to,
-      subject: `Reminder: “${r.taskName}”`,
-      text: [
-        `Reminder for task #${r.taskId} (“${r.taskName}”).`,
-        // The recipient's Profile timezone if set, else business time — either way
-        // with the zone named, since staff are spread across several countries.
-        r.startAt
-          ? `Starts: ${formatBusinessTimestamp(r.startAt, timeZone ?? undefined)} — ${reminderLeadLabel(r.leadMinutes)}`
-          : '',
-        '',
-        `Open the task: ${taskLink(r.taskId)}`,
-      ]
-        .filter(Boolean)
-        .join('\n'),
-    },
+      taskId: r.taskId,
+      taskName: r.taskName,
+      // The recipient's Profile timezone if set, else business time — either way
+      // with the zone named, since staff are spread across several countries.
+      starts: r.startAt
+        ? `${formatBusinessTimestamp(r.startAt, timeZone ?? undefined)} — ${reminderLeadLabel(r.leadMinutes)}`
+        : undefined,
+      link: taskLink(r.taskId),
+    }),
     // A fixed id on top of the emailSentAt claim: the queue also refuses a
     // second job for the same reminder.
     { kind: 'reminder', emailId: `reminder-${r.id}` },

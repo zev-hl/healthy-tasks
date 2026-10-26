@@ -42,6 +42,15 @@ export function parseWorkerInApi(value: string | undefined): boolean {
   return value === 'true';
 }
 
+/** EMAIL_SEND_TEXT: "true" (also when unset) or "false"; a typo fails at boot. */
+export function parseSendText(value: string | undefined): boolean {
+  if (!value) return true;
+  if (value !== 'true' && value !== 'false') {
+    throw new Error('EMAIL_SEND_TEXT must be "true" or "false"');
+  }
+  return value === 'true';
+}
+
 export const emailConfig = {
   provider: optional('EMAIL_PROVIDER', 'console'),
   from: optional('EMAIL_FROM', 'HL Central <no-reply@healthy-tasks.local>'),
@@ -49,6 +58,13 @@ export const emailConfig = {
   smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined,
   smtpUser: process.env.SMTP_USER,
   smtpPass: process.env.SMTP_PASS,
+
+  // Every email is HTML (HLAI-135). `true`: its text version goes with it, for
+  // mail apps that can't show HTML and for spam filters, which trust an email
+  // with both a little more. `false`: HTML only. The text version is made and
+  // queued either way (the queue dashboard, failed emails and the console show
+  // it); this only decides whether it is sent.
+  sendText: parseSendText(process.env.EMAIL_SEND_TEXT),
 
   // How an email leaves the app. `direct`: the process that asked sends it,
   // as before — also the mode for tests, which have no Redis, and the switch

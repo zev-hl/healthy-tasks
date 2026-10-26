@@ -1,5 +1,7 @@
+import { existsSync } from 'node:fs';
 import type { Transporter } from 'nodemailer';
 import { emailConfig } from '../config/email-config.js';
+import { LOGO_CID, LOGO_FILE } from './email-content.js';
 
 export interface Email {
   to: string;
@@ -27,10 +29,70 @@ export function __resetSentEmails(): void {
   sentEmails.length = 0;
 }
 
+/** Whether each logo file is there, looked at once per process. */
+const logoFound = new Map<string, boolean>();
+
+/**
+ * The logo ships with the code, so a missing file means a broken deploy. An
+ * email then still goes, without its picture, rather than fail (a password
+ * reset matters more than a logo), and the log says so once.
+ */
+function logoAvailable(file: string): boolean {
+  let found = logoFound.get(file);
+  if (found === undefined) {
+    found = existsSync(file);
+    logoFound.set(file, found);
+    // eslint-disable-next-line no-console
+    if (!found) console.error(`Email logo not found (${file}): emails go out without it`);
+  }
+  return found;
+}
+
+/**
+ * What goes to the mail server: the HTML and, unless EMAIL_SEND_TEXT is
+ * "false", the text version beside it. An email with no HTML (one queued before
+ * HTML came in) keeps its text whatever the switch says, or it would be empty.
+ * The logo the HTML shows is attached here, as a picture inside the email
+ * (`LOGO_CID`), rather than queued with it: the queue keeps only text.
+ */
+export function smtpMessage(email: Email, from: string, sendText: boolean, logoFile = LOGO_FILE) {
+  const showsLogo = (email.html?.includes(`cid:${LOGO_CID}`) ?? false) && logoAvailable(logoFile);
+  return {
+    from,
+    to: email.to,
+    subject: email.subject,
+    ...(sendText || !email.html ? { text: email.text } : {}),
+    ...(email.html ? { html: email.html } : {}),
+    ...(showsLogo
+      ? {
+          attachments: [
+            {
+              filename: 'hl-logo.png',
+              path: logoFile,
+              cid: LOGO_CID,
+              contentType: 'image/png',
+              contentDisposition: 'inline' as const,
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
+/** The console mailer's "Parts:" line: what a real send would carry. */
+function partsLine(email: Email): string {
+  if (!email.html) return 'text only';
+  const html = `HTML (${email.html.length} characters)`;
+  return emailConfig.sendText
+    ? `${html} and text`
+    : `${html} only; the text below is not sent (EMAIL_SEND_TEXT is "false")`;
+}
+
 /**
  * Dev mailer: prints the email (and any links inside it) to the server console.
  * This is what makes the password-reset flow observable end-to-end in dev
- * without a real provider.
+ * without a real provider. It prints the text version, which reads better here
+ * than the HTML (see `npm run email:preview` for how that looks).
  */
 class ConsoleMailer implements Mailer {
   async send(email: Email): Promise<void> {
@@ -44,6 +106,7 @@ class ConsoleMailer implements Mailer {
         `From:    ${emailConfig.from}`,
         `To:      ${email.to}`,
         `Subject: ${email.subject}`,
+        `Parts:   ${partsLine(email)}`,
         '───────────────────────────────────────────────',
         email.text,
         '───────────────────────────────────────────────',
@@ -91,13 +154,7 @@ class SmtpMailer implements Mailer {
 
   async send(email: Email): Promise<void> {
     const transport = await this.getTransport();
-    await transport.sendMail({
-      from: emailConfig.from,
-      to: email.to,
-      subject: email.subject,
-      text: email.text,
-      html: email.html,
-    });
+    await transport.sendMail(smtpMessage(email, emailConfig.from, emailConfig.sendText));
   }
 
   async close(): Promise<void> {

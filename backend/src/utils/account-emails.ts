@@ -1,10 +1,12 @@
 import { queueEmail } from '../queue/email-queue.js';
+import { renderEmail, type EmailBlock } from './email-content.js';
 
 // The emails about a person's account: the welcome for a new account (with a
 // set-password link, or the Google sign-in note), the password reset, and the
-// pair sent when an admin changes someone's sign-in address. They go out the
-// way EMAIL_DELIVERY says (queue/email-queue.ts); the controllers call them
-// through `sendInBackground` so no reply waits on them.
+// pair sent when an admin changes someone's sign-in address. Each is HTML with
+// its text version (renderEmail, HLAI-135). They go out the way EMAIL_DELIVERY
+// says (queue/email-queue.ts); the controllers call them through
+// `sendInBackground` so no reply waits on them.
 
 /** "60 minutes", "24 hours", "7 days" — how long a link stays valid from now. */
 function timeLeft(until: Date): string {
@@ -17,6 +19,19 @@ function timeLeft(until: Date): string {
         : [Math.round(minutes / (24 * 60)), 'day'];
   return `${n} ${unit}${n === 1 ? '' : 's'}`;
 }
+
+/** After a set-password link: how long it works, and what to do once it has expired. */
+function linkLasts(expiresAt: Date): string {
+  return (
+    `The link works for the next ${timeLeft(expiresAt)}. If it has expired, use "Forgot password" ` +
+    'on the sign-in page, or ask an administrator to send you a new one.'
+  );
+}
+
+/** The app's sign-in page: a button in the HTML, the link on its own in the text. */
+const openApp = (signInUrl: string): EmailBlock => ({
+  button: { label: 'Open HL Central', url: signInUrl },
+});
 
 /**
  * The first email a new password account receives: a welcome, then the link
@@ -33,20 +48,26 @@ export async function sendNewAccountEmail(
     {
       to,
       subject: 'Welcome to HL Central',
-      text: [
-        'Welcome aboard!',
-        '',
-        `An HL Central account has been created for you. You'll sign in with this email address: ${to}`,
-        '',
-        'To get started, open this link and choose your password:',
-        setPasswordLink,
-        '',
-        `The link works for the next ${timeLeft(expiresAt)}. If it has expired, use "Forgot password" ` +
-          'on the sign-in page, or ask an administrator to send you a new one.',
-        '',
-        'See you inside,',
-        'The HL Central team',
-      ].join('\n'),
+      ...renderEmail({
+        preview: 'An HL Central account has been created for you.',
+        blocks: [
+          { text: 'Welcome aboard!' },
+          {
+            text:
+              "An HL Central account has been created for you. You'll sign in with this email " +
+              `address: ${to}`,
+          },
+          {
+            button: {
+              label: 'Choose your password',
+              url: setPasswordLink,
+              lead: 'To get started, open this link and choose your password:',
+            },
+          },
+          { text: linkLasts(expiresAt) },
+          { text: 'See you inside,\nThe HL Central team' },
+        ],
+      }),
     },
     { kind: 'new-account' },
   );
@@ -62,16 +83,18 @@ export async function sendGoogleWelcomeEmail(to: string, signInUrl: string): Pro
     {
       to,
       subject: 'Your HL Central account is ready',
-      text: [
-        'An HL Central account has been created for you.',
-        '',
-        'Open the app and choose "Sign in with Google", using this same work',
-        'account. There is no password to set up.',
-        '',
-        signInUrl,
-        '',
-        'If you cannot sign in, ask an administrator.',
-      ].join('\n'),
+      ...renderEmail({
+        blocks: [
+          { text: 'An HL Central account has been created for you.' },
+          {
+            text:
+              'Open the app and choose "Sign in with Google", using this same work account. ' +
+              'There is no password to set up.',
+          },
+          openApp(signInUrl),
+          { text: 'If you cannot sign in, ask an administrator.' },
+        ],
+      }),
     },
     { kind: 'google-welcome' },
   );
@@ -83,14 +106,19 @@ export async function sendPasswordResetEmail(to: string, resetLink: string): Pro
     {
       to,
       subject: 'Reset your HL Central password',
-      text: [
-        'A password reset was requested for your HL Central account.',
-        '',
-        'Open this link to set a new password:',
-        resetLink,
-        '',
-        "If you didn't request this, you can ignore this email.",
-      ].join('\n'),
+      ...renderEmail({
+        blocks: [
+          { text: 'A password reset was requested for your HL Central account.' },
+          {
+            button: {
+              label: 'Set a new password',
+              url: resetLink,
+              lead: 'Open this link to set a new password:',
+            },
+          },
+          { text: "If you didn't request this, you can ignore this email." },
+        ],
+      }),
     },
     { kind: 'password-reset' },
   );
@@ -119,65 +147,78 @@ export interface EmailChangeDetails {
  * — so each case says what to do now.
  */
 export async function sendEmailChangedEmail(to: string, change: EmailChangeDetails): Promise<void> {
-  const howToSignIn = (): string[] => {
+  const howToSignIn = (): EmailBlock[] => {
     if (change.toMethod === 'google') {
       return change.fromMethod === 'google'
         ? [
-            'Keep using "Sign in with Google", now with your work Google account',
-            `for this address (${to}).`,
-            '',
-            change.signInUrl,
+            {
+              text:
+                'Keep using "Sign in with Google", now with your work Google account for this ' +
+                `address (${to}).`,
+            },
+            openApp(change.signInUrl),
           ]
         : [
-            'Your account now signs in with Google. Open the app and choose',
-            `"Sign in with Google", using your work Google account for this address (${to}).`,
-            'Your old password no longer works.',
-            '',
-            change.signInUrl,
+            {
+              text:
+                'Your account now signs in with Google. Open the app and choose "Sign in with ' +
+                `Google", using your work Google account for this address (${to}).\n` +
+                'Your old password no longer works.',
+            },
+            openApp(change.signInUrl),
           ];
     }
     if (change.setPassword) {
       return [
-        'This address signs in with a password. Open this link and choose your password:',
-        change.setPassword.link,
-        '',
-        `The link works for the next ${timeLeft(change.setPassword.expiresAt)}. If it has expired, ` +
-          'use "Forgot password" on the sign-in page, or ask an administrator to send you a new one.',
+        {
+          button: {
+            label: 'Choose your password',
+            url: change.setPassword.link,
+            lead: 'This address signs in with a password. Open this link and choose your password:',
+          },
+        },
+        { text: linkLasts(change.setPassword.expiresAt) },
       ];
     }
     if (change.fromMethod === 'google') {
       // Needs a password but got no link: the account is inactive.
       return [
-        'This address signs in with a password. Once your account is reactivated, use',
-        '"Forgot password" on the sign-in page to choose one.',
-        '',
-        change.signInUrl,
+        {
+          text:
+            'This address signs in with a password. Once your account is reactivated, use ' +
+            '"Forgot password" on the sign-in page to choose one.',
+        },
+        openApp(change.signInUrl),
       ];
     }
-    return ['Your password stays the same.', '', change.signInUrl];
+    return [{ text: 'Your password stays the same.' }, openApp(change.signInUrl)];
   };
 
   await queueEmail(
     {
       to,
       subject: 'Your HL Central sign-in email has changed',
-      text: [
-        'An administrator has changed the email address you use to sign in to HL Central.',
-        `From now on, sign in with: ${to}`,
-        ...(change.inactive
-          ? [
-              '',
-              'Your account is currently inactive: you can sign in once an administrator',
-              'reactivates it.',
-            ]
-          : []),
-        '',
-        ...howToSignIn(),
-        '',
-        'If you have any trouble signing in, ask an administrator.',
-        '',
-        'The HL Central team',
-      ].join('\n'),
+      ...renderEmail({
+        blocks: [
+          {
+            text:
+              'An administrator has changed the email address you use to sign in to HL Central.\n' +
+              `From now on, sign in with: ${to}`,
+          },
+          ...(change.inactive
+            ? [
+                {
+                  text:
+                    'Your account is currently inactive: you can sign in once an administrator ' +
+                    'reactivates it.',
+                },
+              ]
+            : []),
+          ...howToSignIn(),
+          { text: 'If you have any trouble signing in, ask an administrator.' },
+          { text: 'The HL Central team' },
+        ],
+      }),
     },
     { kind: 'email-changed' },
   );
@@ -196,14 +237,18 @@ export async function sendEmailChangeNoticeEmail(
     {
       to: oldAddress,
       subject: 'Your HL Central sign-in email was changed',
-      text: [
-        `An administrator changed the email address used to sign in to your HL Central account,`,
-        `from this address (${oldAddress}) to ${newAddress}.`,
-        '',
-        'Emails from HL Central will go to the new address from now on.',
-        '',
-        "If you didn't expect this change, contact your HL Central administrator.",
-      ].join('\n'),
+      // No button and no link, in either version.
+      ...renderEmail({
+        blocks: [
+          {
+            text:
+              'An administrator changed the email address used to sign in to your HL Central ' +
+              `account, from this address (${oldAddress}) to ${newAddress}.`,
+          },
+          { text: 'Emails from HL Central will go to the new address from now on.' },
+          { text: "If you didn't expect this change, contact your HL Central administrator." },
+        ],
+      }),
     },
     { kind: 'email-change-notice' },
   );
