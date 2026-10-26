@@ -1030,15 +1030,6 @@ model ListingSnapshot {
   buyboxWinnerSellerId String?
   buyboxPrice          Decimal? @db.Decimal(10, 2)
   offerCount           Int?
-  /// HLAI-124: Amazon's competitive price (`CompetitivePriceThreshold`, from the
-  /// pricing read). Empty when Amazon gives none for the listing.
-  competitivePrice     Decimal? @db.Decimal(10, 2)
-  /// HLAI-124: our offer's price + shipping, from the same answer — what Amazon
-  /// compares with its competitive price. Empty when our offer isn't in it.
-  ourLandedPrice       Decimal? @db.Decimal(10, 2)
-  /// HLAI-124: false on rows saved before the competitive price was read, so the
-  /// first check after the release can tell it has nothing earlier to compare.
-  competitiveRecorded  Boolean  @default(false)
   isSuppressed         Boolean  @default(false)
   suppressionReason    String?
   capturedAt           DateTime @default(now())

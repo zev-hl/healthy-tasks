@@ -1,4 +1,4 @@
-import { isBelowOurs, type DetectedAlert } from './alert-detection.js';
+import type { DetectedAlert } from './alert-detection.js';
 import type { SnapshotView } from './snapshot-diff.js';
 
 export interface MessageContext {
@@ -16,42 +16,6 @@ const quote = (s: string | null): string => `"${s ?? '—'}"`;
 function pricePct(prev: number, current: number): string {
   const pct = ((current - prev) / prev) * 100;
   return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
-}
-
-// Our price + shipping beside a competitive price, when Amazon showed our offer.
-const weAreAt = (v: SnapshotView): string =>
-  v.ourLandedPrice == null ? '' : ` (we are at ${money(v.ourLandedPrice)})`;
-
-// HLAI-124: Amazon's competitive price against ours.
-function describeCompetitive(
-  alert: DetectedAlert,
-  prev: SnapshotView,
-  current: SnapshotView,
-): string {
-  const before = money(prev.competitivePrice);
-  const now = money(current.competitivePrice);
-  switch (alert.alertType) {
-    case 'CompetitivePriceBelowOurs':
-      return (
-        `Amazon's competitive price is ${now}, below our ${money(current.ourLandedPrice)} ` +
-        '(price + shipping): the Buy Box is at risk.'
-      );
-    case 'CompetitivePriceIncreased': {
-      const backUp =
-        isBelowOurs(prev) && current.ourLandedPrice != null && !isBelowOurs(current)
-          ? ', now at or above our price'
-          : '';
-      return `Amazon's competitive price rose from ${before} to ${now}${weAreAt(current)}${backUp}.`;
-    }
-    default:
-      if (prev.competitivePrice == null) {
-        return `Amazon set a competitive price of ${now}${weAreAt(current)}.`;
-      }
-      if (current.competitivePrice == null) {
-        return `Amazon removed its competitive price (was ${before}).`;
-      }
-      return `Amazon's competitive price changed from ${before} to ${now}${weAreAt(current)}.`;
-  }
 }
 
 /**
@@ -134,10 +98,6 @@ export function describeAlert(
       return 'Description changed.';
     case 'BulletPointsChanged':
       return describeBullets(alert.category, prev, current);
-    case 'CompetitivePriceBelowOurs':
-    case 'CompetitivePriceIncreased':
-    case 'CompetitivePriceChanged':
-      return describeCompetitive(alert, prev, current);
     default:
       return 'Changed.';
   }

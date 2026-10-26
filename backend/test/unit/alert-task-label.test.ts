@@ -31,9 +31,6 @@ describe('alert type codes', () => {
       DescriptionChanged: 'DC',
       BulletPointsChanged: 'BP',
       DimensionsChanged: 'DM',
-      CompetitivePriceBelowOurs: 'CB',
-      CompetitivePriceIncreased: 'CI',
-      CompetitivePriceChanged: 'CP',
     });
     const codes = EXCLUSIVES_ALERT_TYPES.map((t) => EXCLUSIVES_ALERT_TYPE_CODES[t]);
     assert.equal(new Set(codes).size, EXCLUSIVES_ALERT_TYPES.length);

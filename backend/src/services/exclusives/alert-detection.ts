@@ -20,16 +20,6 @@ const CONTENT_ALERTS: Record<string, ExclusivesAlertType> = {
 
 const str = (v: unknown): string | null => (v == null ? null : String(v));
 
-/**
- * HLAI-124: Amazon's competitive price is under our price + shipping, by a cent
- * or more — the Buy Box is at risk. Equal keeps it, so it is not below; with
- * either price unknown it can't be.
- */
-export const isBelowOurs = (v: SnapshotView): boolean =>
-  v.competitivePrice != null &&
-  v.ourLandedPrice != null &&
-  v.ourLandedPrice - v.competitivePrice >= 0.005;
-
 // Map the raw diff (5a) to alert types. Buy Box Won/Lost is derived from the
 // resolved winner + Buy Box price + our merchant token, across both snapshots
 // (never IsBuyBoxWinner). A suppressed Buy Box (price gone) is NOT "Lost".
@@ -123,35 +113,6 @@ export function detectAlerts(
       previousValue: numbered(prev.bulletPoints),
       newValue: numbered(current.bulletPoints),
     });
-  }
-
-  // Competitive price (HLAI-124). Both values are the competitive price, before
-  // and now; the message adds ours.
-  const competitive = (alertType: ExclusivesAlertType): DetectedAlert => ({
-    alertType,
-    category: null,
-    previousValue: str(prev.competitivePrice),
-    newValue: str(current.competitivePrice),
-  });
-  // A row saved before the release has no competitive price to compare with:
-  // the first check after it lists the listings already below ours, once, and
-  // no rises or moves (every price would read as new).
-  if (!prev.competitiveRecorded) {
-    if (isBelowOurs(current)) alerts.push(competitive('CompetitivePriceBelowOurs'));
-    return alerts;
-  }
-  // Below: only when a listing goes below — not again while it stays there.
-  if (!isBelowOurs(prev) && isBelowOurs(current)) {
-    alerts.push(competitive('CompetitivePriceBelowOurs'));
-  }
-  const before = prev.competitivePrice;
-  const now = current.competitivePrice;
-  if (changed.has('competitivePrice')) {
-    if (before != null && now != null && now > before) {
-      alerts.push(competitive('CompetitivePriceIncreased'));
-    }
-    // Every move, including Amazon setting one or taking it away.
-    alerts.push(competitive('CompetitivePriceChanged'));
   }
 
   return alerts;

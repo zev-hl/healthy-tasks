@@ -73,30 +73,6 @@ describe('sweepListings', () => {
     assert.equal(res.snapshots[0]!.buyboxWinnerSellerId, null);
   });
 
-  it("keeps Amazon's competitive price and our price + shipping (HLAI-124)", async () => {
-    const withCompetitive = {
-      ...offersWeHold,
-      Summary: { ...offersWeHold.Summary, CompetitivePriceThreshold: { Amount: 21.5 } },
-    };
-    fakeAmazon({
-      items: [plainListing('A'), plainListing('B')],
-      pricing: { A: { statusCode: 200, payload: withCompetitive } },
-    });
-    const res = await sweepListings(us('A', 'B'));
-    const [a, b] = res.snapshots;
-    assert.equal(a!.competitivePrice, 21.5);
-    assert.equal(a!.ourLandedPrice?.toFixed(2), '24.99', '19.99 + 5.00 shipping');
-    assert.equal(b!.competitivePrice, null, 'Amazon gave none for B');
-    assert.equal(b!.ourLandedPrice?.toFixed(2), '24.99');
-  });
-
-  it('leaves both empty for a not-buyable SKU, which has no offers answer', async () => {
-    fakeAmazon({ items: [plainListing('A')], pricing: { A: { statusCode: 400 } } });
-    const [a] = (await sweepListings(us('A'))).snapshots;
-    assert.equal(a!.competitivePrice, null);
-    assert.equal(a!.ourLandedPrice, null);
-  });
-
   it('reports a SKU Amazon did not return', async () => {
     fakeAmazon({ items: [plainListing('A')] });
     const res = await sweepListings(us('A', 'GONE'));
