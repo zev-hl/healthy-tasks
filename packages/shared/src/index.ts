@@ -1956,8 +1956,9 @@ export const EXCLUSIVES_ALERT_MODE_LABELS: Record<ExclusivesAlertMode, string> =
 
 /**
  * The detected alert types, in the fixed UI/seed order. Keys are stable
- * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names. Count them
- * with `EXCLUSIVES_ALERT_TYPES.length`, never by hand.
+ * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names. The
+ * last three compare our price + shipping with Amazon's competitive price
+ * (HLAI-124).
  */
 export const EXCLUSIVES_ALERT_TYPES = [
   'ListingSuppressed',
@@ -1972,6 +1973,9 @@ export const EXCLUSIVES_ALERT_TYPES = [
   'DescriptionChanged',
   'BulletPointsChanged',
   'DimensionsChanged',
+  'CompetitivePriceBelowOurs',
+  'CompetitivePriceIncreased',
+  'CompetitivePriceChanged',
 ] as const;
 export type ExclusivesAlertType = (typeof EXCLUSIVES_ALERT_TYPES)[number];
 
@@ -1988,6 +1992,9 @@ export const EXCLUSIVES_ALERT_TYPE_LABELS: Record<ExclusivesAlertType, string> =
   DescriptionChanged: 'Description Changed',
   BulletPointsChanged: 'Bullet Points Changed',
   DimensionsChanged: 'Dimensions Changed',
+  CompetitivePriceBelowOurs: 'Competitive Price Below',
+  CompetitivePriceIncreased: 'Competitive Price Increased',
+  CompetitivePriceChanged: 'Competitive Price Changed',
 };
 
 // --- Alert task labels (HLAI-112) --------------------------------------------
@@ -2008,6 +2015,9 @@ export const EXCLUSIVES_ALERT_TYPE_CODES: Record<ExclusivesAlertType, string> = 
   DescriptionChanged: 'DC',
   BulletPointsChanged: 'BP',
   DimensionsChanged: 'DM',
+  CompetitivePriceBelowOurs: 'CB',
+  CompetitivePriceIncreased: 'CI',
+  CompetitivePriceChanged: 'CP',
 };
 
 /** What splits a group name into parts: "-", or an en/em dash typed in its place. */
@@ -2182,6 +2192,9 @@ export const EXCLUSIVES_ALERT_TYPE_TONE: Record<ExclusivesAlertType, ExclusivesA
   DescriptionChanged: 'review',
   BulletPointsChanged: 'review',
   DimensionsChanged: 'review',
+  CompetitivePriceBelowOurs: 'danger',
+  CompetitivePriceIncreased: 'ok',
+  CompetitivePriceChanged: 'warn',
 };
 
 /** Marketplaces a listing can be monitored in. */

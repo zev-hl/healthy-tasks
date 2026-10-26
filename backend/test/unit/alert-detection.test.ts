@@ -19,6 +19,9 @@ const base: SnapshotView = {
   buyboxWinnerSellerId: US,
   buyboxPrice: 34.99,
   offerCount: 3,
+  competitivePrice: null,
+  ourLandedPrice: null,
+  competitiveRecorded: true,
   isSuppressed: false,
   suppressionReason: null,
 };
@@ -120,5 +123,98 @@ describe('detectAlerts — combined', () => {
       'PriceChanged',
       'TitleChanged',
     ]);
+  });
+});
+
+describe('detectAlerts — competitive price (HLAI-124)', () => {
+  // Our price + shipping $9.49 unless a test says otherwise.
+  const at = (competitivePrice: number | null, o: Partial<SnapshotView> = {}) =>
+    s({ competitivePrice, ourLandedPrice: 9.49, ...o });
+  const BELOW = 'CompetitivePriceBelowOurs';
+  const UP = 'CompetitivePriceIncreased';
+  const MOVED = 'CompetitivePriceChanged';
+
+  it('fires Below when the competitive price drops under ours', () => {
+    assert.deepEqual(types(at(10), at(6.04)), [BELOW, MOVED]);
+  });
+
+  it('fires Below when our price rises over it', () => {
+    assert.deepEqual(types(at(9.49), at(9.49, { ourLandedPrice: 9.99 })), [BELOW]);
+  });
+
+  it('does not count equal to ours as below', () => {
+    assert.deepEqual(types(at(10), at(9.49)), [MOVED]);
+    assert.deepEqual(types(at(9.49, { ourLandedPrice: 9.99 }), at(9.49)), []);
+  });
+
+  it('fires Below once, not again while it stays below', () => {
+    assert.deepEqual(types(at(6.04), at(5.8)), [MOVED]);
+    assert.deepEqual(types(at(6.04), at(6.04)), []);
+  });
+
+  it('fires Below when Amazon sets a competitive price under ours', () => {
+    assert.deepEqual(types(at(null), at(6.04)), [BELOW, MOVED]);
+  });
+
+  it('fires Increased on every rise, back to our price or not', () => {
+    assert.deepEqual(types(at(5), at(6)), [MOVED, UP]);
+    assert.deepEqual(types(at(6.04), at(9.99)), [MOVED, UP]);
+    assert.deepEqual(types(at(12), at(13)), [MOVED, UP]);
+  });
+
+  it('logs a drop above ours as Changed only', () => {
+    assert.deepEqual(types(at(13), at(12)), [MOVED]);
+  });
+
+  it('ignores a move under a cent', () => {
+    assert.deepEqual(types(at(6.04), at(6.042)), []);
+  });
+
+  it('logs Amazon setting or removing one as Changed, never Increased', () => {
+    assert.deepEqual(types(at(null), at(12)), [MOVED]);
+    assert.deepEqual(types(at(6.04), at(null)), [MOVED]);
+    assert.deepEqual(types(at(null), at(null)), []);
+  });
+
+  it('without our offer: no Below, but Increased and Changed still work', () => {
+    const noOffer = (t: number) => at(t, { ourLandedPrice: null });
+    assert.deepEqual(types(noOffer(10), noOffer(6)), [MOVED]);
+    assert.deepEqual(types(noOffer(6), noOffer(7)), [MOVED, UP]);
+  });
+
+  it('fires Below when our offer comes back under a lower competitive price', () => {
+    assert.deepEqual(types(at(6.04, { ourLandedPrice: null }), at(6.04)), [BELOW]);
+  });
+
+  it('carries the competitive price before and now', () => {
+    const [below, moved] = detectAlerts(at(10), at(6.04), US);
+    assert.deepEqual(
+      [below?.alertType, below?.previousValue, below?.newValue, below?.category],
+      [BELOW, '10', '6.04', null],
+    );
+    assert.deepEqual([moved?.previousValue, moved?.newValue], ['10', '6.04']);
+  });
+
+  describe('the first check after the release (row saved before it)', () => {
+    const old = s({ competitiveRecorded: false });
+
+    it('lists a listing already below ours, with no earlier price', () => {
+      const alerts = detectAlerts(old, at(6.04), US);
+      assert.deepEqual(
+        alerts.map((a) => [a.alertType, a.previousValue, a.newValue]),
+        [[BELOW, null, '6.04']],
+      );
+    });
+
+    it('logs nothing for one at or above ours, or with none', () => {
+      assert.deepEqual(types(old, at(12)), []);
+      assert.deepEqual(types(old, at(9.49)), []);
+      assert.deepEqual(types(old, at(null)), []);
+      assert.deepEqual(types(old, at(6.04, { ourLandedPrice: null })), []);
+    });
+
+    it('still logs the other changes', () => {
+      assert.deepEqual(types(old, at(6.04, { title: 'New' })), [BELOW, 'TitleChanged']);
+    });
   });
 });

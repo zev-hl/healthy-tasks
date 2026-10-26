@@ -913,3 +913,53 @@ Alert Log.
   template's. On a Daily alert task that drops the list of alerts and the Alert
   Log link. "Leave them" is safe. Not changed yet: leaving `alert` occurrences out
   of that update is the suggested fix, awaiting a decision.
+
+## 17. Competitive Price alerts (HLAI-124)
+
+Amazon compares each offer's price + shipping with a price it finds on other
+retailers, its competitive price; an offer above it may lose the Buy Box. Three
+alert types watch it, after the original twelve, off for every group until
+switched on: **Competitive Price Below** (`CB`, danger; key
+`CompetitivePriceBelowOurs`), **Competitive Price
+Increased** (`CI`, ok) and **Competitive Price Changed** (`CP`, warn).
+
+- **Read.** No extra calls: the price answer every check already fetches (Product
+  Pricing v0 `getListingOffersBatch`) carries it as
+  `Summary.CompetitivePriceThreshold` — for some listings only (23 Oct 2026: 111
+  of 304 US listings, none of the 4 in Canada). `resolveCompetitive`
+  (`sp-api/pricing.ts`) reads it and our offer's `ListingPrice + Shipping` (our
+  offer by `SellerId` = the merchant token; no shipping = free). Each is empty when
+  Amazon gives none or our offer isn't in the answer (out of stock, inactive). A
+  listing whose price answer can't be trusted is skipped, as before.
+- **Storage.** `ListingSnapshot.competitivePrice` and `ourLandedPrice`
+  (`Decimal(10,2)`), and `competitiveRecorded`: false on the rows saved before the
+  release, set by every save since. Added by `20261023120000_competitive_price`;
+  the feature was taken out once (`20261026120000_remove_competitive_price` dropped
+  the columns and its alert types' rows) and brought back by
+  `20261026130000_competitive_price_back`, which adds them again, `false` on every
+  row. Only `competitivePrice` is in the snapshot diff.
+- **Rules** (`alert-detection.ts`, to the cent; T = the competitive price, P = ours
+  + shipping). Below means T under P by a cent or more (`isBelowOurs`): equal keeps
+  the Buy Box, and with either unknown it can't be below.
+  - *Below* when a listing goes below — T drops under P, P rises over T, Amazon
+    sets a T under P, or our offer comes back under it. Once, not on every check
+    while it stays below.
+  - *Increased* on every rise of T.
+  - *Changed* on every move of T, Amazon setting or removing one included.
+  - Both alert values are T, before and now; the message (`alert-message.ts`) adds
+    ours: "Amazon's competitive price is $6.04, below our $9.49 (price + shipping):
+    the Buy Box is at risk.", "…rose from $6.04 to $9.99 (we are at $9.49), now at
+    or above our price.", "Amazon set a competitive price of …", "Amazon removed
+    its competitive price (was …)."
+- **The first check after the release.** A row with `competitiveRecorded` false has
+  no T to compare with, so that check logs *Below* for every listing already
+  below — a one-time starting list — and no *Increased* or *Changed*; the rules
+  above apply from the next check. On Immediate with a template that is a task per
+  listing; on Daily, one per group. A group that switches the types on later gets
+  nothing for listings already below until they newly go below.
+- **Everything else follows the list**: the group editor ("N of 15 on"), the Groups
+  list, the Alert Log filter (its limit is the list's length), Alert Task Setup and
+  the task Alert Type attribute. Nothing counts the types by hand.
+- **No T, no alerts.** A listing Amazon gives no T for gets none of these: Amazon has
+  no outside price to hold ours against, so there is no such risk. It is covered as
+  soon as Amazon gives one; other Buy Box risks stay with the existing alerts.
