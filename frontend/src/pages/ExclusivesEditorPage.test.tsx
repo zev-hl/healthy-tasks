@@ -134,23 +134,27 @@ describe('ExclusivesEditorPage — a new group', () => {
   it('starts with every alert type off', async () => {
     newEditor();
     await settle();
-    expect(screen.getByText('0 of 12 on')).toBeInTheDocument();
+    expect(screen.getByText(`0 of ${EXCLUSIVES_ALERT_TYPES.length} on`)).toBeInTheDocument();
     expect(screen.getByText('Not yet saved')).toBeInTheDocument();
   });
 
   it('switches every alert type at once, to any of the three modes', async () => {
     newEditor();
     await settle();
-    expect(screen.getByText('0 of 12 on')).toBeInTheDocument();
+    expect(screen.getByText(`0 of ${EXCLUSIVES_ALERT_TYPES.length} on`)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'All daily' }));
-    expect(screen.getByText('12 of 12 on')).toBeInTheDocument();
+    expect(
+      screen.getByText(`${EXCLUSIVES_ALERT_TYPES.length} of ${EXCLUSIVES_ALERT_TYPES.length} on`),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'All immediate' }));
-    expect(screen.getByText('12 of 12 on')).toBeInTheDocument();
+    expect(
+      screen.getByText(`${EXCLUSIVES_ALERT_TYPES.length} of ${EXCLUSIVES_ALERT_TYPES.length} on`),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'All off' }));
-    expect(screen.getByText('0 of 12 on')).toBeInTheDocument();
+    expect(screen.getByText(`0 of ${EXCLUSIVES_ALERT_TYPES.length} on`)).toBeInTheDocument();
   });
 
   it('checks an ASIN against the seller account before adding it', async () => {
@@ -415,7 +419,7 @@ describe('ExclusivesEditorPage — an existing group', () => {
     expect(screen.getByLabelText('Group name')).toHaveValue('Versure Exclusives');
     expect(screen.getByText('B00024D8SA')).toBeInTheDocument();
     expect(screen.getByText('A watched product')).toBeInTheDocument();
-    expect(screen.getByText('1 of 12 on')).toBeInTheDocument();
+    expect(screen.getByText(`1 of ${EXCLUSIVES_ALERT_TYPES.length} on`)).toBeInTheDocument();
   });
 
   it('shows a group as Active or Inactive, matching what was saved', async () => {

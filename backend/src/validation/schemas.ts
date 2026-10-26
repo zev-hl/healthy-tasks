@@ -850,7 +850,7 @@ export type ExclusivesGroupQueryInput = z.infer<typeof exclusivesGroupQuerySchem
 // query needs no joins (see alert-log.service.ts).
 export const exclusivesAlertQuerySchema = z.object({
   text: z.string().trim().max(200).optional(),
-  alertTypes: z.array(z.enum(EXCLUSIVES_ALERT_TYPES)).max(12).optional(),
+  alertTypes: z.array(z.enum(EXCLUSIVES_ALERT_TYPES)).max(EXCLUSIVES_ALERT_TYPES.length).optional(),
   groupIds: z.array(z.coerce.number().int().positive()).max(200).optional(),
   marketplaces: z.array(z.enum(EXCLUSIVES_MARKETPLACES)).max(2).optional(),
   from: dateBound,

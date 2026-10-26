@@ -9,7 +9,7 @@ import { HttpError } from '../../utils/http-error.js';
 /**
  * How many alerts of each type one group has had lately.
  *
- * One `groupBy` rather than twelve counts: the panel shows a chip per alert
+ * One `groupBy` rather than a count per type: the panel shows a chip per alert
  * type, and asking the screen to tally a page of alerts would be silently wrong
  * for any group busy enough to exceed a page — this group logged 110 alerts in
  * the last 24 hours.

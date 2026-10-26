@@ -191,7 +191,7 @@ afterEach(() => {
 // --- Step 1: rows, templates, Save / Cancel --------------------------------------
 
 describe('ExclusivesAlertTasksPage', () => {
-  it('lists the twelve alert types, one per row, in order', async () => {
+  it('lists every alert type, one per row, in order', async () => {
     await renderPage();
     expect(screen.getByRole('heading', { name: 'Alert Task Setup' })).toBeInTheDocument();
     const labels = screen
@@ -267,7 +267,7 @@ describe('ExclusivesAlertTasksPage', () => {
     expect(saveSetup).toHaveBeenCalledTimes(1);
     const body = saveSetup.mock.calls[0]![0];
     expect(body.expectedUpdatedAt).toBeNull();
-    expect(body.settings).toHaveLength(12);
+    expect(body.settings).toHaveLength(EXCLUSIVES_ALERT_TYPES.length);
     expect(body.settings[0]).toEqual({
       alertType: 'ListingSuppressed',
       templateId: 1,

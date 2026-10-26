@@ -9,10 +9,11 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import type {
-  ExclusivesGroupRowDto,
-  ExclusivesGroupSortField,
-  ExclusivesSummaryDto,
+import {
+  EXCLUSIVES_ALERT_TYPES,
+  type ExclusivesGroupRowDto,
+  type ExclusivesGroupSortField,
+  type ExclusivesSummaryDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
@@ -319,7 +320,9 @@ export function ExclusivesGroupsPage() {
                     <td className="exc-num">
                       <span className={countPillClass(g.alerts24h)}>{g.alerts24h}</span>
                     </td>
-                    <td className="mono exc-muted">{g.alertTypesOn} of 12</td>
+                    <td className="mono exc-muted">
+                      {g.alertTypesOn} of {EXCLUSIVES_ALERT_TYPES.length}
+                    </td>
                     <td className="mono exc-muted">{absoluteShort(g.updatedAt)}</td>
                     <td>
                       <span className={`exc-latest${hot ? ' hot' : ''}`}>

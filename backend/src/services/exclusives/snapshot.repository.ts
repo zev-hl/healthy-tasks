@@ -33,6 +33,10 @@ export function snapshotFields(draft: ListingSnapshotDraft) {
     buyboxWinnerSellerId: draft.buyboxWinnerSellerId ?? null,
     buyboxPrice: cents(draft.buyboxPrice),
     offerCount: draft.offerCount ?? null,
+    competitivePrice: cents(draft.competitivePrice),
+    ourLandedPrice: cents(draft.ourLandedPrice),
+    // Fresh data always comes with the competitive price read (HLAI-124).
+    competitiveRecorded: true,
     isSuppressed: draft.isSuppressed,
     suppressionReason: draft.suppressionReason ?? null,
   };
@@ -53,6 +57,9 @@ export function savedView(s: ListingSnapshot): SnapshotView {
     buyboxWinnerSellerId: s.buyboxWinnerSellerId,
     buyboxPrice: s.buyboxPrice == null ? null : s.buyboxPrice.toNumber(),
     offerCount: s.offerCount,
+    competitivePrice: s.competitivePrice == null ? null : s.competitivePrice.toNumber(),
+    ourLandedPrice: s.ourLandedPrice == null ? null : s.ourLandedPrice.toNumber(),
+    competitiveRecorded: s.competitiveRecorded,
     isSuppressed: s.isSuppressed,
     suppressionReason: s.suppressionReason,
   };

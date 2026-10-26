@@ -160,7 +160,7 @@ export async function queryGroups(
   return { rows, total, page, pageSize };
 }
 
-/** One group with its listings and all 12 alert settings, for the editor. */
+/** One group with its listings and every alert type's setting, for the editor. */
 export async function getGroup(id: number): Promise<ExclusivesGroupDto> {
   const group = await prisma.alertGroup.findUnique({
     where: { id },

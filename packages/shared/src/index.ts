@@ -1955,8 +1955,10 @@ export const EXCLUSIVES_ALERT_MODE_LABELS: Record<ExclusivesAlertMode, string> =
 };
 
 /**
- * The 12 detected alert types, in the fixed UI/seed order. Keys are stable
- * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names.
+ * The detected alert types, in the fixed UI/seed order. Keys are stable
+ * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names. The
+ * last three compare our price + shipping with Amazon's competitive price
+ * (HLAI-124).
  */
 export const EXCLUSIVES_ALERT_TYPES = [
   'ListingSuppressed',
@@ -1971,6 +1973,9 @@ export const EXCLUSIVES_ALERT_TYPES = [
   'DescriptionChanged',
   'BulletPointsChanged',
   'DimensionsChanged',
+  'CompetitivePriceBelowOurs',
+  'CompetitivePriceIncreased',
+  'CompetitivePriceChanged',
 ] as const;
 export type ExclusivesAlertType = (typeof EXCLUSIVES_ALERT_TYPES)[number];
 
@@ -1987,6 +1992,9 @@ export const EXCLUSIVES_ALERT_TYPE_LABELS: Record<ExclusivesAlertType, string> =
   DescriptionChanged: 'Description Changed',
   BulletPointsChanged: 'Bullet Points Changed',
   DimensionsChanged: 'Dimensions Changed',
+  CompetitivePriceBelowOurs: 'Competitive Price Below',
+  CompetitivePriceIncreased: 'Competitive Price Increased',
+  CompetitivePriceChanged: 'Competitive Price Changed',
 };
 
 // --- Alert task labels (HLAI-112) --------------------------------------------
@@ -2007,6 +2015,9 @@ export const EXCLUSIVES_ALERT_TYPE_CODES: Record<ExclusivesAlertType, string> = 
   DescriptionChanged: 'DC',
   BulletPointsChanged: 'BP',
   DimensionsChanged: 'DM',
+  CompetitivePriceBelowOurs: 'CB',
+  CompetitivePriceIncreased: 'CI',
+  CompetitivePriceChanged: 'CP',
 };
 
 /** What splits a group name into parts: "-", or an en/em dash typed in its place. */
@@ -2181,6 +2192,9 @@ export const EXCLUSIVES_ALERT_TYPE_TONE: Record<ExclusivesAlertType, ExclusivesA
   DescriptionChanged: 'review',
   BulletPointsChanged: 'review',
   DimensionsChanged: 'review',
+  CompetitivePriceBelowOurs: 'danger',
+  CompetitivePriceIncreased: 'ok',
+  CompetitivePriceChanged: 'warn',
 };
 
 /** Marketplaces a listing can be monitored in. */
@@ -2229,14 +2243,14 @@ export interface ExclusivesGroupRowDto {
   asinPreview: string[];
   /** Alerts logged for this group in the last 24 hours. */
   alerts24h: number;
-  /** How many of the 12 alert types are not 'off'. */
+  /** How many of the alert types are not 'off'. */
   alertTypesOn: number;
   latestAlertAt: string | null; // ISO
   createdAt: string; // ISO
   updatedAt: string; // ISO
 }
 
-/** A group opened in the editor: its listings and all 12 alert settings. */
+/** A group opened in the editor: its listings and every alert type's setting. */
 export interface ExclusivesGroupDto {
   id: number;
   name: string;
@@ -2244,7 +2258,7 @@ export interface ExclusivesGroupDto {
   /** Off means the sweep skips this group's ASINs entirely. */
   isActive: boolean;
   listings: ExclusivesListingDto[];
-  /** Always all 12 types; a missing row reads as 'off'. */
+  /** Always every type; a missing row reads as 'off'. */
   settings: Record<ExclusivesAlertType, ExclusivesAlertMode>;
   createdAt: string; // ISO
   updatedAt: string; // ISO

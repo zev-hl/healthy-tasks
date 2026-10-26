@@ -18,6 +18,9 @@ const saved: SnapshotView = {
   buyboxWinnerSellerId: 'A1UWLDVGZSXGKG',
   buyboxPrice: 19.99,
   offerCount: 4,
+  competitivePrice: 17.5,
+  ourLandedPrice: 24.99,
+  competitiveRecorded: true,
   isSuppressed: false,
   suppressionReason: null,
 };
@@ -39,6 +42,8 @@ const fresh = (changes: Partial<ListingSnapshotDraft> = {}): SnapshotView =>
     buyboxWinnerSellerId: 'A1UWLDVGZSXGKG',
     buyboxPrice: 19.99,
     offerCount: 4,
+    competitivePrice: 17.5,
+    ourLandedPrice: 19.99 + 5,
     isSuppressed: false,
     ...changes,
   });
@@ -64,6 +69,19 @@ describe('sameStoredState', () => {
     assert.equal(sameStoredState(saved, fresh({ bulletPoints: ['one', 'two', 'three'] })), false);
   });
 
+  it('rewrites a row saved before the competitive price was read, even with none to keep', () => {
+    const old = {
+      ...saved,
+      competitivePrice: null,
+      ourLandedPrice: null,
+      competitiveRecorded: false,
+    };
+    const now = fresh({ competitivePrice: null, ourLandedPrice: null });
+    assert.equal(now.competitiveRecorded, true);
+    assert.equal(sameStoredState(old, now), false);
+    assert.equal(sameStoredState({ ...old, competitiveRecorded: true }, now), true);
+  });
+
   it('treats a missing value in fresh data the same as a saved null', () => {
     const noReason = { ...saved, suppressionReason: null };
     assert.equal(sameStoredState(noReason, fresh({ suppressionReason: undefined })), true);
@@ -80,6 +98,10 @@ describe('sameStoredState', () => {
       { buyboxWinnerSellerId: 'A9COMPETITOR0' },
       { buyboxPrice: 18.5 },
       { offerCount: 5 },
+      { competitivePrice: 18 },
+      { competitivePrice: null },
+      { ourLandedPrice: 25.99 },
+      { ourLandedPrice: null },
       { isSuppressed: true },
     ];
     for (const change of changes) {
