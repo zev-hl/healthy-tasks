@@ -217,6 +217,15 @@ and `QUEUE_DASHBOARD_PASSWORD` (16+ characters) are set (staging and production,
 each its own pair). Admins open it from the profile page's "Queues Dashboard" card,
 which follows `VITE_QUEUE_DASHBOARD_URL`. Full design: `docs/architecture.md` §14.
 
+Every email is HTML with a text version (HLAI-135), both from one description:
+write it as blocks for `renderEmail` (`utils/email-content.ts`), never as hand-made
+`text`/`html` — paragraphs and a button for the main link; it escapes typed text and
+refuses non-`http(s)` links. Account emails are in `utils/account-emails.ts`, the rest
+in `utils/notification-emails.ts`. `EMAIL_SEND_TEXT="false"` sends the HTML only (the
+text is still made and queued). The logo is attached inside each email at send time
+(`backend/assets/email-logo.png`, `cid:` in the HTML), not linked from the site. See every email without sending one: `npm run
+email:preview --workspace backend` (on the host; it prints where the files are).
+
 ### Storage
 `storage/index.ts` selects a backend by `STORAGE_DRIVER`: `memory` (tests) or
 `s3` (default — MinIO locally, any S3-compatible bucket in prod). **File bytes
@@ -254,7 +263,8 @@ Backend config is centralized and validated in `backend/src/config/env.ts`
 (missing required vars throw at boot). Copy `.env.example` → `.env`. Notable
 vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `EMAIL_PROVIDER`
 (`console` dev / `smtp`), `EMAIL_DELIVERY` (`direct` / `queue`),
-`EMAIL_WORKER_IN_API` (`true` default / `false`), `REDIS_URL`,
+`EMAIL_WORKER_IN_API` (`true` default / `false`), `EMAIL_SEND_TEXT` (`true`
+default / `false`: HTML only), `REDIS_URL`,
 `EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `QUEUE_DASHBOARD_USER` /
 `QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
 `SCHEDULER_ENABLED`, `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
