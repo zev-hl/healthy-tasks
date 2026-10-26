@@ -23,10 +23,6 @@ export interface ListingSnapshotDraft {
   buyboxWinnerSellerId?: string | null;
   buyboxPrice?: number | null;
   offerCount?: number | null;
-  // HLAI-124, from the same pricing read: Amazon's competitive price and our
-  // offer's price + shipping.
-  competitivePrice?: number | null;
-  ourLandedPrice?: number | null;
 }
 
 function values(attrs: ListingAttributes, key: string): Array<Record<string, unknown>> {

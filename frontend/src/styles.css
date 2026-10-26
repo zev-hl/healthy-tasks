@@ -4108,6 +4108,31 @@ th.sortable:hover .sort-hint {
 .results-table td {
   white-space: nowrap;
 }
+/* Task templates list: a long description wraps (two lines at most, the whole
+   text on hover) instead of widening the table, the recurrence wraps on a narrow
+   screen, and the buttons stay on one line. */
+.results-table.templates-table {
+  min-width: 0;
+}
+.templates-table .templates-name {
+  white-space: normal;
+  min-width: 200px;
+}
+.templates-table .templates-recurrence {
+  white-space: normal;
+  min-width: 120px;
+}
+.templates-desc {
+  max-width: 70ch;
+  font-size: 0.8rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.templates-table .btn-row {
+  flex-wrap: nowrap;
+}
 /* Whole-row click opens the task; interactive cells stop propagation. */
 .results-table tbody tr.row-clickable {
   cursor: pointer;

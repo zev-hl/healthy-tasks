@@ -17,9 +17,6 @@ const base: SnapshotView = {
   buyboxWinnerSellerId: 'A1UWLDVGZSXGKG',
   buyboxPrice: 34.99,
   offerCount: 3,
-  competitivePrice: null,
-  ourLandedPrice: null,
-  competitiveRecorded: true,
   isSuppressed: false,
   suppressionReason: null,
 };
@@ -130,63 +127,6 @@ describe('describeAlert', () => {
     assert.equal(
       msg(alert({ alertType: 'BulletPointsChanged', category: 'bullet_3' }), base, removed),
       'Bullet 3 removed (was "three").',
-    );
-  });
-});
-
-describe('describeAlert — competitive price (HLAI-124)', () => {
-  const at = (competitivePrice: number | null, o: Partial<SnapshotView> = {}) =>
-    s({ competitivePrice, ourLandedPrice: 9.49, ...o });
-  const below = alert({ alertType: 'CompetitivePriceBelowOurs' });
-  const up = alert({ alertType: 'CompetitivePriceIncreased' });
-  const moved = alert({ alertType: 'CompetitivePriceChanged' });
-
-  it('Below names both prices and the risk', () => {
-    assert.equal(
-      msg(below, at(10), at(6.04)),
-      "Amazon's competitive price is $6.04, below our $9.49 (price + shipping): the Buy Box is at risk.",
-    );
-  });
-
-  it('Increased says where we are, and when it is back to our price or above', () => {
-    assert.equal(
-      msg(up, at(6.04), at(7)),
-      "Amazon's competitive price rose from $6.04 to $7.00 (we are at $9.49).",
-    );
-    assert.equal(
-      msg(up, at(6.04), at(9.99)),
-      "Amazon's competitive price rose from $6.04 to $9.99 (we are at $9.49), now at or above our price.",
-    );
-    assert.equal(
-      msg(up, at(6.04), at(9.49)),
-      "Amazon's competitive price rose from $6.04 to $9.49 (we are at $9.49), now at or above our price.",
-    );
-    assert.equal(
-      msg(up, at(12), at(13)),
-      "Amazon's competitive price rose from $12.00 to $13.00 (we are at $9.49).",
-    );
-  });
-
-  it('Increased leaves our price out when our offer was not shown', () => {
-    const noOffer = (t: number) => at(t, { ourLandedPrice: null });
-    assert.equal(
-      msg(up, noOffer(6), noOffer(7)),
-      "Amazon's competitive price rose from $6.00 to $7.00.",
-    );
-  });
-
-  it('Changed reads a move, a new one and a removed one', () => {
-    assert.equal(
-      msg(moved, at(6.04), at(5.8)),
-      "Amazon's competitive price changed from $6.04 to $5.80 (we are at $9.49).",
-    );
-    assert.equal(
-      msg(moved, at(null), at(6.04)),
-      'Amazon set a competitive price of $6.04 (we are at $9.49).',
-    );
-    assert.equal(
-      msg(moved, at(6.04), at(null)),
-      'Amazon removed its competitive price (was $6.04).',
     );
   });
 });

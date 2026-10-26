@@ -188,16 +188,6 @@ unassigned" there first). Run both by hand with
 `docker compose exec backend npm run alert-tasks:run --workspace backend`. See
 `docs/architecture.md` §16.
 
-### Competitive Price alerts (HLAI-124)
-Three alert types after the original twelve — Competitive Price Below,
-Increased and Changed — compare Amazon's competitive price
-(`CompetitivePriceThreshold`, in the price answer every check already fetches;
-given for some listings only) with our offer's price + shipping. Both are kept on
-the listing's snapshot (`competitivePrice`, `ourLandedPrice`); `competitiveRecorded`
-is false on rows saved before the release, so the first check after it logs only
-"Competitive Price Below", for the listings already below. Never count the types by hand: use
-`EXCLUSIVES_ALERT_TYPES.length`. See `docs/architecture.md` §17.
-
 ### Background scheduler
 `services/scheduler.service.ts` runs recurrence materialization, reminder-email
 dispatch, and goal-review passes. Started only from `server.ts` and only when

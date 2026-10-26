@@ -267,7 +267,7 @@ export function TemplatesPage() {
         </EmptyState>
       ) : (
         <div className="table-scroll">
-          <table className="results-table">
+          <table className="results-table templates-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -281,11 +281,15 @@ export function TemplatesPage() {
             <tbody>
               {list.map((t) => (
                 <tr key={t.id}>
-                  <td>
+                  <td className="templates-name">
                     <strong>{t.name}</strong>
-                    {t.description && <div className="muted" style={{ fontSize: '0.8rem' }}>{t.description}</div>}
+                    {t.description && (
+                      <div className="muted templates-desc" title={t.description}>
+                        {t.description}
+                      </div>
+                    )}
                   </td>
-                  <td>{RECURRENCE_TYPE_LABELS[t.recurrenceType]}</td>
+                  <td className="templates-recurrence">{RECURRENCE_TYPE_LABELS[t.recurrenceType]}</td>
                   <td className="mono">{t.nodeCount}</td>
                   <td className="mono">{t.occurrenceCount}</td>
                   <td>
