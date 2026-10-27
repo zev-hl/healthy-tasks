@@ -122,7 +122,8 @@ function Sidebar({
 
       <div className="side-group">
         <div className="side-group-label">Goals</div>
-        <NavLink to="/goals" className={navItemClass}>
+        {/* `end`: Team Goals lives under /goals, and must not light this up too. */}
+        <NavLink to="/goals" end className={navItemClass}>
           My Goals
         </NavLink>
         {(user?.role === 'Admin' || user?.role === 'Manager') && (

@@ -17,8 +17,9 @@ import { dailyWindowStart, lastDailyRunAt, nextDailyRunAt } from './daily-window
 /**
  * HLAI-112: tasks made from Exclusives alerts, by the Alert Task Setup — per
  * alert type, a template and a person per role, the same for every group. Each
- * task tree is labelled `<group>_<type>_<time>`, tagged with its group and type,
- * and created by the Admin who last saved that type's row.
+ * task tree is labelled `<group>_<type>_<time>` (the time of its alert, or of a
+ * Daily task's first alert), tagged with its group and type, and created by the
+ * Admin who last saved that type's row.
  *
  * - Immediate (after every check): each new alert of a type its group has on
  *   "Immediate" makes its own task tree. No limit: every alert gets its task.
@@ -132,7 +133,8 @@ async function makeImmediate(onLog: Log, now: () => Date): Promise<AlertTaskRunR
         groupId: a.groupId as number,
         groupName: (a.group as { name: string }).name,
         type,
-        at: now(),
+        labelAt: a.createdAt,
+        anchorAt: now(),
         alertLogIds: [a.id],
       });
       made += 1;
@@ -177,7 +179,7 @@ export async function dailyAlertTasksInUse(): Promise<boolean> {
  * Make the Daily tasks of every day that has ended (at `at`, the Daily run's
  * time): one task tree per group, alert type and day, for the alerts waiting in
  * it. Catches up on days a missed run left behind, each with its own day's
- * label. Never throws.
+ * alerts. Never throws.
  */
 export async function makeDailyAlertTasks(
   onLog: Log = () => {},
@@ -247,7 +249,8 @@ async function makeDaily(onLog: Log, now: Date, at: ClockTime): Promise<AlertTas
         groupId: day.groupId,
         groupName: day.groupName,
         type: day.type,
-        at: day.end,
+        labelAt: (day.alerts[0] as WaitingAlert).createdAt, // read oldest first
+        anchorAt: day.end,
         alertLogIds: day.alerts.map((a) => a.id),
         rootDescriptionExtra: (room) => dailyTable(day, room),
       });
@@ -380,8 +383,10 @@ async function makeAlertTask(o: {
   groupId: number;
   groupName: string;
   type: ExclusivesAlertType;
-  /** When it is made: its label's time, and the template's day 0. */
-  at: Date;
+  /** The time in its name: its alert's, or a Daily task's first alert's. */
+  labelAt: Date;
+  /** The template's day 0: when it is made, or a Daily task's run. */
+  anchorAt: Date;
   alertLogIds: number[];
   /** Text after the top task's own, given how many characters are left for it. */
   rootDescriptionExtra?: (room: number) => string;
@@ -415,7 +420,7 @@ async function makeAlertTask(o: {
   }
 
   // `_2`, `_3`, … when another task of this group and type has the same minute.
-  const label = alertTaskInstanceLabel(o.groupName, o.type, o.at, env.businessTimeZone);
+  const label = alertTaskInstanceLabel(o.groupName, o.type, o.labelAt, env.businessTimeZone);
   const taken = await prisma.templateOccurrence.findMany({
     where: { instanceLabel: { startsWith: label } },
     select: { instanceLabel: true },
@@ -426,7 +431,7 @@ async function makeAlertTask(o: {
     seq: null,
     origin: 'alert',
     instanceLabel: withClashCounter(label, new Set(taken.map((t) => t.instanceLabel ?? ''))),
-    anchorStart: o.at,
+    anchorStart: o.anchorAt,
     assigneeByNodeId,
     creatorId: recipe.savedById,
     actorId: recipe.savedById,

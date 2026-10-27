@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { CreateUserRequest, Role, UserDto } from '@healthy-tasks/shared';
 import { ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { confirmDiscard, useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 
 interface Props {
@@ -25,14 +25,17 @@ export function UserFormModal({ onClose, onCreated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Unsaved-work guard: once anything is filled in, a stray backdrop click
-  // doesn't close the form and leaving the page asks first.
+  // Unsaved-work guard: once anything is filled in, Cancel, a click outside the
+  // form and leaving the page all ask first.
   const dirty =
     [email, firstName, lastName, title, jobDescription, supervisorId].some(
       (v) => v.trim() !== '',
     ) || role !== 'Member';
   useUnsavedChangesWarning(dirty && !submitting);
-  const backdrop = useBackdropDismiss(onClose, dirty);
+  const dismiss = () => {
+    if (confirmDiscard(dirty)) onClose();
+  };
+  const backdrop = useBackdropDismiss(dismiss);
 
   useEffect(() => {
     api
@@ -145,7 +148,7 @@ export function UserFormModal({ onClose, onCreated }: Props) {
             />
           </div>
           <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="secondary" onClick={onClose}>
+            <button type="button" className="secondary" onClick={dismiss}>
               Cancel
             </button>
             <button
