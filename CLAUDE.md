@@ -74,7 +74,7 @@ containers' own `node_modules` volumes hide the new packages. Add
 Email queue (see Email delivery below):
 
 ```bash
-# Queue dashboard: http://localhost:3005/bullmq locally; Render: <API>/bullmq behind a password
+# Queue dashboard: http://localhost:3005/bullmq locally; Render: <API>/bullmq behind a password (Admins: the profile button)
 docker compose exec backend npm run queue:test-email -- you@example.com  # queue one test email
 docker compose exec backend npm run queue:clean-failed-emails            # run the weekly failed-email cleanup now
 docker compose logs -f backend                                           # watch the email worker (inside the API) send
@@ -215,7 +215,11 @@ sending before it stops. The queue dashboard (`queue/dashboard-board.ts`) is
 also serves it at `/bullmq` behind HTTP Basic auth when `QUEUE_DASHBOARD_USER`
 and `QUEUE_DASHBOARD_PASSWORD` (16+ characters) are set (staging and production,
 each its own pair). Admins open it from the profile page's "Queues Dashboard" card,
-which follows `VITE_QUEUE_DASHBOARD_URL`. Full design: `docs/architecture.md` §14.
+which follows `VITE_QUEUE_DASHBOARD_URL`: its button posts their HL Central sign-in
+to `/bullmq/enter`, which lets an active Admin in with no password until the
+browser closes (a session cookie holding a 12-hour pass, re-checked on every
+request; `middleware/queue-dashboard-access.ts`). Anyone else, or the address
+typed, is asked for the password. Full design: `docs/architecture.md` §14.
 
 Every email is HTML with a text version (HLAI-135), both from one description:
 write it as blocks for `renderEmail` (`utils/email-content.ts`), never as hand-made

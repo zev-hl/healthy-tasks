@@ -303,7 +303,10 @@ when `EMAIL_DELIVERY` is `queue` and both settings below are set, with a passwor
 of at least 16 characters; otherwise that address is a 404.
 
 Admins reach it from **Your profile → Queues Dashboard → Open queue dashboard**, which
-opens it in a new tab. Nobody else sees that box.
+opens it in a new tab **with no user name and password**: the button tells the
+dashboard who they are, and it lets them in until the browser is fully closed (12
+hours at most). Nobody else sees that box; anyone else, or an Admin who types the
+address, is asked for the user name and password below.
 
 To switch it on (each environment, with its **own** user name and password —
 never Staging's pair on Production):
@@ -317,16 +320,21 @@ never Staging's pair on Production):
 4. **Website (static site) → Environment:** `VITE_QUEUE_DASHBOARD_URL` = that API's
    address + `/bullmq`. Saving rebuilds the site (the address is built into it).
 5. As an Admin, open **Your profile**: the **Queues Dashboard** box is under
-   Notifications. Its button opens the dashboard; sign in there. The browser keeps
-   the sign-in until it is fully closed; there is no sign-out button.
+   Notifications. Its button opens the dashboard with no sign-in. Typing the
+   address instead asks for the user name and password; the browser keeps them
+   until it is fully closed. There is no sign-out button.
 
 Good to know:
 
-- **Only Admins see the button, but the dashboard checks its password, not who
-  is signed in to HL Central.** Anyone given the password could open it by typing
-  the address. So share each environment's user name and password with Admins
-  only, privately (a direct message or a password manager). With them, a person
-  sees who got which email, can read the emails, and can retry or delete them.
+- **The button lets only active Admins in.** It works only from this
+  environment's website (the API's `CORS_ORIGIN`), and stops working at once for
+  someone switched off, no longer an Admin, or whose password was reset. Signing
+  out of HL Central does not close an open dashboard; closing the browser does.
+- **The password still opens it for anyone who has it,** by typing the address.
+  So share each environment's user name and password with Admins only, privately
+  (a direct message or a password manager), or with no one if the button is
+  enough. With access, a person sees who got which email, can read the emails,
+  and can retry or delete them.
 - To change the password, or to shut someone out, change
   `QUEUE_DASHBOARD_PASSWORD` and give the new one to the Admins. To switch the
   dashboard off, delete both settings (and `VITE_QUEUE_DASHBOARD_URL`, so the
@@ -340,7 +348,7 @@ Good to know:
   from your computer, remove it.
 - Locally the dashboard is its own container, `http://localhost:3005/bullmq`, with
   no sign-in and reachable from your computer only; docker-compose points the
-  profile button there.
+  profile button there (it just opens the board).
 
 ---
 

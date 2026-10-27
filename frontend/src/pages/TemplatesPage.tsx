@@ -26,7 +26,7 @@ import { todayLocalDate } from '../lib/datetime';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useAuth } from '../auth/AuthContext';
 import { ModalShell } from '../components/exclusives/ModalShell';
-import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { confirmDiscard, useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { DutyTag } from '../components/duties/DutyTag';
 import { GroupedOptions } from '../components/duties/GroupedOptions';
 import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from '../lib/duties';
@@ -742,8 +742,7 @@ function TemplateEditor({
         <button
           className="secondary"
           onClick={() => {
-            if (dirty && !window.confirm('Discard your changes to this template?')) return;
-            onCancel();
+            if (confirmDiscard(dirty)) onCancel();
           }}
           disabled={saving}
         >
