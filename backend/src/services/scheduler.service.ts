@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
 import { queueEmail } from '../queue/email-queue.js';
+import { adminAlertEmail } from '../utils/notification-emails.js';
 import { env } from '../config/env.js';
 import {
   addDays,
@@ -20,6 +21,11 @@ import { dispatchDueReminderEmails } from './notification.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
 import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
+import { nextDailyRunAt } from './exclusives/daily-window.js';
+import {
+  dailyAlertTasksInUse,
+  makeDailyAlertTasks,
+} from './exclusives/alert-tasks.service.js';
 
 /**
  * Recurrence scheduler (Phase 11; reworked in Phase 14).
@@ -468,6 +474,9 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
     }
   }
 
+  // HLAI-112: the next Daily run (8:30 AM by default), while any alert type uses it.
+  if (await dailyAlertTasksInUse()) consider(nextDailyRunAt(now).getTime());
+
   // Task-level recurrence (Fixed only; relative series wake on completion).
   const sources = await prisma.task.findMany({
     where: { recurrence: { isActive: true, recurrenceType: 'Fixed' } },
@@ -495,7 +504,8 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
 
 /**
  * One scheduler pass: materialize all due occurrences across active recurring
- * templates and tasks, run the goal review, dispatch due reminder emails, then
+ * templates and tasks, run the goal review, dispatch due reminder emails, make
+ * the Daily alert tasks whose day has ended (HLAI-112), then
  * verify the overdue invariant and refresh the in-memory heartbeat + next wake.
  * Exposed so tests can drive it deterministically with an explicit `now`.
  * Returns the number materialized.
@@ -557,6 +567,11 @@ export async function runScheduler(now: Date): Promise<number> {
     // eslint-disable-next-line no-console
     console.error('scheduler: reminder dispatch failed', err);
   }
+
+  // HLAI-112: the Daily alert tasks of every day that has ended, including any
+  // a missed run left behind. Never throws.
+  // eslint-disable-next-line no-console
+  await makeDailyAlertTasks((msg) => console.log(msg), now);
 
   // Layers 2 + 3: the invariant must hold after a successful pass; and if we
   // arrived very late, say so even when the pass then succeeded.
@@ -674,14 +689,9 @@ async function alertAdmins(subject: string, lines: string[]): Promise<void> {
   });
   for (const a of admins) {
     try {
-      await queueEmail(
-        {
-          to: a.email,
-          subject,
-          text: [...lines, '', `Check the API service (${env.frontendUrl.replace(/\/$/, '')}).`].join('\n'),
-        },
-        { kind: 'admin-alert' },
-      );
+      await queueEmail(adminAlertEmail({ to: a.email, subject, lines, appUrl: env.frontendUrl }), {
+        kind: 'admin-alert',
+      });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('failed to email admin about scheduler health', a.email, err);

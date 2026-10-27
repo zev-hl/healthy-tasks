@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { EmailChangeSummary, Role, UpdateUserRequest, UserDto } from '@healthy-tasks/shared';
 import { ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { confirmDiscard, useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 
 interface Props {
@@ -77,10 +77,13 @@ export function UserEditModal({ user, supervisors, onClose, onSaved }: Props) {
   const patch = buildPatch();
   const dirty = Object.keys(patch).length > 0;
 
-  // Unsaved-work guard: with changes pending, a stray backdrop click doesn't
-  // close the form and leaving the page asks first.
+  // Unsaved-work guard: with changes pending, Cancel, a click outside the form
+  // and leaving the page all ask first.
   useUnsavedChangesWarning(dirty && !saving);
-  const backdrop = useBackdropDismiss(onClose, dirty);
+  const dismiss = () => {
+    if (confirmDiscard(dirty)) onClose();
+  };
+  const backdrop = useBackdropDismiss(dismiss);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -180,7 +183,7 @@ export function UserEditModal({ user, supervisors, onClose, onSaved }: Props) {
             </select>
           </div>
           <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="secondary" onClick={onClose}>
+            <button type="button" className="secondary" onClick={dismiss}>
               Cancel
             </button>
             <button type="submit" disabled={!dirty || saving}>

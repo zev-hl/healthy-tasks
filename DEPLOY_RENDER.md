@@ -88,12 +88,25 @@ Set these on `healthy-tasks-api-prod` **and** `healthy-tasks-api-staging`.
 - [x] `STORAGE_DRIVER=s3` — use real object storage (the `memory` driver is for
       tests only).
 
+### Daily alert tasks (HLAI-112) — optional, you enter these
+
+- [ ] **`EXCLUSIVES_DAILY_TASKS_AT`** — when the Daily alert tasks are made,
+      24-hour `HH:MM` on the business clock (`BUSINESS_TIMEZONE`). Each covers the
+      day before, from the same time to a minute before it. Left unset (or empty):
+      `08:30`. Saving it restarts the API; its boot log then shows e.g. `Daily
+      alert tasks: 8:30 AM New York time, covering the day before (8:30 AM to 8:29
+      AM)`. A wrong value (`8:30 AM`, `8.30`, a lone space) stops the API at
+      start-up, saying what is wanted.
+
 ### Email — see §5
 
 - [ ] **`EMAIL_PROVIDER`** — `console` or `smtp`. Committed as `console`.
       **Flip Production to `smtp` at go-live** (you've said you want real emails).
 - [ ] **`SMTP_HOST`**, **`SMTP_PORT`**, **`SMTP_USER`**, **`SMTP_PASS`** — from your
       email provider. Only used when `EMAIL_PROVIDER=smtp`. Production only.
+- [ ] **`EMAIL_SEND_TEXT`** (HLAI-135) — optional. Leave it unset (or `"true"`) to send
+      every email as HTML with its text version; `"false"` sends the HTML only. Any
+      other value stops the server at start-up.
 
 ### Object storage (attachments) — you enter these
 
@@ -164,6 +177,17 @@ via env vars — no code change needed.
   you've verified with that provider. Until you do, admins can still create users
   and reset passwords, but recipients won't get an email — the reset link only
   appears in the logs.
+
+**HTML emails (HLAI-135).** Every email is sent as HTML — the logo and "HL
+Central" at the top of a white card, the message, the main link as a button with
+the plain link under it — with
+its text version alongside, for mail apps that can't show HTML (spam filters
+also trust an email with both a little more). `EMAIL_SEND_TEXT="false"` sends
+the HTML only; nothing else needs setting. The logo travels inside each email (a
+small picture attached to it, `backend/assets/email-logo.png`), so it needs no
+setting and shows even in mail apps that block pictures from the internet.
+To see every email without sending one, run `npm run email:preview --workspace
+backend` on your own computer and open the `index.html` it prints.
 
 ---
 
@@ -279,7 +303,10 @@ when `EMAIL_DELIVERY` is `queue` and both settings below are set, with a passwor
 of at least 16 characters; otherwise that address is a 404.
 
 Admins reach it from **Your profile → Queues Dashboard → Open queue dashboard**, which
-opens it in a new tab. Nobody else sees that box.
+opens it in a new tab **with no user name and password**: the button tells the
+dashboard who they are, and it lets them in until the browser is fully closed (12
+hours at most). Nobody else sees that box; anyone else, or an Admin who types the
+address, is asked for the user name and password below.
 
 To switch it on (each environment, with its **own** user name and password —
 never Staging's pair on Production):
@@ -293,16 +320,21 @@ never Staging's pair on Production):
 4. **Website (static site) → Environment:** `VITE_QUEUE_DASHBOARD_URL` = that API's
    address + `/bullmq`. Saving rebuilds the site (the address is built into it).
 5. As an Admin, open **Your profile**: the **Queues Dashboard** box is under
-   Notifications. Its button opens the dashboard; sign in there. The browser keeps
-   the sign-in until it is fully closed; there is no sign-out button.
+   Notifications. Its button opens the dashboard with no sign-in. Typing the
+   address instead asks for the user name and password; the browser keeps them
+   until it is fully closed. There is no sign-out button.
 
 Good to know:
 
-- **Only Admins see the button, but the dashboard checks its password, not who
-  is signed in to HL Central.** Anyone given the password could open it by typing
-  the address. So share each environment's user name and password with Admins
-  only, privately (a direct message or a password manager). With them, a person
-  sees who got which email, can read the emails, and can retry or delete them.
+- **The button lets only active Admins in.** It works only from this
+  environment's website (the API's `CORS_ORIGIN`), and stops working at once for
+  someone switched off, no longer an Admin, or whose password was reset. Signing
+  out of HL Central does not close an open dashboard; closing the browser does.
+- **The password still opens it for anyone who has it,** by typing the address.
+  So share each environment's user name and password with Admins only, privately
+  (a direct message or a password manager), or with no one if the button is
+  enough. With access, a person sees who got which email, can read the emails,
+  and can retry or delete them.
 - To change the password, or to shut someone out, change
   `QUEUE_DASHBOARD_PASSWORD` and give the new one to the Admins. To switch the
   dashboard off, delete both settings (and `VITE_QUEUE_DASHBOARD_URL`, so the
@@ -316,7 +348,7 @@ Good to know:
   from your computer, remove it.
 - Locally the dashboard is its own container, `http://localhost:3005/bullmq`, with
   no sign-in and reachable from your computer only; docker-compose points the
-  profile button there.
+  profile button there (it just opens the board).
 
 ---
 

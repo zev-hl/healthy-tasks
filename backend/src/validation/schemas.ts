@@ -850,7 +850,7 @@ export type ExclusivesGroupQueryInput = z.infer<typeof exclusivesGroupQuerySchem
 // query needs no joins (see alert-log.service.ts).
 export const exclusivesAlertQuerySchema = z.object({
   text: z.string().trim().max(200).optional(),
-  alertTypes: z.array(z.enum(EXCLUSIVES_ALERT_TYPES)).max(12).optional(),
+  alertTypes: z.array(z.enum(EXCLUSIVES_ALERT_TYPES)).max(EXCLUSIVES_ALERT_TYPES.length).optional(),
   groupIds: z.array(z.coerce.number().int().positive()).max(200).optional(),
   marketplaces: z.array(z.enum(EXCLUSIVES_MARKETPLACES)).max(2).optional(),
   from: dateBound,
@@ -905,6 +905,26 @@ export const exclusivesGroupExportSchema = z.object({
 });
 export type ExclusivesAlertExportInput = z.infer<typeof exclusivesAlertExportSchema>;
 export type ExclusivesGroupExportInput = z.infer<typeof exclusivesGroupExportSchema>;
+
+// HLAI-112: the Alert Tasks screen's Save — every alert type's row at once (a
+// type left out is left as it is). The roles are checked against the template
+// in the service.
+export const exclusivesAlertTaskSetupSaveSchema = z.object({
+  settings: z
+    .array(
+      z.object({
+        alertType: z.enum(EXCLUSIVES_ALERT_TYPES),
+        templateId: z.number().int().positive().nullable(),
+        roleAssignments: instantiateTemplateSchema.shape.roleAssignments.unwrap(),
+      }),
+    )
+    .max(EXCLUSIVES_ALERT_TYPES.length)
+    .refine((s) => new Set(s.map((x) => x.alertType)).size === s.length, {
+      message: 'Each alert type can appear only once.',
+    }),
+  expectedUpdatedAt: z.string().datetime().nullable(),
+});
+export type ExclusivesAlertTaskSetupSaveInput = z.infer<typeof exclusivesAlertTaskSetupSaveSchema>;
 
 // --- Department Duties --------------------------------------------------------
 

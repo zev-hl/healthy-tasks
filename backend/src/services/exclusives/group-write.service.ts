@@ -166,7 +166,7 @@ function settingRows(
   groupId: number,
   settings: GroupWriteInput['settings'],
 ): Prisma.AlertSettingCreateManyInput[] {
-  // Always all twelve. A missing row also reads as off, but invisibly, and the
+  // Always every type. A missing row also reads as off, but invisibly, and the
   // screen shows a count of what is on (HLAI-71 §8 #16: off by default).
   return EXCLUSIVES_ALERT_TYPES.map((alertType) => ({
     groupId,

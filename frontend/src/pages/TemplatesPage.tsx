@@ -26,7 +26,7 @@ import { todayLocalDate } from '../lib/datetime';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useAuth } from '../auth/AuthContext';
 import { ModalShell } from '../components/exclusives/ModalShell';
-import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { confirmDiscard, useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { DutyTag } from '../components/duties/DutyTag';
 import { GroupedOptions } from '../components/duties/GroupedOptions';
 import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from '../lib/duties';
@@ -267,7 +267,7 @@ export function TemplatesPage() {
         </EmptyState>
       ) : (
         <div className="table-scroll">
-          <table className="results-table">
+          <table className="results-table templates-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -281,11 +281,15 @@ export function TemplatesPage() {
             <tbody>
               {list.map((t) => (
                 <tr key={t.id}>
-                  <td>
+                  <td className="templates-name">
                     <strong>{t.name}</strong>
-                    {t.description && <div className="muted" style={{ fontSize: '0.8rem' }}>{t.description}</div>}
+                    {t.description && (
+                      <div className="muted templates-desc" title={t.description}>
+                        {t.description}
+                      </div>
+                    )}
                   </td>
-                  <td>{RECURRENCE_TYPE_LABELS[t.recurrenceType]}</td>
+                  <td className="templates-recurrence">{RECURRENCE_TYPE_LABELS[t.recurrenceType]}</td>
                   <td className="mono">{t.nodeCount}</td>
                   <td className="mono">{t.occurrenceCount}</td>
                   <td>
@@ -738,14 +742,17 @@ function TemplateEditor({
         <button
           className="secondary"
           onClick={() => {
-            if (dirty && !window.confirm('Discard your changes to this template?')) return;
-            onCancel();
+            if (confirmDiscard(dirty)) onCancel();
           }}
           disabled={saving}
         >
           Cancel
         </button>
-        <button onClick={() => void doSave()} disabled={saving}>
+        <button
+          onClick={() => void doSave()}
+          disabled={saving || !dirty}
+          title={dirty ? undefined : 'Nothing has changed yet'}
+        >
           {saving ? 'Saving…' : 'Save template'}
         </button>
       </div>

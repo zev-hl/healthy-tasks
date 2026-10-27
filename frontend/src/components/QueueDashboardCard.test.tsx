@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { Role } from '@healthy-tasks/shared';
 
 let role: Role | null = 'Admin';
@@ -8,11 +8,13 @@ vi.mock('../auth/AuthContext', () => ({
 }));
 
 const { QueueDashboardCard } = await import('./QueueDashboardCard');
+const { setToken } = await import('../api/client');
 
 const STAGING = 'https://hlcentral-api-staging.onrender.com/bullmq';
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  setToken(null);
   role = 'Admin';
 });
 
@@ -22,11 +24,30 @@ describe('QueueDashboardCard', () => {
     render(<QueueDashboardCard />);
 
     expect(screen.getByRole('heading', { name: 'Queues Dashboard' })).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /Open queue dashboard/ });
-    expect(link).toHaveAttribute('href', STAGING);
-    expect(link).toHaveAttribute('target', '_blank');
-    // The new tab gets no handle back to the app.
-    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+    const button = screen.getByRole('button', { name: /Open queue dashboard/ });
+    const form = button.closest('form')!;
+    expect(form).toHaveAttribute('method', 'post');
+    expect(form).toHaveAttribute('action', `${STAGING}/enter`);
+    expect(form).toHaveAttribute('target', '_blank');
+    // The new tab gets no handle back to the app, but the dashboard still sees
+    // where the form came from ("noreferrer" would hide that).
+    expect(form).toHaveAttribute('rel', 'noopener');
+  });
+
+  it('sends the newest sign-in with the click, so the dashboard lets the Admin in', () => {
+    vi.stubEnv('VITE_QUEUE_DASHBOARD_URL', `${STAGING}/`);
+    setToken('first-token');
+    render(<QueueDashboardCard />);
+    const form = screen.getByRole('button', { name: /Open queue dashboard/ }).closest('form')!;
+    expect(form).toHaveAttribute('action', `${STAGING}/enter`); // one slash, whatever was set
+
+    setToken('renewed-token');
+    // jsdom can't open the new tab, so the form's own submit is stopped here.
+    form.addEventListener('submit', (e) => e.preventDefault());
+    fireEvent.submit(form);
+    expect(form.querySelector<HTMLInputElement>('input[name="token"]')!.value).toBe(
+      'renewed-token',
+    );
   });
 
   it('is not there for anyone but an Admin', () => {

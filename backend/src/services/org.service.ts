@@ -1,6 +1,9 @@
 import {
+  ALERT_TASK_DUTY_NEEDED_CODE,
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   TERMINAL_TASK_STATUSES,
   isSupervisorRole,
+  type ExclusivesAlertType,
   type OrgDto,
   type OrgPersonDto,
 } from '@healthy-tasks/shared';
@@ -10,6 +13,7 @@ import { STALE_WRITE_CODE } from '../utils/optimistic.js';
 import type { SaveOrgChangesInput } from '../validation/schemas.js';
 import { type Actor, getDownlineIds } from './access-control.service.js';
 import { assertDutyAssignable } from './department.service.js';
+import { alertTaskPicksByPerson } from './exclusives/alert-task-setup.service.js';
 
 /**
  * Organization (Department Duties): who reports to whom, and which duties each
@@ -65,6 +69,7 @@ export async function getOrg(actor: Actor): Promise<OrgDto> {
     _count: { _all: true },
     orderBy: [{ assigneeId: 'asc' }, { dutyId: 'asc' }],
   });
+  const picks = await alertTaskPicksByPerson();
   const openBy = new Map<string, Record<string, number>>();
   for (const g of open) {
     if (!g.assigneeId || !g.dutyId) continue;
@@ -87,6 +92,7 @@ export async function getOrg(actor: Actor): Promise<OrgDto> {
       supervisorId: visible && !visible.includes(u.supervisorId ?? '') ? null : u.supervisorId,
       dutyIds: u.duties.map((d) => d.dutyId),
       openTaskCountByDuty: openBy.get(u.id) ?? {},
+      alertTaskPicks: picks.get(u.id) ?? [],
       canEditDuties: editable,
       canChangeSupervisor: editable,
     };
@@ -98,7 +104,8 @@ export async function getOrg(actor: Actor): Promise<OrgDto> {
  * Apply staged Organization edits in one transaction: supervisor moves first
  * (validated as a whole, so a batch can't create a loop), then duty adds and
  * removals. Removing a duty that open tasks still use is allowed — those tasks
- * are flagged ⚠, never changed.
+ * are flagged ⚠, never changed. Removing one a person's Alert Task Setup role
+ * needs is not (HLAI-112): that role is first set to “Leave unassigned” there.
  */
 export async function saveOrgChanges(actor: Actor, input: SaveOrgChangesInput): Promise<OrgDto> {
   if (actor.role !== 'Admin' && actor.role !== 'Manager') {
@@ -110,7 +117,14 @@ export async function saveOrgChanges(actor: Actor, input: SaveOrgChangesInput): 
   const dutyChanges = (input.dutyChanges ?? []).filter((c) => c.add.length + c.remove.length > 0);
 
   const all = await prisma.user.findMany({
-    select: { id: true, role: true, isActive: true, supervisorId: true, firstName: true },
+    select: {
+      id: true,
+      role: true,
+      isActive: true,
+      supervisorId: true,
+      firstName: true,
+      lastName: true,
+    },
   });
   const byId = new Map(all.map((u) => [u.id, u]));
 
@@ -177,6 +191,11 @@ export async function saveOrgChanges(actor: Actor, input: SaveOrgChangesInput): 
   for (const c of dutyChanges) assertManageable(c.userId);
   const newDutyIds = new Set(dutyChanges.flatMap((c) => c.add));
   for (const dutyId of newDutyIds) await assertDutyAssignable(dutyId);
+  await assertAlertTaskDutiesKept(
+    dutyChanges.filter((c) => c.remove.length > 0),
+    (id) => byId.get(id),
+    isAdmin,
+  );
 
   await prisma.$transaction(async (tx) => {
     for (const c of supChanges) {
@@ -211,5 +230,61 @@ export async function grantDuty(actor: Actor, userId: string, dutyId: string): P
     where: { userId_dutyId: { userId, dutyId } },
     create: { userId, dutyId },
     update: {},
+  });
+}
+
+/**
+ * HLAI-112: refuse taking away a duty that a role someone fills on Alert Task
+ * Setup needs — their alert tasks would go to them without it, and the screen
+ * would show ⚠. That role is first set to "Leave unassigned" there (or given to
+ * someone else), by an Admin: only Admins change Alert Task Setup.
+ */
+async function assertAlertTaskDutiesKept(
+  removals: { userId: string; remove: string[] }[],
+  person: (id: string) => { firstName: string; lastName: string } | undefined,
+  isAdmin: boolean,
+): Promise<void> {
+  if (removals.length === 0) return;
+  const picks = await alertTaskPicksByPerson();
+  const problems: {
+    userId: string;
+    alertType: ExclusivesAlertType;
+    role: string;
+    dutyId: string;
+  }[] = [];
+  for (const c of removals) {
+    for (const pick of picks.get(c.userId) ?? []) {
+      for (const dutyId of pick.dutyIds) {
+        if (c.remove.includes(dutyId)) {
+          problems.push({ userId: c.userId, alertType: pick.alertType, role: pick.role, dutyId });
+        }
+      }
+    }
+  }
+  if (problems.length === 0) return;
+
+  const duties = new Map(
+    (
+      await prisma.duty.findMany({
+        where: { id: { in: [...new Set(problems.map((x) => x.dutyId))] } },
+        select: { id: true, name: true, department: { select: { name: true } } },
+      })
+    ).map((d) => [d.id, `${d.department.name} › ${d.name}`]),
+  );
+  const sentences = problems.map((x) => {
+    const who = person(x.userId);
+    const name = who ? `${who.firstName} ${who.lastName}`.trim() : 'Someone';
+    return (
+      `${name} is needed as ${x.role} for ${EXCLUSIVES_ALERT_TYPE_LABELS[x.alertType]} on ` +
+      `Alert Task Setup, which needs ${duties.get(x.dutyId) ?? 'that duty'}.`
+    );
+  });
+  const fix =
+    `Set ${problems.length === 1 ? 'that role' : 'those roles'} to “Leave unassigned” ` +
+    `on Alert Task Setup first` +
+    (isAdmin ? '.' : ' (only an Admin can change Alert Task Setup).');
+  throw new HttpError(422, `${sentences.join(' ')} ${fix}`, {
+    code: ALERT_TASK_DUTY_NEEDED_CODE,
+    problems,
   });
 }

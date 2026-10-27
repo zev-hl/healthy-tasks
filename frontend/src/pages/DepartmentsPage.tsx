@@ -84,6 +84,8 @@ export function DepartmentsPage() {
   const [show, setShow] = useState<ShowFilter>('all');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
+  // How the open form started, so its button waits until something changes.
+  const [editingFrom, setEditingFrom] = useState<string | null>(null);
   const [inlineErr, setInlineErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
@@ -180,14 +182,22 @@ export function DepartmentsPage() {
     persistExpanded(next);
   }
 
+  /** Open a form (a new department or duty, or a rename) with nothing changed yet. */
+  function begin(next: Editing) {
+    setEditing(next);
+    setEditingFrom(JSON.stringify(next));
+  }
+  const changed = editing !== null && JSON.stringify(editing) !== editingFrom;
+  const unchangedTitle = changed ? undefined : 'Nothing has changed yet';
+
   function startAddDuty(deptId: string) {
     setInlineErr(null);
-    setEditing({ kind: 'addDuty', deptId, name: '', desc: '' });
+    begin({ kind: 'addDuty', deptId, name: '', desc: '' });
     if (!expanded.has(deptId)) persistExpanded(new Set([...expanded, deptId]));
   }
 
   async function saveEditing() {
-    if (!editing || busy) return;
+    if (!editing || busy || !changed) return;
     if (editing.kind === 'newDept') {
       const problem = deptNameProblem(depts, editing.name);
       if (problem) return setInlineErr(problem);
@@ -200,7 +210,7 @@ export function DepartmentsPage() {
         // Jump straight into adding the first duty.
         const created = list.find((d) => catalogNameKey(d.name) === catalogNameKey(name));
         if (created) {
-          setEditing({ kind: 'addDuty', deptId: created.id, name: '', desc: '' });
+          begin({ kind: 'addDuty', deptId: created.id, name: '', desc: '' });
           persistExpanded(new Set([...expanded, created.id]));
         } else setEditing(null);
       }
@@ -230,7 +240,7 @@ export function DepartmentsPage() {
         `Added ${name} to ${dept.name}`,
       );
       // Stay in "add" mode for the next one.
-      if (added) setEditing({ kind: 'addDuty', deptId: dept.id, name: '', desc: '' });
+      if (added) begin({ kind: 'addDuty', deptId: dept.id, name: '', desc: '' });
       return;
     }
     const problem = dutyNameProblem(dept, editing.name, editing.id);
@@ -299,7 +309,7 @@ export function DepartmentsPage() {
           type="button"
           onClick={() => {
             setInlineErr(null);
-            setEditing({
+            begin({
               kind: 'newDept',
               name: '',
               color:
@@ -403,7 +413,8 @@ export function DepartmentsPage() {
             <button
               type="button"
               className="btn-sm"
-              disabled={busy}
+              disabled={busy || !changed}
+              title={unchangedTitle}
               onClick={() => void saveEditing()}
             >
               Create department
@@ -462,7 +473,8 @@ export function DepartmentsPage() {
                       <button
                         type="button"
                         className="btn-sm"
-                        disabled={busy}
+                        disabled={busy || !changed}
+                        title={unchangedTitle}
                         onClick={() => void saveEditing()}
                       >
                         Save
@@ -518,7 +530,7 @@ export function DepartmentsPage() {
                           className="dd-icon-btn"
                           onClick={() => {
                             setInlineErr(null);
-                            setEditing({ kind: 'dept', id: d.id, name: d.name, color: d.color });
+                            begin({ kind: 'dept', id: d.id, name: d.name, color: d.color });
                           }}
                         >
                           Rename
@@ -567,7 +579,8 @@ export function DepartmentsPage() {
                     <button
                       type="button"
                       className="btn-sm"
-                      disabled={busy}
+                      disabled={busy || !changed}
+                      title={unchangedTitle}
                       onClick={() => void saveEditing()}
                     >
                       Add duty
@@ -629,7 +642,8 @@ export function DepartmentsPage() {
                             <button
                               type="button"
                               className="btn-sm"
-                              disabled={busy}
+                              disabled={busy || !changed}
+                              title={unchangedTitle}
                               onClick={() => void saveEditing()}
                             >
                               Save
@@ -687,7 +701,7 @@ export function DepartmentsPage() {
                                 className="dd-icon-btn"
                                 onClick={() => {
                                   setInlineErr(null);
-                                  setEditing({
+                                  begin({
                                     kind: 'duty',
                                     id: u.id,
                                     deptId: d.id,

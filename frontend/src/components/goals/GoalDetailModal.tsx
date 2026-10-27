@@ -8,7 +8,7 @@ import { ConflictBanner } from '../ConflictBanner';
 import { UserChip } from '../ui/Avatar';
 import { GoalStatusPill, formatGoalValue, formatDeadline } from './goalUi';
 import { GoalEditorModal } from './GoalEditorModal';
-import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
+import { confirmDiscard, useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
 import { useBackdropDismiss } from '../../lib/useBackdropDismiss';
 
 interface Props {
@@ -42,8 +42,8 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
   const { conflict, bannerShown, guard, review, reset } = useStaleWriteGuard();
 
   // Unsaved-work guard for the open panel (progress / send back / resolve):
-  // while it holds typed changes, a stray backdrop click doesn't close the
-  // goal and leaving the page asks first. The Edit form guards itself.
+  // while it holds typed changes, its Cancel, closing the goal (a click outside
+  // or Close) and leaving the page all ask first. The Edit form guards itself.
   const panelDirty =
     panel === 'progress'
       ? resultValue !== (goal.resultValue != null ? String(goal.resultValue) : '') ||
@@ -56,7 +56,13 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
           ? supervisorComments.trim() !== '' || resolution !== 'Met'
           : false;
   useUnsavedChangesWarning(panelDirty && !busy);
-  const backdrop = useBackdropDismiss(onClose, panelDirty);
+  const close = () => {
+    if (confirmDiscard(panelDirty)) onClose();
+  };
+  const cancelPanel = () => {
+    if (confirmDiscard(panelDirty)) setPanel(null);
+  };
+  const backdrop = useBackdropDismiss(close);
 
   // Sync the editable panel fields (results/notes/risks/mitigations) to a goal.
   function syncPanelFields(g: GoalDto) {
@@ -286,7 +292,7 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
               <textarea id="p-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              <button type="button" className="secondary" onClick={cancelPanel}>
                 Cancel
               </button>
               {conflict ? (
@@ -331,7 +337,7 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
               />
             </div>
             <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              <button type="button" className="secondary" onClick={cancelPanel}>
                 Cancel
               </button>
               {conflict ? (
@@ -382,7 +388,7 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
               />
             </div>
             <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-              <button type="button" className="secondary" onClick={() => setPanel(null)}>
+              <button type="button" className="secondary" onClick={cancelPanel}>
                 Cancel
               </button>
               {conflict ? (
@@ -488,7 +494,7 @@ export function GoalDetailModal({ goal: initial, supervisorView, onClose, onChan
             )}
 
             <span className="goal-actions-spacer" />
-            <button type="button" className="ghost" onClick={onClose}>
+            <button type="button" className="ghost" onClick={close}>
               Close
             </button>
           </div>

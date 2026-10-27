@@ -618,6 +618,8 @@ export const TASK_HISTORY_FIELDS = {
   // HLAI-118: the special attributes.
   alertGroup: 'alertGroup',
   alertType: 'alertType',
+  // HLAI-112: the task was made automatically from an Exclusives alert.
+  alert: 'alert',
 } as const;
 
 /** Human-readable label for a history `field` key (falls back to the key). */
@@ -640,6 +642,7 @@ export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
   duty: 'Department › Duty',
   alertGroup: 'Alert Group',
   alertType: 'Alert Type',
+  alert: 'Alert',
 };
 
 /** A single change-history entry for a task, newest-first in listings. */
@@ -1343,7 +1346,7 @@ export const WEEKDAYS: { value: number; short: string; label: string }[] = [
 export const RECURRENCE_END_TYPES = ['Never', 'OnDate', 'AfterOccurrences'] as const;
 export type RecurrenceEndType = (typeof RECURRENCE_END_TYPES)[number];
 
-export const TEMPLATE_OCCURRENCE_ORIGINS = ['manual', 'scheduled'] as const;
+export const TEMPLATE_OCCURRENCE_ORIGINS = ['manual', 'scheduled', 'alert'] as const;
 export type TemplateOccurrenceOrigin = (typeof TEMPLATE_OCCURRENCE_ORIGINS)[number];
 
 /** Default global lead time (days) before an occurrence's anchor to auto-materialize. */
@@ -1952,8 +1955,9 @@ export const EXCLUSIVES_ALERT_MODE_LABELS: Record<ExclusivesAlertMode, string> =
 };
 
 /**
- * The 12 detected alert types, in the fixed UI/seed order. Keys are stable
- * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names.
+ * The detected alert types, in the fixed UI/seed order. Keys are stable
+ * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names. Count them
+ * with `EXCLUSIVES_ALERT_TYPES.length`, never by hand.
  */
 export const EXCLUSIVES_ALERT_TYPES = [
   'ListingSuppressed',
@@ -1985,6 +1989,149 @@ export const EXCLUSIVES_ALERT_TYPE_LABELS: Record<ExclusivesAlertType, string> =
   BulletPointsChanged: 'Bullet Points Changed',
   DimensionsChanged: 'Dimensions Changed',
 };
+
+// --- Alert task labels (HLAI-112) --------------------------------------------
+// Tasks made from alerts are labelled `<group part>_<type code>_<YYJJJHHMM>`,
+// e.g. "WasiU_BW_262920830" for "Wasif - US", Buy Box Won, 19 Oct 2026 08:30.
+
+/** Each alert type's two-letter code, as used in those labels. */
+export const EXCLUSIVES_ALERT_TYPE_CODES: Record<ExclusivesAlertType, string> = {
+  ListingSuppressed: 'LS',
+  BuyBoxLost: 'BL',
+  BuyBoxWon: 'BW',
+  NumberOfSellersChanged: 'SC',
+  PriceChanged: 'PC',
+  CategoryChanged: 'CC',
+  BrandChanged: 'BC',
+  TitleChanged: 'TC',
+  MainImageChanged: 'IC',
+  DescriptionChanged: 'DC',
+  BulletPointsChanged: 'BP',
+  DimensionsChanged: 'DM',
+};
+
+/** What splits a group name into parts: "-", or an en/em dash typed in its place. */
+const GROUP_NAME_SEPARATOR = /[-–—]/;
+/** What a label takes from a name: letters and digits (spaces and marks skipped). */
+const LABEL_CHARACTERS = /[\p{L}\p{N}]/gu;
+
+/**
+ * A group's part of the label: the first 4 letters of its name, then the first
+ * letter after each "-", keeping their case. "Wasif - US" → "WasiU", "Wasif - US
+ * - East" → "WasiUE", "Versure" → "Vers", "Abc - US" → "AbcU". A name with no
+ * letters at all gives "Group".
+ */
+export function alertGroupLabelPart(groupName: string): string {
+  const [first = [], ...rest] = groupName
+    .split(GROUP_NAME_SEPARATOR)
+    .map((part) => part.match(LABEL_CHARACTERS) ?? []);
+  const label = first.slice(0, 4).join('') + rest.map((part) => part[0] ?? '').join('');
+  return label || 'Group';
+}
+
+/**
+ * A moment as `YYJJJHHMM` on `timeZone`'s clock: the year's last two digits, the
+ * day of the year (001–366), and the 24-hour time. 19 Oct 2026 08:30 in New York
+ * → "262920830".
+ */
+export function julianStamp(at: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+  }).formatToParts(at);
+  const n = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const year = n('year');
+  const dayOfYear = (Date.UTC(year, n('month') - 1, n('day')) - Date.UTC(year, 0, 0)) / 86_400_000;
+  const pad = (value: number, width: number) => String(value).padStart(width, '0');
+  // `hour` can come back as 24 for midnight in some ICU builds.
+  return pad(year % 100, 2) + pad(dayOfYear, 3) + pad(n('hour') % 24, 2) + pad(n('minute'), 2);
+}
+
+/** The instance label of a task made from alerts of one group and type, at `at`. */
+export function alertTaskInstanceLabel(
+  groupName: string,
+  alertType: ExclusivesAlertType,
+  at: Date,
+  timeZone: string,
+): string {
+  const code = EXCLUSIVES_ALERT_TYPE_CODES[alertType];
+  return `${alertGroupLabelPart(groupName)}_${code}_${julianStamp(at, timeZone)}`;
+}
+
+// --- Links to the Alert Log (HLAI-112) ----------------------------------------
+// A Daily alert task's description ends with a link that opens the Alert Log on
+// that task's alerts. It is the only link a description may hold.
+
+/** The Alert Log screen's address. */
+export const ALERT_LOG_PATH = '/exclusives/log';
+
+/** The filters a link to the Alert Log can carry; dates are ISO instants. */
+export interface AlertLogLinkFilters {
+  from?: string;
+  to?: string;
+  alertTypes?: ExclusivesAlertType[];
+  groupIds?: number[];
+  /** What goes in the search box (an ASIN, for a Daily task's row). */
+  search?: string;
+}
+
+/** A link that opens the Alert Log with these filters set. */
+export function alertLogHref(filters: AlertLogLinkFilters): string {
+  const query = new URLSearchParams();
+  if (filters.from) query.set('from', filters.from);
+  if (filters.to) query.set('to', filters.to);
+  for (const t of filters.alertTypes ?? []) query.append('type', t);
+  for (const g of filters.groupIds ?? []) query.append('group', String(g));
+  if (filters.search) query.set('q', filters.search);
+  const q = query.toString();
+  return q ? `${ALERT_LOG_PATH}?${q}` : ALERT_LOG_PATH;
+}
+
+/** The filters in an Alert Log link's query string; anything else is ignored. */
+export function readAlertLogLink(search: string): Required<AlertLogLinkFilters> {
+  const query = new URLSearchParams(search);
+  const instant = (v: string | null) =>
+    v && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : '';
+  const types = query
+    .getAll('type')
+    .filter((t): t is ExclusivesAlertType =>
+      (EXCLUSIVES_ALERT_TYPES as readonly string[]).includes(t),
+    );
+  const groups = query
+    .getAll('group')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+  return {
+    from: instant(query.get('from')),
+    to: instant(query.get('to')),
+    alertTypes: [...new Set(types)],
+    groupIds: [...new Set(groups)],
+    search: (query.get('q') ?? '').trim().slice(0, 200),
+  };
+}
+
+/** Whether `href` opens the Alert Log: the one link descriptions may keep. */
+export function isAlertLogHref(href: string): boolean {
+  return href === ALERT_LOG_PATH || href.startsWith(`${ALERT_LOG_PATH}?`);
+}
+
+/**
+ * `label`, or if it is taken (Immediate alerts of one group and type in the same
+ * minute) the first free of `label_2`, `label_3`, …
+ */
+export function withClashCounter(label: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(label)) return label;
+  for (let n = 2; ; n += 1) {
+    const next = `${label}_${n}`;
+    if (!taken.has(next)) return next;
+  }
+}
 
 // --- Task special attributes (HLAI-118) --------------------------------------
 
@@ -2083,14 +2230,14 @@ export interface ExclusivesGroupRowDto {
   asinPreview: string[];
   /** Alerts logged for this group in the last 24 hours. */
   alerts24h: number;
-  /** How many of the 12 alert types are not 'off'. */
+  /** How many of the alert types are not 'off'. */
   alertTypesOn: number;
   latestAlertAt: string | null; // ISO
   createdAt: string; // ISO
   updatedAt: string; // ISO
 }
 
-/** A group opened in the editor: its listings and all 12 alert settings. */
+/** A group opened in the editor: its listings and every alert type's setting. */
 export interface ExclusivesGroupDto {
   id: number;
   name: string;
@@ -2098,7 +2245,7 @@ export interface ExclusivesGroupDto {
   /** Off means the sweep skips this group's ASINs entirely. */
   isActive: boolean;
   listings: ExclusivesListingDto[];
-  /** Always all 12 types; a missing row reads as 'off'. */
+  /** Always every type; a missing row reads as 'off'. */
   settings: Record<ExclusivesAlertType, ExclusivesAlertMode>;
   createdAt: string; // ISO
   updatedAt: string; // ISO
@@ -2322,6 +2469,34 @@ export interface ExclusivesGroupOptionDto {
   isActive: boolean;
 }
 
+// --- Exclusives: a template and its people per alert type (HLAI-112) ------
+
+/**
+ * Which template an alert type's tasks are made from, and who fills each of the
+ * template's roles. One per alert type, the same for every alert group. With no
+ * template, that alert type's alerts make no task.
+ */
+export interface ExclusivesAlertTaskSettingDto {
+  alertType: ExclusivesAlertType;
+  templateId: number | null;
+  /** A person per role of the template; a role left out (or null) is unassigned. */
+  roleAssignments: RoleAssignment[];
+}
+
+/** The Alert Tasks screen: every alert type's setting, in EXCLUSIVES_ALERT_TYPES order. */
+export interface ExclusivesAlertTaskSetupDto {
+  settings: ExclusivesAlertTaskSettingDto[];
+  /** When it was last saved (null: never); sent back with the next save. */
+  updatedAt: string | null;
+}
+
+/** Saving the Alert Tasks screen: every alert type's setting at once. */
+export interface SaveExclusivesAlertTaskSetupRequest {
+  settings: ExclusivesAlertTaskSettingDto[];
+  /** The `updatedAt` the screen was loaded with, to refuse a save over someone else's. */
+  expectedUpdatedAt: string | null;
+}
+
 // ===========================================================================
 // Department Duties
 // ---------------------------------------------------------------------------
@@ -2461,6 +2636,22 @@ export interface TemplateDutyCheckDto {
 
 // --- Organization ------------------------------------------------------------
 
+/**
+ * HLAI-112: a role this person fills on Alert Task Setup, and the duties that
+ * role's template tasks carry — which the Organization screen won't let go.
+ */
+export interface OrgAlertTaskPickDto {
+  alertType: ExclusivesAlertType;
+  role: string;
+  dutyIds: string[];
+}
+
+/**
+ * Error code (in `details.code`, HTTP 422) when an Organization save would take
+ * away a duty a person's Alert Task Setup role needs.
+ */
+export const ALERT_TASK_DUTY_NEEDED_CODE = 'ALERT_TASK_DUTY_NEEDED';
+
 /** One person on the Organization screen. */
 export interface OrgPersonDto {
   id: string;
@@ -2474,6 +2665,8 @@ export interface OrgPersonDto {
   dutyIds: string[];
   /** dutyId → this person's open tasks carrying that duty (for removal warnings). */
   openTaskCountByDuty: Record<string, number>;
+  /** HLAI-112: the roles they fill on Alert Task Setup that need duties. */
+  alertTaskPicks: OrgAlertTaskPickDto[];
   /** The viewer may tick/untick this person's duties. */
   canEditDuties: boolean;
   /** The viewer may give this person a new supervisor. */

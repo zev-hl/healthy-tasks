@@ -45,6 +45,9 @@ function describe(entry: TaskHistoryEntryDto): string {
     return 'Deleted a comment';
   }
 
+  // HLAI-112: a task made automatically from an Exclusives alert.
+  if (entry.field === 'alert') return `Made automatically from ${entry.detail ?? 'an alert'}`;
+
   if (entry.field === 'merge' && entry.changeType === 'updated') {
     return `Account merge: reassigned ${entry.previousValue ?? '—'} → ${entry.newValue ?? '—'}`;
   }

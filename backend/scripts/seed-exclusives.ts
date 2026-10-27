@@ -60,7 +60,7 @@ async function main() {
   });
 
   // Every alert type starts off, and someone switches on the ones they want.
-  // The rows are still written so all twelve are visible and toggleable rather
+  // The rows are still written so every type is visible and toggleable rather
   // than implied by their absence (a missing row also counts as off — see
   // alert-gating.ts). Until one is switched on, sweeps keep the snapshots
   // current and write no alerts.

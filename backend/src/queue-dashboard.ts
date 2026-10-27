@@ -14,6 +14,9 @@ const BASE_PATH = '/bullmq';
 const board = createQueueBoard(BASE_PATH);
 
 const app = express();
+// The website's button posts here, as it does to the API's dashboard; with no
+// sign-in here, it just opens the board.
+app.post(`${BASE_PATH}/enter`, (_req, res) => res.redirect(303, BASE_PATH));
 app.use(BASE_PATH, board.router);
 app.get('/', (_req, res) => res.redirect(BASE_PATH));
 

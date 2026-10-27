@@ -692,7 +692,9 @@ export function ExclusivesEditorPage() {
           <span className="exc-panel-title">Alert settings</span>
           <p className="exc-settings-sub">Daily and Immediate both mean “on” in this phase.</p>
           <div className="exc-settings-status">
-            <span className="mono exc-settings-count">{onCount} of 12 on</span>
+            <span className="mono exc-settings-count">
+              {onCount} of {EXCLUSIVES_ALERT_TYPES.length} on
+            </span>
             <button
               type="button"
               className="exc-quick accent"

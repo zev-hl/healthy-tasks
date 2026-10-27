@@ -4,6 +4,7 @@ import type {
   TemplateDto,
   TemplateNodeDto,
   TemplateOccurrenceDto,
+  TemplateOccurrenceOrigin,
   TemplateSummaryDto,
 } from '@healthy-tasks/shared';
 import { toUserRef } from './user.mapper.js';
@@ -66,7 +67,7 @@ function toDependencyDto(d: { id: number; blockerNodeId: number; blockedNodeId: 
 export function toTemplateOccurrenceDto(o: {
   id: number;
   seq: number | null;
-  origin: 'manual' | 'scheduled';
+  origin: TemplateOccurrenceOrigin;
   instanceLabel: string | null;
   anchorStart: Date;
   rootTaskId: number | null;

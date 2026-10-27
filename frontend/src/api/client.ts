@@ -15,6 +15,8 @@ import type {
   ExclusivesGroupAlertStatsDto,
   ExclusivesGroupDto,
   ExclusivesGroupOptionDto,
+  ExclusivesAlertTaskSetupDto,
+  SaveExclusivesAlertTaskSetupRequest,
   ExclusivesGroupQueryRequest,
   ExclusivesGroupRowDto,
   ExclusivesGroupWriteRequest,
@@ -221,6 +223,15 @@ export const api = {
   /** Every group's id and name, for the Alert Log's group filter. */
   listExclusivesGroupOptions: () =>
     request<ExclusivesGroupOptionDto[]>('/api/exclusives/groups/options'),
+
+  // HLAI-112: the Alert Tasks screen (Admins only).
+  getExclusivesAlertTaskSetup: () =>
+    request<ExclusivesAlertTaskSetupDto>('/api/exclusives/alert-tasks'),
+  saveExclusivesAlertTaskSetup: (body: SaveExclusivesAlertTaskSetupRequest) =>
+    request<ExclusivesAlertTaskSetupDto>('/api/exclusives/alert-tasks', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   queryExclusivesGroups: (body: ExclusivesGroupQueryRequest) =>
     request<PaginatedResult<ExclusivesGroupRowDto>>('/api/exclusives/groups/query', {

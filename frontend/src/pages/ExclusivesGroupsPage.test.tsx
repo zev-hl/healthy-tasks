@@ -1,10 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
-import type {
-  ExclusivesGroupRowDto,
-  ExclusivesSummaryDto,
-  PaginatedResult,
+import {
+  EXCLUSIVES_ALERT_TYPES,
+  type ExclusivesGroupRowDto,
+  type ExclusivesSummaryDto,
+  type PaginatedResult,
 } from '@healthy-tasks/shared';
 
 // The whole API module is mocked, hoisted above the imports that use it.
@@ -107,7 +108,7 @@ describe('ExclusivesGroupsPage', () => {
 
     expect(screen.getByText('Versure Exclusives')).toBeInTheDocument();
     expect(screen.getByText('1 groups · 0 individual')).toBeInTheDocument();
-    expect(screen.getByText('0 of 12')).toBeInTheDocument();
+    expect(screen.getByText(`0 of ${EXCLUSIVES_ALERT_TYPES.length}`)).toBeInTheDocument();
     // The ASIN preview shows what the server sent, plus how many it left out.
     expect(screen.getByText(/B00024D8SA · B0CKM2SSK3 · B000E9CCSA\s+\+442/)).toBeInTheDocument();
   });
@@ -265,6 +266,10 @@ describe('ExclusivesGroupsPage', () => {
     const done = screen.getByRole('alertdialog');
     expect(within(done).getByText('Group deleted successfully')).toBeInTheDocument();
     expect(within(done).getByText(/is no longer monitored/)).toBeInTheDocument();
+
+    // It stays until OK is pressed.
+    fireEvent.click(within(done).getByRole('button', { name: 'OK' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('shows the server message when loading fails', async () => {

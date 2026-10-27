@@ -10,7 +10,7 @@ import { ApiError } from '../../api/client';
 import { useStaleWriteGuard } from '../../lib/useStaleWriteGuard';
 import { ConflictBanner } from '../ConflictBanner';
 import { isoToDateInput, dateInputToIso } from './goalUi';
-import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
+import { confirmDiscard, useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
 import { useBackdropDismiss } from '../../lib/useBackdropDismiss';
 
 interface Props {
@@ -59,10 +59,15 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
   const [original] = useState(fields);
   const dirty = fields() !== original;
   useUnsavedChangesWarning(dirty && !submitting);
-  const backdrop = useBackdropDismiss(onClose, dirty);
+  // Cancel and a click outside both ask before throwing away what was typed.
+  const dismiss = () => {
+    if (confirmDiscard(dirty)) onClose();
+  };
+  const backdrop = useBackdropDismiss(dismiss);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!dirty) return; // nothing changed yet
     setError(null);
 
     const target = Number(targetValue);
@@ -244,7 +249,7 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
           </div>
 
           <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="secondary" onClick={onClose}>
+            <button type="button" className="secondary" onClick={dismiss}>
               Cancel
             </button>
             {conflict ? (
@@ -252,7 +257,11 @@ export function GoalEditorModal({ goal, ownerOptions, onClose, onSaved }: Props)
                 {submitting ? 'Refreshing…' : 'Refresh'}
               </button>
             ) : (
-              <button type="submit" disabled={submitting}>
+              <button
+                type="submit"
+                disabled={submitting || !dirty}
+                title={dirty ? undefined : 'Nothing has changed yet'}
+              >
                 {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create goal'}
               </button>
             )}

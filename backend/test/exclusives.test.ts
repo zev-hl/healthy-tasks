@@ -104,7 +104,7 @@ async function seedGroup(opts: {
   name: string;
   groupType?: 'GROUP' | 'INDIVIDUAL';
   asins?: SeedAsin[];
-  /** How many of the 12 alert types are switched on (the rest are written 'off'). */
+  /** How many of the alert types are switched on (the rest are written 'off'). */
   settingsOn?: number;
   /** One alert per entry, at the given age in hours. */
   alertsAgedHours?: number[];
@@ -329,7 +329,7 @@ describe('exclusives: group read (HLAI-71 7a)', () => {
 });
 
 describe('exclusives: one group (HLAI-71 7a)', () => {
-  it('returns its listings and all twelve settings', async () => {
+  it('returns its listings and every type\u2019s setting', async () => {
     const capturedAt = new Date('2026-09-20T10:00:00.000Z');
     const id = await seedGroup({
       name: 'Editor group',
@@ -1331,7 +1331,7 @@ describe("exclusives: a group's recent alerts (HLAI-71 ticket 1)", () => {
     assert.deepEqual(res.body.byType, { PriceChanged: 2, BuyBoxLost: 1 });
   });
 
-  it('leaves out the types that had none, rather than sending twelve zeros', async () => {
+  it('leaves out the types that had none, rather than sending a zero for each', async () => {
     const id = await seedGroup({ name: 'Quiet one', asins: [{ asin: 'B0STATS02', title: 'A' }] });
     await seedAlert({ asin: 'B0STATS02', groupId: id, alertType: 'TitleChanged' });
 
