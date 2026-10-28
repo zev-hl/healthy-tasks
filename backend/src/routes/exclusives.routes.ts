@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/async-handler.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import {
   exclusivesAlertQuerySchema,
@@ -65,11 +65,15 @@ exclusivesRouter.post(
 
 exclusivesRouter.get('/groups/options', asyncHandler(exclusivesGroupOptionsController));
 
-// HLAI-112: the Alert Tasks screen (Admins only, like the screen itself).
-exclusivesRouter.get('/alert-tasks', requireAdmin, asyncHandler(getAlertTaskSetupController));
+// HLAI-112: the Alert Tasks screen (Admins and Managers, like the screen itself).
+exclusivesRouter.get(
+  '/alert-tasks',
+  requireRole('Admin', 'Manager'),
+  asyncHandler(getAlertTaskSetupController),
+);
 exclusivesRouter.put(
   '/alert-tasks',
-  requireAdmin,
+  requireRole('Admin', 'Manager'),
   validateBody(exclusivesAlertTaskSetupSaveSchema),
   asyncHandler(saveAlertTaskSetupController),
 );
