@@ -141,7 +141,7 @@ function Sidebar({
         <NavLink to="/exclusives/log" className={navItemClass}>
           Alert Log
         </NavLink>
-        {user?.role === 'Admin' && (
+        {(user?.role === 'Admin' || user?.role === 'Manager') && (
           <NavLink to="/exclusives/alert-tasks" className={navItemClass}>
             Alert Task Setup
           </NavLink>

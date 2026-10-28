@@ -173,9 +173,9 @@ set)". One list drives all of it: `TASK_ATTRIBUTE_KEYS` (shared) +
 mark on the task page) but can no longer be picked. See `docs/architecture.md` §15.
 
 ### Alert Tasks (HLAI-112)
-An Admin screen (`/exclusives/alert-tasks`) linking each Exclusives alert type to a
+An Admin and Manager screen (`/exclusives/alert-tasks`) linking each Exclusives alert type to a
 template and a person per role of that template, for tasks to be made from alerts
-automatically. The setup is stored (`AlertTaskSetting`, Admin-only
+automatically. The setup is stored (`AlertTaskSetting`, Admin and Manager only
 `GET`/`PUT /api/exclusives/alert-tasks`). Immediate alerts make their tasks at the
 end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`); an
 alert's `taskHandledAt` makes sure it never makes two, and alerts from before

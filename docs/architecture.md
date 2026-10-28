@@ -809,7 +809,7 @@ default; set on Render), listing the day's alerts and linking to them in the
 Alert Log.
 
 - **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
-  Task Setup" under *E-commerce exclusives*), Admins only. One row per alert type in
+  Task Setup" under *E-commerce exclusives*), Admins and Managers. One row per alert type in
   `EXCLUSIVES_ALERT_TYPES` order: the type's badge, a template `SearchSelect`
   ("— None —" = no task; one template may serve several types), and the Role
   Assignment cell — one line per role of the chosen template (fetched once with
@@ -821,7 +821,7 @@ Alert Log.
 - **Save / Cancel** at the top right, both off until something changed. Save
   sends every type's setting at once with `expectedUpdatedAt`, and stays off while a
   ⚠ remains or a template's roles are loading; Cancel puts back what was last
-  saved. If another Admin saved first, Save turns into Refresh with the shared
+  saved. If someone else saved first, Save turns into Refresh with the shared
   `ConflictBanner`, as in the group editor. Leaving with changes asks first
   (`useUnsavedChangesWarning`). Loading, load-error (with "Try again") and
   no-templates (a link to Templates) states.
@@ -831,10 +831,10 @@ Alert Log.
 - **Storage.** `AlertTaskSetting`, one row per alert type once it has been saved
   with something in it: `templateId` (deleting the template empties it, so that
   type makes no tasks until another is picked), `roleAssignments` as JSON
-  `[{ role, assigneeId }]` (people only, by role), and `savedById`, the Admin who
-  last changed the row — the creator of the tasks it will make. A Save rewrites
+  `[{ role, assigneeId }]` (people only, by role), and `savedById`, the Admin or
+  Manager who last changed the row — the creator of the tasks it will make. A Save rewrites
   only the rows that changed.
-- **Endpoints** (Admins only, `services/exclusives/alert-task-setup.service.ts`).
+- **Endpoints** (Admins and Managers, `services/exclusives/alert-task-setup.service.ts`).
   `GET /api/exclusives/alert-tasks` returns every type's row in order (an unsaved type
   is empty) and the setup's version, its newest row's `updatedAt` (null before
   the first Save). `PUT` takes `{ settings, expectedUpdatedAt }`; a Save from an
