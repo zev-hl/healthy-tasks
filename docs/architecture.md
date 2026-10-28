@@ -347,6 +347,26 @@ exactly one real task.
 outage (claim-before-send + cooldown). A `schedulerDown` flag on the heartbeat
 drives a global "contact an admin" banner for every user.
 
+**Late and incomplete passes** (Phase 14, both to every active Admin, at most once
+an hour per server): `measureOverdue` lists the work that should have run and
+hasn't — template and task-level occurrences inside the lead time, Approved goals
+past their deadline (reminders are not counted). After a pass that list must be
+empty, or "HL Central scheduler did not complete its work" is sent. Before the pass
+it tells how late the scheduler woke: "HL Central scheduler ran late" when it was
+more than 30 minutes late (`SCHEDULER_LATE_THRESHOLD_MS`) for work it then did.
+
+How late is `lateForScheduler` (28 Oct 2026, after a false alarm in production,
+"322.6 hour(s) overdue"): each item counts from the later of when it fell due by
+its own dates and when it was **set up** — its template or task rule last saved
+(`updatedAt`, the template's steps included), the previous occurrence completed
+(repeat after completion), the lead time last changed (`AppSetting.updatedAt`), the
+goal last changed. Work set up since the scheduler's last run is not counted at
+all: changes don't wake it, so that run is when it first hears of it (within the
+6-hour ceiling, by design). Right after start-up the last run is unknown (it is
+kept in memory) and taken as 6 hours earlier. By its own dates alone, a new series'
+first copies were "due" up to the lead time (14 days) before anyone set it up, so
+every new repeating task or template sent the email; a real delay still does.
+
 ## 9. Migrations & deployment notes
 
 - Migrations are plain SQL under `prisma/migrations`, applied with
@@ -943,3 +963,71 @@ Alert Log.
   template's. On a Daily alert task that drops the list of alerts and the Alert
   Log link. "Leave them" is safe. Not changed yet: leaving `alert` occurrences out
   of that update is the suggested fix, awaiting a decision.
+
+## 17. Competitive Price alerts (HLAI-124)
+
+Amazon compares each offer's price + shipping with a price it finds on other
+retailers, its competitive price; an offer above it may lose the Buy Box. Five
+alert types, after the original twelve, fire when one price **crosses** the other
+(the client's rules of 28 Oct 2026), off for every group until switched on:
+
+| Label | Key | Code | Tone | Fires when |
+|---|---|---|---|---|
+| Competitive Price Below HL Price | `CompetitivePriceBelowOurs` | `CB` | danger | T moves and crosses below P |
+| Competitive Price Above HL Price | `CompetitivePriceAboveOurs` | `CA` | ok | T moves and crosses above P |
+| Competitive Price Change | `CompetitivePriceChanged` | `CH` | warn | T moves, stays on the same side |
+| HL Price Above Competitive Price | `OurPriceAboveCompetitive` | `HA` | danger | P moves and crosses above T |
+| HL Price Below Competitive Price | `OurPriceBelowCompetitive` | `HB` | ok | P moves and crosses below T |
+
+T = the competitive price ("CP"), P = our price + shipping ("HL price"). An earlier
+version (23–27 Oct, never in production) had three types, Below / Increased /
+Changed, on a "T under P" state; its rows exist on no server.
+
+- **Read.** No extra calls: the price answer every check already fetches (Product
+  Pricing v0 `getListingOffersBatch`) carries it as
+  `Summary.CompetitivePriceThreshold` — for some listings only (23 Oct 2026: 111
+  of 304 US listings, none of the 4 in Canada). `resolveCompetitive`
+  (`sp-api/pricing.ts`) reads it and our offer's `ListingPrice + Shipping` (our
+  offer by `SellerId` = the merchant token; no shipping = free). Each is empty when
+  Amazon gives none or our offer isn't in the answer (out of stock, inactive). A
+  listing whose price answer can't be trusted is skipped, as before.
+- **Storage.** `ListingSnapshot.competitivePrice` and `ourLandedPrice`
+  (`Decimal(10,2)`): the last pair the rules could compare, and
+  `competitiveRecorded`: whether there is one. Added by
+  `20261023120000_competitive_price`; the feature was taken out once
+  (`20261026120000_remove_competitive_price` dropped the columns and its alert
+  types' rows) and brought back by `20261026130000_competitive_price_back`, which
+  adds them again, `false` on every row.
+- **Rules** (`alert-detection.ts`), the client's, as written, strict to the half
+  cent; "Prev" is the saved pair, "Curr" the fresh one:
+  - *CB*: HL Prev < CP Prev, HL Curr > CP Curr, CP Prev ≠ CP Curr.
+  - *CA*: HL Prev > CP Prev, HL Curr < CP Curr, CP Prev ≠ CP Curr.
+  - *CH*: CP Prev ≠ CP Curr, and HL on the same side of CP before and now.
+  - *HA*: HL Prev < CP Prev, HL Curr > CP Curr, HL Prev ≠ HL Curr.
+  - *HB*: HL Prev > CP Prev, HL Curr < CP Curr, HL Prev ≠ HL Curr.
+
+  When both prices move and cross, two fire (CB + HA, or CA + HB). CB, CA and CH
+  carry T before and now; HA and HB carry P.
+- **A missing T counts as -1** (the client's rule). So Amazon removing T while it
+  was above P fires *CB* (red), while below P *CH*; T coming back above P fires
+  *CA*, below P *CH*; a listing that never had one (most) never fires, whatever P
+  does. The messages (`alert-message.ts`) never show -1: "Amazon removed its
+  competitive price (was $11.00, above our HL price of $10.00).", "Amazon set a
+  competitive price of …".
+- **A skipped check.** When P = T now (the client's rule), or P is missing now (our
+  offer not in the answer; decided 28 Oct), nothing fires and the saved
+  pair is **kept**: `replacementFields` (`snapshot.repository.ts`) stores the
+  fresh data with the old pair (`comparablePrices` decides). The next check
+  compares with the last unequal pair, so above → equal → below is caught as a
+  crossing. A saved, recorded pair is therefore never equal.
+- **The first check after the release** is quiet (the client, 27 Oct: "Start
+  quietly from the second check"): a row with `competitiveRecorded` false fires
+  none of the five; the check records the pair, and the rules apply from the next
+  one. A first check that is skipped records nothing, so the listing stays quiet
+  until one can compare (otherwise an empty T would read as -1). A new listing's
+  first snapshot is recorded the same way. A listing already losing the Buy Box at
+  the release is not reported until a price moves.
+- **Everything else follows the list**: the group editor ("N of 17 on"), the Groups
+  list, the Alert Log filter (its limit is the list's length), Alert Task Setup and
+  the task Alert Type attribute. Nothing counts the types by hand. One event can
+  fire two alerts, so two tasks when both are on Immediate with templates.

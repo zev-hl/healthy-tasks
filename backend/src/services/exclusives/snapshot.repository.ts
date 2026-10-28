@@ -1,4 +1,5 @@
 import { Prisma, type ListingSnapshot } from '@prisma/client';
+import { comparablePrices } from './alert-detection.js';
 import type { ListingSnapshotDraft } from './snapshot.mapper.js';
 import type { SnapshotView } from './snapshot-diff.js';
 
@@ -20,6 +21,8 @@ function cents(amount: number | null | undefined): number | null {
 
 /** The stored columns for fresh data (everything but the listing and the time). */
 export function snapshotFields(draft: ListingSnapshotDraft) {
+  const competitivePrice = cents(draft.competitivePrice);
+  const ourLandedPrice = cents(draft.ourLandedPrice);
   return {
     title: draft.title ?? null,
     mainImageUrl: draft.mainImageUrl ?? null,
@@ -33,9 +36,36 @@ export function snapshotFields(draft: ListingSnapshotDraft) {
     buyboxWinnerSellerId: draft.buyboxWinnerSellerId ?? null,
     buyboxPrice: cents(draft.buyboxPrice),
     offerCount: draft.offerCount ?? null,
+    competitivePrice,
+    ourLandedPrice,
+    // HLAI-124: a pair the competitive rules can compare. A new listing's first
+    // pair that can't (our offer missing, or equal prices) waits for one that can.
+    competitiveRecorded: comparablePrices({ competitivePrice, ourLandedPrice }),
     isSuppressed: draft.isSuppressed,
     suppressionReason: draft.suppressionReason ?? null,
   };
+}
+
+/**
+ * The stored columns for fresh data replacing `saved`. HLAI-124: on a check that
+ * can't compare the two prices (our offer missing, or equal to Amazon's
+ * competitive price) the saved pair and its mark stay as they were — the
+ * client's rule — so the next check compares with the last pair that could.
+ */
+export function replacementFields(saved: SnapshotView, draft: ListingSnapshotDraft) {
+  const fields = snapshotFields(draft);
+  if (fields.competitiveRecorded) return fields;
+  return {
+    ...fields,
+    competitivePrice: saved.competitivePrice,
+    ourLandedPrice: saved.ourLandedPrice,
+    competitiveRecorded: saved.competitiveRecorded,
+  };
+}
+
+/** `replacementFields` as comparable values, like `draftView`. */
+export function replacementView(saved: SnapshotView, draft: ListingSnapshotDraft): SnapshotView {
+  return { ...replacementFields(saved, draft), bulletPoints: draft.bulletPoints };
 }
 
 /** A saved snapshot as comparable values. */
@@ -53,6 +83,9 @@ export function savedView(s: ListingSnapshot): SnapshotView {
     buyboxWinnerSellerId: s.buyboxWinnerSellerId,
     buyboxPrice: s.buyboxPrice == null ? null : s.buyboxPrice.toNumber(),
     offerCount: s.offerCount,
+    competitivePrice: s.competitivePrice == null ? null : s.competitivePrice.toNumber(),
+    ourLandedPrice: s.ourLandedPrice == null ? null : s.ourLandedPrice.toNumber(),
+    competitiveRecorded: s.competitiveRecorded,
     isSuppressed: s.isSuppressed,
     suppressionReason: s.suppressionReason,
   };

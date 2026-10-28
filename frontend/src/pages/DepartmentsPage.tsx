@@ -381,14 +381,14 @@ export function DepartmentsPage() {
         </button>
       </div>
 
-      <div className="dd-tree">
+      <div className="dd-tree dept-tree">
         <div className="dd-tree-head">
           <span style={{ width: 22 }} />
           <span>Department / Duty</span>
           <span className="spacer" />
-          <span>People</span>
-          <span style={{ width: 86, textAlign: 'right' }}>Open tasks</span>
-          <span style={{ width: 120 }} />
+          <span className="dd-col-people">People</span>
+          <span className="dd-col-open">Open tasks</span>
+          <span className="dd-col-actions" />
         </div>
 
         {editing?.kind === 'newDept' && (
@@ -508,7 +508,7 @@ export function DepartmentsPage() {
                   <span className="spacer" />
                   <span className="dd-meta">{plural(d.peopleCount, 'person', 'people')}</span>
                   {/* Keeps the people count under the People column (duty rows add Open tasks here). */}
-                  <span style={{ minWidth: 86 }} aria-hidden="true" />
+                  <span className="dd-col-open" aria-hidden="true" />
                   <span className="dd-actions">
                     {d.archived ? (
                       <button
@@ -678,7 +678,7 @@ export function DepartmentsPage() {
                             No one assigned
                           </span>
                         )}
-                        <span className="dd-meta" style={{ minWidth: 86, textAlign: 'right' }}>
+                        <span className="dd-meta dd-col-open">
                           {plural(u.openTaskCount, 'open task', 'open tasks')}
                         </span>
                         <span className="dd-actions">

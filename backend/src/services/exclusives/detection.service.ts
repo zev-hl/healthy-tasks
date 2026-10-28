@@ -8,6 +8,8 @@ import { gateAlerts, type AlertSettingsMap } from './alert-gating.js';
 import type { SnapshotView } from './snapshot-diff.js';
 import {
   draftView,
+  replacementFields,
+  replacementView,
   sameStoredState,
   savedView,
   snapshotFields,
@@ -155,13 +157,15 @@ export async function runDetection(
           continue;
         }
 
-        if (sameStoredState(before, after)) {
+        // What is stored can differ from what was compared: a check that can't
+        // compare the two prices keeps the saved pair (HLAI-124).
+        if (sameStoredState(before, replacementView(before, draft))) {
           unchangedIds.push(previous.id);
         } else {
           snapshotsChanged += 1;
           await tx.listingSnapshot.update({
             where: { id: previous.id },
-            data: { ...snapshotFields(draft), capturedAt },
+            data: { ...replacementFields(before, draft), capturedAt },
           });
         }
       }

@@ -6743,8 +6743,9 @@ async function loadSchedulerMods(): Promise<void> {
   M = await import('../src/utils/mailer.js');
 }
 
-/** An Approved goal is the simplest piece of schedulable work to seed directly. */
-async function seedApprovedGoal(deadline: Date): Promise<number> {
+/** An Approved goal is the simplest piece of schedulable work to seed directly.
+ * `setUpAt` backdates when it was created and last changed (default: now). */
+async function seedApprovedGoal(deadline: Date, setUpAt?: Date): Promise<number> {
   const owner = await prisma.user.findFirstOrThrow({
     where: { email: ADMIN_EMAIL },
     select: { id: true },
@@ -6758,6 +6759,7 @@ async function seedApprovedGoal(deadline: Date): Promise<number> {
       targetValue: 1,
       deadline,
       status: 'Approved',
+      ...(setUpAt ? { createdAt: setUpAt, updatedAt: setUpAt } : {}),
     },
     select: { id: true },
   });
@@ -6955,6 +6957,8 @@ describe('scheduler: overdue invariant + late alerting (Phase 14)', () => {
   });
 
   const lateMail = () => M.sentEmails.filter((e) => e.subject.includes('ran late'));
+  const HOUR = 60 * 60_000;
+  const DAY = 24 * HOUR;
 
   it('reports nothing overdue on an empty database', async () => {
     const m = await S.measureOverdue(new Date(), 0);
@@ -6988,20 +6992,21 @@ describe('scheduler: overdue invariant + late alerting (Phase 14)', () => {
 
   it('emails admins when a pass finds work that was well overdue', async () => {
     const now = new Date();
-    // Overdue by more than SCHEDULER_LATE_THRESHOLD_MS => we woke too late.
-    await seedApprovedGoal(new Date(now.getTime() - 3 * 60 * 60_000));
+    // Overdue by more than SCHEDULER_LATE_THRESHOLD_MS => we woke too late. Set up
+    // a day ago, so even right after start-up the scheduler should have known it.
+    await seedApprovedGoal(new Date(now.getTime() - 3 * HOUR), new Date(now.getTime() - DAY));
 
     await S.runScheduler(now);
 
     assert.equal(lateMail().length, 1, 'lateness is reported, not swallowed');
     assert.equal(lateMail()[0]?.to, ADMIN_EMAIL);
-    assert.match(lateMail()[0]?.text ?? '', /overdue/);
+    assert.match(lateMail()[0]?.text ?? '', /Work was 3 hour\(s\) overdue/);
   });
 
   it('stays silent when work is only slightly late', async () => {
     const now = new Date();
     // Inside the threshold: normal scheduling jitter, not worth an email.
-    await seedApprovedGoal(new Date(now.getTime() - 60_000));
+    await seedApprovedGoal(new Date(now.getTime() - 60_000), new Date(now.getTime() - DAY));
 
     await S.runScheduler(now);
 
@@ -7010,21 +7015,223 @@ describe('scheduler: overdue invariant + late alerting (Phase 14)', () => {
 
   it('rate-limits health alerts so a persistent problem cannot spam admins', async () => {
     const now = new Date();
-    await seedApprovedGoal(new Date(now.getTime() - 3 * 60 * 60_000));
+    const lateGoal = (at: Date) =>
+      seedApprovedGoal(new Date(at.getTime() - 3 * HOUR), new Date(at.getTime() - DAY));
+    await lateGoal(now);
     await S.runScheduler(now);
     assert.equal(lateMail().length, 1);
 
     // A second late pass inside the cooldown is suppressed ...
     const soon = new Date(now.getTime() + 10 * 60_000);
-    await seedApprovedGoal(new Date(soon.getTime() - 3 * 60 * 60_000));
+    await lateGoal(soon);
     await S.runScheduler(soon);
     assert.equal(lateMail().length, 1, 'cooldown suppresses the repeat');
 
     // ... and allowed again once the cooldown has elapsed.
     const later = new Date(now.getTime() + S.SCHEDULER_ALERT_COOLDOWN_MS + 60_000);
-    await seedApprovedGoal(new Date(later.getTime() - 3 * 60 * 60_000));
+    await lateGoal(later);
     await S.runScheduler(later);
     assert.equal(lateMail().length, 2);
+  });
+
+  // The false alarm production sent on 28 Oct 2026 ("322.6 hour(s) overdue"):
+  // lateness went by each item's own dates, which for new repeating work are up
+  // to the lead time (14 days) before anyone set it up. Now only work the
+  // scheduler could have known about at its last run counts, from when it fell
+  // due or was set up, whichever is later.
+
+  it('counts only work known at the last run, from when it fell due or was set up', () => {
+    const lastRun = new Date('2026-10-28T12:00:00.000Z');
+    const now = new Date('2026-10-28T16:00:00.000Z');
+    const at = (iso: string) => new Date(iso).getTime();
+    assert.equal(S.lateForScheduler([], now, lastRun), 0);
+    // Set up after the last run: never late, however old its own dates.
+    const fresh = {
+      dueAt: at('2026-10-14T12:00:00.000Z'),
+      setUpAt: at('2026-10-28T13:00:00.000Z'),
+    };
+    assert.equal(S.lateForScheduler([fresh], now, lastRun), 0);
+    // Known since yesterday, due at 13:00: three hours late.
+    const missed = {
+      dueAt: at('2026-10-28T13:00:00.000Z'),
+      setUpAt: at('2026-10-27T12:00:00.000Z'),
+    };
+    assert.equal(S.lateForScheduler([missed], now, lastRun), 3 * HOUR);
+    // Due by its dates two weeks ago, set up at 11:00: late from 11:00 only.
+    const old = { dueAt: at('2026-10-14T12:00:00.000Z'), setUpAt: at('2026-10-28T11:00:00.000Z') };
+    assert.equal(S.lateForScheduler([old], now, lastRun), 5 * HOUR);
+    assert.equal(S.lateForScheduler([fresh, missed, old], now, lastRun), 5 * HOUR);
+  });
+
+  it('still reports work known at the last run that it then woke 3 hours late for', async () => {
+    const t0 = new Date();
+    await seedApprovedGoal(new Date(t0.getTime() + HOUR), new Date(t0.getTime() - DAY));
+    await S.runScheduler(t0); // not due yet
+    assert.equal(lateMail().length, 0);
+
+    await S.runScheduler(new Date(t0.getTime() + 4 * HOUR));
+    assert.equal(lateMail().length, 1, 'a real delay is still reported');
+    assert.match(lateMail()[0]?.text ?? '', /Work was 3 hour\(s\) overdue/);
+  });
+
+  it('right after start-up, does not report work set up in the 6 hours before it', async () => {
+    const now = new Date();
+    // Approved an hour ago, two hours after its deadline: the previous process
+    // may simply not have woken since (the 6h ceiling), so it is not late.
+    await seedApprovedGoal(new Date(now.getTime() - 3 * HOUR), new Date(now.getTime() - HOUR));
+    await S.runScheduler(now);
+    assert.equal(lateMail().length, 0);
+  });
+
+  it('does not report a goal approved after its deadline', async () => {
+    const t0 = new Date();
+    await S.runScheduler(t0);
+    const id = await seedApprovedGoal(new Date(t0.getTime() - 3 * DAY)); // set up now
+
+    await S.runScheduler(new Date(t0.getTime() + HOUR));
+    assert.equal(lateMail().length, 0);
+    const goal = await prisma.goal.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    assert.equal(goal.status, 'UnderReview', 'the review itself was done');
+  });
+
+  /** A weekly template whose series starts at `anchor` (the default 14-day lead). */
+  async function weeklyTemplate(admin: string, anchor: Date): Promise<number> {
+    const res = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: 'Weekly stock check',
+        nodes: [{ key: 'root', parentKey: null, name: 'Check stock', dueOffsetDays: 0 }],
+        recurrence: {
+          recurrenceType: 'Fixed',
+          intervalCount: 1,
+          intervalUnit: 'Week',
+          anchorDate: anchor.toISOString(),
+          endType: 'Never',
+        },
+      });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    return res.body.id as number;
+  }
+
+  it('does not report a new weekly template, though its first copy is "due" 14 days ago', async () => {
+    const admin = await adminToken();
+    const t0 = new Date();
+    await S.runScheduler(t0);
+    const tplId = await weeklyTemplate(admin, t0);
+
+    const later = new Date(t0.getTime() + HOUR);
+    const byOwnDates = await S.measureOverdue(later, 14);
+    assert.ok(byOwnDates.maxLateMs > 13 * DAY, 'the case that used to send the email');
+
+    await S.runScheduler(later);
+    assert.equal(lateMail().length, 0);
+    const made = await prisma.templateOccurrence.count({ where: { templateId: tplId } });
+    assert.ok(made >= 2, `the copies were made (${made})`);
+  });
+
+  it('does not report a task just set to repeat weekly', async () => {
+    const admin = await adminToken();
+    const t0 = new Date();
+    await S.runScheduler(t0);
+    const t = await makeTask(admin, 'Weekly report', {
+      startAt: t0.toISOString(),
+      dueAt: new Date(t0.getTime() + HOUR).toISOString(),
+    });
+    const set = await request(app)
+      .put(`/api/tasks/${t.id}/recurrence`)
+      .set(auth(admin))
+      .send({ recurrenceType: 'Fixed', intervalCount: 1, intervalUnit: 'Week' });
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+
+    await S.runScheduler(new Date(t0.getTime() + HOUR));
+    assert.equal(lateMail().length, 0);
+    const made = await prisma.task.count({ where: { recurrenceSourceId: t.id } });
+    assert.ok(made >= 1, `the copies were made (${made})`);
+  });
+
+  it('does not report the next copy of a task finished just now (repeat after completion)', async () => {
+    const admin = await adminToken();
+    const t = await makeTask(admin, 'Restock shelf', { dueAt: new Date().toISOString() });
+    const set = await request(app)
+      .put(`/api/tasks/${t.id}/recurrence`)
+      .set(auth(admin))
+      .send({ recurrenceType: 'RelativeToCompletion', intervalCount: 1, intervalUnit: 'Week' });
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+    const t0 = new Date();
+    await S.runScheduler(t0); // still open: nothing to do
+
+    // The next copy is a week after completion, so "due" a week before it.
+    const done = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(admin))
+      .send({ status: 'Completed' });
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+
+    await S.runScheduler(new Date(t0.getTime() + HOUR));
+    assert.equal(lateMail().length, 0);
+    assert.equal(
+      await prisma.task.count({ where: { recurrenceSourceId: t.id } }),
+      1,
+      'the next copy was made',
+    );
+  });
+
+  it('does not report a task finished days ago and only now set to repeat after completion', async () => {
+    // Done 6½ days ago, set to repeat a week after completion only now: the next
+    // copy is due in half a day, so by its own dates (14 days early) 13½ days ago,
+    // the size of the production email.
+    const admin = await adminToken();
+    const doneAt = new Date(Date.now() - 6.5 * DAY);
+    const t = await makeTask(admin, 'Restock shelf', { dueAt: doneAt.toISOString() });
+    const done = await request(app)
+      .patch(`/api/tasks/${t.id}`)
+      .set(auth(admin))
+      .send({ status: 'Completed' });
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+    await prisma.task.update({ where: { id: t.id }, data: { statusChangedAt: doneAt } });
+    const t0 = new Date();
+    await S.runScheduler(t0); // not repeating yet: nothing to do
+
+    const set = await request(app)
+      .put(`/api/tasks/${t.id}/recurrence`)
+      .set(auth(admin))
+      .send({ recurrenceType: 'RelativeToCompletion', intervalCount: 1, intervalUnit: 'Week' });
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+
+    const later = new Date(t0.getTime() + HOUR);
+    const byOwnDates = await S.measureOverdue(later, 14);
+    assert.ok(byOwnDates.maxLateMs > 13 * DAY, 'the case that used to send the email');
+
+    await S.runScheduler(later);
+    assert.equal(lateMail().length, 0);
+    assert.equal(
+      await prisma.task.count({ where: { recurrenceSourceId: t.id } }),
+      1,
+      'the next copy was made',
+    );
+  });
+
+  it('does not report copies that a longer lead time makes due at once', async () => {
+    const admin = await adminToken();
+    const t0 = new Date();
+    const tplId = await weeklyTemplate(admin, t0);
+    await S.runScheduler(t0); // the copies inside 14 days
+    // As if the template had been set up yesterday: only the lead time is new.
+    const yesterday = new Date(t0.getTime() - DAY);
+    await prisma.taskTemplate.update({ where: { id: tplId }, data: { updatedAt: yesterday } });
+    await prisma.taskTemplateNode.updateMany({
+      where: { templateId: tplId },
+      data: { updatedAt: yesterday },
+    });
+    await setLeadDays(30);
+
+    const later = new Date(t0.getTime() + HOUR);
+    const byOwnDates = await S.measureOverdue(later, 30);
+    assert.ok(byOwnDates.maxLateMs > DAY, 'the copies 15 to 30 days ahead are "due" days ago');
+
+    await S.runScheduler(later);
+    assert.equal(lateMail().length, 0);
   });
 });
 
@@ -7331,7 +7538,8 @@ describe('exclusives: change detection (HLAI-71 6c)', () => {
     });
   }
 
-  // The listing's saved snapshot (its last known state).
+  // The listing's saved snapshot (its last known state), as saved since the
+  // competitive price is read (HLAI-124).
   function saveSnapshot(listingId: number, fields: SnapshotFields = {}) {
     return prisma.listingSnapshot.create({
       data: {
@@ -7340,6 +7548,7 @@ describe('exclusives: change detection (HLAI-71 6c)', () => {
         listedPrice: fields.listedPrice ?? 34.99,
         currency: fields.currency ?? 'USD',
         bulletPoints: [],
+        competitiveRecorded: true,
         ...(fields.capturedAt ? { capturedAt: fields.capturedAt } : {}),
       },
     });
@@ -7485,6 +7694,141 @@ describe('exclusives: change detection (HLAI-71 6c)', () => {
     assert.equal(report.alertsWritten, 0, 'no alert type watches currency');
     assert.equal(report.snapshotsChanged, 1);
     assert.equal((await snapshotsOf(listing.id))[0]?.currency, 'CAD');
+  });
+
+  it("saves Amazon's competitive price and our price + shipping (HLAI-124)", async () => {
+    const listing = await seedListing('B0DETECT12');
+    const entry = fresh(listing);
+    await D.runDetection([
+      { ...entry, draft: { ...entry.draft, competitivePrice: 30.5, ourLandedPrice: 34.99 } },
+    ]);
+    const [row] = await snapshotsOf(listing.id);
+    assert.equal(row!.competitivePrice?.toNumber(), 30.5);
+    assert.equal(row!.ourLandedPrice?.toNumber(), 34.99);
+    assert.equal(row!.competitiveRecorded, true);
+
+    const moved = await D.runDetection([
+      { ...entry, draft: { ...entry.draft, competitivePrice: 29, ourLandedPrice: 34.99 } },
+    ]);
+    assert.equal(moved.snapshotsChanged, 1);
+    assert.equal((await snapshotsOf(listing.id))[0]!.competitivePrice?.toNumber(), 29);
+  });
+
+  it('rewrites a snapshot saved before the release once, marking it recorded', async () => {
+    const listing = await seedListing('B0DETECT13', ['PriceChanged', 'TitleChanged']);
+    await prisma.listingSnapshot.create({
+      data: {
+        listingId: listing.id,
+        title: 'Widget',
+        listedPrice: 34.99,
+        currency: 'USD',
+        bulletPoints: [],
+      },
+    });
+    assert.equal(
+      (await snapshotsOf(listing.id))[0]!.competitiveRecorded,
+      false,
+      'as the migration leaves it',
+    );
+
+    const entry = fresh(listing);
+    // Without our price the two can't be compared: nothing recorded yet.
+    const noOffer = { ...entry.draft, competitivePrice: 30 };
+    const skipped = await D.runDetection([{ ...entry, draft: noOffer }]);
+    assert.equal(skipped.snapshotsUnchanged, 1);
+    assert.equal((await snapshotsOf(listing.id))[0]!.competitiveRecorded, false);
+
+    const draft = { ...entry.draft, competitivePrice: 30, ourLandedPrice: 34.99 };
+    const first = await D.runDetection([{ ...entry, draft }]);
+    assert.equal(first.snapshotsChanged, 1);
+    assert.equal(first.alertsWritten, 0);
+    const [row] = await snapshotsOf(listing.id);
+    assert.equal(row!.competitiveRecorded, true);
+    assert.equal(row!.competitivePrice?.toNumber(), 30);
+
+    const next = await D.runDetection([{ ...entry, draft }]);
+    assert.equal(next.snapshotsUnchanged, 1, 'only once');
+  });
+
+  it("starts quietly after the release, then logs the client's crossings (HLAI-124, 28 Oct)", async () => {
+    const listing = await seedListing('B0DETECT14', [
+      'CompetitivePriceBelowOurs',
+      'CompetitivePriceAboveOurs',
+      'CompetitivePriceChanged',
+      'OurPriceAboveCompetitive',
+      'OurPriceBelowCompetitive',
+    ]);
+    // Saved before the release: no pair recorded.
+    await prisma.listingSnapshot.create({
+      data: { listingId: listing.id, title: 'Widget', listedPrice: 34.99, bulletPoints: [] },
+    });
+    /** One check with our price + shipping `p` and Amazon's competitive price `t`. */
+    const check = (p: number | null, t: number | null) => {
+      const entry = fresh(listing);
+      return D.runDetection([
+        { ...entry, draft: { ...entry.draft, ourLandedPrice: p, competitivePrice: t } },
+      ]);
+    };
+    const saved = async () => {
+      const [row] = await snapshotsOf(listing.id);
+      return [row!.ourLandedPrice?.toNumber() ?? null, row!.competitivePrice?.toNumber() ?? null];
+    };
+
+    assert.equal((await check(10, 9)).alertsWritten, 0, 'the first check only records');
+    assert.equal((await check(10, 11)).alertsWritten, 1, 'theirs rises over ours');
+    assert.equal((await check(12, 11)).alertsWritten, 1, 'ours rises over theirs');
+
+    const equal = await check(12, 12);
+    assert.equal(equal.alertsWritten, 0, 'equal: skipped');
+    assert.equal(equal.snapshotsUnchanged, 1);
+    assert.deepEqual(await saved(), [12, 11], 'the last unequal pair is kept');
+    assert.equal((await check(12, 13)).alertsWritten, 1, 'compared with 12 / 11');
+
+    assert.equal((await check(12, null)).alertsWritten, 1, 'removed while above ours');
+    assert.equal((await check(null, 9)).alertsWritten, 0, 'our price missing: skipped');
+    assert.deepEqual(await saved(), [12, null]);
+    assert.equal((await check(12, 9)).alertsWritten, 1, 'set again, under ours');
+
+    const logged = await prisma.alertLog.findMany({
+      where: { listingId: listing.id },
+      orderBy: { id: 'asc' },
+    });
+    assert.deepEqual(
+      logged.map((a) => [a.alertType, a.previousValue, a.newValue, a.message]),
+      [
+        [
+          'CompetitivePriceAboveOurs',
+          '9',
+          '11',
+          "Amazon's competitive price went from $9.00 to $11.00, now above our HL price of $10.00.",
+        ],
+        [
+          'OurPriceAboveCompetitive',
+          '10',
+          '12',
+          'Our HL price (price + shipping) went from $10.00 to $12.00, now above ' +
+            "Amazon's competitive price of $11.00: the Buy Box is at risk.",
+        ],
+        [
+          'CompetitivePriceAboveOurs',
+          '11',
+          '13',
+          "Amazon's competitive price went from $11.00 to $13.00, now above our HL price of $12.00.",
+        ],
+        [
+          'CompetitivePriceBelowOurs',
+          '13',
+          null,
+          'Amazon removed its competitive price (was $13.00, above our HL price of $12.00).',
+        ],
+        [
+          'CompetitivePriceChanged',
+          null,
+          '9',
+          'Amazon set a competitive price of $9.00 (our HL price: $12.00).',
+        ],
+      ],
+    );
   });
 });
 

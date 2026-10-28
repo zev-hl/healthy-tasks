@@ -19,6 +19,9 @@ const base: SnapshotView = {
   buyboxWinnerSellerId: 'A1UWLDVGZSXGKG',
   buyboxPrice: 34.99,
   offerCount: 3,
+  competitivePrice: 30,
+  ourLandedPrice: 34.99,
+  competitiveRecorded: true,
   isSuppressed: false,
   suppressionReason: null,
 };
@@ -61,6 +64,19 @@ describe('diffSnapshots', () => {
     assert.deepEqual(fields(base, clone({ buyboxPrice: null })), ['buyboxPrice']);
     const bothNull = clone({ buyboxPrice: null, buyboxWinnerSellerId: null, offerCount: null });
     assert.deepEqual(diffSnapshots(bothNull, clone({ buyboxPrice: null, buyboxWinnerSellerId: null, offerCount: null })), []);
+  });
+
+  it("detects a move of Amazon's competitive price, to the cent", () => {
+    assert.deepEqual(fields(base, clone({ competitivePrice: 30.004 })), []);
+    const d = diffSnapshots(base, clone({ competitivePrice: 28.5 }));
+    assert.deepEqual(d, [{ field: 'competitivePrice', previous: 30, current: 28.5 }]);
+    assert.deepEqual(fields(base, clone({ competitivePrice: null })), ['competitivePrice']);
+    assert.deepEqual(fields(clone({ competitivePrice: null }), base), ['competitivePrice']);
+  });
+
+  it('leaves our price + shipping and the recorded mark out of the diff', () => {
+    assert.deepEqual(diffSnapshots(base, clone({ ourLandedPrice: 29.99 })), []);
+    assert.deepEqual(diffSnapshots(clone({ competitiveRecorded: false }), base), []);
   });
 
   it('reports multiple simultaneous changes', () => {

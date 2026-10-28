@@ -2217,11 +2217,14 @@ textarea:focus-visible {
   max-width: 100%;
   margin-top: 0.15rem;
 }
+/* 10px between the zone picker, "Use this device's zone" and the hint. */
 .profile-tz-use {
   align-self: flex-start;
+  margin-top: 10px;
   font-size: 0.8rem;
 }
 .profile-tz-hint {
+  margin-top: 10px;
   font-size: 0.75rem;
 }
 .profile-actions {
@@ -6978,6 +6981,7 @@ tr.just-completed > td {
 .exc-card-head {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.7rem;
   padding: 0.85rem 1.1rem;
   border-bottom: 1px solid var(--border);
@@ -6985,6 +6989,9 @@ tr.just-completed > td {
 .exc-card-title {
   font-weight: 700;
   font-size: 0.95rem;
+}
+.exc-card-head > :not(.exc-card-hint) {
+  white-space: nowrap;
 }
 .exc-card-hint {
   margin-left: auto;
@@ -8501,7 +8508,9 @@ tr.just-completed > td {
 }
 .exc-head-log .exc-actions {
   margin-left: auto;
-  /* flex-wrap: wrap; */
+  flex-wrap: wrap;
+  flex-shrink: 1;
+  min-width: 0;
   justify-content: flex-end;
 }
 .exc-head-log .exc-search-log {
@@ -8676,8 +8685,12 @@ button.dd-chip:hover {
 .dd-page-head {
   display: flex;
   align-items: flex-end;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 14px;
+}
+.dd-page-head > button {
+  white-space: nowrap;
 }
 .dd-page-head h1 {
   font-size: 22px;
@@ -8910,6 +8923,20 @@ button.dd-caret:hover {
 .dd-row:focus-within .dd-actions {
   opacity: 1;
 }
+@media (hover: none) {
+  .dd-actions {
+    opacity: 1;
+  }
+}
+/* Departments' People / Open tasks / actions columns. */
+.dd-col-open {
+  min-width: 86px;
+  text-align: right;
+}
+.dd-col-actions {
+  width: 120px;
+  flex: none;
+}
 .dd-bullet {
   width: 5px;
   height: 5px;
@@ -8918,6 +8945,7 @@ button.dd-caret:hover {
   flex: none;
 }
 button.dd-add-duty {
+  white-space: nowrap;
   padding: 2px 8px;
   font-size: 11.5px;
   border-radius: 6px;
@@ -8958,6 +8986,9 @@ button.dd-add-duty:hover {
   grid-template-columns: minmax(0, 1fr) 400px;
   gap: 16px;
   align-items: start;
+}
+.org-search {
+  width: 240px;
 }
 .dd-org-row.sel {
   background: var(--accent-tint);
@@ -9940,5 +9971,128 @@ button.dd-ctx-x:hover {
   .dd-tp {
     position: static;
     max-height: none;
+  }
+}
+
+/* Organization on phones: what sits at a row's right (tags, counts) goes under
+   its name when there's no room, instead of being cut off by the tree's edge. */
+@media (max-width: 760px) {
+  .dd-org-grid .dd-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .dd-org-grid .dd-row > .spacer ~ :last-child {
+    margin-left: auto;
+  }
+  .dd-org-grid .dd-name {
+    white-space: normal;
+  }
+  /* Organization, Departments: the search, then the picker, each on a line of
+     its own, so neither is cut. */
+  .dd-toolbar .dd-search {
+    width: 100%;
+    max-width: none;
+  }
+  .dd-toolbar .dd-search ~ select {
+    flex: 1 1 100%;
+  }
+}
+
+/* Departments on a narrow screen: a row's people, open tasks and buttons go on
+   a line of their own under its name, so nothing is cut off at the right. The
+   header's column names go, as each row says what its numbers are. */
+@media (max-width: 900px) {
+  .dept-tree .dd-row {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .dept-tree .dd-row > .spacer {
+    flex-basis: 100%;
+  }
+  .dept-tree .dd-row > .spacer + * {
+    margin-left: auto;
+  }
+  .dept-tree .dd-col-open {
+    min-width: 0;
+  }
+  .dept-tree .dd-tree-head .dd-col-people,
+  .dept-tree .dd-tree-head .dd-col-open,
+  .dept-tree .dd-tree-head .dd-col-actions {
+    display: none;
+  }
+}
+
+/* My Time on a narrow screen: the days wrap into rows (two on a phone) instead
+   of a week that scrolls sideways two and a half days at a time. */
+@media (max-width: 900px) {
+  .dd-week,
+  .dd-week.five {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    overflow-x: visible;
+  }
+  .dd-daycard {
+    min-height: 200px;
+  }
+}
+
+/* Alert Groups and the Alert Log on a narrow screen. */
+@media (max-width: 1100px) {
+  /* Groups: search and "New group" go under the title rather than squeezing
+     its last-check line into a column. */
+  .exc-head:not(.exc-head-log) {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 760px) {
+  .exc-head:not(.exc-head-log) .exc-actions {
+    flex: 1 1 100%;
+  }
+  .exc-head:not(.exc-head-log) .exc-search {
+    flex: 1 1 180px;
+    width: auto;
+    min-width: 0;
+  }
+  .exc-card-hint {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+  /* Log: the filters start at the left and the search has a line of its own;
+     a filter's panel opens across the whole width, under the filters. */
+  .exc-head-log .exc-actions {
+    justify-content: flex-start;
+    position: relative;
+  }
+  .exc-head-log .exc-search-log {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .exc-head-log .exc-filter-wrap {
+    position: static;
+  }
+  .exc-head-log .exc-filter-pop {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+  /* Each filter fills its line, so they line up instead of ending raggedly. */
+  .exc-head-log .exc-filter-wrap {
+    flex: 1 1 auto;
+  }
+  .exc-head-log .exc-filter-wrap > .exc-toolbtn {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+/* A phone: the pager's Previous, pages and Next fit on one line. */
+@media (max-width: 480px) {
+  .exc-pager {
+    padding-inline: 12px;
+  }
+  .exc-pager-nav {
+    gap: 4px;
+  }
+  .exc-page-btn {
+    padding-inline: 8px;
   }
 }
