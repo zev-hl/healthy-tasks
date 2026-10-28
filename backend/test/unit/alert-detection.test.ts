@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectAlerts } from '../../src/services/exclusives/alert-detection.js';
+import { comparablePrices, detectAlerts } from '../../src/services/exclusives/alert-detection.js';
 import type { SnapshotView } from '../../src/services/exclusives/snapshot-diff.js';
 
 const US = 'A1UWLDVGZSXGKG';
@@ -126,95 +126,136 @@ describe('detectAlerts — combined', () => {
   });
 });
 
-describe('detectAlerts — competitive price (HLAI-124)', () => {
-  // Our price + shipping $9.49 unless a test says otherwise.
-  const at = (competitivePrice: number | null, o: Partial<SnapshotView> = {}) =>
-    s({ competitivePrice, ourLandedPrice: 9.49, ...o });
+describe("detectAlerts — competitive price (HLAI-124, the client's rules of 28 Oct)", () => {
+  // P = our price + shipping ("HL price"), T = Amazon's competitive price.
+  const at = (p: number | null, t: number | null, o: Partial<SnapshotView> = {}) =>
+    s({ ourLandedPrice: p, competitivePrice: t, ...o });
+  type Pair = [number | null, number | null];
+  /** One check: P before → now, T before → now. */
+  const check = (p: Pair, t: Pair) => types(at(p[0], t[0]), at(p[1], t[1]));
   const BELOW = 'CompetitivePriceBelowOurs';
-  const UP = 'CompetitivePriceIncreased';
-  const MOVED = 'CompetitivePriceChanged';
+  const ABOVE = 'CompetitivePriceAboveOurs';
+  const CHANGE = 'CompetitivePriceChanged';
+  const HL_ABOVE = 'OurPriceAboveCompetitive';
+  const HL_BELOW = 'OurPriceBelowCompetitive';
 
-  it('fires Below when the competitive price drops under ours', () => {
-    assert.deepEqual(types(at(10), at(6.04)), [BELOW, MOVED]);
+  it("matches the client's chart, row for row", () => {
+    const chart: [Pair, Pair, string[]][] = [
+      [[10, 10], [11, 9], [BELOW]],
+      [[10, 10], [9, 11], [ABOVE]],
+      [[10, 10], [11, 12], [CHANGE]],
+      [[10, 10], [12, 11], [CHANGE]],
+      [[10, 10], [8, 9], [CHANGE]],
+      [[10, 10], [9, 8], [CHANGE]],
+      [[10, 12], [11, 11], [HL_ABOVE]],
+      [[12, 10], [11, 11], [HL_BELOW]],
+      [
+        [10, 12],
+        [11, 9],
+        [BELOW, HL_ABOVE],
+      ],
+      [
+        [9, 12],
+        [10, 9],
+        [BELOW, HL_ABOVE],
+      ],
+      [[9, 10], [10, 11], [CHANGE]],
+    ];
+    for (const [p, t, expected] of chart) {
+      assert.deepEqual(check(p, t), [...expected].sort(), `P ${p.join(' → ')}, T ${t.join(' → ')}`);
+    }
   });
 
-  it('fires Below when our price rises over it', () => {
-    assert.deepEqual(types(at(9.49), at(9.49, { ourLandedPrice: 9.99 })), [BELOW]);
+  it('fires both of ours when both prices cross the other way', () => {
+    assert.deepEqual(check([11, 9], [10, 10.5]), [ABOVE, HL_BELOW].sort());
   });
 
-  it('does not count equal to ours as below', () => {
-    assert.deepEqual(types(at(10), at(9.49)), [MOVED]);
-    assert.deepEqual(types(at(9.49, { ourLandedPrice: 9.99 }), at(9.49)), []);
+  it('fires nothing when our price moves without crossing, or nothing moves', () => {
+    assert.deepEqual(check([9, 9.5], [10, 10]), []);
+    assert.deepEqual(check([11, 11], [10, 10]), []);
   });
 
-  it('fires Below once, not again while it stays below', () => {
-    assert.deepEqual(types(at(6.04), at(5.8)), [MOVED]);
-    assert.deepEqual(types(at(6.04), at(6.04)), []);
+  it('ignores a move under half a cent', () => {
+    assert.deepEqual(check([10, 10], [11, 11.004]), []);
+    assert.deepEqual(check([10, 10.004], [11, 11]), []);
   });
 
-  it('fires Below when Amazon sets a competitive price under ours', () => {
-    assert.deepEqual(types(at(null), at(6.04)), [BELOW, MOVED]);
+  describe('equal prices (the check is skipped; the saved pair is kept)', () => {
+    it('fires nothing when the two are equal now', () => {
+      assert.deepEqual(check([10, 10], [11, 10]), []);
+      assert.deepEqual(check([10, 11], [11, 11]), []);
+      assert.deepEqual(check([10, 10], [11, 10.004]), [], 'equal to the half cent');
+    });
+
+    it('then compares with the last unequal pair, so a crossing through equal is caught', () => {
+      // The saved pair stayed 10 / 11 (snapshot.repository keeps it).
+      assert.deepEqual(check([10, 10], [11, 9]), [BELOW]);
+      assert.deepEqual(check([10, 10], [11, 12]), [CHANGE]);
+      assert.deepEqual(check([10, 12], [11, 11]), [HL_ABOVE]);
+    });
+
+    it('can compare only with our price known and different from theirs', () => {
+      assert.equal(comparablePrices(at(10, 9)), true);
+      assert.equal(comparablePrices(at(10, null)), true, 'a missing T is -1');
+      assert.equal(comparablePrices(at(10, 10)), false);
+      assert.equal(comparablePrices(at(10, 10.004)), false);
+      assert.equal(comparablePrices(at(null, 9)), false);
+    });
   });
 
-  it('fires Increased on every rise, back to our price or not', () => {
-    assert.deepEqual(types(at(5), at(6)), [MOVED, UP]);
-    assert.deepEqual(types(at(6.04), at(9.99)), [MOVED, UP]);
-    assert.deepEqual(types(at(12), at(13)), [MOVED, UP]);
+  describe('a missing competitive price counts as -1', () => {
+    it('removed while above ours: Below (red); while below ours: Change', () => {
+      assert.deepEqual(check([10, 10], [11, null]), [BELOW]);
+      assert.deepEqual(check([10, 10], [9, null]), [CHANGE]);
+    });
+
+    it('back above ours: Above; back below ours: Change', () => {
+      assert.deepEqual(check([10, 10], [null, 11]), [ABOVE]);
+      assert.deepEqual(check([10, 10], [null, 9]), [CHANGE]);
+    });
+
+    it('never had one: nothing, whatever our price does', () => {
+      assert.deepEqual(check([10, 12], [null, null]), []);
+      assert.deepEqual(check([12, 10], [null, null]), []);
+    });
+
+    it('removed while our price rises over it: both', () => {
+      assert.deepEqual(check([10, 12], [11, null]), [BELOW, HL_ABOVE].sort());
+    });
   });
 
-  it('logs a drop above ours as Changed only', () => {
-    assert.deepEqual(types(at(13), at(12)), [MOVED]);
+  it('fires nothing with our price missing now (skipped, like equal prices)', () => {
+    assert.deepEqual(check([10, null], [9, 11]), []);
+    assert.deepEqual(check([null, 10], [9, 11]), [], 'nor without a saved price of ours');
   });
 
-  it('ignores a move under a cent', () => {
-    assert.deepEqual(types(at(6.04), at(6.042)), []);
-  });
-
-  it('logs Amazon setting or removing one as Changed, never Increased', () => {
-    assert.deepEqual(types(at(null), at(12)), [MOVED]);
-    assert.deepEqual(types(at(6.04), at(null)), [MOVED]);
-    assert.deepEqual(types(at(null), at(null)), []);
-  });
-
-  it('without our offer: no Below, but Increased and Changed still work', () => {
-    const noOffer = (t: number) => at(t, { ourLandedPrice: null });
-    assert.deepEqual(types(noOffer(10), noOffer(6)), [MOVED]);
-    assert.deepEqual(types(noOffer(6), noOffer(7)), [MOVED, UP]);
-  });
-
-  it('fires Below when our offer comes back under a lower competitive price', () => {
-    assert.deepEqual(types(at(6.04, { ourLandedPrice: null }), at(6.04)), [BELOW]);
-  });
-
-  it('carries the competitive price before and now', () => {
-    const [below, moved] = detectAlerts(at(10), at(6.04), US);
-    assert.deepEqual(
-      [below?.alertType, below?.previousValue, below?.newValue, below?.category],
-      [BELOW, '10', '6.04', null],
-    );
-    assert.deepEqual([moved?.previousValue, moved?.newValue], ['10', '6.04']);
+  it('carries the competitive price before and now, or ours for HL Price alerts', () => {
+    const values = (p: Pair, t: Pair) =>
+      detectAlerts(at(p[0], t[0]), at(p[1], t[1]), US).map((a) => [
+        a.alertType,
+        a.previousValue,
+        a.newValue,
+        a.category,
+      ]);
+    assert.deepEqual(values([10, 12], [11, 9]), [
+      [BELOW, '11', '9', null],
+      [HL_ABOVE, '10', '12', null],
+    ]);
+    assert.deepEqual(values([10, 10], [11, null]), [[BELOW, '11', null, null]]);
+    assert.deepEqual(values([10, 10], [null, 11]), [[ABOVE, null, '11', null]]);
   });
 
   describe('the first check after the release (row saved before it)', () => {
     const old = s({ competitiveRecorded: false });
 
-    it('lists a listing already below ours, with no earlier price', () => {
-      const alerts = detectAlerts(old, at(6.04), US);
-      assert.deepEqual(
-        alerts.map((a) => [a.alertType, a.previousValue, a.newValue]),
-        [[BELOW, null, '6.04']],
-      );
-    });
-
-    it('logs nothing for one at or above ours, or with none', () => {
-      assert.deepEqual(types(old, at(12)), []);
-      assert.deepEqual(types(old, at(9.49)), []);
-      assert.deepEqual(types(old, at(null)), []);
-      assert.deepEqual(types(old, at(6.04, { ourLandedPrice: null })), []);
+    it('fires none of the five: it starts quietly', () => {
+      assert.deepEqual(types(old, at(10, 9)), []);
+      assert.deepEqual(types(old, at(10, 11)), []);
+      assert.deepEqual(types(old, at(10, null)), []);
     });
 
     it('still logs the other changes', () => {
-      assert.deepEqual(types(old, at(6.04, { title: 'New' })), [BELOW, 'TitleChanged']);
+      assert.deepEqual(types(old, at(10, 9, { title: 'New' })), ['TitleChanged']);
     });
   });
 });

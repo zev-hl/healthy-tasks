@@ -1957,8 +1957,8 @@ export const EXCLUSIVES_ALERT_MODE_LABELS: Record<ExclusivesAlertMode, string> =
 /**
  * The detected alert types, in the fixed UI/seed order. Keys are stable
  * identifiers; `EXCLUSIVES_ALERT_TYPE_LABELS` holds their display names. The
- * last three compare our price + shipping with Amazon's competitive price
- * (HLAI-124).
+ * last five compare our price + shipping ("HL price") with Amazon's competitive
+ * price, firing when one crosses the other (HLAI-124, the client's rules of 28 Oct).
  */
 export const EXCLUSIVES_ALERT_TYPES = [
   'ListingSuppressed',
@@ -1974,8 +1974,10 @@ export const EXCLUSIVES_ALERT_TYPES = [
   'BulletPointsChanged',
   'DimensionsChanged',
   'CompetitivePriceBelowOurs',
-  'CompetitivePriceIncreased',
+  'CompetitivePriceAboveOurs',
   'CompetitivePriceChanged',
+  'OurPriceAboveCompetitive',
+  'OurPriceBelowCompetitive',
 ] as const;
 export type ExclusivesAlertType = (typeof EXCLUSIVES_ALERT_TYPES)[number];
 
@@ -1992,9 +1994,11 @@ export const EXCLUSIVES_ALERT_TYPE_LABELS: Record<ExclusivesAlertType, string> =
   DescriptionChanged: 'Description Changed',
   BulletPointsChanged: 'Bullet Points Changed',
   DimensionsChanged: 'Dimensions Changed',
-  CompetitivePriceBelowOurs: 'Competitive Price Below',
-  CompetitivePriceIncreased: 'Competitive Price Increased',
-  CompetitivePriceChanged: 'Competitive Price Changed',
+  CompetitivePriceBelowOurs: 'Competitive Price Below HL Price',
+  CompetitivePriceAboveOurs: 'Competitive Price Above HL Price',
+  CompetitivePriceChanged: 'Competitive Price Change',
+  OurPriceAboveCompetitive: 'HL Price Above Competitive Price',
+  OurPriceBelowCompetitive: 'HL Price Below Competitive Price',
 };
 
 // --- Alert task labels (HLAI-112) --------------------------------------------
@@ -2016,8 +2020,10 @@ export const EXCLUSIVES_ALERT_TYPE_CODES: Record<ExclusivesAlertType, string> = 
   BulletPointsChanged: 'BP',
   DimensionsChanged: 'DM',
   CompetitivePriceBelowOurs: 'CB',
-  CompetitivePriceIncreased: 'CI',
-  CompetitivePriceChanged: 'CP',
+  CompetitivePriceAboveOurs: 'CA',
+  CompetitivePriceChanged: 'CH',
+  OurPriceAboveCompetitive: 'HA',
+  OurPriceBelowCompetitive: 'HB',
 };
 
 /** What splits a group name into parts: "-", or an en/em dash typed in its place. */
@@ -2193,8 +2199,10 @@ export const EXCLUSIVES_ALERT_TYPE_TONE: Record<ExclusivesAlertType, ExclusivesA
   BulletPointsChanged: 'review',
   DimensionsChanged: 'review',
   CompetitivePriceBelowOurs: 'danger',
-  CompetitivePriceIncreased: 'ok',
+  CompetitivePriceAboveOurs: 'ok',
   CompetitivePriceChanged: 'warn',
+  OurPriceAboveCompetitive: 'danger',
+  OurPriceBelowCompetitive: 'ok',
 };
 
 /** Marketplaces a listing can be monitored in. */

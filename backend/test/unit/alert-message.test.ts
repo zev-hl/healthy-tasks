@@ -134,59 +134,81 @@ describe('describeAlert', () => {
   });
 });
 
-describe('describeAlert — competitive price (HLAI-124)', () => {
-  const at = (competitivePrice: number | null, o: Partial<SnapshotView> = {}) =>
-    s({ competitivePrice, ourLandedPrice: 9.49, ...o });
-  const below = alert({ alertType: 'CompetitivePriceBelowOurs' });
-  const up = alert({ alertType: 'CompetitivePriceIncreased' });
-  const moved = alert({ alertType: 'CompetitivePriceChanged' });
+describe("describeAlert — competitive price (HLAI-124, the client's rules of 28 Oct)", () => {
+  // P = our price + shipping ("HL price"), T = Amazon's competitive price.
+  const at = (p: number | null, t: number | null) => s({ ourLandedPrice: p, competitivePrice: t });
+  const of = (alertType: DetectedAlert['alertType']) => alert({ alertType });
 
-  it('Below names both prices and the risk', () => {
+  it('Competitive Price Below HL Price: both prices and the risk, or that Amazon removed it', () => {
     assert.equal(
-      msg(below, at(10), at(6.04)),
-      "Amazon's competitive price is $6.04, below our $9.49 (price + shipping): the Buy Box is at risk.",
+      msg(of('CompetitivePriceBelowOurs'), at(10, 11), at(10, 9)),
+      "Amazon's competitive price went from $11.00 to $9.00, now below our HL price of $10.00 " +
+        '(price + shipping): the Buy Box is at risk.',
+    );
+    assert.equal(
+      msg(of('CompetitivePriceBelowOurs'), at(10, 11), at(10, null)),
+      'Amazon removed its competitive price (was $11.00, above our HL price of $10.00).',
     );
   });
 
-  it('Increased says where we are, and when it is back to our price or above', () => {
+  it('Competitive Price Above HL Price: a rise over ours, or Amazon setting one', () => {
     assert.equal(
-      msg(up, at(6.04), at(7)),
-      "Amazon's competitive price rose from $6.04 to $7.00 (we are at $9.49).",
+      msg(of('CompetitivePriceAboveOurs'), at(10, 9), at(10, 11)),
+      "Amazon's competitive price went from $9.00 to $11.00, now above our HL price of $10.00.",
     );
     assert.equal(
-      msg(up, at(6.04), at(9.99)),
-      "Amazon's competitive price rose from $6.04 to $9.99 (we are at $9.49), now at or above our price.",
-    );
-    assert.equal(
-      msg(up, at(6.04), at(9.49)),
-      "Amazon's competitive price rose from $6.04 to $9.49 (we are at $9.49), now at or above our price.",
-    );
-    assert.equal(
-      msg(up, at(12), at(13)),
-      "Amazon's competitive price rose from $12.00 to $13.00 (we are at $9.49).",
+      msg(of('CompetitivePriceAboveOurs'), at(10, null), at(10, 11)),
+      'Amazon set a competitive price of $11.00, above our HL price of $10.00.',
     );
   });
 
-  it('Increased leaves our price out when our offer was not shown', () => {
-    const noOffer = (t: number) => at(t, { ourLandedPrice: null });
+  it('Competitive Price Change: a move, a new one and a removed one', () => {
     assert.equal(
-      msg(up, noOffer(6), noOffer(7)),
-      "Amazon's competitive price rose from $6.00 to $7.00.",
+      msg(of('CompetitivePriceChanged'), at(10, 12), at(10, 11)),
+      "Amazon's competitive price changed from $12.00 to $11.00 (our HL price: $10.00).",
+    );
+    assert.equal(
+      msg(of('CompetitivePriceChanged'), at(10, null), at(10, 9)),
+      'Amazon set a competitive price of $9.00 (our HL price: $10.00).',
+    );
+    assert.equal(
+      msg(of('CompetitivePriceChanged'), at(10, 9), at(10, null)),
+      'Amazon removed its competitive price (was $9.00; our HL price: $10.00).',
     );
   });
 
-  it('Changed reads a move, a new one and a removed one', () => {
+  it('HL Price Above Competitive Price: our move and the risk', () => {
     assert.equal(
-      msg(moved, at(6.04), at(5.8)),
-      "Amazon's competitive price changed from $6.04 to $5.80 (we are at $9.49).",
+      msg(of('OurPriceAboveCompetitive'), at(10, 11), at(12, 11)),
+      'Our HL price (price + shipping) went from $10.00 to $12.00, now above ' +
+        "Amazon's competitive price of $11.00: the Buy Box is at risk.",
     );
     assert.equal(
-      msg(moved, at(null), at(6.04)),
-      'Amazon set a competitive price of $6.04 (we are at $9.49).',
+      msg(of('OurPriceAboveCompetitive'), at(10, 11), at(12, null)),
+      'Our HL price (price + shipping) went from $10.00 to $12.00, and Amazon removed ' +
+        'its competitive price (was $11.00).',
     );
+  });
+
+  it('HL Price Below Competitive Price: our move', () => {
     assert.equal(
-      msg(moved, at(6.04), at(null)),
-      'Amazon removed its competitive price (was $6.04).',
+      msg(of('OurPriceBelowCompetitive'), at(12, 11), at(10, 11)),
+      'Our HL price (price + shipping) went from $12.00 to $10.00, now below ' +
+        "Amazon's competitive price of $11.00.",
     );
+  });
+
+  it('never shows the -1 that stands for a missing competitive price', () => {
+    const cases: [DetectedAlert['alertType'], number | null, number | null][] = [
+      ['CompetitivePriceBelowOurs', 11, null],
+      ['CompetitivePriceAboveOurs', null, 11],
+      ['CompetitivePriceChanged', null, 9],
+      ['CompetitivePriceChanged', 9, null],
+      ['OurPriceAboveCompetitive', 11, null],
+    ];
+    for (const [type, before, now] of cases) {
+      const text = msg(of(type), at(10, before), at(12, now));
+      assert.doesNotMatch(text, /-1|n\/a/, `${type}: ${text}`);
+    }
   });
 });
