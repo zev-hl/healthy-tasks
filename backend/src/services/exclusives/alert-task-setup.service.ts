@@ -21,13 +21,13 @@ import type { ExclusivesAlertTaskSetupSaveInput } from '../../validation/schemas
  * each of that template's roles.
  *
  * A row exists once a type has been saved with something in it. Its `savedById`
- * is the Admin who last changed it — the creator of the tasks it makes — so a
- * Save only rewrites the rows that changed. The setup's version is its newest
+ * is the Admin or Manager who last changed it — the creator of the tasks it
+ * makes — so a Save only rewrites the rows that changed. The setup's version is its newest
  * row's `updatedAt`; a Save made from an older version is refused (409), as
  * elsewhere in the app.
  */
 
-// Every Save of the setup goes through one critical section, so two Admins
+// Every Save of the setup goes through one critical section, so two people
 // saving at once cannot both pass the version check. The ASCII bytes of "HATS"
 // (Healthy-tasks Alert TaskS).
 const SETUP_LOCK_KEY = 0x48415453;
@@ -130,7 +130,7 @@ export async function alertTaskPicksByPerson(): Promise<Map<string, OrgAlertTask
 export interface AlertTaskRecipe {
   templateId: number;
   roleAssignments: Filled[];
-  /** The Admin who last saved the row: the creator of its tasks. */
+  /** Who last saved the row: the creator of its tasks. */
   savedById: string | null;
 }
 
@@ -225,7 +225,7 @@ async function assertSavable(settings: ExclusivesAlertTaskSetupSaveInput['settin
 
 /**
  * Save the Alert Tasks screen. Only the rows that changed are written, each
- * recording this Admin as the one who saved it; a row with nothing in it that
+ * recording this person as the one who saved it; a row with nothing in it that
  * was never saved stays unsaved. Returns the setup as it now is.
  */
 export async function saveAlertTaskSetup(

@@ -355,15 +355,35 @@ describe('Alert Tasks setup', () => {
 // --- Who may ---------------------------------------------------------------
 
 describe('Alert Tasks setup — access', () => {
-  it('is for Admins only', async () => {
-    for (const role of ['Manager', 'Member'] as const) {
-      const email = `${role.toLowerCase()}@test.local`;
-      await seedUser({ email, role });
-      const token = await login(email);
-      assert.equal((await request(app).get(URL).set(auth(token))).status, 403, role);
-      assert.equal((await save(token, [], null)).status, 403, role);
-    }
+  it('is not for Members, nor anyone signed out', async () => {
+    await seedUser({ email: 'member@test.local', role: 'Member' });
+    const token = await login('member@test.local');
+    assert.equal((await request(app).get(URL).set(auth(token))).status, 403);
+    assert.equal((await save(token, [], null)).status, 403);
     assert.equal((await request(app).get(URL)).status, 401);
+  });
+
+  it('a Manager reads and saves it, and is recorded as the one who saved', async () => {
+    const manager = await seedUser({ email: 'manager@test.local', role: 'Manager' });
+    const token = await login('manager@test.local');
+    const tpl = await makeTemplate(token, 'Buy Box Recovery', [{ role: 'Pricing Manager' }]);
+    assert.equal((await getSetup(token)).updatedAt, null);
+
+    const res = await save(
+      token,
+      [
+        {
+          alertType: 'BuyBoxLost',
+          templateId: tpl,
+          roleAssignments: [{ role: 'Pricing Manager', assigneeId: manager.id }],
+        },
+      ],
+      null,
+    );
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(row(res.body as Setup, 'BuyBoxLost').templateId, tpl);
+    const saved = await prisma.alertTaskSetting.findFirstOrThrow();
+    assert.equal(saved.savedById, manager.id);
   });
 });
 

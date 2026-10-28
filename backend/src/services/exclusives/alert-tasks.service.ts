@@ -18,8 +18,8 @@ import { dailyWindowStart, lastDailyRunAt, nextDailyRunAt } from './daily-window
  * HLAI-112: tasks made from Exclusives alerts, by the Alert Task Setup — per
  * alert type, a template and a person per role, the same for every group. Each
  * task tree is labelled `<group>_<type>_<time>` (the time of its alert, or of a
- * Daily task's first alert), tagged with its group and type, and created by the
- * Admin who last saved that type's row.
+ * Daily task's first alert), tagged with its group and type, and created by
+ * whoever (Admin or Manager) last saved that type's row.
  *
  * - Immediate (after every check): each new alert of a type its group has on
  *   "Immediate" makes its own task tree. No limit: every alert gets its task.

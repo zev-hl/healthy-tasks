@@ -120,7 +120,7 @@ export const router = createBrowserRouter([
           {
             path: '/exclusives/alert-tasks',
             element: (
-              <RequireAuth roles={['Admin']}>
+              <RequireAuth roles={['Admin', 'Manager']}>
                 <ExclusivesAlertTasksPage />
               </RequireAuth>
             ),
