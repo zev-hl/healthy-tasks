@@ -682,7 +682,8 @@ setup (`queue/dashboard-board.ts`, `createQueueBoard`) is served in two places:
   `http://localhost:3005/bullmq`, with no sign-in and published to this computer
   only;
 - by the API itself at `/bullmq`, behind the browser's sign-in box (HTTP Basic,
-  `middleware/basic-auth.ts`, compared in constant time). `server.ts` mounts it
+  `middleware/basic-auth.ts`, compared in constant time), or an Admin's pass from
+  the profile page's button (below). `server.ts` mounts it
   only when `EMAIL_DELIVERY` is `queue` and `QUEUE_DASHBOARD_USER` and
   `QUEUE_DASHBOARD_PASSWORD` are set, the password 16 characters or more
   (`queueDashboardMode`); otherwise the path is a 404. On Render the API is the
@@ -691,11 +692,38 @@ setup (`queue/dashboard-board.ts`, `createQueueBoard`) is served in two places:
   for it.
 
 Admins reach it from the profile page: `components/QueueDashboardCard.tsx` shows
-a "Queues Dashboard" card, with a link opening the dashboard in a new tab, to Admins
-only and only when the build has `VITE_QUEUE_DASHBOARD_URL` (docker-compose: the
-local container; Render: each API's `/bullmq`). Hiding the card does not lock the
-dashboard: it checks its shared password, not the HL Central role, so each
-environment's password is given to Admins alone.
+a "Queues Dashboard" card to Admins only, and only when the build has
+`VITE_QUEUE_DASHBOARD_URL` (docker-compose: the local container; Render: each
+API's `/bullmq`). Its button is a form, opened in a new tab, that posts the
+Admin's HL Central sign-in (read at the click) to `<url>/enter` — `rel="noopener"`
+only, as "noreferrer" would send its `Origin` as `null`.
+
+**Admins in without the password** (`middleware/queue-dashboard-access.ts`):
+
+- `POST /bullmq/enter` (form body read there only) gives a pass when the form
+  comes from the website (`Origin` equal to `CORS_ORIGIN`) and carries a good
+  sign-in (`verifyAccessToken`) of an **active Admin** with the current
+  `tokenVersion` (role read from the database). The pass goes in a cookie,
+  `hl_queue_dashboard`: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/bullmq`, with
+  **no expiry**, so the browser drops it when it is closed. Either way the tab
+  goes on to `/bullmq` (303).
+- The pass (`signDashboardPass` in `utils/jwt.ts`) holds the user id and token
+  version, lasts 12 hours (a browser restoring its session keeps such cookies),
+  and is signed with its own key (an HMAC of `JWT_SECRET`), so a pass is never
+  taken as a sign-in to the API, nor a sign-in as a pass.
+- Every dashboard request (`queueDashboardGate`): a pass whose person is still an
+  active Admin with the same token version lets it through; switching them off,
+  a new role, or anything that bumps `tokenVersion` (a password reset, a new
+  sign-in address) shuts it at once. Otherwise a pass is cleared and the shared
+  user name and password are asked, as before — for anyone else, and for an
+  Admin who types the address.
+- Signing out of HL Central does not end it (the website can't clear a cookie of
+  the API's address); closing the browser does.
+- The local container takes `POST /bullmq/enter` too and just opens the board, so
+  the same button works there.
+
+The shared password still opens it for anyone who has it, so each environment's
+password is given to Admins alone.
 
 Both show sign-in links as `token=[redacted]` (a display formatter on the email
 queue); the job keeps the real link, so Retry sends a working email, while
@@ -781,7 +809,7 @@ default; set on Render), listing the day's alerts and linking to them in the
 Alert Log.
 
 - **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
-  Task Setup" under *E-commerce exclusives*), Admins only. One row per alert type in
+  Task Setup" under *E-commerce exclusives*), Admins and Managers. One row per alert type in
   `EXCLUSIVES_ALERT_TYPES` order: the type's badge, a template `SearchSelect`
   ("— None —" = no task; one template may serve several types), and the Role
   Assignment cell — one line per role of the chosen template (fetched once with
@@ -793,7 +821,7 @@ Alert Log.
 - **Save / Cancel** at the top right, both off until something changed. Save
   sends every type's setting at once with `expectedUpdatedAt`, and stays off while a
   ⚠ remains or a template's roles are loading; Cancel puts back what was last
-  saved. If another Admin saved first, Save turns into Refresh with the shared
+  saved. If someone else saved first, Save turns into Refresh with the shared
   `ConflictBanner`, as in the group editor. Leaving with changes asks first
   (`useUnsavedChangesWarning`). Loading, load-error (with "Try again") and
   no-templates (a link to Templates) states.
@@ -803,10 +831,10 @@ Alert Log.
 - **Storage.** `AlertTaskSetting`, one row per alert type once it has been saved
   with something in it: `templateId` (deleting the template empties it, so that
   type makes no tasks until another is picked), `roleAssignments` as JSON
-  `[{ role, assigneeId }]` (people only, by role), and `savedById`, the Admin who
-  last changed the row — the creator of the tasks it will make. A Save rewrites
+  `[{ role, assigneeId }]` (people only, by role), and `savedById`, the Admin or
+  Manager who last changed the row — the creator of the tasks it will make. A Save rewrites
   only the rows that changed.
-- **Endpoints** (Admins only, `services/exclusives/alert-task-setup.service.ts`).
+- **Endpoints** (Admins and Managers, `services/exclusives/alert-task-setup.service.ts`).
   `GET /api/exclusives/alert-tasks` returns every type's row in order (an unsaved type
   is empty) and the setup's version, its newest row's `updatedAt` (null before
   the first Save). `PUT` takes `{ settings, expectedUpdatedAt }`; a Save from an
@@ -840,10 +868,11 @@ Alert Log.
   `alertTaskInstanceLabel` + `withClashCounter` (against existing occurrence
   labels), tagged, its roles filled from the setup (someone no longer active
   leaves their role unassigned; a missing duty does not stop it), created by the
-  row's `savedById`, anchored at the moment it is made. An alert with no task due
-  — no template for its type, alerts switched off since, its group deleted — is
-  marked handled with no task, so a template picked later never reaches back to
-  it. Alerts on "Daily" are left waiting. A task that fails is logged and left
+  row's `savedById`. Its label's time is the alert's (`createdAt`, when the check
+  logged it); its due dates count from the moment it is made. An alert with no
+  task due — no template for its type, alerts switched off since, its group
+  deleted — is marked handled with no task, so a template picked later never
+  reaches back to it. Alerts on "Daily" are left waiting. A task that fails is logged and left
   waiting, so the next pass tries again. `AlertLog.taskId` keeps the top task
   (emptied if it is deleted).
 - **Go-live.** The migration that added `taskId` / `taskHandledAt` marked every
@@ -863,8 +892,9 @@ Alert Log.
   while any alert type is on Daily with a template (`dailyAlertTasksInUse`). An
   alert belongs to the day whose run first follows it. Every day that has ended
   gets one task tree per group and type for its waiting Daily alerts — several
-  days at once if a missed run left them behind — labelled with that day's run,
-  anchored there, and all its alerts linked to the top task in the same
+  days at once if a missed run left them behind — labelled with the time of that
+  day's first alert (the earliest `createdAt` in it), its due dates counted from
+  that day's run, and all its alerts linked to the top task in the same
   transaction. Changing the time: alerts that already made a task stay handled;
   the waiting ones go into the next run's day, so none makes two tasks (that
   first day is shorter or longer). The top task's

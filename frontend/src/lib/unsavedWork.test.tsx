@@ -1,10 +1,11 @@
-// Guards against silently losing typed work: leaving the page asks first, and
-// a modal holding edits doesn't close on a stray (or drag-select) backdrop click.
+// Guards against silently losing typed work: leaving the page asks first, a
+// modal holding edits asks before Cancel or a click outside closes it, and a
+// drag-select released on the backdrop never closes one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
-import type { GoalDto } from '@healthy-tasks/shared';
+import type { GoalDto, UserDto } from '@healthy-tasks/shared';
 
 vi.mock('../api/client', () => ({
   api: {
@@ -14,6 +15,8 @@ vi.mock('../api/client', () => ({
     listSupervisors: vi.fn(),
     createGoal: vi.fn(),
     createUser: vi.fn(),
+    getGoal: vi.fn(),
+    updateUser: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -31,7 +34,10 @@ const { api } = await import('../api/client');
 const { useBackdropDismiss } = await import('./useBackdropDismiss');
 const { TaskForm } = await import('../components/TaskForm');
 const { GoalEditorModal } = await import('../components/goals/GoalEditorModal');
+const { GoalDetailModal } = await import('../components/goals/GoalDetailModal');
 const { UserFormModal } = await import('../components/UserFormModal');
+const { UserEditModal } = await import('../components/UserEditModal');
+const { UNSAVED_CHANGES_MESSAGE } = await import('./useUnsavedChangesWarning');
 const { renderWithDataRouter } = await import('../test/render');
 const m = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
 
@@ -47,6 +53,13 @@ function renderWithSidebar(ui: ReactElement) {
 }
 
 let confirm: ReturnType<typeof vi.fn>;
+
+const backdrop = () => document.querySelector('.modal-backdrop') as HTMLElement;
+const clickBackdrop = () => {
+  fireEvent.mouseDown(backdrop());
+  fireEvent.click(backdrop());
+};
+const clickCancel = () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 beforeEach(() => {
   vi.clearAllMocks();
   m(api.listActiveUsers).mockResolvedValue([]);
@@ -133,25 +146,36 @@ describe('New task form', () => {
 });
 
 describe('Goal editor', () => {
-  const backdrop = () => document.querySelector('.modal-backdrop') as HTMLElement;
-  const clickBackdrop = () => {
-    fireEvent.mouseDown(backdrop());
-    fireEvent.click(backdrop());
-  };
-
-  it('stays open on a backdrop click once something is typed', () => {
-    const onClose = vi.fn();
+  const typed = (onClose: () => void) => {
     renderWithSidebar(<GoalEditorModal onClose={onClose} onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
+  };
+
+  it('asks on a click outside once something is typed, and stays open on Cancel', () => {
+    const onClose = vi.fn();
+    typed(onClose);
     clickBackdrop();
+    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
     expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Specific/)).toHaveValue('Ship faster');
   });
 
-  it('closes on a backdrop click while still empty', () => {
+  it('asks on its Cancel button too, and closes on OK', () => {
+    confirm.mockReturnValue(true);
+    const onClose = vi.fn();
+    typed(onClose);
+    clickCancel();
+    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on a click outside or Cancel without asking while still empty', () => {
     const onClose = vi.fn();
     renderWithSidebar(<GoalEditorModal onClose={onClose} onSaved={vi.fn()} />);
     clickBackdrop();
-    expect(onClose).toHaveBeenCalledTimes(1);
+    clickCancel();
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it('keeps Create goal off until something is filled in', () => {
@@ -195,14 +219,31 @@ describe('Goal editor', () => {
 });
 
 describe('New user form', () => {
-  it('stays open on a backdrop click once something is typed', () => {
+  it('asks on a click outside once something is typed, and stays open on Cancel', () => {
     const onClose = vi.fn();
     renderWithSidebar(<UserFormModal onClose={onClose} onCreated={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
-    const bd = document.querySelector('.modal-backdrop') as HTMLElement;
-    fireEvent.mouseDown(bd);
-    fireEvent.click(bd);
+    clickBackdrop();
+    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('asks on its Cancel button too, and closes on OK', () => {
+    confirm.mockReturnValue(true);
+    const onClose = vi.fn();
+    renderWithSidebar(<UserFormModal onClose={onClose} onCreated={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
+    clickCancel();
+    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Cancel without asking while still empty', () => {
+    const onClose = vi.fn();
+    renderWithSidebar(<UserFormModal onClose={onClose} onCreated={vi.fn()} />);
+    clickCancel();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it('keeps Create user off until something is filled in', () => {
@@ -218,5 +259,118 @@ describe('New user form', () => {
     // Picking a role other than the default counts too.
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'Manager' } });
     expect(create()).toBeEnabled();
+  });
+});
+
+describe('Edit user form', () => {
+  const user = {
+    id: 'u1',
+    email: 'una@example.com',
+    firstName: 'Una',
+    lastName: 'User',
+    role: 'Member',
+    title: null,
+    jobDescription: null,
+    supervisorId: null,
+    isActive: true,
+  } as unknown as UserDto;
+
+  it('asks on Cancel and on a click outside once something changed', () => {
+    const onClose = vi.fn();
+    renderWithSidebar(
+      <UserEditModal user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ana' } });
+    clickCancel();
+    clickBackdrop();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(onClose).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    clickCancel();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes without asking when nothing changed', () => {
+    const onClose = vi.fn();
+    renderWithSidebar(
+      <UserEditModal user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
+    );
+    clickCancel();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe('Goal detail: the results panel', () => {
+  const person = {
+    id: 'me',
+    email: 'me@example.com',
+    firstName: 'Me',
+    lastName: 'Owner',
+    title: null,
+  };
+  const goal = {
+    id: 9,
+    ownerId: 'me',
+    owner: person,
+    createdById: 'me',
+    createdBy: person,
+    specific: 'Ship faster',
+    metricType: 'Count',
+    unitLabel: null,
+    targetValue: 10,
+    deadline: '2026-12-31T00:00:00.000Z',
+    risks: null,
+    mitigations: null,
+    notes: null,
+    resultValue: null,
+    resultsFinalizedAt: null,
+    resolution: null,
+    supervisorComments: null,
+    rejectionComments: null,
+    status: 'Approved',
+    submittedAt: null,
+    approvedAt: null,
+    approvedById: null,
+    approvedBy: null,
+    underReviewAt: null,
+    resolvedAt: null,
+    resolvedById: null,
+    resolvedBy: null,
+    createdAt: '2026-10-01T12:00:00.000Z',
+    updatedAt: '2026-10-20T12:00:00.000Z',
+  } as unknown as GoalDto;
+
+  async function openResults(onClose: () => void) {
+    m(api.getGoal).mockResolvedValue(goal);
+    renderWithSidebar(
+      <GoalDetailModal goal={goal} supervisorView={false} onClose={onClose} onChanged={vi.fn()} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Update results' }));
+    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Halfway there' } });
+  }
+
+  it('asks on the panel Cancel, and keeps the text when told to stay', async () => {
+    await openResults(vi.fn());
+    clickCancel();
+    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    expect(screen.getByLabelText('Notes')).toHaveValue('Halfway there');
+
+    confirm.mockReturnValue(true);
+    clickCancel();
+    expect(screen.queryByLabelText('Notes')).not.toBeInTheDocument();
+  });
+
+  it('asks before a click outside closes the goal', async () => {
+    const onClose = vi.fn();
+    await openResults(onClose);
+    clickBackdrop();
+    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    expect(onClose).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    clickBackdrop();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

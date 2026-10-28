@@ -19,13 +19,14 @@ import { departmentsRouter } from './routes/departments.routes.js';
 import { orgRouter } from './routes/org.routes.js';
 import { timeRouter } from './routes/time.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
-import { requireBasicAuth } from './middleware/basic-auth.js';
+import { enterQueueDashboard, queueDashboardGate } from './middleware/queue-dashboard-access.js';
 
 export interface AppOptions {
   /**
-   * The queue dashboard, served behind its own user name and password. Passed
-   * only by server.ts when QUEUE_DASHBOARD_* allow it; the tests never pass
-   * it, so they open no Redis connection.
+   * The queue dashboard, served behind its own user name and password, or a
+   * pass from the website's button for Admins (middleware/queue-dashboard-access.ts).
+   * Passed only by server.ts when QUEUE_DASHBOARD_* allow it; the tests never
+   * pass it, so they open no Redis connection.
    */
   queueDashboard?: { path: string; router: express.Router; user: string; password: string };
 }
@@ -73,9 +74,15 @@ export function createApp(options: AppOptions = {}) {
 
   const dashboard = options.queueDashboard;
   if (dashboard) {
+    // The website's button: the form it sends, read here only.
+    app.post(
+      `${dashboard.path}/enter`,
+      express.urlencoded({ extended: false, limit: '16kb' }),
+      enterQueueDashboard(dashboard.path),
+    );
     app.use(
       dashboard.path,
-      requireBasicAuth(dashboard.user, dashboard.password, 'HL Central queues'),
+      queueDashboardGate(dashboard.path, dashboard.user, dashboard.password, 'HL Central queues'),
       dashboard.router,
     );
   }

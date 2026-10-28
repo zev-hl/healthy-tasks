@@ -125,7 +125,7 @@ const adminToken = () => login(ADMIN_EMAIL);
 async function makeTemplate(
   token: string,
   name: string,
-  nodes: { role: string | null; dutyId?: string }[],
+  nodes: { role: string | null; dutyId?: string; dueOffsetDays?: number }[],
 ): Promise<number> {
   const res = await request(app)
     .post('/api/templates')
@@ -138,6 +138,7 @@ async function makeTemplate(
         name: `Step ${i + 1}`,
         assigneeRole: n.role,
         dutyId: n.dutyId ?? null,
+        dueOffsetDays: n.dueOffsetDays ?? null,
       })),
     });
   assert.equal(res.status, 201, `create template failed: ${JSON.stringify(res.body)}`);
@@ -354,15 +355,35 @@ describe('Alert Tasks setup', () => {
 // --- Who may ---------------------------------------------------------------
 
 describe('Alert Tasks setup — access', () => {
-  it('is for Admins only', async () => {
-    for (const role of ['Manager', 'Member'] as const) {
-      const email = `${role.toLowerCase()}@test.local`;
-      await seedUser({ email, role });
-      const token = await login(email);
-      assert.equal((await request(app).get(URL).set(auth(token))).status, 403, role);
-      assert.equal((await save(token, [], null)).status, 403, role);
-    }
+  it('is not for Members, nor anyone signed out', async () => {
+    await seedUser({ email: 'member@test.local', role: 'Member' });
+    const token = await login('member@test.local');
+    assert.equal((await request(app).get(URL).set(auth(token))).status, 403);
+    assert.equal((await save(token, [], null)).status, 403);
     assert.equal((await request(app).get(URL)).status, 401);
+  });
+
+  it('a Manager reads and saves it, and is recorded as the one who saved', async () => {
+    const manager = await seedUser({ email: 'manager@test.local', role: 'Manager' });
+    const token = await login('manager@test.local');
+    const tpl = await makeTemplate(token, 'Buy Box Recovery', [{ role: 'Pricing Manager' }]);
+    assert.equal((await getSetup(token)).updatedAt, null);
+
+    const res = await save(
+      token,
+      [
+        {
+          alertType: 'BuyBoxLost',
+          templateId: tpl,
+          roleAssignments: [{ role: 'Pricing Manager', assigneeId: manager.id }],
+        },
+      ],
+      null,
+    );
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(row(res.body as Setup, 'BuyBoxLost').templateId, tpl);
+    const saved = await prisma.alertTaskSetting.findFirstOrThrow();
+    assert.equal(saved.savedById, manager.id);
   });
 });
 
@@ -702,6 +723,8 @@ describe('making tasks for an alert', () => {
 describe('Immediate alert tasks', () => {
   // 19 Oct 2026, 08:30 in New York.
   const AT = new Date('2026-10-19T12:30:00Z');
+  // The check that logged the alerts, six minutes before their tasks are made.
+  const ALERTED = new Date('2026-10-19T12:24:00Z');
   const run = () =>
     makeImmediateAlertTasks(
       () => {},
@@ -728,6 +751,7 @@ describe('Immediate alert tasks', () => {
     group: { id: number; name: string } | null,
     alertType: string,
     asin = 'B0ABC12345',
+    createdAt = ALERTED,
   ) {
     return prisma.alertLog.create({
       data: {
@@ -738,6 +762,7 @@ describe('Immediate alert tasks', () => {
         asin,
         marketplace: 'USA',
         title: 'Widget',
+        createdAt,
       },
     });
   }
@@ -812,6 +837,11 @@ describe('Immediate alert tasks', () => {
       },
     ]);
     assert.equal(detection.alertsWritten, 1);
+    // As if that check ran a few minutes before this one.
+    await prisma.alertLog.updateMany({
+      where: { asin: 'B0IMMED001' },
+      data: { createdAt: ALERTED },
+    });
 
     assert.deepEqual(await run(), { made: 1, noTask: 0, failed: 0 });
 
@@ -821,8 +851,8 @@ describe('Immediate alert tasks', () => {
     assert.deepEqual(
       tasks.map((t) => [t.name, t.assigneeId, t.creatorId, t.alertGroupId, t.alertType]),
       [
-        ['WasiU_PC_262920830: Step 1', ana.id, saver.id, group.id, 'PriceChanged'],
-        ['WasiU_PC_262920830: Step 2', null, saver.id, group.id, 'PriceChanged'],
+        ['WasiU_PC_262920824: Step 1', ana.id, saver.id, group.id, 'PriceChanged'],
+        ['WasiU_PC_262920824: Step 2', null, saver.id, group.id, 'PriceChanged'],
       ],
     );
     assert.equal(alert.taskId, tasks[0]!.id);
@@ -850,10 +880,26 @@ describe('Immediate alert tasks', () => {
     assert.deepEqual(await run(), { made: 3, noTask: 0, failed: 0 });
     const names = (await prisma.task.findMany({ orderBy: { id: 'asc' } })).map((t) => t.name);
     assert.deepEqual(names, [
-      'WasiC_BL_262920830: Step 1',
-      'WasiC_BL_262920830_2: Step 1',
-      'WasiC_BL_262920830_3: Step 1',
+      'WasiC_BL_262920824: Step 1',
+      'WasiC_BL_262920824_2: Step 1',
+      'WasiC_BL_262920824_3: Step 1',
     ]);
+  });
+
+  it('names the task for its alert’s time, while its due dates count from when it is made', async () => {
+    const admin = await adminToken();
+    const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
+    const tpl = await makeTemplate(admin, 'Check', [{ role: null, dueOffsetDays: 0 }]);
+    await setUp('BuyBoxLost', tpl, [], adminUser.id);
+    const group = await watchingGroup('Wasif - CA', { BuyBoxLost: 'immediate' });
+    // Logged at 11:50 PM on the 18th (New York); its task made at 8:30 AM on the 19th.
+    await logAlert(group, 'BuyBoxLost', 'B0000000B1', new Date('2026-10-19T03:50:00Z'));
+
+    assert.deepEqual(await run(), { made: 1, noTask: 0, failed: 0 });
+    const [task] = await prisma.task.findMany();
+    assert.equal(task!.name, 'WasiC_BL_262912350: Step 1');
+    // Due on its day 0 at 7:00 PM: the 19th, the day it was made, not the alert's 18th.
+    assert.equal(task!.dueAt?.toISOString(), '2026-10-19T23:00:00.000Z');
   });
 
   it('leaves Daily alerts for 8:30, and makes nothing, ever, for alerts with no task due', async () => {
@@ -1032,7 +1078,11 @@ describe('Daily alert tasks', () => {
   }
 
   /** A template whose top task says `topText`, set up for `alertType`. */
-  async function setUpDaily(alertType: string, topText: string | null = '<p>Fix it.</p>') {
+  async function setUpDaily(
+    alertType: string,
+    topText: string | null = '<p>Fix it.</p>',
+    dueOffsetDays: number | null = null,
+  ) {
     const admin = await adminToken();
     const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
     const res = await request(app)
@@ -1041,7 +1091,13 @@ describe('Daily alert tasks', () => {
       .send({
         name: `Daily ${alertType}`,
         nodes: [
-          { key: 'top', parentKey: null, name: 'Work through the alerts', description: topText },
+          {
+            key: 'top',
+            parentKey: null,
+            name: 'Work through the alerts',
+            description: topText,
+            dueOffsetDays,
+          },
           { key: 'a', parentKey: 'top', name: 'Report back' },
         ],
       });
@@ -1086,7 +1142,8 @@ describe('Daily alert tasks', () => {
     });
 
     const [top] = await tops();
-    assert.equal(top!.name, 'WasiC_LS_262920830: Work through the alerts');
+    // Named for its first alert: 3:00 PM on the 18th.
+    assert.equal(top!.name, 'WasiC_LS_262911500: Work through the alerts');
     assert.equal(top!.alertGroupId, group.id);
     assert.equal(top!.alertType, 'ListingSuppressed');
     assert.equal(
@@ -1133,8 +1190,8 @@ describe('Daily alert tasks', () => {
     assert.deepEqual(
       (await tops()).map((t) => t.name),
       [
-        'WasiU_BL_262910830: Work through the alerts',
-        'WasiU_BL_262920830: Work through the alerts',
+        'WasiU_BL_262902000: Work through the alerts',
+        'WasiU_BL_262912000: Work through the alerts',
       ],
     );
   });
@@ -1159,9 +1216,9 @@ describe('Daily alert tasks', () => {
       failed: 0,
     });
     assert.deepEqual((await tops()).map((t) => t.name.split(':')[0]).sort(), [
-      'WasiC_BL_262920830',
-      'WasiC_LS_262920830',
-      'WasiU_LS_262920830',
+      'WasiC_BL_262911200',
+      'WasiC_LS_262911200',
+      'WasiU_LS_262911200',
     ]);
   });
 
@@ -1286,8 +1343,34 @@ describe('Daily alert tasks', () => {
     await runScheduler(ny('2026-10-19T08:30:05'));
     assert.deepEqual(
       (await tops()).map((t) => t.name),
-      ['WasiC_LS_262920830: Work through the alerts'],
+      ['WasiC_LS_262911500: Work through the alerts'],
     );
+  });
+
+  it('names the task for the day’s first alert, while its due dates count from the 8:30 run', async () => {
+    await setUpDaily('ListingSuppressed', '<p>Fix it.</p>', 0);
+    const group = await watchingGroup('Wasif - CA', { ListingSuppressed: 'daily' });
+    await logAlert(group, 'ListingSuppressed', 'B0FIRST002', ny('2026-10-19T07:50:00'));
+    await logAlert(group, 'ListingSuppressed', 'B0FIRST001', ny('2026-10-18T09:14:00'));
+    // Exactly 8:30 starts the next day: not in this task, nor in its name.
+    const nextDay = await logAlert(
+      group,
+      'ListingSuppressed',
+      'B0FIRST003',
+      ny('2026-10-19T08:30:00'),
+    );
+
+    assert.deepEqual(await makeDailyAlertTasks(() => {}, ny('2026-10-19T08:31:00')), {
+      made: 1,
+      noTask: 0,
+      failed: 0,
+    });
+    const [top] = await tops();
+    assert.equal(top!.name, 'WasiC_LS_262910914: Work through the alerts');
+    // Due on day 0 at 7:00 PM: the 19th, the run's day, not the first alert's 18th.
+    assert.equal(top!.dueAt?.toISOString(), '2026-10-19T23:00:00.000Z');
+    const waiting = await prisma.alertLog.findUniqueOrThrow({ where: { id: nextDay.id } });
+    assert.equal(waiting.taskHandledAt, null);
   });
 
   // --- Steps 15-16: the time from EXCLUSIVES_DAILY_TASKS_AT -------------------
@@ -1324,7 +1407,8 @@ describe('Daily alert tasks', () => {
       failed: 0,
     });
     const [top] = await tops();
-    assert.equal(top!.name, 'WasiC_LS_262921400: Work through the alerts');
+    // Named for its first alert: 2:00 PM on the 18th.
+    assert.equal(top!.name, 'WasiC_LS_262911400: Work through the alerts');
     assert.match(top!.description!, /B0TIME0001[\s\S]*B0TIME0002/);
     assert.doesNotMatch(top!.description!, /B0TIME0003/);
     // The Alert Log link covers that day: 2:00 PM to 2:00 PM (EDT).
@@ -1361,7 +1445,7 @@ describe('Daily alert tasks', () => {
       await runScheduler(ny('2026-10-19T14:00:05'));
       assert.deepEqual(
         (await tops()).map((t) => t.name),
-        ['WasiC_LS_262921400: Work through the alerts'],
+        ['WasiC_LS_262921100: Work through the alerts'],
       );
     } finally {
       settings.alertTasks.dailyAt = saved;

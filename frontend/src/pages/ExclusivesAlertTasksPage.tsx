@@ -77,13 +77,13 @@ const roleNeeds = (template: TemplateDto, role: string): string[] => [
 /**
  * HLAI-112: the Alert Tasks screen. One row per Exclusives alert type: the
  * template its tasks are made from, and who fills each of that template's
- * roles. The same for every alert group. Admins only.
+ * roles. The same for every alert group. Admins and Managers.
  *
  * The roles work as in the template's Create tasks window: a person per role,
  * ⚠ for someone missing a duty that role's tasks carry. Nothing is kept until
  * Save, which sends every row at once; Cancel puts back what was last saved.
  * Both stay off until something has changed, and leaving with changes not
- * saved asks first. If another Admin saved first, Save turns into Refresh, as
+ * saved asks first. If someone else saved first, Save turns into Refresh, as
  * in the group editor.
  */
 export function ExclusivesAlertTasksPage() {
@@ -245,7 +245,7 @@ export function ExclusivesAlertTasksPage() {
         );
         setNotice('Saved.');
       });
-      if (!ok) return; // another Admin saved first; the conflict banner explains
+      if (!ok) return; // someone else saved first; the conflict banner explains
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the alert tasks.');
     } finally {

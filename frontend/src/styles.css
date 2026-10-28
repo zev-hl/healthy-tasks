@@ -2691,34 +2691,6 @@ button.secondary:hover {
   color: var(--ink);
 }
 
-/* A link that looks like a button, for a way out of the app (a new tab)
-   rather than an action in it. Same box as `button`, plus a variant. */
-a.button-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: normal;
-  transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
-}
-a.button-link.secondary {
-  background: var(--surface);
-  color: var(--ink-3);
-  border-color: var(--border);
-}
-a.button-link.secondary:hover {
-  background: var(--surface-sunk);
-  border-color: var(--border-dashed);
-  color: var(--ink);
-}
-
 /* Tertiary/ghost: soft fill, no border (row/hover actions) */
 button.ghost,
 button.tertiary {

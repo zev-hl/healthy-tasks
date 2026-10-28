@@ -320,7 +320,7 @@ describe('ExclusivesAlertTasksPage', () => {
     expect(saveButton()).toBeEnabled();
   });
 
-  it('if another Admin saved first, says so, and Refresh shows what they saved', async () => {
+  it('if someone else saved first, says so, and Refresh shows what they saved', async () => {
     saveSetup.mockRejectedValue(
       new ApiError(409, 'Changed by someone else', { code: 'STALE_WRITE' }),
     );
@@ -333,7 +333,7 @@ describe('ExclusivesAlertTasksPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Save/ })).toBeNull();
 
-    // What the other Admin saved, as Refresh finds it.
+    // What they saved, as Refresh finds it.
     getSetup.mockResolvedValue({
       settings: emptySetup().settings.map((s) =>
         s.alertType === 'TitleChanged' ? { ...s, templateId: 5 } : s,
