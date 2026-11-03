@@ -16,7 +16,7 @@ import {
 import { carryForwardAssignees, generateOccurrence } from './template-instantiation.service.js';
 import { materializeDueTaskRecurrences } from './task-recurrence.service.js';
 import { runGoalReviewPass } from './goal.service.js';
-import { getMaterializeLeadDays } from './app-settings.service.js';
+import { appSettingsChangedAt, getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
@@ -226,12 +226,13 @@ async function firedSeqSet(templateId: number): Promise<Set<number>> {
  * The anchor of the next RelativeToCompletion occurrence for a template, or null
  * when the series is not currently waiting on a clock (no series start, or the
  * prior root is not Completed so the trigger is a status change, not a time).
+ * `completedAt` is when the prior root was Completed (null for the first).
  */
 async function relativeNextAnchor(
   t: TemplateForSchedule,
   cfg: RecurrenceConfig,
   now: Date,
-): Promise<{ seq: number; anchor: Date } | null> {
+): Promise<{ seq: number; anchor: Date; completedAt: Date | null } | null> {
   const latest = await prisma.templateOccurrence.findFirst({
     where: { templateId: t.id, seq: { not: null } },
     orderBy: { seq: 'desc' },
@@ -241,7 +242,9 @@ async function relativeNextAnchor(
   if (!latest) {
     // First occurrence: anchored at the series start.
     if (!cfg.anchorDate) return null;
-    return seqAllowed(cfg, 1, cfg.anchorDate) ? { seq: 1, anchor: cfg.anchorDate } : null;
+    return seqAllowed(cfg, 1, cfg.anchorDate)
+      ? { seq: 1, anchor: cfg.anchorDate, completedAt: null }
+      : null;
   }
   // Subsequent occurrence: only once the prior root is Completed.
   if (
@@ -255,7 +258,9 @@ async function relativeNextAnchor(
   const completedAt = latest.rootTask.statusChangedAt ?? now;
   const nextSeq = (latest.seq as number) + 1;
   const nextAnchor = addInterval(completedAt, cfg.intervalUnit, cfg.intervalCount);
-  return seqAllowed(cfg, nextSeq, nextAnchor) ? { seq: nextSeq, anchor: nextAnchor } : null;
+  return seqAllowed(cfg, nextSeq, nextAnchor)
+    ? { seq: nextSeq, anchor: nextAnchor, completedAt }
+    : null;
 }
 
 /** Materialize any due occurrences for one template; returns how many fired.
@@ -293,11 +298,25 @@ async function materializeDueForTemplate(
 
 // --- Overdue measurement (S4b, layers 2 and 3) -----------------------------
 
+/** One item that is eligible to have run but has not. */
+export interface OverdueItem {
+  /** When it became eligible by its own dates (epoch ms). */
+  dueAt: number;
+  /**
+   * When it was last set up or changed (epoch ms): its template or rule saved,
+   * the prior occurrence completed, the lead time changed, the goal edited.
+   * Before then the scheduler could not have known about it.
+   */
+  setUpAt: number;
+}
+
 export interface OverdueMeasurement {
   /** How many items are eligible to have run but have not. */
   count: number;
   /** The worst lateness across those items, in ms (0 when count is 0). */
   maxLateMs: number;
+  /** The items themselves, for `lateForScheduler`. */
+  items: OverdueItem[];
 }
 
 /**
@@ -315,28 +334,43 @@ export interface OverdueMeasurement {
  * be emailed depends on per-user notification preferences, so there is no clean
  * invariant; and the dispatch path stamps `emailSentAt` before sending, so it
  * cannot get stuck.
+ *
+ * `maxLateMs` goes by each item's own dates, which can be long before anyone set
+ * it up (a new series' first copies are "eligible" up to the lead time early):
+ * how late the scheduler itself was is `lateForScheduler(items, ...)`.
  */
 export async function measureOverdue(now: Date, leadDays: number): Promise<OverdueMeasurement> {
-  const late: number[] = [];
+  const items: OverdueItem[] = [];
   const t = now.getTime();
+  const add = (dueAt: number, ...setUp: (Date | null | undefined)[]): void => {
+    items.push({ dueAt, setUpAt: Math.max(0, ...setUp.map((d) => d?.getTime() ?? 0)) });
+  };
+
+  // A longer lead time makes copies eligible at once.
+  const leadSetAt = await appSettingsChangedAt();
 
   // Templates.
   const templates = await prisma.taskTemplate.findMany({
     where: { isActive: true, recurrenceType: { in: ['Fixed', 'RelativeToCompletion'] } },
-    select: scheduleSelect,
+    select: {
+      ...scheduleSelect,
+      updatedAt: true,
+      nodes: { select: { startOffsetDays: true, dueOffsetDays: true, updatedAt: true } },
+    },
   });
   for (const tpl of templates) {
     const cfg = toConfig(tpl);
+    const savedAt = [leadSetAt, tpl.updatedAt, ...tpl.nodes.map((n) => n.updatedAt)];
     if (cfg.recurrenceType === 'Fixed') {
       const fired = await firedSeqSet(tpl.id);
       const offset = earliestOffset(tpl.nodes);
       for (const seq of dueFixedSeqs(cfg, fired, now, leadDays, offset)) {
-        late.push(t - eligibleAt(fixedAnchorForSeq(cfg, seq), offset, leadDays));
+        add(eligibleAt(fixedAnchorForSeq(cfg, seq), offset, leadDays), ...savedAt);
       }
     } else {
       const next = await relativeNextAnchor(tpl, cfg, now);
       if (next && isWithinLeadTime(next.anchor, leadDays, now)) {
-        late.push(t - eligibleAt(next.anchor, 0, leadDays));
+        add(eligibleAt(next.anchor, 0, leadDays), ...savedAt, next.completedAt);
       }
     }
   }
@@ -358,7 +392,7 @@ export async function measureOverdue(now: Date, leadDays: number): Promise<Overd
     if (cfg.recurrenceType === 'Fixed') {
       const fired = new Set<number>([1, ...s.recurrenceOccurrences.map((o) => o.recurrenceSeq ?? 0)]);
       for (const seq of dueFixedSeqs(cfg, fired, now, leadDays)) {
-        late.push(t - eligibleAt(fixedAnchorForSeq(cfg, seq), 0, leadDays));
+        add(eligibleAt(fixedAnchorForSeq(cfg, seq), 0, leadDays), leadSetAt, s.recurrence.updatedAt);
       }
     } else {
       const latestOcc = await prisma.task.findFirst({
@@ -375,19 +409,43 @@ export async function measureOverdue(now: Date, leadDays: number): Promise<Overd
       const nextSeq = (latest.recurrenceSeq ?? 1) + 1;
       const nextAnchor = addInterval(latest.statusChangedAt ?? now, cfg.intervalUnit, cfg.intervalCount);
       if (seqAllowed(cfg, nextSeq, nextAnchor) && isWithinLeadTime(nextAnchor, leadDays, now)) {
-        late.push(t - eligibleAt(nextAnchor, 0, leadDays));
+        add(
+          eligibleAt(nextAnchor, 0, leadDays),
+          leadSetAt,
+          s.recurrence.updatedAt,
+          latest.statusChangedAt ?? now,
+        );
       }
     }
   }
 
-  // Goals past their deadline that are still Approved.
+  // Goals past their deadline that are still Approved. `updatedAt` covers an
+  // approval, or a deadline moved into the past, after the deadline.
   const goals = await prisma.goal.findMany({
     where: { status: 'Approved', deadline: { lte: now } },
-    select: { deadline: true },
+    select: { deadline: true, updatedAt: true },
   });
-  for (const g of goals) late.push(t - g.deadline.getTime());
+  for (const g of goals) add(g.deadline.getTime(), g.updatedAt);
 
-  return { count: late.length, maxLateMs: late.length ? Math.max(...late) : 0 };
+  const late = items.map((i) => t - i.dueAt);
+  return { count: items.length, maxLateMs: late.length ? Math.max(...late) : 0, items };
+}
+
+/**
+ * How late the scheduler itself was for `items` (ms, 0 when not at all): what
+ * the "ran late" alert reports. Only items it could have known about at its
+ * last run count, each from when it fell due or was set up, whichever is later.
+ * An item set up since the last run is never late: changes do not wake the
+ * scheduler, so this pass is when it first hears of it (the 6h ceiling bounds
+ * that wait by design).
+ */
+export function lateForScheduler(items: OverdueItem[], now: Date, lastRunAt: Date): number {
+  let max = 0;
+  for (const i of items) {
+    if (i.setUpAt > lastRunAt.getTime()) continue;
+    max = Math.max(max, now.getTime() - Math.max(i.dueAt, i.setUpAt));
+  }
+  return max;
 }
 
 // --- Next-wake derivation (S4, the fine clock) -----------------------------
@@ -516,7 +574,11 @@ export async function runScheduler(now: Date): Promise<number> {
 
   // Layer 2: how late did we wake? Measured BEFORE any work, so it reflects the
   // gap between when items became eligible and when we actually got here.
-  let before: OverdueMeasurement = { count: 0, maxLateMs: 0 };
+  // Right after start-up the last run is unknown (it is kept in memory), so it is
+  // taken as the longest the scheduler ever sleeps: work set up in that window is
+  // not reported, work the previous process should already have done still is.
+  const lastRunAt = lastTickAt ?? new Date(now.getTime() - SCHEDULER_MAX_SLEEP_MS);
+  let before: OverdueMeasurement = { count: 0, maxLateMs: 0, items: [] };
   try {
     before = await measureOverdue(now, leadDays);
   } catch (err) {
@@ -577,6 +639,7 @@ export async function runScheduler(now: Date): Promise<number> {
   // arrived very late, say so even when the pass then succeeded.
   try {
     const after = await measureOverdue(now, leadDays);
+    const lateMs = lateForScheduler(before.items, now, lastRunAt);
     if (after.count > 0) {
       await alertHealth(now, 'HL Central scheduler did not complete its work', [
         `${after.count} item(s) are eligible to run but did not; worst case ${fmtDuration(after.maxLateMs)} overdue.`,
@@ -584,9 +647,9 @@ export async function runScheduler(now: Date): Promise<number> {
         'A pass has just finished, so this should be zero. Something in the pass is',
         'failing and being swallowed - check the API logs for "scheduler:" errors.',
       ]);
-    } else if (before.maxLateMs > SCHEDULER_LATE_THRESHOLD_MS) {
+    } else if (lateMs > SCHEDULER_LATE_THRESHOLD_MS) {
       await alertHealth(now, 'HL Central scheduler ran late', [
-        `Work was ${fmtDuration(before.maxLateMs)} overdue when this pass started.`,
+        `Work was ${fmtDuration(lateMs)} overdue when this pass started.`,
         '',
         'The work has now been done, but the scheduler woke later than it should',
         'have. If this repeats, the next-wake computation is likely wrong.',

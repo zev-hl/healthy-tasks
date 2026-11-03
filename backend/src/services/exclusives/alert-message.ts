@@ -18,6 +18,51 @@ function pricePct(prev: number, current: number): string {
   return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
 }
 
+// HLAI-124: Amazon's competitive price against our price + shipping ("HL
+// price"). The rules never fire with our price missing; Amazon's may be (removed,
+// or set again), which the wording says rather than showing an amount.
+function describeCompetitive(
+  alert: DetectedAlert,
+  prev: SnapshotView,
+  current: SnapshotView,
+): string {
+  const cpBefore = money(prev.competitivePrice);
+  const cpNow = money(current.competitivePrice);
+  const hlBefore = money(prev.ourLandedPrice);
+  const hlNow = money(current.ourLandedPrice);
+  const set = prev.competitivePrice == null;
+  const removed = current.competitivePrice == null;
+  switch (alert.alertType) {
+    case 'CompetitivePriceBelowOurs':
+      return removed
+        ? `Amazon removed its competitive price (was ${cpBefore}, above our HL price of ${hlNow}).`
+        : `Amazon's competitive price went from ${cpBefore} to ${cpNow}, now below our HL price ` +
+            `of ${hlNow} (price + shipping): the Buy Box is at risk.`;
+    case 'CompetitivePriceAboveOurs':
+      return set
+        ? `Amazon set a competitive price of ${cpNow}, above our HL price of ${hlNow}.`
+        : `Amazon's competitive price went from ${cpBefore} to ${cpNow}, now above our HL price ` +
+            `of ${hlNow}.`;
+    case 'CompetitivePriceChanged':
+      if (set) return `Amazon set a competitive price of ${cpNow} (our HL price: ${hlNow}).`;
+      if (removed) {
+        return `Amazon removed its competitive price (was ${cpBefore}; our HL price: ${hlNow}).`;
+      }
+      return `Amazon's competitive price changed from ${cpBefore} to ${cpNow} (our HL price: ${hlNow}).`;
+    case 'OurPriceAboveCompetitive':
+      return removed
+        ? `Our HL price (price + shipping) went from ${hlBefore} to ${hlNow}, and Amazon removed ` +
+            `its competitive price (was ${cpBefore}).`
+        : `Our HL price (price + shipping) went from ${hlBefore} to ${hlNow}, now above ` +
+            `Amazon's competitive price of ${cpNow}: the Buy Box is at risk.`;
+    default:
+      return (
+        `Our HL price (price + shipping) went from ${hlBefore} to ${hlNow}, now below ` +
+        `Amazon's competitive price of ${cpNow}.`
+      );
+  }
+}
+
 /**
  * What the changed bullets used to say, and what they say now.
  *
@@ -98,6 +143,12 @@ export function describeAlert(
       return 'Description changed.';
     case 'BulletPointsChanged':
       return describeBullets(alert.category, prev, current);
+    case 'CompetitivePriceBelowOurs':
+    case 'CompetitivePriceAboveOurs':
+    case 'CompetitivePriceChanged':
+    case 'OurPriceAboveCompetitive':
+    case 'OurPriceBelowCompetitive':
+      return describeCompetitive(alert, prev, current);
     default:
       return 'Changed.';
   }

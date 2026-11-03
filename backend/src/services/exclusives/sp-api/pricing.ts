@@ -17,6 +17,8 @@ export interface Offer {
 export interface OffersSummary {
   TotalOfferCount?: number;
   BuyBoxPrices?: Array<{ condition?: string; LandedPrice?: Money }>;
+  /** Amazon's competitive price, from other retailers; given for some listings only. */
+  CompetitivePriceThreshold?: Money;
 }
 
 export interface ListingOffersPayload {
@@ -161,4 +163,26 @@ export function resolveBuyBox(payload: ListingOffersPayload | undefined): BuyBox
     return Math.abs(landed - price) < 0.01;
   });
   return { winnerSellerId: winner?.SellerId ?? null, price, offerCount };
+}
+
+export interface Competitive {
+  competitivePrice: number | null;
+  ourLandedPrice: number | null;
+}
+
+// HLAI-124. Amazon's competitive price, and our offer's price + shipping — what
+// Amazon compares with it (an offer above it may lose the Buy Box). Amazon
+// leaves the competitive price out when it has no outside price for the item;
+// our offer is missing when it isn't live (out of stock, inactive). Pure.
+export function resolveCompetitive(
+  payload: ListingOffersPayload | undefined,
+  merchantToken: string | undefined,
+): Competitive {
+  const competitivePrice = payload?.Summary?.CompetitivePriceThreshold?.Amount ?? null;
+  const ours = merchantToken
+    ? (payload?.Offers ?? []).find((o) => o.SellerId === merchantToken)
+    : undefined;
+  const price = ours?.ListingPrice?.Amount;
+  const ourLandedPrice = price == null ? null : price + (ours?.Shipping?.Amount ?? 0);
+  return { competitivePrice, ourLandedPrice };
 }

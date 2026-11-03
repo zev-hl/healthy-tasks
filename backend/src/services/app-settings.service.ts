@@ -37,6 +37,19 @@ export async function getMaterializeLeadDays(): Promise<number> {
   return row?.materializeLeadDays ?? DEFAULT_MATERIALIZE_LEAD_DAYS;
 }
 
+/**
+ * When the global settings last changed (null before the first change). A
+ * longer lead time makes recurring occurrences due at once, so the scheduler's
+ * lateness check counts them from here.
+ */
+export async function appSettingsChangedAt(): Promise<Date | null> {
+  const row = await prisma.appSetting.findUnique({
+    where: { id: APP_SETTING_ID },
+    select: { updatedAt: true },
+  });
+  return row?.updatedAt ?? null;
+}
+
 /** Update the global settings (Admin only; enforced at the route). */
 export async function updateAppSettings(input: UpdateAppSettingsRequest): Promise<AppSettingsDto> {
   const row = await prisma.appSetting.upsert({
