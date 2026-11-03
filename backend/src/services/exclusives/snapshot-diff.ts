@@ -13,6 +13,10 @@ export interface SnapshotView {
   buyboxWinnerSellerId: string | null;
   buyboxPrice: number | null;
   offerCount: number | null;
+  competitivePrice: number | null;
+  ourLandedPrice: number | null;
+  /** False only on a row saved before the competitive price was read (HLAI-124). */
+  competitiveRecorded: boolean;
   isSuppressed: boolean;
   suppressionReason: string | null;
 }
@@ -50,6 +54,12 @@ export function diffSnapshots(prev: SnapshotView, current: SnapshotView): FieldC
     change('listedPrice', prev.listedPrice, current.listedPrice, moneyEq(prev.listedPrice, current.listedPrice)),
     change('buyboxPrice', prev.buyboxPrice, current.buyboxPrice, moneyEq(prev.buyboxPrice, current.buyboxPrice)),
     change('offerCount', prev.offerCount, current.offerCount, eq(prev.offerCount, current.offerCount)),
+    change(
+      'competitivePrice',
+      prev.competitivePrice,
+      current.competitivePrice,
+      moneyEq(prev.competitivePrice, current.competitivePrice),
+    ),
     change(
       'buyboxWinnerSellerId',
       prev.buyboxWinnerSellerId,

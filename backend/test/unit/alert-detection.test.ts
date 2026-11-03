@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectAlerts } from '../../src/services/exclusives/alert-detection.js';
+import { comparablePrices, detectAlerts } from '../../src/services/exclusives/alert-detection.js';
 import type { SnapshotView } from '../../src/services/exclusives/snapshot-diff.js';
 
 const US = 'A1UWLDVGZSXGKG';
@@ -19,6 +19,9 @@ const base: SnapshotView = {
   buyboxWinnerSellerId: US,
   buyboxPrice: 34.99,
   offerCount: 3,
+  competitivePrice: null,
+  ourLandedPrice: null,
+  competitiveRecorded: true,
   isSuppressed: false,
   suppressionReason: null,
 };
@@ -120,5 +123,139 @@ describe('detectAlerts — combined', () => {
       'PriceChanged',
       'TitleChanged',
     ]);
+  });
+});
+
+describe("detectAlerts — competitive price (HLAI-124, the client's rules of 28 Oct)", () => {
+  // P = our price + shipping ("HL price"), T = Amazon's competitive price.
+  const at = (p: number | null, t: number | null, o: Partial<SnapshotView> = {}) =>
+    s({ ourLandedPrice: p, competitivePrice: t, ...o });
+  type Pair = [number | null, number | null];
+  /** One check: P before → now, T before → now. */
+  const check = (p: Pair, t: Pair) => types(at(p[0], t[0]), at(p[1], t[1]));
+  const BELOW = 'CompetitivePriceBelowOurs';
+  const ABOVE = 'CompetitivePriceAboveOurs';
+  const CHANGE = 'CompetitivePriceChanged';
+  const HL_ABOVE = 'OurPriceAboveCompetitive';
+  const HL_BELOW = 'OurPriceBelowCompetitive';
+
+  it("matches the client's chart, row for row", () => {
+    const chart: [Pair, Pair, string[]][] = [
+      [[10, 10], [11, 9], [BELOW]],
+      [[10, 10], [9, 11], [ABOVE]],
+      [[10, 10], [11, 12], [CHANGE]],
+      [[10, 10], [12, 11], [CHANGE]],
+      [[10, 10], [8, 9], [CHANGE]],
+      [[10, 10], [9, 8], [CHANGE]],
+      [[10, 12], [11, 11], [HL_ABOVE]],
+      [[12, 10], [11, 11], [HL_BELOW]],
+      [
+        [10, 12],
+        [11, 9],
+        [BELOW, HL_ABOVE],
+      ],
+      [
+        [9, 12],
+        [10, 9],
+        [BELOW, HL_ABOVE],
+      ],
+      [[9, 10], [10, 11], [CHANGE]],
+    ];
+    for (const [p, t, expected] of chart) {
+      assert.deepEqual(check(p, t), [...expected].sort(), `P ${p.join(' → ')}, T ${t.join(' → ')}`);
+    }
+  });
+
+  it('fires both of ours when both prices cross the other way', () => {
+    assert.deepEqual(check([11, 9], [10, 10.5]), [ABOVE, HL_BELOW].sort());
+  });
+
+  it('fires nothing when our price moves without crossing, or nothing moves', () => {
+    assert.deepEqual(check([9, 9.5], [10, 10]), []);
+    assert.deepEqual(check([11, 11], [10, 10]), []);
+  });
+
+  it('ignores a move under half a cent', () => {
+    assert.deepEqual(check([10, 10], [11, 11.004]), []);
+    assert.deepEqual(check([10, 10.004], [11, 11]), []);
+  });
+
+  describe('equal prices (the check is skipped; the saved pair is kept)', () => {
+    it('fires nothing when the two are equal now', () => {
+      assert.deepEqual(check([10, 10], [11, 10]), []);
+      assert.deepEqual(check([10, 11], [11, 11]), []);
+      assert.deepEqual(check([10, 10], [11, 10.004]), [], 'equal to the half cent');
+    });
+
+    it('then compares with the last unequal pair, so a crossing through equal is caught', () => {
+      // The saved pair stayed 10 / 11 (snapshot.repository keeps it).
+      assert.deepEqual(check([10, 10], [11, 9]), [BELOW]);
+      assert.deepEqual(check([10, 10], [11, 12]), [CHANGE]);
+      assert.deepEqual(check([10, 12], [11, 11]), [HL_ABOVE]);
+    });
+
+    it('can compare only with our price known and different from theirs', () => {
+      assert.equal(comparablePrices(at(10, 9)), true);
+      assert.equal(comparablePrices(at(10, null)), true, 'a missing T is -1');
+      assert.equal(comparablePrices(at(10, 10)), false);
+      assert.equal(comparablePrices(at(10, 10.004)), false);
+      assert.equal(comparablePrices(at(null, 9)), false);
+    });
+  });
+
+  describe('a missing competitive price counts as -1', () => {
+    it('removed while above ours: Below (red); while below ours: Change', () => {
+      assert.deepEqual(check([10, 10], [11, null]), [BELOW]);
+      assert.deepEqual(check([10, 10], [9, null]), [CHANGE]);
+    });
+
+    it('back above ours: Above; back below ours: Change', () => {
+      assert.deepEqual(check([10, 10], [null, 11]), [ABOVE]);
+      assert.deepEqual(check([10, 10], [null, 9]), [CHANGE]);
+    });
+
+    it('never had one: nothing, whatever our price does', () => {
+      assert.deepEqual(check([10, 12], [null, null]), []);
+      assert.deepEqual(check([12, 10], [null, null]), []);
+    });
+
+    it('removed while our price rises over it: both', () => {
+      assert.deepEqual(check([10, 12], [11, null]), [BELOW, HL_ABOVE].sort());
+    });
+  });
+
+  it('fires nothing with our price missing now (skipped, like equal prices)', () => {
+    assert.deepEqual(check([10, null], [9, 11]), []);
+    assert.deepEqual(check([null, 10], [9, 11]), [], 'nor without a saved price of ours');
+  });
+
+  it('carries the competitive price before and now, or ours for HL Price alerts', () => {
+    const values = (p: Pair, t: Pair) =>
+      detectAlerts(at(p[0], t[0]), at(p[1], t[1]), US).map((a) => [
+        a.alertType,
+        a.previousValue,
+        a.newValue,
+        a.category,
+      ]);
+    assert.deepEqual(values([10, 12], [11, 9]), [
+      [BELOW, '11', '9', null],
+      [HL_ABOVE, '10', '12', null],
+    ]);
+    assert.deepEqual(values([10, 10], [11, null]), [[BELOW, '11', null, null]]);
+    assert.deepEqual(values([10, 10], [null, 11]), [[ABOVE, null, '11', null]]);
+  });
+
+  describe('the first check after the release (row saved before it)', () => {
+    const old = s({ competitiveRecorded: false });
+
+    it('fires none of the five: it starts quietly', () => {
+      assert.deepEqual(types(old, at(10, 9)), []);
+      assert.deepEqual(types(old, at(10, 11)), []);
+      assert.deepEqual(types(old, at(10, null)), []);
+    });
+
+    it('still logs the other changes', () => {
+      assert.deepEqual(types(old, at(10, 9, { title: 'New' })), ['TitleChanged']);
+    });
   });
 });

@@ -664,7 +664,7 @@ export function OrganizationPage() {
             </button>
           ))}
         </div>
-        <div className="dd-search" style={{ width: 240 }}>
+        <div className="dd-search org-search">
           <SearchIcon />
           <input
             placeholder="Search people, departments, duties…"

@@ -1,6 +1,12 @@
 import type { ExclusivesMarketplace } from '@healthy-tasks/shared';
+import { env } from '../../config/env.js';
 import { searchListingsItems } from './sp-api/listings.js';
-import { getListingOffersBatch, isTransientOfferResult, resolveBuyBox } from './sp-api/pricing.js';
+import {
+  getListingOffersBatch,
+  isTransientOfferResult,
+  resolveBuyBox,
+  resolveCompetitive,
+} from './sp-api/pricing.js';
 import { searchCatalogItems, type CatalogItem } from './sp-api/catalog.js';
 import {
   mapCatalogContent,
@@ -147,6 +153,9 @@ async function sweepBatch(
     draft.buyboxWinnerSellerId = bb.winnerSellerId;
     draft.buyboxPrice = bb.price;
     draft.offerCount = bb.offerCount;
+    const competitive = resolveCompetitive(offers?.payload, env.amazon.merchantToken);
+    draft.competitivePrice = competitive.competitivePrice;
+    draft.ourLandedPrice = competitive.ourLandedPrice;
     snapshots.push(draft);
   }
 
