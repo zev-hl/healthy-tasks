@@ -177,7 +177,8 @@ An Admin and Manager screen (`/exclusives/alert-tasks`) linking each Exclusives 
 template and a person per role of that template, for tasks to be made from alerts
 automatically. The setup is stored (`AlertTaskSetting`, Admin and Manager only
 `GET`/`PUT /api/exclusives/alert-tasks`). Immediate alerts make their tasks at the
-end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`); an
+end of each Exclusives pass (`services/exclusives/alert-tasks.service.ts`), the
+alert in the same table as a Daily task's with a link to it in the Alert Log; an
 alert's `taskHandledAt` makes sure it never makes two, and alerts from before
 go-live none. Daily alerts make one task per group and type a day at
 `EXCLUSIVES_DAILY_TASKS_AT` business time (08:30 by default, a scheduler pass,
@@ -254,7 +255,7 @@ URLs. For S3, `S3_ENDPOINT` is used for server-side ops while
 ### Rich text
 User-authored HTML (task descriptions, comments) is sanitized server-side
 (`utils/rich-text.ts`, `sanitize-html`) and rendered via TipTap / DOMPurify on
-the frontend. Links are stripped, except one to the Alert Log (HLAI-112's Daily
+the frontend. Links are stripped, except one to the Alert Log (HLAI-112's
 alert tasks), which is kept on the server, the display and the editor alike.
 Tables are allowed (the editor's Table menu, `@tiptap/extension-table`); a cell
 keeps only its colspan/rowspan. `express.json` limit is raised to 2mb to fit rich-text payloads.

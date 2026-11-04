@@ -83,8 +83,8 @@ export interface GenerateOccurrenceParams {
   alertGroupId?: number | null;
   alertType?: ExclusivesAlertType | null;
   /**
-   * Rich text added after the top task's own description (HLAI-112: the Daily
-   * task's list of alerts). Sanitized and size-checked with it.
+   * Rich text added after the top task's own description (HLAI-112: an alert
+   * task's table of alerts). Sanitized and size-checked with it.
    */
   rootDescriptionExtra?: string | null;
   /**

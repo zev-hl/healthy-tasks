@@ -23,6 +23,8 @@ import { dailyWindowStart, lastDailyRunAt, nextDailyRunAt } from './daily-window
  *
  * - Immediate (after every check): each new alert of a type its group has on
  *   "Immediate" makes its own task tree. No limit: every alert gets its task.
+ *   The alert is in a table in the top task's description, with a link to it in
+ *   the Alert Log under the table.
  * - Daily (from the scheduler, at 8:30 AM business time by default — set by
  *   EXCLUSIVES_DAILY_TASKS_AT, see daily-window.ts): one task tree per group and
  *   type for the alerts of the day that has just ended (8:30 AM to 8:29 AM), in
@@ -126,16 +128,20 @@ async function makeImmediate(onLog: Log, now: () => Date): Promise<AlertTaskRunR
   const activeIds = await activePeople(recipes);
   for (const a of due) {
     const type = a.alertType as ExclusivesAlertType;
+    const groupId = a.groupId as number;
+    const groupName = (a.group as { name: string }).name;
     try {
       await makeAlertTask({
         recipe: recipes.get(type) as AlertTaskRecipe,
         activeIds,
-        groupId: a.groupId as number,
-        groupName: (a.group as { name: string }).name,
+        groupId,
+        groupName,
         type,
         labelAt: a.createdAt,
         anchorAt: now(),
         alertLogIds: [a.id],
+        rootDescriptionExtra: (room) =>
+          immediateTable({ groupId, groupName, type, alert: a }, room),
       });
       made += 1;
     } catch (err) {
@@ -297,21 +303,74 @@ function when(at: Date): string {
 }
 
 const LINK_TEXT = 'View these alerts in the Alert Log';
+const IMMEDIATE_LINK_TEXT = 'View this alert in the Alert Log';
 const moreText = (n: number) => `…and ${n} more: see the Alert Log link`;
 
-/** The Daily table's columns, in order. */
+/** An alert task's table's columns, in order. */
 const TABLE_HEADERS = ['No.', 'ASIN', 'Group', 'Alert Type', 'Date & time', 'Details'];
-/** The first rows show the alert's own description; later ones link to it. */
+/** A Daily task's first rows show the alert's own description; later ones link to it. */
 const ROWS_WITH_DETAILS = 2;
 const DETAILS_LINK_TEXT = 'See log for details…';
 
+interface TableAlert {
+  asin: string;
+  message: string;
+  createdAt: Date;
+}
+
 /**
- * The Daily task's table: a header row, then one row per alert, oldest first —
+ * An alert task's table: a header row, then one row per alert, oldest first —
  * No., ASIN, Group, Alert Type, Date & time (business clock), Details. Details is
- * the alert's own description for the first two rows, and from the third a link
- * to the Alert Log on that day, type and group with the row's ASIN in the search
- * box. At most DAILY_ROWS_MAX rows, and no more than fit in `room` characters
- * beside the template's own text; then how many more, and the link to the Alert
+ * the alert's own description for the first `rowsWithDetails` rows, and after
+ * them a link to the Alert Log (`link`) with the row's ASIN in the search box. At
+ * most DAILY_ROWS_MAX rows, and no more than fit in `room` characters beside the
+ * template's own text; then how many more, and `linkText` linking to `link()`.
+ */
+function alertTable(
+  t: {
+    groupName: string;
+    type: ExclusivesAlertType;
+    alerts: TableAlert[];
+    rowsWithDetails: number;
+    link: (search?: string) => string;
+    linkText: string;
+  },
+  room: number,
+): string {
+  const typeLabel = EXCLUSIVES_ALERT_TYPE_LABELS[t.type];
+  const cell = (tag: 'th' | 'td', html: string) => `<${tag}><p>${html}</p></${tag}>`;
+
+  let budget =
+    room - TABLE_HEADERS.join('').length - moreText(t.alerts.length).length - t.linkText.length;
+  // A template whose own text leaves no room keeps it, and gets no table.
+  if (budget < 0) return '';
+  const rows: string[] = [];
+  for (const [i, a] of t.alerts.entries()) {
+    const texts = [String(i + 1), a.asin, t.groupName, typeLabel, when(a.createdAt)];
+    const withDetails = i < t.rowsWithDetails;
+    const size = texts.join('').length + (withDetails ? a.message : DETAILS_LINK_TEXT).length;
+    if (rows.length === DAILY_ROWS_MAX || size > budget) break;
+    budget -= size;
+    const details = withDetails
+      ? escapeHtml(a.message)
+      : `<a href="${escapeHtml(t.link(a.asin))}">${DETAILS_LINK_TEXT}</a>`;
+    rows.push(
+      `<tr>${texts.map((x) => cell('td', escapeHtml(x))).join('')}${cell('td', details)}</tr>`,
+    );
+  }
+  const more = t.alerts.length - rows.length;
+  const header = `<tr>${TABLE_HEADERS.map((h) => cell('th', escapeHtml(h))).join('')}</tr>`;
+  return (
+    (rows.length > 0 ? `<table><tbody>${header}${rows.join('')}</tbody></table>` : '') +
+    (more > 0 ? `<p>${escapeHtml(moreText(more))}</p>` : '') +
+    `<p><a href="${escapeHtml(t.link())}">${escapeHtml(t.linkText)}</a></p>`
+  );
+}
+
+/**
+ * The Daily task's table: its day's alerts, the first two rows with their own
+ * description and from the third a link to the Alert Log on that day, type and
+ * group with the row's ASIN in the search box; under it the link to the Alert
  * Log on the whole day (`start` to `end`).
  */
 export function dailyTable(
@@ -321,45 +380,60 @@ export function dailyTable(
     type: ExclusivesAlertType;
     start: Date;
     end: Date;
-    alerts: { asin: string; message: string; createdAt: Date }[];
+    alerts: TableAlert[];
   },
   room: number,
 ): string {
-  const typeLabel = EXCLUSIVES_ALERT_TYPE_LABELS[day.type];
-  const link = (search?: string) =>
-    alertLogHref({
-      from: day.start.toISOString(),
-      to: day.end.toISOString(),
-      alertTypes: [day.type],
-      groupIds: [day.groupId],
-      search,
-    });
-  const cell = (tag: 'th' | 'td', html: string) => `<${tag}><p>${html}</p></${tag}>`;
+  return alertTable(
+    {
+      groupName: day.groupName,
+      type: day.type,
+      alerts: day.alerts,
+      rowsWithDetails: ROWS_WITH_DETAILS,
+      link: (search) =>
+        alertLogHref({
+          from: day.start.toISOString(),
+          to: day.end.toISOString(),
+          alertTypes: [day.type],
+          groupIds: [day.groupId],
+          search,
+        }),
+      linkText: LINK_TEXT,
+    },
+    room,
+  );
+}
 
-  let budget =
-    room - TABLE_HEADERS.join('').length - moreText(day.alerts.length).length - LINK_TEXT.length;
-  // A template whose own text leaves no room keeps it, and gets no table.
-  if (budget < 0) return '';
-  const rows: string[] = [];
-  for (const [i, a] of day.alerts.entries()) {
-    const texts = [String(i + 1), a.asin, day.groupName, typeLabel, when(a.createdAt)];
-    const withDetails = i < ROWS_WITH_DETAILS;
-    const size = texts.join('').length + (withDetails ? a.message : DETAILS_LINK_TEXT).length;
-    if (rows.length === DAILY_ROWS_MAX || size > budget) break;
-    budget -= size;
-    const details = withDetails
-      ? escapeHtml(a.message)
-      : `<a href="${escapeHtml(link(a.asin))}">${DETAILS_LINK_TEXT}</a>`;
-    rows.push(
-      `<tr>${texts.map((t) => cell('td', escapeHtml(t))).join('')}${cell('td', details)}</tr>`,
-    );
-  }
-  const more = day.alerts.length - rows.length;
-  const header = `<tr>${TABLE_HEADERS.map((h) => cell('th', escapeHtml(h))).join('')}</tr>`;
-  return (
-    (rows.length > 0 ? `<table><tbody>${header}${rows.join('')}</tbody></table>` : '') +
-    (more > 0 ? `<p>${escapeHtml(moreText(more))}</p>` : '') +
-    `<p><a href="${escapeHtml(link())}">${LINK_TEXT}</a></p>`
+/**
+ * The Immediate task's table: the same as a Daily task's, with its one alert and
+ * that alert's own description in Details (no link there); under it a link to
+ * the alert in the Alert Log — its type, group and ASIN, in the minute it was
+ * logged. The minute, not the moment: the Alert Log's date filter keeps no
+ * seconds, so a link to the exact moment would find nothing once the page opens.
+ */
+export function immediateTable(
+  o: { groupId: number; groupName: string; type: ExclusivesAlertType; alert: TableAlert },
+  room: number,
+): string {
+  const from = new Date(Math.floor(o.alert.createdAt.getTime() / 60_000) * 60_000);
+  const to = new Date(from.getTime() + 60_000);
+  return alertTable(
+    {
+      groupName: o.groupName,
+      type: o.type,
+      alerts: [o.alert],
+      rowsWithDetails: 1,
+      link: () =>
+        alertLogHref({
+          from: from.toISOString(),
+          to: to.toISOString(),
+          alertTypes: [o.type],
+          groupIds: [o.groupId],
+          search: o.alert.asin,
+        }),
+      linkText: IMMEDIATE_LINK_TEXT,
+    },
+    room,
   );
 }
 

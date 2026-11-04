@@ -23,7 +23,7 @@ const BASE_ALLOWED_TAGS = [
   'ol',
   'li',
   'a',
-  // Tables (HLAI-112: in any description; a Daily alert task's alerts come as one).
+  // Tables (HLAI-112: in any description; an alert task's alerts come as one).
   'table',
   'thead',
   'tbody',
@@ -32,8 +32,8 @@ const BASE_ALLOWED_TAGS = [
   'td',
 ];
 
-// HLAI-112: the only link rich text may hold opens the Alert Log (the Daily
-// alert task's "View these alerts in the Alert Log"). Any other <a> keeps its
+// HLAI-112: the only link rich text may hold opens the Alert Log (an alert
+// task's "View these alerts / this alert in the Alert Log"). Any other <a> keeps its
 // text as a plain <span> and loses the link.
 const alertLogLinkOnly: sanitizeHtml.Transformer = (_tagName, attribs): sanitizeHtml.Tag => {
   const href = attribs['href'];

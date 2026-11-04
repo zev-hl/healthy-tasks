@@ -823,9 +823,10 @@ tasks can be filtered by them reliably.
 The goal: every Exclusives alert becomes a task for the right person without
 anyone creating it by hand. Each alert type is linked to a template,
 with a person for each of the template's role placeholders — the same for every
-alert group. **Immediate** alerts make a task each as soon as they are found;
-**Daily** alerts make one task per group and type a day (8:30 AM New York time by
-default; set on Render), listing the day's alerts and linking to them in the
+alert group. **Immediate** alerts make a task each as soon as they are found,
+showing the alert in a table and linking to it in the Alert Log; **Daily** alerts
+make one task per group and type a day (8:30 AM New York time by default; set on
+Render), listing the day's alerts in the same table and linking to them in the
 Alert Log.
 
 - **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
@@ -894,7 +895,15 @@ Alert Log.
   deleted — is marked handled with no task, so a template picked later never
   reaches back to it. Alerts on "Daily" are left waiting. A task that fails is logged and left
   waiting, so the next pass tries again. `AlertLog.taskId` keeps the top task
-  (emptied if it is deleted).
+  (emptied if it is deleted). The top task's description is the template's own
+  text, then the same table as a Daily task's (`immediateTable`) with the alert's
+  one row and its own message in Details (never a link there), then "View this
+  alert in the Alert Log": the Alert Log on that alert's type, group and ASIN, from
+  the minute it was logged to the next. The minute, not the moment: the Alert
+  Log's date filter keeps no seconds, so a link to the exact moment would find
+  nothing once the page opens. As with Daily, a template whose own text leaves no
+  room keeps it and gets no table. Immediate tasks made before this (before
+  4 Nov 2026) keep their description without one.
 - **Go-live.** The migration that added `taskId` / `taskHandledAt` marked every
   alert already in the log as handled, so only alerts found after it ran (on
   each server) make tasks.
@@ -918,7 +927,8 @@ Alert Log.
   transaction. Changing the time: alerts that already made a task stay handled;
   the waiting ones go into the next run's day, so none makes two tasks (that
   first day is shorter or longer). The top task's
-  description is the template's own text, then a table (`dailyTable`): a
+  description is the template's own text, then a table (`dailyTable`; both it and
+  `immediateTable` are built by `alertTable`): a
   header row — No., ASIN, Group, Alert Type, Date & time (business clock),
   Details — and a row per alert, oldest first. Details is the alert's own
   message for the first two rows and, from the third, "See log for details…", a
@@ -931,7 +941,8 @@ Alert Log.
 - **The Alert Log link** (`alertLogHref` / `readAlertLogLink` / `isAlertLogHref`
   in `packages/shared`): `/exclusives/log?from=…&to=…&type=…&group=…[&q=…]`,
   the day's start and end as instants and, for a table row, its ASIN as the
-  search. The only link rich text may hold:
+  search (an Immediate task's link: the alert's minute, with its ASIN as the
+  search). The only link rich text may hold:
   `sanitizeRichText` keeps an `<a href>` to the Alert Log (nothing else on it) and
   turns any other link into plain text; `RichText` lets only that href through
   DOMPurify and opens it in the app (Ctrl/⌘-click still opens a new tab); the
