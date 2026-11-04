@@ -3,8 +3,8 @@ import DOMPurify from 'dompurify';
 import { useInRouterContext, useNavigate } from 'react-router-dom';
 import { isAlertLogHref } from '@healthy-tasks/shared';
 
-// HLAI-112: the only link rich text may hold opens the Alert Log (the Daily
-// alert task's "View these alerts"); any other <a> loses its address here too.
+// HLAI-112: the only link rich text may hold opens the Alert Log (an alert
+// task's "View these alerts" / "View this alert"); any other <a> loses its address here too.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A' && !isAlertLogHref(node.getAttribute('href') ?? '')) {
     node.removeAttribute('href');

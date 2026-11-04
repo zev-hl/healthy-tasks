@@ -452,9 +452,8 @@ export function ExclusivesLogPage() {
 
       {error && <div className="alert error">{error}</div>}
 
-      <div className="exc-sortline">
-        <span className="mono">Sort: Date / time ↓</span>
-        {groupIds.length > 0 && (
+      {groupIds.length > 0 && (
+        <div className="exc-sortline">
           <button
             type="button"
             className="exc-clear"
@@ -465,8 +464,8 @@ export function ExclusivesLogPage() {
           >
             Showing {chosenNames.map((n) => `“${n}”`).join(', ')} only — show all ✕
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       <section className="card exc-table-card" aria-label="Alert log">
         <div className="exc-table-scroll">
