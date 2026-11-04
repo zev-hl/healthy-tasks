@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import type { Express } from 'express';
 import type { PrismaClient, Role } from '@prisma/client';
-import { EXCLUSIVES_ALERT_TYPES } from '@healthy-tasks/shared';
+import {
+  EXCLUSIVES_ALERT_TYPES,
+  RICH_TEXT_MAX_CHARS,
+  readAlertLogLink,
+} from '@healthy-tasks/shared';
 import { startTestDb, type TestDb } from './db.js';
 
 /**
@@ -865,6 +869,96 @@ describe('Immediate alert tasks', () => {
     // The next check makes nothing more for it.
     assert.deepEqual(await run(), { made: 0, noTask: 0, failed: 0 });
     assert.equal(await prisma.task.count(), 2);
+  });
+
+  /** A template whose top task says `topText` (one task under it), set up for `alertType`. */
+  async function setUpWithText(alertType: string, topText: string) {
+    const admin = await adminToken();
+    const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
+    const res = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: `Immediate ${alertType}`,
+        nodes: [
+          { key: 'top', parentKey: null, name: 'Look into it', description: topText },
+          { key: 'a', parentKey: 'top', name: 'Report back' },
+        ],
+      });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    await setUp(alertType, res.body.id, [], adminUser.id);
+  }
+
+  // Logged mid-minute, at 8:24:37 AM in New York.
+  const MID_MINUTE = new Date('2026-10-19T12:24:37.123Z');
+
+  it('puts its alert in a table under the template’s text, with a link to it in the Alert Log', async () => {
+    await setUpWithText('BuyBoxLost', '<p>Fix it.</p>');
+    const group = await watchingGroup('Wasif - CA', { BuyBoxLost: 'immediate' });
+    const alert = await logAlert(group, 'BuyBoxLost', 'B0TABLE001', MID_MINUTE);
+
+    assert.deepEqual(await run(), { made: 1, noTask: 0, failed: 0 });
+    const [top, below] = await tasksOf(alert.id);
+    // The link covers the alert's minute: the Alert Log's dates keep no seconds.
+    const href =
+      '/exclusives/log?from=2026-10-19T12%3A24%3A00.000Z&amp;to=2026-10-19T12%3A25%3A00.000Z' +
+      `&amp;type=BuyBoxLost&amp;group=${group.id}&amp;q=B0TABLE001`;
+    assert.equal(
+      top!.description,
+      '<p>Fix it.</p>' +
+        '<table><tbody>' +
+        '<tr><th><p>No.</p></th><th><p>ASIN</p></th><th><p>Group</p></th>' +
+        '<th><p>Alert Type</p></th><th><p>Date &amp; time</p></th><th><p>Details</p></th></tr>' +
+        '<tr><td><p>1</p></td><td><p>B0TABLE001</p></td><td><p>Wasif - CA</p></td>' +
+        '<td><p>Buy Box Lost</p></td><td><p>Oct 19, 2026, 8:24 AM</p></td><td><p>Something changed.</p></td></tr>' +
+        '</tbody></table>' +
+        `<p><a href="${href}">View this alert in the Alert Log</a></p>`,
+    );
+    // Only the top task gets it.
+    assert.equal(below!.description, null);
+  });
+
+  it('its link opens the Alert Log on that one alert', async () => {
+    await setUpWithText('BuyBoxLost', '<p>Fix it.</p>');
+    const group = await watchingGroup('Wasif - CA', { BuyBoxLost: 'immediate' });
+    const alert = await logAlert(group, 'BuyBoxLost', 'B0LINK0001', MID_MINUTE);
+    assert.equal((await run()).made, 1);
+    // Alerts it must not show: the same ASIN a minute later, or in another group;
+    // another ASIN in the same minute.
+    const elsewhere = await watchingGroup('Wasif - US', {});
+    await logAlert(group, 'BuyBoxLost', 'B0LINK0001', new Date('2026-10-19T12:25:30Z'));
+    await logAlert(elsewhere, 'BuyBoxLost', 'B0LINK0001', MID_MINUTE);
+    await logAlert(group, 'BuyBoxLost', 'B0LINK0002', MID_MINUTE);
+
+    const [top] = await tasksOf(alert.id);
+    const href = /<a href="([^"]+)">View this alert/.exec(top!.description!)![1]!;
+    const link = readAlertLogLink(href.replace(/&amp;/g, '&').split('?')[1]!);
+    const res = await request(app)
+      .post('/api/exclusives/alerts/query')
+      .set(auth(await adminToken()))
+      .send({
+        text: link.search,
+        alertTypes: link.alertTypes,
+        groupIds: link.groupIds,
+        from: link.from,
+        to: link.to,
+      });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual(
+      res.body.rows.map((r: { id: number }) => r.id),
+      [alert.id],
+    );
+  });
+
+  it('a template whose own text leaves no room keeps it, and gets no table', async () => {
+    const text = `<p>${'x'.repeat(RICH_TEXT_MAX_CHARS - 50)}</p>`;
+    await setUpWithText('BuyBoxLost', text);
+    const group = await watchingGroup('Wasif - CA', { BuyBoxLost: 'immediate' });
+    const alert = await logAlert(group, 'BuyBoxLost', 'B0ROOM0001', MID_MINUTE);
+
+    assert.deepEqual(await run(), { made: 1, noTask: 0, failed: 0 });
+    const [top] = await tasksOf(alert.id);
+    assert.equal(top!.description, text);
   });
 
   it('gives every alert its own task, counting up when the label is taken', async () => {
