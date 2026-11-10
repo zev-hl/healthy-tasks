@@ -75,7 +75,12 @@ Set these on `healthy-tasks-api-prod` **and** `healthy-tasks-api-staging`.
       links inside password-reset emails.
 - [ ] **`CORS_ORIGIN`** — must equal this env's frontend origin exactly. Purpose:
       lets the SPA call the API from the browser. If this is wrong, the app loads
-      but every API call is blocked by CORS.
+      but every API call is blocked by CORS. When a second site shares this API
+      (e.g. a second Staging site previewing a redesign), list
+      both, separated by commas:
+      `https://hlcentral-staging.onrender.com,https://<preview>.onrender.com`.
+      Each entry is an exact origin (scheme + host, no trailing slash); spaces
+      around the commas are ignored. One value works exactly as before.
 
 ### Same in both — already committed in `render.yaml`
 
@@ -327,7 +332,7 @@ never Staging's pair on Production):
 Good to know:
 
 - **The button lets only active Admins in.** It works only from this
-  environment's website (the API's `CORS_ORIGIN`), and stops working at once for
+  environment's website (any origin in the API's `CORS_ORIGIN`), and stops working at once for
   someone switched off, no longer an Admin, or whose password was reset. Signing
   out of HL Central does not close an open dashboard; closing the browser does.
 - **The password still opens it for anyone who has it,** by typing the address.
@@ -360,7 +365,7 @@ Good to know:
       crash-loops on boot).
 - [ ] Staging `DATABASE_URL` is the Neon **branch**, not the prod DB.
 - [ ] `CORS_ORIGIN` on each API matches that env's frontend URL exactly (scheme +
-      host, no trailing slash).
+      host, no trailing slash) — or, comma-separated, every site that uses it.
 - [ ] `VITE_API_URL` on each frontend points at that env's API.
 - [ ] Production marked as a protected environment.
 - [ ] First admin seeded in each environment.
