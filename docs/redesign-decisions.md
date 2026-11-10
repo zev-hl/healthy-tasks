@@ -30,7 +30,7 @@ UI as a disabled "coming soon" placeholder.
 - **Other screens:** every screen gets a full Harbor redesign, not just a restyle. Each is proposed with a screenshot for approval.
 - **Icons:** `lucide-react`.
 - **Phones:** layouts are checked and fixed at phone width.
-- **All apps launcher:** only _other_ apps, meaning Ticket and Exclusive Alerts. Exclusives (Alert Groups, Alert Log, Alert Task Setup) leaves the sidebar and opens from the launcher as its own app.
+- **All apps launcher:** only _other_ apps; for now that is Exclusive Alerts. Exclusives (Alert Groups, Alert Log, Alert Task Setup) leaves the sidebar and opens from the launcher as its own app.
 - **Progress:** screenshots after each step.
 
 ## Navigation (decided page by page)
@@ -67,9 +67,8 @@ UI as a disabled "coming soon" placeholder.
 
 **Account card** (sidebar bottom): opens **Profile** directly.
 
-**All apps launcher:** only other apps.
+**All apps launcher:** only other apps. Ticket (the company's other app) is the style reference for the launcher and the left navigation; it does not get a tile.
 
-- **Ticket:** address to come.
 - **Exclusive Alerts:** opens as its own app in the same shell, with its own sidebar (Alert Log, Alert Groups, Alert Task Setup) and its own name on the logo tile. The launcher goes back to HL Central.
 
 Old addresses (`/notifications`, `/reports/due-date`, `/reports/time`, `/goals/team`, `/admin/...`) redirect to their new homes, so links in emails and bookmarks keep working.
