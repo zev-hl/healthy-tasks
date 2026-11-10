@@ -16,7 +16,9 @@ const ForgotPasswordPage = lazy(() =>
 const ResetPasswordPage = lazy(() =>
   import('./pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })),
 );
-const HomePage = lazy(() => import('./pages/HomePage').then((m) => ({ default: m.HomePage })));
+const DashboardPage = lazy(() =>
+  import('./pages/DashboardPage').then((m) => ({ default: m.DashboardPage })),
+);
 const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const TemplatesPage = lazy(() =>
   import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
@@ -105,7 +107,7 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
         children: [
-          { path: '/', element: <HomePage /> },
+          { path: '/', element: <DashboardPage /> },
           { path: '/tasks', element: <TaskSearchPage /> },
           { path: '/tasks/new', element: <TaskCreatePage /> },
           { path: '/tasks/:id', element: <TaskDetailPage /> },

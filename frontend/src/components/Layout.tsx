@@ -6,7 +6,6 @@ import {
   Layers,
   ListChecks,
   ScrollText,
-  Search,
   Settings,
   Target,
   Users,
@@ -20,9 +19,7 @@ import { CommandPalette } from './CommandPalette';
 import { Avatar, userLabel } from './ui/Avatar';
 import { AppLauncher, appForPath, type AppKey } from './AppLauncher';
 import { SectionTabs } from './SectionTabs';
-
-const isMac =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+import { ToastProvider } from './harbor/Toast';
 
 interface NavEntry {
   to: string;
@@ -37,7 +34,12 @@ const MANAGERS: Role[] = ['Admin', 'Manager'];
 
 /** HL Central's own sidebar, decided page by page (docs/redesign-decisions.md). */
 const CENTRAL_NAV: NavEntry[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, match: ['/notifications', '/reports/due-date'] },
+  {
+    to: '/',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    match: ['/notifications', '/reports/due-date'],
+  },
   { to: '/tasks', label: 'Tasks', icon: ListChecks, match: ['/tasks', '/admin/templates'] },
   { to: '/time', label: 'Time', icon: Clock, match: ['/time', '/reports/time'] },
   { to: '/goals', label: 'Goals', icon: Target, match: ['/goals'] },
@@ -79,7 +81,7 @@ function isUnder(pathname: string, base: string): boolean {
   return base === '/' ? pathname === '/' : pathname === base || pathname.startsWith(`${base}/`);
 }
 
-function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
+function Sidebar() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const app = appForPath(pathname);
@@ -119,12 +121,6 @@ function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
       </nav>
 
       <div className="side-spacer" />
-
-      <button type="button" className="side-nav-item side-search" onClick={onOpenCmdk} title="Search">
-        <Search size={20} strokeWidth={1.8} aria-hidden="true" />
-        <span className="side-label">Search</span>
-        <span className="side-kbd">{isMac ? '⌘K' : 'Ctrl K'}</span>
-      </button>
 
       <AppLauncher current={app} />
 
@@ -184,15 +180,17 @@ export function Layout() {
 
   return (
     <NotificationProvider>
-      <div className="app-shell">
-        <Sidebar onOpenCmdk={() => setCmdkOpen(true)} />
-        <main className="app-main">
-          <SchedulerBanner />
-          <SectionTabs />
-          <Outlet />
-        </main>
-      </div>
-      {cmdkOpen && <CommandPalette onClose={() => setCmdkOpen(false)} />}
+      <ToastProvider>
+        <div className="app-shell">
+          <Sidebar />
+          <main className="app-main">
+            <SchedulerBanner />
+            <SectionTabs />
+            <Outlet />
+          </main>
+        </div>
+        {cmdkOpen && <CommandPalette onClose={() => setCmdkOpen(false)} />}
+      </ToastProvider>
     </NotificationProvider>
   );
 }
