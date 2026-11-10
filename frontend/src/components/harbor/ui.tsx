@@ -124,14 +124,16 @@ export function Segmented<T extends string>({
   options,
   onChange,
   label,
+  small,
 }: {
   value: T;
   options: { value: T; label: ReactNode }[];
   onChange: (v: T) => void;
   label: string;
+  small?: boolean;
 }) {
   return (
-    <div className="hb-seg" role="group" aria-label={label}>
+    <div className={cx('hb-seg', small && 'small')} role="group" aria-label={label}>
       {options.map((o) => (
         <button
           key={o.value}

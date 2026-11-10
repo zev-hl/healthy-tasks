@@ -23,6 +23,8 @@ export function PageHeader({
   newTask = true,
   searchPlaceholder = 'Search tasks by title or #number',
   onSearch,
+  searchValue,
+  onSearchChange,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -34,9 +36,14 @@ export function PageHeader({
   searchPlaceholder?: string;
   /** Defaults to opening Tasks with the text. */
   onSearch?: (text: string) => void;
+  /** Live search: the page owns the text (the Tasks list filters as you type). */
+  searchValue?: string;
+  onSearchChange?: (text: string) => void;
 }) {
   const navigate = useNavigate();
-  const [q, setQ] = useState('');
+  const [ownQ, setOwnQ] = useState('');
+  const q = searchValue ?? ownQ;
+  const setQ = onSearchChange ?? setOwnQ;
   return (
     <header className={cx('hb-top', !!tabs && 'has-tabs')}>
       <div className="hb-top-row">

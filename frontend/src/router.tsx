@@ -23,9 +23,7 @@ const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default:
 const TemplatesPage = lazy(() =>
   import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
 );
-const TaskSearchPage = lazy(() =>
-  import('./pages/TaskSearchPage').then((m) => ({ default: m.TaskSearchPage })),
-);
+const TasksPage = lazy(() => import('./pages/TasksPage').then((m) => ({ default: m.TasksPage })));
 const TaskCreatePage = lazy(() =>
   import('./pages/TaskCreatePage').then((m) => ({ default: m.TaskCreatePage })),
 );
@@ -108,7 +106,7 @@ export const router = createBrowserRouter([
         ),
         children: [
           { path: '/', element: <DashboardPage /> },
-          { path: '/tasks', element: <TaskSearchPage /> },
+          { path: '/tasks', element: <TasksPage /> },
           { path: '/tasks/new', element: <TaskCreatePage /> },
           { path: '/tasks/:id', element: <TaskDetailPage /> },
           { path: '/notifications', element: <NotificationsPage /> },

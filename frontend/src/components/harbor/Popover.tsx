@@ -22,6 +22,7 @@ export function Popover({
   className,
   children,
   label,
+  closeOnTab = true,
 }: {
   anchorRef: RefObject<HTMLElement>;
   open: boolean;
@@ -31,6 +32,8 @@ export function Popover({
   className?: string;
   children: ReactNode;
   label?: string;
+  /** Panels with several controls keep Tab inside them. */
+  closeOnTab?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{
@@ -71,17 +74,24 @@ export function Popover({
 
   useEffect(() => {
     if (!open) return;
+    // A popover opened from inside this one (a dropdown in a filter panel)
+    // lives in its own portal: clicks and keys there are not "outside".
+    const inOtherPop = (t: EventTarget | null) => {
+      const pop = (t as Element | null)?.closest?.('.hb-pop');
+      return !!pop && pop !== panelRef.current;
+    };
     function onDown(e: MouseEvent) {
       const t = e.target as Node;
-      if (panelRef.current?.contains(t) || anchorRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t) || anchorRef.current?.contains(t) || inOtherPop(t)) return;
       onClose('outside');
     }
     function onKey(e: KeyboardEvent) {
+      if (inOtherPop(e.target)) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         onClose('escape');
-      } else if (e.key === 'Tab') {
+      } else if (e.key === 'Tab' && closeOnTab) {
         onClose('tab');
       }
     }
@@ -91,7 +101,7 @@ export function Popover({
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey, true);
     };
-  }, [open, onClose, anchorRef]);
+  }, [open, onClose, anchorRef, closeOnTab]);
 
   if (!open) return null;
   return createPortal(
