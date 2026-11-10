@@ -249,6 +249,12 @@ export function TasksPage() {
       setRows(res.rows);
       setTotal(res.total);
       setError(null);
+      // The task page steps through what this list shows (‹ 2 of 28 ›).
+      try {
+        sessionStorage.setItem('hb-task-order', JSON.stringify(res.rows.map((r) => r.id)));
+      } catch {
+        /* not remembered */
+      }
       return res.rows;
     } catch (e) {
       setError(errorText(e, 'Could not load tasks.'));

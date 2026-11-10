@@ -52,6 +52,7 @@ import {
   taskSub,
   type Period,
 } from '../../components/harbor/taskHelpers';
+import { TimeTrackerCard } from './TimeTrackerCard';
 
 type TileKey = 'open' | 'overdue' | 'due' | 'inProgress' | 'onHold' | 'review' | 'done';
 
@@ -482,6 +483,7 @@ export function MyDashboard({
         </div>
 
         <aside className="hb-col">
+          <TimeTrackerCard period={period} />
           <Card>
             <CardHead
               icon={<Bell size={16} />}

@@ -62,6 +62,8 @@ export function DatePicker({
   className,
   renderValue,
   disabled,
+  time,
+  onTimeChange,
 }: {
   value: Ymd | null;
   onChange: (v: Ymd | null) => void;
@@ -74,6 +76,9 @@ export function DatePicker({
   className?: string;
   renderValue?: (v: Ymd | null) => ReactNode;
   disabled?: boolean;
+  /** `HH:mm`; given with onTimeChange, a time field shows under the calendar once a day is set. */
+  time?: string;
+  onTimeChange?: (t: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -238,6 +243,22 @@ export function DatePicker({
             </button>
           )}
         </div>
+        {onTimeChange && value && (
+          <label className="hb-cal-time">
+            <span>Time</span>
+            <input
+              type="time"
+              value={time ?? ''}
+              onChange={(e) => onTimeChange(e.target.value)}
+              aria-label={`${label} time`}
+            />
+            {time && (
+              <button type="button" className="hb-btn hb-btn-link" onClick={() => onTimeChange('')}>
+                Clear time
+              </button>
+            )}
+          </label>
+        )}
         {overdueNote && <p className="hb-cal-note">{overdueNote}</p>}
       </Popover>
     </>

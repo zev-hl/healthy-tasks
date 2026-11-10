@@ -36,6 +36,7 @@ export function Select<T extends string>({
   renderValue,
   active,
   searchPlaceholder = 'Search…',
+  hideLabel,
 }: {
   value: T | null;
   options: SelectOption<T>[];
@@ -50,6 +51,8 @@ export function Select<T extends string>({
   /** chip: draw as a non-default (accent) filter. */
   active?: boolean;
   searchPlaceholder?: string;
+  /** chip: show only the value (the label is still its accessible name). */
+  hideLabel?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -137,7 +140,11 @@ export function Select<T extends string>({
         )}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={variant === 'chip' ? undefined : `${label}: ${current?.label ?? placeholder}`}
+        aria-label={
+          variant === 'chip' && !hideLabel
+            ? undefined
+            : `${label}: ${current?.label ?? placeholder}`
+        }
         disabled={disabled}
         onClick={() => (open ? close() : openMenu())}
         onKeyDown={(e) => {
@@ -147,7 +154,7 @@ export function Select<T extends string>({
           }
         }}
       >
-        {variant === 'chip' && <span className="hb-select-label">{label}</span>}
+        {variant === 'chip' && !hideLabel && <span className="hb-select-label">{label}</span>}
         {variant !== 'chip' && current?.lead}
         {variant !== 'chip' && !current?.lead && current?.dot && variant !== 'pill' && (
           <span className="hb-dot" style={{ background: current.dot }} aria-hidden="true" />

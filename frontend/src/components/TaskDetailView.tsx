@@ -4,7 +4,6 @@ import {
   REMINDER_BLOCK_LABELS,
   reminderAddBlock,
   TASK_NAME_MIN_LENGTH,
-  TASK_PRIORITIES,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   type ActiveUserDto,
@@ -28,16 +27,54 @@ import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
-import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
-import { StatusPill, PriorityRamp } from './ui/indicators';
-import { DueDate, AgoDate } from './ui/dates';
+import { Avatar, userLabel } from './ui/Avatar';
+import {
+  AlarmClock,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Eye,
+  FileStack,
+  Link as LinkIcon,
+  Link2,
+  ListChecks,
+  ListTree,
+  Lock,
+  MessageSquare,
+  MoreHorizontal,
+  Paperclip,
+  Plus,
+  RotateCcw,
+  Tag,
+  Trash2,
+  Unlock,
+  X,
+} from 'lucide-react';
+import {
+  Bar,
+  Btn,
+  Empty,
+  Pill,
+  PriorityMark,
+  PRIORITY_DOT,
+  Segmented,
+  StatusPill,
+  STATUS_DOT,
+  STATUS_TONE,
+} from './harbor/ui';
+import { Select, type SelectOption } from './harbor/Select';
+import { DatePicker, formatShortDay } from './harbor/DatePicker';
+import { Popover } from './harbor/Popover';
+import { TimeBlock } from './harbor/TimeBlock';
+import { useToast } from './harbor/Toast';
+import { PRIORITY_OPTIONS, dueInfo } from './harbor/taskHelpers';
+import { formatClock, useTimer } from '../lib/timer';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { useBackdropDismiss } from '../lib/useBackdropDismiss';
-import { assigneeOptionGroups, dutyOptionGroups, isMismatch, useDutyCatalog } from '../lib/duties';
-import { DutyTag } from './duties/DutyTag';
+import { isMismatch, useDutyCatalog } from '../lib/duties';
 import { DutyCrossCheck } from './duties/DutyCrossCheck';
-import { GroupedOptions } from './duties/GroupedOptions';
 import { TaskAttributesBar } from './TaskAttributesBar';
 import { TaskAttributesModal } from './TaskAttributesModal';
 import { ExpandIcon } from './ui/ExpandIcon';
@@ -51,8 +88,6 @@ const PICKER_TITLES: Record<PickerKind, string> = {
   blockedBy: 'Add a task this one is blocked by',
 };
 
-type Tab = 'work' | 'comments' | 'history';
-
 interface Props {
   initialTask: TaskDetailDto;
   currentUser: UserDto;
@@ -60,7 +95,10 @@ interface Props {
 
 export function TaskDetailView({ initialTask, currentUser }: Props) {
   const navigate = useNavigate();
+  const toast = useToast();
   const [task, setTask] = useState<TaskDetailDto>(initialTask);
+  const { timer: runningTimer, elapsed: timerElapsed } = useTimer();
+  const timerHere = runningTimer?.taskId === initialTask.id;
 
   const [historyVersion, setHistoryVersion] = useState(0);
   const applyTask = useCallback((t: TaskDetailDto) => {
@@ -71,7 +109,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Optimistic concurrency for the task's own saves (fields / name / description).
   const { conflict, bannerShown, guard, review, reset: resetConflict } = useStaleWriteGuard();
 
-  const [tab, setTab] = useState<Tab>('work');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerKind | null>(null);
@@ -114,30 +151,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [pendingReminderRemoval, setPendingReminderRemoval] = useState<
     'start-date-removed' | 'task-canceled' | null
   >(null);
-  // Savebar "All changes saved" label lifecycle: appears on a save, holds
-  // briefly, then fades out and goes blank. 'hidden' is the resting state, so a
-  // fresh/untouched task shows no flag.
-  const [savedState, setSavedState] = useState<'hidden' | 'shown' | 'fading'>('hidden');
-  const savedTimers = useRef<number[]>([]);
 
-  // A "Task saved." confirmation auto-clears so it reads as a transient flash;
-  // the savebar's "All changes saved" label follows the same fade-then-blank arc.
+  // Saving confirms with a toast; the Save bar goes away once nothing is unsaved.
   const flashSaved = useCallback(() => {
-    setNotice('Task saved.');
-    window.setTimeout(() => setNotice(null), 2500);
-    savedTimers.current.forEach((t) => window.clearTimeout(t));
-    savedTimers.current = [];
-    setSavedState('shown');
-    savedTimers.current.push(window.setTimeout(() => setSavedState('fading'), 1800));
-    savedTimers.current.push(window.setTimeout(() => setSavedState('hidden'), 2100));
-  }, []);
-  // Cancel pending fade timers on unmount.
-  useEffect(() => () => savedTimers.current.forEach((t) => window.clearTimeout(t)), []);
+    toast({ message: 'Saved. Everyone who can see this task sees the update.', tone: 'success' });
+  }, [toast]);
 
-  // Inline name edit.
-  const [editingName, setEditingName] = useState(false);
+  // The title is a field like the others: staged, and saved with Save changes.
   const [nameDraft, setNameDraft] = useState(initialTask.name);
-  const [savingName, setSavingName] = useState(false);
 
   // Inline description edit.
   const [editingDesc, setEditingDesc] = useState(false);
@@ -151,7 +172,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   useEffect(() => {
     if (!descExpanded) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !descModalRef.current?.querySelector('.rte-listpop')) setDescExpanded(false);
+      if (e.key === 'Escape' && !descModalRef.current?.querySelector('.rte-listpop'))
+        setDescExpanded(false);
     }
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -165,8 +187,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [allTags, setAllTags] = useState<string[]>([]);
   useEffect(() => {
-    api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
-    api.listTaskTags().then(setAllTags).catch(() => setAllTags([]));
+    api
+      .listActiveUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
+    api
+      .listTaskTags()
+      .then(setAllTags)
+      .catch(() => setAllTags([]));
   }, []);
 
   // --- Staged property edits (Status / Priority / Assignee / Start / Due) ---
@@ -183,7 +211,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [dutyId, setDutyId] = useState(initialTask.dutyId ?? '');
   const catalog = useDutyCatalog();
   const [granting, setGranting] = useState(false);
-  const assigneeSelectRef = useRef<HTMLSelectElement>(null);
   const [savingFields, setSavingFields] = useState(false);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
 
@@ -213,7 +240,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     startTime !== persistedStart.time ||
     dueDate !== persistedDue.date ||
     dueTime !== persistedDue.time ||
-    dutyId !== (task.dutyId ?? '');
+    dutyId !== (task.dutyId ?? '') ||
+    nameDraft.trim() !== task.name;
 
   // Commit all staged fields at once (status, priority, assignee, and dates),
   // always via the explicit "Save changes" button.
@@ -230,6 +258,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       return;
     }
     const nextStatus = status;
+    const nameChanged = nameDraft.trim() !== task.name;
+    if (nameChanged && nameDraft.trim().length < TASK_NAME_MIN_LENGTH) {
+      setFieldsError('Give the task a title first.');
+      return;
+    }
     if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
       setFieldsError('Start must be earlier than Due');
       return;
@@ -262,6 +295,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             startAt: stagedStartIso,
             dueAt: stagedDueIso,
             dutyId: dutyId === '' ? null : dutyId,
+            ...(nameChanged ? { name: nameDraft.trim() } : {}),
           },
           task.updatedAt,
         );
@@ -284,6 +318,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // every commit and by Discard, so the chips + savebar never show a phantom
   // "unsaved" once the server has the change (e.g. the reviewer becoming assignee).
   function syncStaged(t: TaskDetailDto) {
+    setNameDraft(t.name);
     setAssigneeId(t.assigneeId ?? '');
     setDutyId(t.dutyId ?? '');
     setPriority(t.priority);
@@ -309,7 +344,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       const fresh = await api.getTask(task.id);
       applyTask(fresh);
       syncStaged(fresh);
-      setEditingName(false);
       setEditingDesc(false);
       setFieldsError(null);
       resetConflict();
@@ -346,6 +380,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             startAt: stagedStartIso,
             dueAt: stagedDueIso,
             dutyId: dutyId === '' ? null : dutyId,
+            ...(nameDraft.trim() !== task.name && nameDraft.trim().length >= TASK_NAME_MIN_LENGTH
+              ? { name: nameDraft.trim() }
+              : {}),
           },
           task.updatedAt,
         );
@@ -435,28 +472,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   }
 
   // --- Name / description ---------------------------------------------------
-  async function saveName() {
-    const name = nameDraft.trim();
-    if (name.length < TASK_NAME_MIN_LENGTH) return;
-    setSavingName(true);
-    try {
-      await guard(async () => {
-        applyTask(await api.updateTask(task.id, { name }, task.updatedAt));
-        setEditingName(false);
-        flashSaved();
-      });
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save the name');
-    } finally {
-      setSavingName(false);
-    }
-  }
   async function saveDesc() {
     setSavingDesc(true);
     try {
       await guard(async () => {
         applyTask(
-          await api.updateTask(task.id, { description: descDraft === '' ? null : descDraft }, task.updatedAt),
+          await api.updateTask(
+            task.id,
+            { description: descDraft === '' ? null : descDraft },
+            task.updatedAt,
+          ),
         );
         setEditingDesc(false);
         flashSaved();
@@ -598,11 +623,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }
   }
 
-  const nameUnsaved = editingName && nameDraft.trim() !== task.name;
   const descUnsaved = editingDesc && descDraft !== (task.description ?? '');
-  useUnsavedChangesWarning(
-    fieldsDirty || nameUnsaved || descUnsaved || commentsDirty || newSubDirty,
-  );
+  useUnsavedChangesWarning(fieldsDirty || descUnsaved || commentsDirty || newSubDirty);
 
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
@@ -626,7 +648,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       ? null
       : assigneeId === (task.assigneeId ?? '')
         ? task.assignee
-        : users.find((u) => u.id === assigneeId) ?? null;
+        : (users.find((u) => u.id === assigneeId) ?? null);
 
   // --- Department Duties: the assignee ⇄ duty check -------------------------
   // The person doing the work is the assignee — except in Review, where the
@@ -634,7 +656,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // assignee. The check runs whichever field was changed first; while it fails
   // because one of them is being changed, Save is blocked. A mismatch that
   // already existed (a duty taken away later) only warns.
-  const stagedDuty = dutyId ? (catalog.duties.get(dutyId) ?? (task.duty?.id === dutyId ? task.duty : null)) : null;
+  const stagedDuty = dutyId
+    ? (catalog.duties.get(dutyId) ?? (task.duty?.id === dutyId ? task.duty : null))
+    : null;
   const doerId = isInReview ? (task.priorAssigneeId ?? null) : assigneeId || null;
   const doer = doerId
     ? (users.find((u) => u.id === doerId) ?? (isInReview ? task.priorAssignee : assigneeUser))
@@ -672,7 +696,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     <div className="section-head">
       <h3 id={expanded ? 'desc-modal-title' : undefined}>Description</h3>
       {!editingDesc && canEdit && (
-        <button type="button" className="edit-chip" onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}>
+        <button
+          type="button"
+          className="edit-chip"
+          onClick={() => {
+            setDescDraft(task.description ?? '');
+            setEditingDesc(true);
+          }}
+        >
           Edit
         </button>
       )}
@@ -698,7 +729,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   );
   const descBody = editingDesc ? (
     <div className="desc-edit">
-      <RichTextEditor value={descDraft} onChange={setDescDraft} ariaLabel="Task description" autoFocus />
+      <RichTextEditor
+        value={descDraft}
+        onChange={setDescDraft}
+        ariaLabel="Task description"
+        autoFocus
+      />
       <div className="btn-row">
         {conflict ? (
           <button type="button" disabled={savingDesc} onClick={() => void handleConflictRefresh()}>
@@ -709,7 +745,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             {savingDesc ? 'Saving…' : 'Save'}
           </button>
         )}
-        <button type="button" className="secondary" onClick={() => { setEditingDesc(false); setDescDraft(task.description ?? ''); }}>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            setEditingDesc(false);
+            setDescDraft(task.description ?? '');
+          }}
+        >
           Cancel
         </button>
       </div>
@@ -718,595 +761,900 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     descText
   );
 
+  // --- Harbor: the one Save bar's summary, Mark done, Ctrl+S, the stepper ----
+  const changedFields = [
+    nameDraft.trim() !== task.name && 'title',
+    status !== task.status && 'status',
+    assigneeId !== (task.assigneeId ?? '') && 'assignee',
+    (dueDate !== persistedDue.date || dueTime !== persistedDue.time) && 'due date',
+    (startDate !== persistedStart.date || startTime !== persistedStart.time) && 'start date',
+    priority !== task.priority && 'priority',
+    dutyId !== (task.dutyId ?? '') && 'duty',
+  ].filter(Boolean) as string[];
+
+  const saveRef = useRef(saveFields);
+  saveRef.current = saveFields;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (canEdit) void saveRef.current();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canEdit]);
+
+  async function markDone(next: TaskStatus) {
+    if (fieldsDirty) {
+      setStatus(next);
+      return;
+    }
+    const before = task.status;
+    try {
+      const updated = await api.updateTask(task.id, { status: next }, task.updatedAt);
+      applyTask(updated);
+      syncStaged(updated);
+      if (next === 'Completed') {
+        setJustCompleted(true);
+        window.setTimeout(() => setJustCompleted(false), 1300);
+      }
+      toast({
+        message: next === 'Completed' ? `“${task.name}” marked done.` : `“${task.name}” reopened.`,
+        tone: next === 'Completed' ? 'success' : 'dark',
+        undo: async () => {
+          try {
+            const back = await api.updateTask(task.id, { status: before });
+            applyTask(back);
+            syncStaged(back);
+          } catch (err) {
+            toast({
+              message: err instanceof ApiError ? err.message : 'Could not undo',
+              tone: 'error',
+            });
+          }
+        },
+      });
+    } catch (err) {
+      toast({
+        message: err instanceof ApiError ? err.message : 'Could not change the status',
+        tone: 'error',
+      });
+    }
+  }
+
+  // ‹ 2 of 28 ›: through the tasks the Tasks list last showed.
+  const order: number[] = (() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('hb-task-order') ?? '[]') as number[];
+    } catch {
+      return [];
+    }
+  })();
+  const pos = order.indexOf(task.id);
+
+  const statusChoices: SelectOption<TaskStatus>[] = TASK_STATUSES.map((s) => ({
+    value: s,
+    label: TASK_STATUS_LABELS[s],
+    dot: STATUS_DOT[s],
+    hint: s === 'Review' && task.status !== 'Review' ? 'pick a reviewer on save' : undefined,
+  }));
+  const assigneeChoices: SelectOption<string>[] = [
+    { value: '', label: 'Unassigned', lead: <span className="hb-unassigned">?</span> },
+    ...[...users]
+      .sort((a, b) => userLabel(a).localeCompare(userLabel(b)))
+      .map((u) => ({
+        value: u.id,
+        label: userLabel(u),
+        lead: <Avatar user={u} px={24} decorative />,
+        hint:
+          stagedDuty && !catalog.loading && isMismatch(catalog.holdings, u.id, stagedDuty.id)
+            ? 'doesn’t hold the duty'
+            : undefined,
+      })),
+  ];
+  const dutyChoices: SelectOption<string>[] = [
+    { value: '', label: 'No duty' },
+    ...catalog.departments
+      .filter((d) => !d.archived)
+      .flatMap((d) =>
+        d.duties
+          .filter((x) => !x.archived || x.id === dutyId)
+          .map((x) => ({
+            value: x.id,
+            label: `${d.name} › ${x.name}`,
+            dot: d.color,
+            hint:
+              doerId && !catalog.loading && isMismatch(catalog.holdings, doerId, x.id)
+                ? 'not held'
+                : undefined,
+          })),
+      ),
+  ];
+  const stagedDue = dueInfo(stagedDueIso, task.status);
+  const statusHint = isInReview
+    ? 'Waiting on a review'
+    : task.isBlockedBy.some((b) => b.status !== 'Completed' && b.status !== 'Canceled')
+      ? 'Waiting on a linked task'
+      : task.children.length > 0
+        ? `${doneChildren} of ${task.children.length} sub-tasks done`
+        : task.status === 'Open'
+          ? 'Not started'
+          : null;
+  const [activity, setActivity] = useState<'comments' | 'history'>('comments');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const done = task.status === 'Completed';
+
   return (
-    <div className="detail-page">
-      {/* Top bar */}
-      <div className="detail-topbar">
-        <nav className="detail-breadcrumb">
-          <Link to="/tasks">All tasks</Link>
-          <span className="crumb-sep">/</span>
-          <span className="mono">#{task.id}</span>
+    <div className="hb-task">
+      {/* Sticky top bar */}
+      <div className="hb-taskbar">
+        <nav className="hb-crumbs" aria-label="Breadcrumb">
+          <Link to="/tasks">
+            <ChevronLeft size={16} aria-hidden="true" /> Tasks
+          </Link>
+          <span aria-hidden="true">/</span>
+          <span>#{task.id}</span>
         </nav>
-        <div className="spacer" />
-        <button type="button" className="secondary btn-sm" onClick={copyLink}>
-          {copied ? 'Copied ✓' : 'Copy link'}
-        </button>
-        <button type="button" className="secondary btn-sm" disabled={duplicating} onClick={onDuplicateClick}>
-          {duplicating ? 'Duplicating…' : 'Duplicate'}
-        </button>
-        <button type="button" className="secondary btn-sm" onClick={() => navigate('/tasks/new')}>
-          New task
-        </button>
-        {canSaveAsTemplate && (
-          <button type="button" className="secondary btn-sm" onClick={onSaveAsTemplateClick}>
-            Save as template
-          </button>
-        )}
-        {task.canTogglePrivate && (
-          <button
-            type="button"
-            className={`secondary btn-sm${task.isPrivate ? ' is-private-on' : ''}`}
-            disabled={privacyBusy}
-            title={
-              task.isPrivate
-                ? 'Private — visible only to the assignee and their supervisor chain. Click to make it visible again.'
-                : 'Make this task private (suspends mention-only access)'
-            }
-            onClick={() => void togglePrivate()}
-          >
-            {task.isPrivate ? '🔒 Private' : 'Make private'}
-          </button>
-        )}
-        {currentUser.role === 'Admin' && (
-          <button type="button" className="secondary btn-sm" onClick={() => setConfirmDelete(true)}>
-            Delete
-          </button>
-        )}
-        {!canEdit ? null : isInReview ? (
-          <>
-            {canRecall && (
-              <button type="button" className="secondary btn-sm" disabled={reviewBusy} onClick={() => void exitReview('recall')}>
-                Recall from Review
-              </button>
-            )}
+        {pos >= 0 && order.length > 1 && (
+          <span className="hb-stepper">
             <button
               type="button"
-              className="btn-sm"
-              disabled={reviewBusy || !canReview}
-              title={canReview ? undefined : 'Only an admin, the assignee, or a supervisor above them can finish this review'}
-              onClick={() => void exitReview('reviewed')}
+              aria-label="Previous task"
+              disabled={pos === 0}
+              onClick={() => navigate(`/tasks/${order[pos - 1]}`)}
             >
-              {reviewBusy ? 'Saving…' : 'Reviewed'}
+              <ChevronLeft size={16} aria-hidden="true" />
             </button>
-          </>
-        ) : null}
+            <span>
+              {pos + 1} of {order.length}
+            </span>
+            <button
+              type="button"
+              aria-label="Next task"
+              disabled={pos === order.length - 1}
+              onClick={() => navigate(`/tasks/${order[pos + 1]}`)}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </span>
+        )}
+        <span className="hb-grow" />
+        {timerHere && (
+          <span className="hb-mini-clock" title="The timer is running on this task">
+            <span className="hb-live" aria-hidden="true" /> {formatClock(timerElapsed)}
+          </span>
+        )}
+        {canEdit &&
+          !isInReview &&
+          (done ? (
+            <Btn onClick={() => void markDone('Open')}>
+              <RotateCcw size={15} aria-hidden="true" /> Reopen
+            </Btn>
+          ) : (
+            <Btn kind="ok" onClick={() => void markDone('Completed')}>
+              <CheckCircle2 size={16} aria-hidden="true" /> Mark done
+            </Btn>
+          ))}
+        <button
+          ref={menuRef}
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          aria-label="More actions"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          <MoreHorizontal size={18} aria-hidden="true" />
+        </button>
+        <Popover
+          anchorRef={menuRef}
+          open={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          minWidth={230}
+          matchWidth={false}
+          label="More actions"
+        >
+          <div className="hb-actions-menu">
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                copyLink();
+              }}
+            >
+              <LinkIcon size={16} aria-hidden="true" /> {copied ? 'Link copied' : 'Copy link'}
+            </button>
+            <button
+              type="button"
+              disabled={duplicating}
+              onClick={() => {
+                setMenuOpen(false);
+                onDuplicateClick();
+              }}
+            >
+              <Copy size={16} aria-hidden="true" /> Duplicate task
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                navigate('/tasks/new');
+              }}
+            >
+              <Plus size={16} aria-hidden="true" /> New task
+            </button>
+            {canSaveAsTemplate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onSaveAsTemplateClick();
+                }}
+              >
+                <FileStack size={16} aria-hidden="true" /> Save as template
+              </button>
+            )}
+            {task.canTogglePrivate && (
+              <button
+                type="button"
+                disabled={privacyBusy}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void togglePrivate();
+                }}
+              >
+                <Lock size={16} aria-hidden="true" />{' '}
+                {task.isPrivate ? 'Make visible to the team' : 'Make private'}
+              </button>
+            )}
+            {currentUser.role === 'Admin' && (
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setConfirmDelete(true);
+                }}
+              >
+                <Trash2 size={16} aria-hidden="true" /> Delete task
+              </button>
+            )}
+          </div>
+        </Popover>
       </div>
 
-      {notice && <div className="alert success">{notice}</div>}
-      {error && <div className="alert error">{error}</div>}
-      {bannerShown && <ConflictBanner entity="task" onReview={review} />}
-      {!canEdit && (
-        <div className="alert info read-only-banner" role="status">
-          {task.access === 'tree' ? (
-            <>🌳 You can see this task because it sits in the parent/child tree of a task you have access to. It’s read-only — you can view it, but not change its fields.</>
-          ) : (
-            <>👁 You can see this task because you’re mentioned in it. It’s read-only — you can add comments, but not change its fields.</>
-          )}
-        </div>
-      )}
-
-      {/* Header */}
-      <div className={`detail-headerblock${justCompleted ? ' just-completed' : ''}`}>
-        {editingName ? (
-          <div className="field" style={{ margin: 0, maxWidth: 640 }}>
-            <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} aria-label="Task name" autoFocus />
-            <div className="btn-row">
-              {conflict ? (
-                <button type="button" disabled={savingName} onClick={() => void handleConflictRefresh()}>
-                  {savingName ? 'Refreshing…' : 'Refresh'}
-                </button>
-              ) : (
-                <button type="button" disabled={savingName || nameDraft.trim().length < TASK_NAME_MIN_LENGTH} onClick={saveName}>
-                  {savingName ? 'Saving…' : 'Save'}
-                </button>
+      {/* Header band */}
+      <header className={`hb-taskhead${justCompleted ? ' just-completed' : ''}`}>
+        <div className="hb-taskhead-main">
+          {(done || task.isPrivate || !canEdit) && (
+            <div className="hb-flags">
+              {done && <Pill tone="green">Done</Pill>}
+              {task.status === 'Canceled' && <Pill tone="grey">Canceled</Pill>}
+              {task.isPrivate && (
+                <Pill tone="blue">
+                  <Lock size={12} aria-hidden="true" /> Private
+                </Pill>
               )}
-              <button type="button" className="secondary" onClick={() => { setEditingName(false); setNameDraft(task.name); }}>
-                Cancel
-              </button>
+              {!canEdit && <Pill tone="grey">Read-only</Pill>}
             </div>
-          </div>
-        ) : (
-          <div className="detail-title-row">
-            <h1 className="detail-title">{task.name}</h1>
-            {task.isPrivate && (
-              <span className="badge private-badge" title="Private task">
-                🔒 Private
-              </span>
-            )}
-            {canEdit && (
-              <button type="button" className="edit-chip" onClick={() => { setNameDraft(task.name); setEditingName(true); }}>
-                Edit
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Property chip row — staged; committed together via "Save changes" */}
-        <div className="detail-props">
-          <span className={`prop-chip is-status${status !== task.status ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}`}>
-            <StatusPill status={status} caret={!isInReview && canEdit} />
-            {!isInReview && canEdit && (
-              <select className="prop-overlay-select" value={status} aria-label="Status" onChange={(e) => setStatus(e.target.value as TaskStatus)}>
-                {TASK_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {TASK_STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </span>
-
-          <span className={`prop-chip${priority !== task.priority ? ' is-dirty' : ''}`}>
-            <PriorityRamp priority={priority} label />
-            {canEdit && (
+          )}
+          {canEdit ? (
+            <textarea
+              className={`hb-title-input${nameDraft.trim() !== task.name ? ' is-dirty' : ''}`}
+              value={nameDraft}
+              rows={1}
+              onChange={(e) => setNameDraft(e.target.value.replace(/\n/g, ' '))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.preventDefault();
+              }}
+              aria-label="Task title"
+              maxLength={300}
+            />
+          ) : (
+            <h1 className="hb-title-text">{task.name}</h1>
+          )}
+          <p className="hb-meta">
+            #{task.id}
+            {statusHint && <> · {statusHint}</>}
+            {task.duty && (
               <>
-                <span className="prop-caret" aria-hidden="true">▾</span>
-                <select className="prop-overlay-select" value={priority} aria-label="Priority" onChange={(e) => setPriority(e.target.value as TaskPriority)}>
-                  {TASK_PRIORITIES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
+                {' '}
+                · Duty: {task.duty.departmentName} › {task.duty.name}
               </>
             )}
-          </span>
+            {task.parent && (
+              <>
+                {' '}
+                · Sub-task of <TaskRefLink task={task.parent} />
+              </>
+            )}{' '}
+            · created by {userLabel(task.creator)} on{' '}
+            {new Date(task.createdAt).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
 
-          <span className={`prop-chip${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${isInReview ? ' is-locked' : ''}${dutyBlocking ? ' is-bad' : ''}`}>
-            {assigneeUser ? (
-              <UserChip
-                user={assigneeUser}
-                label={isInReview ? `${userLabel(assigneeUser)} · reviewing` : undefined}
+          <div className="hb-chips">
+            {isInReview || !canEdit ? (
+              <span className="hb-chip static">
+                <StatusPill status={task.status} />
+              </span>
+            ) : (
+              <Select
+                variant="chip"
+                hideLabel
+                className={`hb-prop tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
+                label="Status"
+                value={status}
+                options={statusChoices}
+                renderValue={(o) => (
+                  <>
+                    <span
+                      className="hb-dot"
+                      style={{ background: STATUS_DOT[status] }}
+                      aria-hidden="true"
+                    />{' '}
+                    {o?.label}
+                  </>
+                )}
+                onChange={(v) => setStatus(v)}
+              />
+            )}
+
+            {isInReview || !canEdit ? (
+              <span className="hb-chip static">
+                {assigneeUser ? (
+                  <Avatar user={assigneeUser} px={24} decorative />
+                ) : (
+                  <span className="hb-unassigned">?</span>
+                )}
+                {assigneeUser ? userLabel(assigneeUser) : 'Unassigned'}
+                {isInReview && <span className="hb-small"> · reviewing</span>}
+              </span>
+            ) : (
+              <Select
+                variant="chip"
+                hideLabel
+                className={`hb-prop${assigneeId !== (task.assigneeId ?? '') ? ' is-dirty' : ''}${dutyBlocking ? ' is-bad' : ''}`}
+                label="Assignee"
+                value={assigneeId}
+                options={assigneeChoices}
+                searchPlaceholder="Search people…"
+                renderValue={() => (
+                  <>
+                    {assigneeUser ? (
+                      <Avatar user={assigneeUser} px={24} decorative />
+                    ) : (
+                      <span className="hb-unassigned">?</span>
+                    )}
+                    {assigneeUser ? userLabel(assigneeUser) : 'Unassigned'}
+                  </>
+                )}
+                onChange={(v) => setAssigneeId(v)}
+              />
+            )}
+
+            <DatePicker
+              variant="chip"
+              className={`hb-prop${stagedDue?.late ? ' is-late' : ''}${dueDate !== persistedDue.date || dueTime !== persistedDue.time ? ' is-dirty' : ''}`}
+              label="Due date"
+              value={dueDate || null}
+              placeholder="Due date"
+              disabled={!canEdit}
+              time={dueTime}
+              onTimeChange={setDueTime}
+              overdueNote={stagedDue?.late ? `Currently ${stagedDue.text}` : undefined}
+              renderValue={() =>
+                stagedDue
+                  ? `${stagedDue.late ? '' : 'Due '}${stagedDue.text}${dueTime ? ` · ${dueTime}` : ''}`
+                  : 'No due date'
+              }
+              onChange={(v) => handleDueDate(v ?? '')}
+            />
+
+            <DatePicker
+              variant="chip"
+              className={`hb-prop${startDate !== persistedStart.date || startTime !== persistedStart.time ? ' is-dirty' : ''}`}
+              label="Start date"
+              value={startDate || null}
+              placeholder="Start date"
+              disabled={!canEdit}
+              time={startTime}
+              onTimeChange={setStartTime}
+              renderValue={(v) =>
+                v
+                  ? `Starts ${formatShortDay(v)}${startTime ? ` · ${startTime}` : ''}`
+                  : 'No start date'
+              }
+              onChange={(v) => handleStartDate(v ?? '')}
+            />
+
+            {canEdit ? (
+              <Select
+                variant="chip"
+                hideLabel
+                className={`hb-prop hb-prio prio-${priority.toLowerCase()}${priority !== task.priority ? ' is-dirty' : ''}`}
+                label="Priority"
+                value={priority}
+                options={PRIORITY_OPTIONS}
+                renderValue={() => (
+                  <>
+                    <span
+                      className="hb-dot"
+                      style={{ background: PRIORITY_DOT[priority] }}
+                      aria-hidden="true"
+                    />{' '}
+                    {priority} priority
+                  </>
+                )}
+                onChange={(v) => setPriority(v)}
               />
             ) : (
-              <span className="user-chip muted">
-                <UnassignedAvatar px={20} />
-                <span className="user-name">Unassigned</span>
+              <span className="hb-chip static">
+                <PriorityMark priority={task.priority} />
               </span>
             )}
-            {!isInReview && canEdit && (
-              <>
-                <span className="prop-caret" aria-hidden="true">▾</span>
-                <select
-                  ref={assigneeSelectRef}
-                  className="prop-overlay-select"
-                  value={assigneeId}
-                  aria-label="Assignee"
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {/* With a duty chosen, people split into holders and ⚠ non-holders. */}
-                  <GroupedOptions groups={assigneeOptionGroups(users, { holdings: catalog.holdings, duty: stagedDuty })} />
-                </select>
-              </>
-            )}
-          </span>
 
-          {(dutyId || canEdit) && (
-            <span
-              className={`prop-chip${dutyId !== (task.dutyId ?? '') ? ' is-dirty' : ''}${dutyBlocking ? ' is-bad' : ''}`}
-              title="Department › Duty"
-            >
-              {stagedDuty ? (
-                <DutyTag duty={stagedDuty} compact />
-              ) : (
-                <span className="muted">+ Duty</span>
-              )}
-              {canEdit && (
-                <>
-                  <span className="prop-caret" aria-hidden="true">▾</span>
-                  <select
-                    className="prop-overlay-select"
-                    value={dutyId}
-                    aria-label="Department › Duty"
-                    onChange={(e) => setDutyId(e.target.value)}
-                  >
-                    <option value="">— No duty —</option>
-                    <GroupedOptions
-                      groups={dutyOptionGroups(catalog.departments, {
-                        holdings: catalog.holdings,
-                        assignee: doer && doerId ? { id: doerId, firstName: doer.firstName } : null,
-                        selectedId: dutyId || null,
-                      })}
-                    />
-                  </select>
-                </>
-              )}
-            </span>
-          )}
-
-          <span className={`prop-chip due-chip${stagedDueIso ? '' : ' is-empty'}${stagedDueIso !== (task.dueAt ?? null) ? ' is-dirty' : ''}`}>
-            <span className="due-chip-label">Due</span>
-            {stagedDueIso ? <DueDate iso={stagedDueIso} status={task.status} completedAt={task.statusChangedAt} isDue inline /> : <span className="muted">—</span>}
-          </span>
-
-          {task.tags.map((t) => (
-            <span key={t} className="badge tag">
-              {t}
-              {canEdit && (
-                <button type="button" className="tag-x" onClick={() => removeTag(t)} disabled={tagBusy} aria-label={`Remove tag ${t}`}>
-                  ×
-                </button>
-              )}
-            </span>
-          ))}
-          {canEdit && (
-            <span className="prop-chip add-tag-chip">
-              + Tag
-              <input
-                className="tag-inline-input"
-                value={tagDraft}
-                onChange={(e) => setTagDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void addTagFromDraft();
-                  }
-                }}
-                placeholder="tag…"
-                aria-label="Add a tag"
-                list="detail-tag-list"
+            {canEdit ? (
+              <Select
+                variant="chip"
+                hideLabel
+                className={`hb-prop${dutyId !== (task.dutyId ?? '') ? ' is-dirty' : ''}${dutyBlocking ? ' is-bad' : ''}`}
+                label="Duty"
+                value={dutyId}
+                options={dutyChoices}
+                searchPlaceholder="Search duties…"
+                renderValue={() =>
+                  stagedDuty ? `${stagedDuty.departmentName} › ${stagedDuty.name}` : '+ Duty'
+                }
+                onChange={(v) => setDutyId(v)}
               />
-              <datalist id="detail-tag-list">
-                {availableTags.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
+            ) : (
+              task.duty && (
+                <span className="hb-chip static">
+                  {task.duty.departmentName} › {task.duty.name}
+                </span>
+              )
+            )}
+
+            {task.tags.map((t) => (
+              <span key={t} className="hb-chip hb-tagchip">
+                {t}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => removeTag(t)}
+                    disabled={tagBusy}
+                    aria-label={`Remove tag ${t}`}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {canEdit && (
+              <span className="hb-chip hb-addtag">
+                <Tag size={13} aria-hidden="true" />
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addTagFromDraft();
+                    }
+                  }}
+                  placeholder="Add tag"
+                  aria-label="Add a tag"
+                  list="detail-tag-list"
+                />
+                <datalist id="detail-tag-list">
+                  {availableTags.map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+              </span>
+            )}
+
+            <span className="hb-chip-divider" aria-hidden="true" />
+            <span
+              className="hb-chip static soon"
+              title="Watching tasks needs a backend change (coming later)"
+            >
+              <Eye size={14} aria-hidden="true" /> Watching · soon
             </span>
+            {task.canTogglePrivate ? (
+              <button
+                type="button"
+                className={`hb-chip hb-privacy${task.isPrivate ? ' on' : ''}`}
+                disabled={privacyBusy}
+                aria-pressed={task.isPrivate}
+                title={
+                  task.isPrivate
+                    ? 'Visible only to the assignee and their supervisor chain'
+                    : 'Everyone with access can see it'
+                }
+                onClick={() => void togglePrivate()}
+              >
+                {task.isPrivate ? (
+                  <Lock size={14} aria-hidden="true" />
+                ) : (
+                  <Unlock size={14} aria-hidden="true" />
+                )}
+                {task.isPrivate ? 'Private' : 'Visible to team'}
+              </button>
+            ) : (
+              task.isPrivate && (
+                <span className="hb-chip static">
+                  <Lock size={14} aria-hidden="true" /> Private
+                </span>
+              )
+            )}
+          </div>
+
+          {/* HLAI-118: the special attributes, under the chips. */}
+          <TaskAttributesBar task={task} canEdit={canEdit} onEdit={() => setEditingAttrs(true)} />
+
+          {dutyMismatch && stagedDuty && doer && doerId && (
+            <DutyCrossCheck
+              personName={userLabel(doer)}
+              personFirstName={doer.firstName || userLabel(doer)}
+              duty={stagedDuty}
+              blocking={dutyBlocking}
+              canGrant={canGrantDuty && canEdit}
+              supervisorName={doerSupervisor}
+              granting={granting}
+              onGrant={() => void grantDutyToDoer()}
+              onPickAssignee={() => undefined}
+              onClearDuty={() => setDutyId('')}
+            />
           )}
         </div>
+        <TimeBlock
+          task={{
+            id: task.id,
+            name: task.name,
+            dutyId: task.dutyId,
+            dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
+          }}
+        />
+      </header>
 
-        {/* HLAI-118: the special attributes, under the property row. */}
-        <TaskAttributesBar task={task} canEdit={canEdit} onEdit={() => setEditingAttrs(true)} />
-
-        {dutyMismatch && stagedDuty && doer && doerId && (
-          <DutyCrossCheck
-            personName={userLabel(doer)}
-            personFirstName={doer.firstName || userLabel(doer)}
-            duty={stagedDuty}
-            blocking={dutyBlocking}
-            canGrant={canGrantDuty && canEdit}
-            supervisorName={doerSupervisor}
-            granting={granting}
-            onGrant={() => void grantDutyToDoer()}
-            onPickAssignee={() => assigneeSelectRef.current?.focus()}
-            onClearDuty={() => setDutyId('')}
-          />
+      <div className="hb-task-body">
+        {notice && <div className="hb-note ok">{notice}</div>}
+        {error && (
+          <div className="hb-alert" role="alert">
+            {error}
+          </div>
+        )}
+        {bannerShown && <ConflictBanner entity="task" onReview={review} />}
+        {!canEdit && (
+          <div className="hb-note" role="status">
+            {task.access === 'tree'
+              ? 'You can see this task because it sits under (or above) a task you have access to. It’s read-only.'
+              : 'You can see this task because you were mentioned in it. It’s read-only, but you can comment.'}
+          </div>
         )}
 
         {isInReview && (
-          <div className="review-card" role="status">
-            <div className="review-card-row">
-              <span>Review initiated by</span>
-              <strong>{task.reviewInitiator ? userLabel(task.reviewInitiator) : '—'}</strong>
+          <section className="hb-review" role="status">
+            {task.reviewInitiator && <Avatar user={task.reviewInitiator} px={36} decorative />}
+            <div className="hb-review-text">
+              <strong>
+                {task.reviewInitiator ? userLabel(task.reviewInitiator) : 'Someone'} sent this to{' '}
+                {task.assignee
+                  ? task.assigneeId === currentUser.id
+                    ? 'you'
+                    : userLabel(task.assignee)
+                  : 'a reviewer'}{' '}
+                for review.
+              </strong>
+              <span>
+                When it’s reviewed it goes back to{' '}
+                {task.priorAssignee ? userLabel(task.priorAssignee) : 'no one'} as{' '}
+                {task.priorStatus ? TASK_STATUS_LABELS[task.priorStatus] : 'Open'}. Leave a note in
+                the comments if something needs fixing.
+              </span>
             </div>
-            <div className="review-card-row">
-              <span>Will restore assignee</span>
-              <strong>{task.priorAssignee ? userLabel(task.priorAssignee) : 'Unassigned'}</strong>
+            <div className="hb-review-actions">
+              {canRecall && (
+                <Btn disabled={reviewBusy} onClick={() => void exitReview('recall')}>
+                  Recall from review
+                </Btn>
+              )}
+              <button
+                type="button"
+                className="hb-btn hb-btn-primary"
+                disabled={reviewBusy || !canReview}
+                title={
+                  canReview
+                    ? undefined
+                    : 'Only an admin, the reviewer, or a supervisor above them can finish this review'
+                }
+                onClick={() => void exitReview('reviewed')}
+              >
+                {reviewBusy ? 'Saving…' : 'Reviewed'}
+              </button>
             </div>
-            <div className="review-card-row">
-              <span>Will restore status to</span>
-              <strong>{task.priorStatus ? TASK_STATUS_LABELS[task.priorStatus] : '—'}</strong>
-            </div>
-          </div>
+          </section>
         )}
 
-        {/* Save bar for the staged Status / Priority / Assignee / Due chips */}
-        {canEdit && (
-        <div className={`detail-savebar${fieldsDirty ? ' is-dirty' : ''}`} role="status">
-          {fieldsDirty ? (
-            <span className="savebar-flag unsaved">
-              <span className="savebar-dot" aria-hidden="true" />
-              Unsaved changes
-            </span>
-          ) : savedState !== 'hidden' ? (
-            <span className={`savebar-flag saved${savedState === 'fading' ? ' is-fading' : ''}`}>
-              All changes saved
-            </span>
-          ) : null}
-          {fieldsError && <span className="savebar-error">{fieldsError}</span>}
+        <div className="hb-task-cols">
+          <div className="hb-col">
+            <section className="hb-card detail-desc">
+              <div className="hb-card-pad">
+                {descHead(false)}
+                {descExpanded ? descText : descBody}
+              </div>
+            </section>
+
+            <section className="hb-card hb-soon-card" aria-disabled="true">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-grey">
+                  <ListChecks size={16} aria-hidden="true" />
+                </span>
+                <h3>Checklist</h3>
+                <Pill tone="grey">Coming soon</Pill>
+              </div>
+              <p className="hb-soon-text">
+                Steps you tick off inside a task. This needs a backend change first; until then, use
+                sub-tasks below.
+              </p>
+            </section>
+
+            <section className="hb-card">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <ListTree size={16} aria-hidden="true" />
+                </span>
+                <h3>Sub-tasks</h3>
+                {task.children.length > 0 && (
+                  <span className="hb-small">
+                    {doneChildren} of {task.children.length} done
+                  </span>
+                )}
+                {canEdit && (
+                  <>
+                    <Btn onClick={() => setNewSubOpen(true)}>
+                      <Plus size={14} aria-hidden="true" /> New
+                    </Btn>
+                    <Btn onClick={() => setPicker('child')}>Link existing</Btn>
+                  </>
+                )}
+              </div>
+              {task.children.length > 0 && (
+                <div className="hb-pad hb-pad-tight">
+                  <Bar value={doneChildren} max={task.children.length} tone="green" />
+                </div>
+              )}
+              {task.children.length === 0 ? (
+                <Empty>No sub-tasks yet.</Empty>
+              ) : (
+                task.children.map((c) =>
+                  c.accessible ? (
+                    <Link
+                      key={c.id}
+                      to={`/tasks/${c.id}`}
+                      className={`hb-row${c.status === 'Completed' ? ' is-done' : ''}`}
+                    >
+                      <span className="hb-stack">
+                        <span className="hb-name">{c.name}</span>
+                        <span className="hb-sub">#{c.id}</span>
+                      </span>
+                      <StatusPill status={c.status} />
+                    </Link>
+                  ) : (
+                    <div key={c.id} className="hb-row" title="You do not have access to this task">
+                      <span className="hb-stack">
+                        <span className="hb-sub">
+                          <Lock size={12} aria-hidden="true" /> #{c.id} · no access
+                        </span>
+                      </span>
+                      <StatusPill status={c.status} />
+                    </div>
+                  ),
+                )
+              )}
+            </section>
+
+            <section className="hb-card">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <Link2 size={16} aria-hidden="true" />
+                </span>
+                <h3>Linked tasks</h3>
+              </div>
+              {(
+                [
+                  {
+                    key: 'parent',
+                    label: 'Parent',
+                    items: task.parent ? [task.parent] : [],
+                    add: !task.parent,
+                    remove: () => runRel(() => api.clearParent(task.id)),
+                  },
+                  { key: 'blockedBy', label: 'Blocked by', items: task.isBlockedBy, add: true },
+                  { key: 'blocks', label: 'Blocks', items: task.blocks, add: true },
+                ] as const
+              ).map((g) => (
+                <div key={g.key} className="hb-link-group">
+                  <div className="hb-link-head">
+                    <span className="hb-label">{g.label}</span>
+                    {canEdit && g.add && (
+                      <Btn kind="link" onClick={() => setPicker(g.key as PickerKind)}>
+                        + Link
+                      </Btn>
+                    )}
+                  </div>
+                  {g.items.length === 0 ? (
+                    <p className="hb-link-none">Nothing linked yet.</p>
+                  ) : (
+                    g.items.map((t) => (
+                      <div key={t.id} className="hb-link-row">
+                        <TaskRefLink task={t} />
+                        {'status' in t && t.status && <StatusPill status={t.status} />}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="hb-x"
+                            aria-label={`Remove ${g.label.toLowerCase()} #${t.id}`}
+                            onClick={() =>
+                              g.key === 'parent'
+                                ? runRel(() => api.clearParent(task.id))
+                                : runRel(() =>
+                                    api.removeDependency(task.id, g.key as DependencyType, t.id),
+                                  )
+                            }
+                          >
+                            <X size={14} aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              ))}
+            </section>
+
+            <section className="hb-card detail-attachments">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <Paperclip size={16} aria-hidden="true" />
+                </span>
+                <h3>Files</h3>
+                <span className="hb-small">{task.attachments.length || ''}</span>
+              </div>
+              <div className="hb-card-pad">
+                <AttachmentSection
+                  attachments={task.attachments}
+                  target={{ kind: 'task', taskId: task.id }}
+                  canUpload
+                  currentUser={currentUser}
+                  onChanged={applyTask}
+                />
+              </div>
+            </section>
+
+            <section className="hb-card">
+              <div className="hb-card-pad hb-legacy-rail">
+                <TaskRecurrencePanel task={task} onChanged={applyTask} />
+              </div>
+            </section>
+
+            <section className="hb-card">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <AlarmClock size={16} aria-hidden="true" />
+                </span>
+                <h3>Reminders</h3>
+                {reminderBlock && (
+                  <span className="hb-small">{REMINDER_BLOCK_LABELS[reminderBlock]}</span>
+                )}
+              </div>
+              <div className="hb-card-pad hb-legacy-rail">
+                <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
+              </div>
+            </section>
+          </div>
+
+          <div className="hb-col">
+            <section className="hb-card hb-activity">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <MessageSquare size={16} aria-hidden="true" />
+                </span>
+                <h3>Activity</h3>
+                <Segmented
+                  small
+                  label="Show"
+                  value={activity}
+                  onChange={setActivity}
+                  options={[
+                    {
+                      value: 'comments',
+                      label: `Comments${task.comments.length ? ` (${task.comments.length})` : ''}`,
+                    },
+                    { value: 'history', label: 'History' },
+                  ]}
+                />
+              </div>
+              {/* Always mounted, only hidden: switching to History keeps a comment being written. */}
+              <div className="hb-card-pad" hidden={activity !== 'comments'}>
+                <Comments
+                  task={task}
+                  currentUser={currentUser}
+                  onChanged={applyTask}
+                  onDirtyChange={setCommentsDirty}
+                />
+              </div>
+              {activity === 'history' && (
+                <div className="hb-card-pad">
+                  <TaskHistory taskId={task.id} version={historyVersion} />
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+
+      {/* One Save for the task's own fields */}
+      {canEdit && (fieldsDirty || conflict || fieldsError) && (
+        <div className="hb-savebar" role="region" aria-label="Unsaved changes">
+          <span className="hb-savebar-dot" aria-hidden="true" />
+          <strong>
+            {fieldsDirty
+              ? `${changedFields.length} unsaved ${changedFields.length === 1 ? 'change' : 'changes'}`
+              : 'Not saved'}
+          </strong>
+          <span className="hb-savebar-what">{changedFields.join(', ')}</span>
+          {fieldsError && <span className="hb-savebar-err">{fieldsError}</span>}
           {!fieldsError && dutyBlocking && (
-            <span className="savebar-error">Fix the duty mismatch to save.</span>
+            <span className="hb-savebar-err">Fix the duty mismatch to save.</span>
           )}
-          <div className="spacer" />
+          <span className="hb-grow" />
+          <span className="hb-kbd">Ctrl + S</span>
           {fieldsDirty && !conflict && (
-            <button type="button" className="secondary btn-sm" disabled={savingFields} onClick={discardFields}>
+            <button
+              type="button"
+              className="hb-savebar-discard"
+              disabled={savingFields}
+              onClick={discardFields}
+            >
               Discard
             </button>
           )}
           {conflict ? (
-            <button type="button" className="btn-sm" disabled={savingFields} onClick={() => void handleConflictRefresh()}>
+            <button
+              type="button"
+              className="hb-savebar-save"
+              disabled={savingFields}
+              onClick={() => void handleConflictRefresh()}
+            >
               {savingFields ? 'Refreshing…' : 'Refresh'}
             </button>
           ) : (
-            <button type="button" className="btn-sm" disabled={savingFields || !fieldsDirty || dutyBlocking} onClick={() => void saveFields()}>
+            <button
+              type="button"
+              className="hb-savebar-save"
+              disabled={savingFields || !fieldsDirty || dutyBlocking}
+              onClick={() => void saveFields()}
+            >
               {savingFields ? 'Saving…' : 'Save changes'}
             </button>
           )}
         </div>
-        )}
-      </div>
-
-      {/* Two-pane body */}
-      <div className="detail-cols">
-        <div className="detail-content">
-          {/* Tabs */}
-          <div className="detail-tabs" role="tablist">
-            <button type="button" className={`detail-tab${tab === 'work' ? ' active' : ''}`} onClick={() => setTab('work')}>
-              Work
-            </button>
-            <button type="button" className={`detail-tab${tab === 'comments' ? ' active' : ''}`} onClick={() => setTab('comments')}>
-              Comments {task.comments.length > 0 ? `(${task.comments.length})` : ''}
-            </button>
-            <button type="button" className={`detail-tab${tab === 'history' ? ' active' : ''}`} onClick={() => setTab('history')}>
-              History
-            </button>
-          </div>
-
-          {tab === 'work' && (
-            <div className="detail-work">
-              {/* Description */}
-              <section className="card detail-desc">
-                {descHead(false)}
-                {descExpanded ? descText : descBody}
-              </section>
-
-              {/* Sub-tasks */}
-              <section className="card detail-subtasks">
-                <div className="section-head">
-                  <h3>Sub-tasks</h3>
-                  {task.children.length > 0 && (
-                    <span className="mono subtask-count">
-                      {doneChildren} of {task.children.length} done
-                    </span>
-                  )}
-                  <div className="spacer" />
-                  {canEdit && (
-                    <>
-                      <button
-                        type="button"
-                        className="tertiary btn-sm"
-                        onClick={() => setNewSubOpen(true)}
-                      >
-                        New
-                      </button>
-                      <button type="button" className="tertiary btn-sm" onClick={() => setPicker('child')}>
-                        + Link
-                      </button>
-                    </>
-                  )}
-                </div>
-                {task.children.length > 0 && (
-                  <div className="subtask-progress" aria-hidden="true">
-                    <span style={{ width: `${(doneChildren / task.children.length) * 100}%` }} />
-                  </div>
-                )}
-                {task.children.length === 0 ? (
-                  <p className="muted rel-empty">
-                    No sub-tasks. Use “New” to create one, or “+ Link” to add an existing task.
-                  </p>
-                ) : (
-                  <ul className="subtask-list">
-                    {task.children.map((c) => {
-                      const done = c.status === 'Completed';
-                      return (
-                        <li key={c.id} className={`subtask-row${done ? ' is-done' : ''}`}>
-                          {c.accessible ? (
-                            <Link to={`/tasks/${c.id}`} className="subtask-name">
-                              #{c.id} {c.name}
-                            </Link>
-                          ) : (
-                            <span className="subtask-name task-ref-locked" title="You do not have access to this task">
-                              #{c.id} <span className="task-ref-lock" aria-label="No access">🔒</span>
-                            </span>
-                          )}
-                          <StatusPill status={c.status} />
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
-
-              {/* Attachments */}
-              <section className="card detail-attachments">
-                <h3 style={{ marginTop: 0 }}>Attachments</h3>
-                <AttachmentSection attachments={task.attachments} target={{ kind: 'task', taskId: task.id }} canUpload currentUser={currentUser} onChanged={applyTask} />
-              </section>
-            </div>
-          )}
-
-          {/* Always mounted, only hidden on other tabs: unmounting would throw
-              away a comment being written when someone flips to Work or History. */}
-          <section className="card" hidden={tab !== 'comments'}>
-            <Comments task={task} currentUser={currentUser} onChanged={applyTask} onDirtyChange={setCommentsDirty} />
-          </section>
-
-          {tab === 'history' && (
-            <section className="card">
-              <TaskHistory taskId={task.id} version={historyVersion} />
-            </section>
-          )}
-        </div>
-
-        {/* Right rail */}
-        <aside className="detail-rail">
-          <div className="rail-section">
-            <div className="rail-section-title">Details</div>
-            <div className="rail-row">
-              <span className="rail-label">Start</span>
-              <span className="rail-dates">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => handleStartDate(e.target.value)}
-                  aria-label="Start date"
-                  disabled={!canEdit}
-                />
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  aria-label="Start time"
-                  disabled={!startDate || !canEdit}
-                />
-                {startTime && (
-                  <button
-                    type="button"
-                    className="rail-clear-time"
-                    onClick={() => setStartTime('')}
-                    aria-label="Clear start time"
-                  >
-                    Clear
-                  </button>
-                )}
-              </span>
-            </div>
-            <div className="rail-row">
-              <span className="rail-label">Due</span>
-              <span className="rail-dates">
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => handleDueDate(e.target.value)}
-                  aria-label="Due date"
-                  disabled={!canEdit}
-                />
-                <input
-                  type="time"
-                  value={dueTime}
-                  onChange={(e) => setDueTime(e.target.value)}
-                  aria-label="Due time"
-                  disabled={!dueDate || !canEdit}
-                />
-                {dueTime && (
-                  <button
-                    type="button"
-                    className="rail-clear-time"
-                    onClick={() => setDueTime('')}
-                    aria-label="Clear due time"
-                  >
-                    Clear
-                  </button>
-                )}
-              </span>
-            </div>
-            <div className="rail-row">
-              <span className="rail-label">Creator</span>
-              <UserChip user={task.creator} />
-            </div>
-            <div className="rail-row">
-              <span className="rail-label">Created</span>
-              <AgoDate iso={task.createdAt} />
-            </div>
-            <div className="rail-row">
-              <span className="rail-label">Status set</span>
-              <AgoDate iso={task.statusChangedAt} />
-            </div>
-          </div>
-
-          <div className="rail-section">
-            <div className="rail-section-title">Relationships</div>
-            <div className="rel-section">
-              <div className="rel-heading">
-                <span>Parent</span>
-                {!task.parent && canEdit && (
-                  <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('parent')}>
-                    + Link
-                  </button>
-                )}
-              </div>
-              {task.parent ? (
-                <div className="rel-row">
-                  <TaskRefLink task={task.parent} />
-                  {canEdit && (
-                    <button type="button" className="rel-x" aria-label="Remove parent" onClick={() => runRel(() => api.clearParent(task.id))}>
-                      ×
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p className="muted rel-empty">None</p>
-              )}
-            </div>
-
-            <div className="rel-section">
-              <div className="rel-heading">
-                <span>Blocked by</span>
-                {canEdit && (
-                  <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blockedBy')}>
-                    + Link
-                  </button>
-                )}
-              </div>
-              {task.isBlockedBy.length === 0 ? (
-                <p className="muted rel-empty">Nothing</p>
-              ) : (
-                task.isBlockedBy.map((t) => (
-                  <div key={t.id} className="rel-row rel-blocked">
-                    <TaskRefLink task={t} />
-                    {canEdit && (
-                      <button type="button" className="rel-x" aria-label={`Remove is-blocked-by #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blockedBy', t.id))}>
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div className="rel-section">
-              <div className="rel-heading">
-                <span>Blocks</span>
-                {canEdit && (
-                  <button type="button" className="tertiary btn-sm rel-add" onClick={() => setPicker('blocks')}>
-                    + Link
-                  </button>
-                )}
-              </div>
-              {task.blocks.length === 0 ? (
-                <p className="muted rel-empty">Nothing</p>
-              ) : (
-                task.blocks.map((t) => (
-                  <div key={t.id} className="rel-row">
-                    <TaskRefLink task={t} />
-                    {canEdit && (
-                      <button type="button" className="rel-x" aria-label={`Remove blocks #${t.id}`} onClick={() => runRel(() => api.removeDependency(task.id, 'blocks', t.id))}>
-                        ×
-                      </button>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <TaskRecurrencePanel task={task} onChanged={applyTask} />
-
-          <div className="rail-section">
-            <div className="rail-section-title">
-              Reminders
-              {reminderBlock && (
-                <span className="rail-title-note"> · {REMINDER_BLOCK_LABELS[reminderBlock]}</span>
-              )}
-            </div>
-            <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
-          </div>
-        </aside>
-      </div>
+      )}
 
       {picker && (
-        <TaskPickerModal title={PICKER_TITLES[picker]} excludeId={task.id} onPick={handlePick} onClose={() => setPicker(null)} />
+        <TaskPickerModal
+          title={PICKER_TITLES[picker]}
+          excludeId={task.id}
+          onPick={handlePick}
+          onClose={() => setPicker(null)}
+        />
       )}
 
       {pendingReview && (
@@ -1323,7 +1671,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
       {descExpanded && (
         <div className="modal-backdrop desc-backdrop">
-          <div ref={descModalRef} className="modal desc-modal" role="dialog" aria-modal="true" aria-labelledby="desc-modal-title">
+          <div
+            ref={descModalRef}
+            className="modal desc-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="desc-modal-title"
+          >
             {descHead(true)}
             {descBody}
           </div>
@@ -1342,8 +1696,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               {pendingReminderRemoval === 'task-canceled'
                 ? 'Canceling this task will remove its reminders.'
                 : 'Clearing the Start Date will remove this task’s reminders.'}{' '}
-              Your own reminders are deleted; anyone else with one sees a
-              {' '}“Canceled” notice. Continue?
+              Your own reminders are deleted; anyone else with one sees a “Canceled” notice.
+              Continue?
             </p>
             <div className="btn-row">
               <button
@@ -1375,8 +1729,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             {task.children.length > 0 ? (
               <p>
                 “{task.name}” has {task.children.length} sub-task
-                {task.children.length === 1 ? '' : 's'}. Duplicate just this task, or the whole
-                tree beneath it?
+                {task.children.length === 1 ? '' : 's'}. Duplicate just this task, or the whole tree
+                beneath it?
               </p>
             ) : (
               <p>Create a fresh copy of “{task.name}”.</p>
@@ -1392,19 +1746,37 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
               {task.children.length > 0 ? (
                 <>
-                  <button type="button" className="secondary" disabled={duplicating} onClick={() => void doDuplicate(false)}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={duplicating}
+                    onClick={() => void doDuplicate(false)}
+                  >
                     This task only
                   </button>
-                  <button type="button" disabled={duplicating} onClick={() => void doDuplicate(true)}>
+                  <button
+                    type="button"
+                    disabled={duplicating}
+                    onClick={() => void doDuplicate(true)}
+                  >
                     Task &amp; all sub-tasks
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="button" className="secondary" disabled={duplicating} onClick={() => setDupOpen(false)}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={duplicating}
+                    onClick={() => setDupOpen(false)}
+                  >
                     Cancel
                   </button>
-                  <button type="button" disabled={duplicating} onClick={() => void doDuplicate(false)}>
+                  <button
+                    type="button"
+                    disabled={duplicating}
+                    onClick={() => void doDuplicate(false)}
+                  >
                     Duplicate
                   </button>
                 </>
@@ -1467,9 +1839,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <h3 style={{ marginTop: 0 }}>Save as template</h3>
             {savedTplId != null ? (
               <>
-                <p>
-                  Created a reusable template from “{task.name}”. Your task is unchanged.
-                </p>
+                <p>Created a reusable template from “{task.name}”. Your task is unchanged.</p>
                 <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
                   <button type="button" className="secondary" onClick={() => setTplOpen(false)}>
                     Close
@@ -1527,7 +1897,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     onChange={(e) => setTplRole(e.target.value)}
                   />
                   <p className="muted" style={{ fontSize: '0.72rem', margin: '0.25rem 0 0' }}>
-                    Seeded from the current assignee’s name; edit any role later in the template editor.
+                    Seeded from the current assignee’s name; edit any role later in the template
+                    editor.
                   </p>
                 </div>
                 <label className="dup-attachments-toggle">
@@ -1539,10 +1910,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   Include attachments from these tasks in the template
                 </label>
                 <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-                  <button type="button" className="secondary" disabled={savingTpl} onClick={() => setTplOpen(false)}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={savingTpl}
+                    onClick={() => setTplOpen(false)}
+                  >
                     Cancel
                   </button>
-                  <button type="button" disabled={savingTpl || !tplName.trim()} onClick={() => void doSaveAsTemplate()}>
+                  <button
+                    type="button"
+                    disabled={savingTpl || !tplName.trim()}
+                    onClick={() => void doSaveAsTemplate()}
+                  >
                     {savingTpl ? 'Saving…' : 'Save template'}
                   </button>
                 </div>
@@ -1565,10 +1945,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ marginTop: 0 }}>Delete task?</h3>
             <p>
-              This permanently deletes task #{task.id} “{task.name}”, along with its comments and attachments. This cannot be undone.
+              This permanently deletes task #{task.id} “{task.name}”, along with its comments and
+              attachments. This cannot be undone.
             </p>
             <div className="btn-row">
-              <button type="button" className="danger" disabled={deleting} onClick={handleDeleteTask}>
+              <button
+                type="button"
+                className="danger"
+                disabled={deleting}
+                onClick={handleDeleteTask}
+              >
                 {deleting ? 'Deleting…' : 'Delete task'}
               </button>
               <button type="button" className="secondary" onClick={() => setConfirmDelete(false)}>

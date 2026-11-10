@@ -20,6 +20,7 @@ import { Avatar, userLabel } from './ui/Avatar';
 import { AppLauncher, appForPath, type AppKey } from './AppLauncher';
 import { SectionTabs } from './SectionTabs';
 import { ToastProvider } from './harbor/Toast';
+import { TimerPill } from './harbor/TimeBlock';
 
 interface NavEntry {
   to: string;
@@ -77,6 +78,11 @@ const APP_NAMES: Record<AppKey, { name: string; mark: string }> = {
   exclusives: { name: 'Exclusive Alerts', mark: 'EA' },
 };
 
+function taskIdOnPage(pathname: string): number | null {
+  const m = /^\/tasks\/(\d+)$/.exec(pathname);
+  return m ? Number(m[1]) : null;
+}
+
 function isUnder(pathname: string, base: string): boolean {
   return base === '/' ? pathname === '/' : pathname === base || pathname.startsWith(`${base}/`);
 }
@@ -122,6 +128,7 @@ function Sidebar() {
 
       <div className="side-spacer" />
 
+      <TimerPill hiddenOnTaskId={taskIdOnPage(pathname)} />
       <AppLauncher current={app} />
 
       {user && (
