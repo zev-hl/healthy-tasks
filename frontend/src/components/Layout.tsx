@@ -1,236 +1,143 @@
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
-import type { ActiveUserDto } from '@healthy-tasks/shared';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import {
+  Clock,
+  LayoutDashboard,
+  Layers,
+  ListChecks,
+  ScrollText,
+  Search,
+  Settings,
+  Target,
+  Users,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
+import type { Role } from '@healthy-tasks/shared';
 import { useAuth } from '../auth/AuthContext';
 import { NotificationProvider, useNotifications } from '../notifications/NotificationContext';
 import { CommandPalette } from './CommandPalette';
 import { Avatar, userLabel } from './ui/Avatar';
-import { MenuIcon } from './ui/MenuIcon';
-import { SAVED_VIEWS } from '../lib/views';
-import { api } from '../api/client';
-import { nowContext } from '../lib/taskSearch';
+import { AppLauncher, appForPath, type AppKey } from './AppLauncher';
+import { SectionTabs } from './SectionTabs';
 
 const isMac =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
-function navItemClass({ isActive }: { isActive: boolean }): string {
-  return `side-nav-item${isActive ? ' active' : ''}`;
+interface NavEntry {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  /** Other paths that light this item up (its tabs and sub-pages). */
+  match: string[];
+  roles?: Role[];
 }
 
-/**
- * The fixed 232px left rail — brand, primary nav, Views, Admin, user chip. On a
- * small screen it hides and slides in over the page while `open`.
- */
-function Sidebar({
-  onOpenCmdk,
-  open,
-  onClose,
-  closeRef,
-}: {
-  onOpenCmdk: () => void;
-  open: boolean;
-  onClose: () => void;
-  closeRef: React.RefObject<HTMLButtonElement>;
-}) {
-  const { user } = useAuth();
-  const { unread } = useNotifications();
-  const navigate = useNavigate();
-  const me = user?.id ?? '';
-  const unreadTotal = unread?.total ?? 0;
+const MANAGERS: Role[] = ['Admin', 'Manager'];
 
-  // MY TEAM group: the current user's direct reports + aggregate team tallies.
-  const [reports, setReports] = useState<ActiveUserDto[]>([]);
-  const [teamStats, setTeamStats] = useState<{ open: number; overdue: number } | null>(null);
-  useEffect(() => {
-    if (!me) return;
-    let cancelled = false;
-    api
-      .listActiveUsers()
-      .then(async (users) => {
-        const r = users.filter((u) => u.supervisorId === me && u.id !== me);
-        if (cancelled) return;
-        setReports(r);
-        if (r.length > 0) {
-          const d = await api.getTaskDashboard({
-            filters: { assigneeIds: r.map((x) => x.id) },
-            ...nowContext(),
-          });
-          if (!cancelled) {
-            setTeamStats({
-              open: d.total - (d.byStatus.Completed ?? 0) - (d.byStatus.Canceled ?? 0),
-              overdue: d.overdue,
-            });
-          }
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [me]);
-  const reportIds = reports.map((r) => r.id);
+/** HL Central's own sidebar, decided page by page (docs/redesign-decisions.md). */
+const CENTRAL_NAV: NavEntry[] = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, match: ['/notifications', '/reports/due-date'] },
+  { to: '/tasks', label: 'Tasks', icon: ListChecks, match: ['/tasks', '/admin/templates'] },
+  { to: '/time', label: 'Time', icon: Clock, match: ['/time', '/reports/time'] },
+  { to: '/goals', label: 'Goals', icon: Target, match: ['/goals'] },
+  {
+    to: '/admin/organization',
+    label: 'People',
+    icon: Users,
+    match: ['/admin/users', '/admin/organization'],
+    roles: MANAGERS,
+  },
+  {
+    to: '/admin/settings',
+    label: 'Settings',
+    icon: Settings,
+    match: ['/admin/settings', '/admin/departments'],
+    roles: ['Admin'],
+  },
+];
+
+/** Exclusive Alerts: its own app, opened from the launcher, in the same shell. */
+const EXCLUSIVES_NAV: NavEntry[] = [
+  { to: '/exclusives/log', label: 'Alert Log', icon: ScrollText, match: ['/exclusives/log'] },
+  { to: '/exclusives/groups', label: 'Alert Groups', icon: Layers, match: ['/exclusives/groups'] },
+  {
+    to: '/exclusives/alert-tasks',
+    label: 'Alert Task Setup',
+    icon: Workflow,
+    match: ['/exclusives/alert-tasks'],
+    roles: MANAGERS,
+  },
+];
+
+const APP_NAMES: Record<AppKey, { name: string; mark: string }> = {
+  central: { name: 'HL Central', mark: 'HL' },
+  exclusives: { name: 'Exclusive Alerts', mark: 'EA' },
+};
+
+function isUnder(pathname: string, base: string): boolean {
+  return base === '/' ? pathname === '/' : pathname === base || pathname.startsWith(`${base}/`);
+}
+
+function Sidebar({ onOpenCmdk }: { onOpenCmdk: () => void }) {
+  const { user } = useAuth();
+  const { pathname } = useLocation();
+  const app = appForPath(pathname);
+  const nav = (app === 'exclusives' ? EXCLUSIVES_NAV : CENTRAL_NAV).filter(
+    (n) => !n.roles || (user && n.roles.includes(user.role)),
+  );
+  const brand = APP_NAMES[app];
+  const home = app === 'exclusives' ? '/exclusives/log' : '/';
 
   return (
-    <aside id="side-menu" className={`sidebar${open ? ' open' : ''}`}>
-      <button
-        ref={closeRef}
-        type="button"
-        className="icon-btn side-close"
-        onClick={onClose}
-        aria-label="Close the menu"
-      >
-        <MenuIcon close />
-      </button>
-      <Link to="/" className="side-brand">
-        <img className="side-brand-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
-        <span className="side-brand-name">HL Central</span>
+    <aside className="sidebar" aria-label={`${brand.name} menu`}>
+      <Link to={home} className="side-brand">
+        <span className="side-logo" aria-hidden="true">
+          {brand.mark}
+        </span>
+        <span className="side-brand-name">{brand.name}</span>
       </Link>
 
-      <nav className="side-nav">
-        <NavLink to="/" end className={navItemClass}>
-          My Day
-        </NavLink>
-        <NavLink to="/notifications" className={navItemClass}>
-          Notifications
-          {unreadTotal > 0 && (
-            <span className="side-unread">{unreadTotal > 99 ? '99+' : unreadTotal}</span>
-          )}
-        </NavLink>
-        <NavLink to="/tasks" className={navItemClass}>
-          All tasks
-        </NavLink>
+      <nav className="side-nav" aria-label="Main">
+        {nav.map((n) => {
+          const active = isUnder(pathname, n.to) || n.match.some((m) => isUnder(pathname, m));
+          const Icon = n.icon;
+          return (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.to === '/'}
+              className={`side-nav-item${active ? ' active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+              title={n.label}
+            >
+              <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
+              <span className="side-label">{n.label}</span>
+            </NavLink>
+          );
+        })}
       </nav>
 
-      <div className="side-group">
-        <div className="side-group-label">Time</div>
-        <NavLink to="/time" className={navItemClass}>
-          My Time
-        </NavLink>
-      </div>
+      <div className="side-spacer" />
 
-      <div className="side-group">
-        <div className="side-group-label">Reports</div>
-        <NavLink to="/reports/due-date" className={navItemClass}>
-          Due Date Performance
-        </NavLink>
-        {(user?.role === 'Admin' || user?.role === 'Manager') && (
-          <NavLink to="/reports/time" className={navItemClass}>
-            Time Review
-          </NavLink>
-        )}
-      </div>
-
-      <div className="side-group">
-        <div className="side-group-label">Goals</div>
-        {/* `end`: Team Goals lives under /goals, and must not light this up too. */}
-        <NavLink to="/goals" end className={navItemClass}>
-          My Goals
-        </NavLink>
-        {(user?.role === 'Admin' || user?.role === 'Manager') && (
-          <NavLink to="/goals/team" className={navItemClass}>
-            Team Goals
-          </NavLink>
-        )}
-      </div>
-
-      <div className="side-group">
-        <div className="side-group-label">E-commerce exclusives</div>
-        <NavLink to="/exclusives/groups" className={navItemClass}>
-          Alert Groups
-        </NavLink>
-        <NavLink to="/exclusives/log" className={navItemClass}>
-          Alert Log
-        </NavLink>
-        {(user?.role === 'Admin' || user?.role === 'Manager') && (
-          <NavLink to="/exclusives/alert-tasks" className={navItemClass}>
-            Alert Task Setup
-          </NavLink>
-        )}
-      </div>
-
-      <div className="side-group">
-        <div className="side-group-label">Quick Views</div>
-        {SAVED_VIEWS.map((v) => (
-          <button
-            key={v.key}
-            type="button"
-            className="view-item"
-            onClick={() => navigate('/tasks', { state: { filters: v.filters(me), viewLabel: v.label } })}
-          >
-            <span className="view-square" style={{ background: v.color }} aria-hidden="true" />
-            <span className="view-label">{v.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {reports.length > 0 && (
-        <div className="side-group">
-          <div className="side-group-label">My team</div>
-          <button
-            type="button"
-            className="view-item"
-            onClick={() =>
-              navigate('/tasks', { state: { filters: { assigneeIds: reportIds }, viewLabel: 'Everyone reporting to me' } })
-            }
-          >
-            <span className="view-square" style={{ background: 'var(--accent)' }} aria-hidden="true" />
-            <span className="view-label">Everyone reporting to me</span>
-            {teamStats && <span className="view-count">{teamStats.open}</span>}
-          </button>
-          <button
-            type="button"
-            className="view-item"
-            onClick={() =>
-              navigate('/tasks', {
-                state: { filters: { assigneeIds: reportIds, overdue: true }, viewLabel: 'Their overdue' },
-              })
-            }
-          >
-            <span className="view-square" style={{ background: 'var(--danger)' }} aria-hidden="true" />
-            <span className="view-label">Their overdue</span>
-            {teamStats && <span className="view-count">{teamStats.overdue}</span>}
-          </button>
-        </div>
-      )}
-
-      {(user?.role === 'Admin' || user?.role === 'Manager') && (
-        <div className="side-group">
-          <div className="side-group-label">Manage</div>
-          <NavLink to="/admin/templates" className={navItemClass}>
-            Templates
-          </NavLink>
-          {user?.role === 'Admin' && (
-            <NavLink to="/admin/departments" className={navItemClass}>
-              Departments &amp; Duties
-            </NavLink>
-          )}
-          <NavLink to="/admin/organization" className={navItemClass}>
-            Organization
-          </NavLink>
-          {user?.role === 'Admin' && (
-            <NavLink to="/admin/users" className={navItemClass}>
-              Users
-            </NavLink>
-          )}
-          {user?.role === 'Admin' && (
-            <NavLink to="/admin/settings" className={navItemClass}>
-              Settings
-            </NavLink>
-          )}
-        </div>
-      )}
-
-      <button type="button" className="side-cmdk" onClick={onOpenCmdk}>
-        <span>Search…</span>
-        <span className="kbd">{isMac ? '⌘K' : 'Ctrl K'}</span>
+      <button type="button" className="side-nav-item side-search" onClick={onOpenCmdk} title="Search">
+        <Search size={20} strokeWidth={1.8} aria-hidden="true" />
+        <span className="side-label">Search</span>
+        <span className="side-kbd">{isMac ? '⌘K' : 'Ctrl K'}</span>
       </button>
 
+      <AppLauncher current={app} />
+
       {user && (
-        <Link to="/profile" className="side-user">
-          <Avatar user={user} px={28} decorative />
-          <span className="side-user-text">
-            <span className="side-user-name">{userLabel(user)}</span>
-            <span className="side-user-role">{user.role}</span>
+        <Link
+          to="/profile"
+          className={`side-account${pathname === '/profile' ? ' active' : ''}`}
+          title="Your profile"
+        >
+          <Avatar user={user} px={32} decorative />
+          <span className="side-account-text">
+            <span className="side-account-name">{userLabel(user)}</span>
+            <span className="side-account-role">{user.role}</span>
           </span>
         </Link>
       )}
@@ -248,21 +155,14 @@ function SchedulerBanner() {
   if (!unread?.schedulerDown) return null;
   return (
     <div className="scheduler-banner" role="alert">
-      <span aria-hidden="true">⚠️</span>
-      <span>
-        <strong>Background timer not running.</strong> Recurring tasks won’t be created — please
-        contact an administrator.
-      </span>
+      <strong>Background timer not running.</strong> Recurring tasks won’t be created — please
+      contact an administrator.
     </div>
   );
 }
 
 export function Layout() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
-  // Small screens only: the menu slid in over the page.
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
-  const menuCloseRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
 
   // Global Cmd/Ctrl+K toggles the command palette.
@@ -277,61 +177,18 @@ export function Layout() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Going anywhere (a menu link, a Quick View, Back) puts the menu away.
+  // A new page starts at its top.
   useEffect(() => {
-    setMenuOpen(false);
-  }, [location.key]);
-
-  // While it is open: focus starts on its close button, and Esc closes it.
-  useEffect(() => {
-    if (!menuOpen) return;
-    menuCloseRef.current?.focus();
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== 'Escape') return;
-      setMenuOpen(false);
-      menuBtnRef.current?.focus();
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [menuOpen]);
-
-  function closeMenu() {
-    setMenuOpen(false);
-    menuBtnRef.current?.focus();
-  }
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   return (
     <NotificationProvider>
       <div className="app-shell">
-        <header className="mobile-bar">
-          <button
-            ref={menuBtnRef}
-            type="button"
-            className="icon-btn mobile-menu-btn"
-            onClick={() => setMenuOpen(true)}
-            aria-label="Open the menu"
-            aria-expanded={menuOpen}
-            aria-controls="side-menu"
-          >
-            <MenuIcon />
-          </button>
-          <Link to="/" className="side-brand">
-            <img className="side-brand-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
-            <span className="side-brand-name">HL Central</span>
-          </Link>
-        </header>
-        <Sidebar
-          open={menuOpen}
-          onClose={closeMenu}
-          closeRef={menuCloseRef}
-          onOpenCmdk={() => {
-            setMenuOpen(false);
-            setCmdkOpen(true);
-          }}
-        />
-        {menuOpen && <div className="side-backdrop" onClick={closeMenu} aria-hidden="true" />}
+        <Sidebar onOpenCmdk={() => setCmdkOpen(true)} />
         <main className="app-main">
           <SchedulerBanner />
+          <SectionTabs />
           <Outlet />
         </main>
       </div>

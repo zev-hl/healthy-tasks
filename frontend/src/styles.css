@@ -7,109 +7,93 @@
    motion language.
    =========================================================================== */
 
-/* Self-hosted fonts (Latin subset) — served from our own static site instead of
-   Google Fonts, so first paint doesn't wait on a third-party round trip. Plus
-   Jakarta Sans is a variable file covering weights 400-700. */
-@font-face {
-  font-family: 'Plus Jakarta Sans';
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url('/fonts/PlusJakartaSans.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Instrument Serif';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/InstrumentSerif-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'Instrument Serif';
-  font-style: italic;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/InstrumentSerif-400italic.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/IBMPlexMono-400.woff2') format('woff2');
-}
-@font-face {
-  font-family: 'IBM Plex Mono';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/IBMPlexMono-500.woff2') format('woff2');
-}
+/* Harbor (redesign D1): one family everywhere, Inter, bundled from
+   @fontsource-variable/inter (imported in main.tsx) so it is served from our own
+   static site. The old serif and mono roles now use Inter too; numbers are
+   tabular everywhere (body below). */
 
 :root {
-  /* --- Typography (three families) --- */
-  --font-sans: 'Plus Jakarta Sans', -apple-system, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  /* --- Typography (one family) --- */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: var(--font-sans);
+  --font-mono: var(--font-sans);
 
-  /* --- Surfaces & neutrals (warm paper) --- */
-  --canvas: #f7f4ef; /* app background behind content */
-  --canvas-deep: #f2eee7; /* desk background, neutral chip fill */
-  --surface: #ffffff; /* cards, sidebar, table body */
-  --surface-sunk: #faf8f5; /* table header row, group header */
-  --border: #e7e1d8; /* 1px borders */
-  --border-soft: #f0ebe4; /* dividers inside a card */
-  --row-line: #f5f1ea; /* between table rows */
-  --border-dashed: #ddd5ca; /* dashed drop zones, "+ Filter" */
-  --ink: #211d19; /* primary text, dark buttons */
-  --ink-2: #3d3731; /* body prose */
-  --ink-3: #5c554d; /* secondary text, inactive nav */
-  --muted: #7d746a; /* captions */
-  --muted-2: #8a8177; /* meta, uppercase labels */
-  --faint: #a49a8e; /* placeholders, completed text */
-  --faint-2: #c9c1b6; /* disabled glyphs, low-priority bars */
+  /* --- Surfaces & neutrals (Harbor: cool blue-gray page, white cards) --- */
+  --canvas: #edf1f7; /* page background */
+  --canvas-deep: #e6ebf2; /* track: neutral fills, segmented controls, grey pills */
+  --surface: #ffffff; /* cards, header bands, tables, menus */
+  --surface-sunk: #f4f7fb; /* table header row, group header, resting time block */
+  --border: #d7dee8; /* card and input borders */
+  --border-soft: #dde3eb; /* dividers inside a card */
+  --row-line: #d3dae5; /* between table rows: deliberately a touch darker */
+  --border-dashed: #b9c4d4; /* dashed drop zones, hover borders */
+  --ink: #0f1b2d; /* primary text */
+  --ink-2: #1f2d42; /* body prose */
+  --ink-3: #3f4f66; /* secondary text, unselected tabs */
+  --muted: #5a6b82; /* labels, hints, timestamps (4.5:1 on white and canvas) */
+  --muted-2: #5a6b82; /* uppercase labels */
+  --faint: #8a9ab0; /* placeholders, completed text */
+  --faint-2: #c9d0da; /* disabled glyphs, low-priority marks */
 
-  /* --- Accent (teal) --- */
-  --accent: #0f7b6c; /* primary actions, links, active nav, In Progress */
-  --accent-deep: #0b5f54; /* text on accent-soft, hover */
-  --accent-soft: #e3f2ef; /* active nav bg, In Progress pill, avatar */
-  --accent-tint: #f4faf8; /* unread notification row */
-  --accent-mid: #3d8579; /* supporting text on accent surfaces */
+  /* --- Accent (Harbor blue) --- */
+  --accent: #1f5fbf; /* primary actions, links, selection, focus */
+  --accent-deep: #174a96; /* hover, link text, active tab text */
+  --accent-deeper: #12397a; /* controls on accent-deep bars */
+  --accent-soft: #dce8f8; /* In Progress pill, selected states, focus halo */
+  --accent-tint: #f5f9fe; /* active filter/tile fill, review panel */
+  --accent-mid: #3f6fb5;
 
-  /* --- Semantic --- */
-  --warn: #b8720a;
-  --warn-deep: #8c5606;
-  --warn-soft: #fdf0dc;
-  --warn-tint: #fefaf7;
-  --danger: #b3452f;
-  --danger-deep: #93361f;
-  --danger-soft: #fbe6e0;
-  --ok: #2f7d4f;
-  --ok-deep: #256240;
-  --ok-soft: #e2f0e6;
-  --review: #7857c8;
-  --review-deep: #5b3f96;
-  --review-soft: #ece6f8;
-  --info-soft: #e9f2fb;
-  --info-text: #2d557f;
-  --info-dot: #3b6ea5;
+  /* --- Meaning colors: never decorative ---
+     red = overdue/late/danger, amber = blocked/on hold/warning, green = done */
+  --warn: #b86e00;
+  --warn-deep: #7a4d00;
+  --warn-soft: #fff0cc;
+  --warn-tint: #fffaeb;
+  --warn-line: #ead2a2;
+  --danger: #b42318;
+  --danger-deep: #9a1d14;
+  --danger-soft: #fce8e6;
+  --danger-line: #e5b4b4;
+  --ok: #1b6b2e;
+  --ok-deep: #145223;
+  --ok-soft: #e3f3e6;
+  --ok-line: #bfe0c6;
+  --review: #4b47b5; /* Review status: an info color, set apart from In Progress */
+  --review-deep: #36338a;
+  --review-soft: #e7e6f8;
+  --info-soft: #dce8f8;
+  --info-text: #174a96;
+  --info-dot: #1f5fbf;
+
+  /* --- Sidebar (deep navy) --- */
+  --side: #14264a;
+  --side-text: #c9d4e8;
+  --side-muted: #b9c6de;
+  --side-hover: rgba(255, 255, 255, 0.12);
+  --side-active: rgba(255, 255, 255, 0.16);
+  --side-active-bar: #7fb0ff;
+  --side-line: rgba(255, 255, 255, 0.12);
 
   /* --- Radius --- */
   --radius-check: 4px;
-  --radius-chip: 6px;
-  --radius-tag: 7px;
-  --radius-sm: 8px;
-  --radius: 10px; /* button, nav item, input */
-  --radius-md: 12px; /* card */
-  --radius-lg: 14px; /* outer frame */
+  --radius-chip: 999px;
+  --radius-tag: 999px;
+  --radius-sm: 8px; /* buttons, menu rows */
+  --radius: 10px; /* inputs, selects, header buttons */
+  --radius-md: 12px; /* cards, menus */
+  --radius-lg: 16px; /* launcher, time block */
   --radius-full: 999px; /* pill, avatar, toggle */
 
-  /* --- Shadow --- the only in-page shadow is the frame; overlays float --- */
-  --shadow-frame: 0 1px 2px rgba(33, 29, 25, 0.04);
-  --shadow-pop: 0 10px 30px rgba(33, 29, 25, 0.12), 0 2px 8px rgba(33, 29, 25, 0.06);
+  /* --- Shadow: soft and offset, never hard --- */
+  --shadow-frame: none;
+  --shadow-hover: 0 4px 14px rgba(15, 27, 45, 0.06);
+  --shadow-pop: 0 16px 40px rgba(15, 27, 45, 0.18), 0 2px 6px rgba(15, 27, 45, 0.06);
+  --shadow-launcher: 0 18px 48px rgba(15, 27, 45, 0.2), 0 2px 6px rgba(15, 27, 45, 0.06);
+  --shadow-bar: 0 10px 24px rgba(23, 74, 150, 0.25);
+  --shadow-toast: 0 12px 32px rgba(15, 27, 45, 0.28);
 
   /* --- Motion --- */
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease: ease;
   --dur-fast: 120ms;
   --dur: 150ms;
   --dur-slow: 220ms;
@@ -127,7 +111,7 @@
   --accent-active: var(--accent-deep);
   --accent-fg: #ffffff;
   --accent-tint-2: var(--accent-soft);
-  --accent-ring: rgba(15, 123, 108, 0.28);
+  --accent-ring: rgba(31, 95, 191, 0.28);
   --link: var(--accent);
   --danger-hover: var(--danger-deep);
   --danger-tint: var(--danger-soft);
@@ -146,8 +130,8 @@
   --status-done: var(--ok);
   --status-cancelled: var(--faint-2);
   --prio-low: var(--faint-2);
-  --prio-medium: var(--muted);
-  --prio-high: var(--warn);
+  --prio-medium: var(--faint);
+  --prio-high: var(--danger);
   --prio-urgent: var(--danger);
   --shadow-sm: var(--shadow-frame);
   --shadow: var(--shadow-frame);
@@ -170,8 +154,9 @@ html {
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 13.5px;
+  font-size: 14px;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
   background: var(--canvas);
   color: var(--ink);
   -webkit-font-smoothing: antialiased;

@@ -22,11 +22,15 @@ export interface UserLike {
   title?: string | null;
 }
 
-// Soft fill + deep text pairs, assigned deterministically per user id.
+// Harbor's soft avatar fills with near-black initials, assigned
+// deterministically per user id.
 const AVATAR_PAIRS: Array<{ bg: string; fg: string }> = [
-  { bg: 'var(--accent-soft)', fg: 'var(--accent-deep)' },
-  { bg: 'var(--canvas-deep)', fg: 'var(--ink-3)' },
-  { bg: 'var(--review-soft)', fg: 'var(--review-deep)' },
+  { bg: '#d4e3f7', fg: 'var(--ink)' },
+  { bg: '#ffe0c7', fg: 'var(--ink)' },
+  { bg: '#d8f0df', fg: 'var(--ink)' },
+  { bg: '#e8e2f8', fg: 'var(--ink)' },
+  { bg: '#fff0cc', fg: 'var(--ink)' },
+  { bg: '#d7dee8', fg: 'var(--ink)' },
 ];
 
 function hash(key: string): number {

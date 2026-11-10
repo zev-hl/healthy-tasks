@@ -1,0 +1,454 @@
+/* ===========================================================================
+   Harbor (redesign D1) — shell and shared look.
+   Loaded after styles.css: the tokens there carry the palette; this file holds
+   the new app shell (navy sidebar, launcher, section tabs) and the base
+   component touches the brief sets (docs/redesign-brief.md §3–§5).
+   =========================================================================== */
+
+/* --- Base ------------------------------------------------------------------ */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input,
+select,
+textarea {
+  font-size: 14px;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+}
+
+.card {
+  border-color: var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --- App shell --------------------------------------------------------------- */
+
+.app-main {
+  margin-left: 232px;
+  min-width: 0;
+}
+
+/* The sidebar: 232px deep navy, exactly the window's height, labelled items. */
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 232px;
+  background: var(--side);
+  border-right: 0;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  z-index: 50;
+  color: var(--side-text);
+}
+
+.sidebar .side-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px 18px;
+  color: #fff;
+  text-decoration: none;
+}
+.sidebar .side-brand:hover {
+  color: #fff;
+}
+.side-logo {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--side);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+.sidebar .side-brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.sidebar .side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar .side-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  width: 100%;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--side-text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--dur) ease,
+    color var(--dur) ease;
+}
+.sidebar .side-nav-item svg {
+  flex: none;
+}
+.sidebar .side-nav-item:hover {
+  background: var(--side-hover);
+  color: #fff;
+  text-decoration: none;
+}
+.sidebar .side-nav-item.active {
+  background: var(--side-active);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--side-active-bar);
+}
+.sidebar .side-nav-item:focus-visible {
+  outline-color: var(--side-active-bar);
+}
+.side-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.side-kbd {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--side-muted);
+  border: 1px solid var(--side-line);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.side-spacer {
+  flex: 1;
+  min-height: 16px;
+}
+
+.side-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 8px 8px;
+  margin-top: 8px;
+  border-top: 1px solid var(--side-line);
+  border-radius: 0 0 8px 8px;
+  color: #fff;
+  text-decoration: none;
+}
+.side-account:hover,
+.side-account.active {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-decoration: none;
+}
+.side-account-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.side-account-name {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.side-account-role {
+  font-size: 12px;
+  color: var(--side-muted);
+}
+
+/* --- All apps launcher ------------------------------------------------------ */
+
+.launcher-wrap {
+  position: relative;
+}
+.launcher {
+  position: fixed;
+  left: 244px;
+  bottom: 16px;
+  width: 368px;
+  max-width: calc(100vw - 260px);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-launcher);
+  padding: 16px;
+  z-index: 90;
+  transform-origin: bottom left;
+  animation: launcher-in 140ms ease both;
+}
+@keyframes launcher-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.launcher-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.launcher-head h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.launcher .launcher-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+}
+.launcher .launcher-close:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+.launcher-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--canvas);
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.launcher-search:focus-within {
+  background: var(--surface);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.launcher-search input {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none !important;
+}
+.launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.launcher .launcher-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 6px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.launcher .launcher-tile:hover {
+  background: var(--canvas);
+}
+.launcher-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+}
+.launcher-tile.current .launcher-icon {
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--accent);
+}
+.launcher-name {
+  text-align: center;
+  line-height: 1.3;
+}
+.launcher-empty {
+  grid-column: 1 / -1;
+  margin: 8px 0;
+  color: var(--muted);
+}
+.tone-blue {
+  background: #d4e3f7;
+  color: #174a96;
+}
+.tone-green {
+  background: #d8f0df;
+  color: #1b6b2e;
+}
+.tone-purple {
+  background: #e8e2f8;
+  color: #5b2e8c;
+}
+.tone-peach {
+  background: #ffe0c7;
+  color: #7a3a00;
+}
+.tone-yellow {
+  background: #fff0cc;
+  color: #7a4d00;
+}
+.tone-grey {
+  background: #e6ebf2;
+  color: #3f4f66;
+}
+
+/* --- Section tabs (Time, Goals, People, Settings) ---------------------------- */
+
+.section-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 32px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.section-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-3);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.section-tab:hover {
+  color: var(--ink);
+  text-decoration: none;
+}
+.section-tab.active {
+  color: var(--accent-deep);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+/* --- Small screens: the sidebar becomes a top bar of icons (below 820px) ----- */
+
+@media (max-width: 819px) {
+  .app-main {
+    margin-left: 0;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    inset: auto;
+    width: auto;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 12px;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: visible;
+    /* The old slide-in menu's rules (styles.css) no longer apply. */
+    transform: none;
+    visibility: visible;
+    box-shadow: none;
+  }
+  .sidebar .side-brand {
+    padding: 0 6px 0 0;
+  }
+  .sidebar .side-brand-name,
+  .side-label,
+  .side-kbd,
+  .side-account-text,
+  .side-spacer {
+    display: none;
+  }
+  .sidebar .side-nav {
+    flex-direction: row;
+  }
+  .sidebar .side-nav-item {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+  .sidebar .side-nav-item.active {
+    box-shadow: inset 0 -3px 0 var(--side-active-bar);
+  }
+  .side-account {
+    margin: 0 0 0 auto;
+    padding: 4px;
+    border-top: 0;
+    border-radius: 8px;
+  }
+  .launcher {
+    left: 12px;
+    right: 12px;
+    top: 64px;
+    bottom: auto;
+    width: auto;
+    max-width: none;
+    transform-origin: top left;
+  }
+  .section-tabs {
+    padding: 0 16px;
+  }
+}
+
+/* Phones: everything on one bar. Search stays one Ctrl/⌘K away on a keyboard. */
+@media (max-width: 480px) {
+  .sidebar {
+    padding: 8px;
+  }
+  .sidebar .side-nav-item {
+    width: 36px;
+  }
+  .side-logo {
+    width: 32px;
+    height: 32px;
+  }
+  .sidebar .side-search {
+    display: none;
+  }
+}

@@ -4,7 +4,9 @@ import { RouterProvider } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
 import { router } from './router';
 import { suppressInputAutofill } from './lib/suppressInputAutofill';
+import '@fontsource-variable/inter';
 import './styles.css';
+import './harbor.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

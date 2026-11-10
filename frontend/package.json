@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.1.0",
     "@healthy-tasks/shared": "*",
     "@react-oauth/google": "^0.13.5",
     "@tiptap/extension-character-count": "^3.29.1",
@@ -26,6 +27,7 @@
     "@tiptap/starter-kit": "^3.29.1",
     "@tiptap/suggestion": "^3.29.1",
     "dompurify": "^3.4.12",
+    "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"
