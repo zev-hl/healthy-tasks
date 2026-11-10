@@ -280,7 +280,9 @@ enforces `roles`.
 
 Backend config is centralized and validated in `backend/src/config/env.ts`
 (missing required vars throw at boot). Copy `.env.example` → `.env`. Notable
-vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `EMAIL_PROVIDER`
+vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN` (one
+origin, or several comma-separated — every site that calls this API; also the
+sites the queue dashboard's button is accepted from), `EMAIL_PROVIDER`
 (`console` dev / `smtp`), `EMAIL_DELIVERY` (`direct` / `queue`),
 `EMAIL_WORKER_IN_API` (`true` default / `false`), `EMAIL_SEND_TEXT` (`true`
 default / `false`: HTML only), `REDIS_URL`,

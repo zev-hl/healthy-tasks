@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { businessTimeZone } from './business-time-zone.js';
 import { emailConfig } from './email-config.js';
 import { parseClockTime, type ClockTime } from '../utils/clock-time.js';
+import { parseCorsOrigins } from '../utils/cors-origins.js';
 
 // Load .env from the repo root (docker-compose also injects these directly).
 dotenv.config();
@@ -64,7 +65,9 @@ export const env = {
   passwordResetExpiresIn: optional('PASSWORD_RESET_EXPIRES_IN', '60m'),
 
   frontendUrl: optional('FRONTEND_URL', 'http://localhost:5173'),
-  corsOrigin: optional('CORS_ORIGIN', 'http://localhost:5173'),
+  // The websites allowed to call this API: one origin, or several separated by
+  // commas (e.g. the staging site and the redesign preview sharing its API).
+  corsOrigins: parseCorsOrigins(optional('CORS_ORIGIN', 'http://localhost:5173')),
 
   // Lives in email-config.ts so the email worker can read it without the
   // required settings above.
