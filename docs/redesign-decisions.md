@@ -31,8 +31,48 @@ UI as a disabled "coming soon" placeholder.
 - **Icons:** `lucide-react`.
 - **Phones:** layouts are checked and fixed at phone width.
 - **All apps launcher:** only _other_ apps, meaning Ticket and Exclusive Alerts. Exclusives (Alert Groups, Alert Log, Alert Task Setup) leaves the sidebar and opens from the launcher as its own app.
-- **Sidebar contents:** decided page by page with the user (see the navigation section, to be filled in).
 - **Progress:** screenshots after each step.
+
+## Navigation (decided page by page)
+
+**Sidebar** (labelled, navy, as in the brief). Items are shown by role.
+
+| Item      | Who             | Contents                                                                                                      |
+| --------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
+| Dashboard | everyone        | Replaces My Day at `/`. Two views, **My dashboard** and **My team** (Admins/Managers). Contents listed below. |
+| Tasks     | everyone        | List · Kanban · Calendar · Gantt. Templates live here. More below.                                            |
+| Time      | everyone        | Tabs **My time** · **Review** (Review for Admins/Managers).                                                   |
+| Goals     | everyone        | Tabs **My goals** · **Team goals** (Team for Admins/Managers).                                                |
+| People    | Admins/Managers | Tabs **Users** (Admins) · **Organization** (Admins/Managers).                                                 |
+| Settings  | Admins          | App settings, **Departments & duties**, and the **Queue dashboard** button (moved off Profile).               |
+
+**Dashboard** contents:
+
+- **Notifications:** a section on the dashboard.
+- **Due-date performance:**
+  - My dashboard shows my own on-time rate.
+  - My team shows the rate per person and per department.
+- **My team:** replaces the old "Everyone reporting to me" and "Their overdue" sidebar links.
+
+**Tasks** contents:
+
+- **Templates:** a Templates button or tab on Tasks, plus "Save as template" on the task page.
+- **"My team" tab:** a built-in tab for Admins/Managers.
+
+**Removed from the sidebar:**
+
+- **Quick views:** Overdue, Assigned to me, Needs my review, Blocked and Created by me are dropped. Custom saved views on Tasks replace them.
+- **Notifications page:** removed. The bell is in every page header (a popover of recent notifications), plus the Dashboard section. There is no full Notifications page.
+- **Due Date Performance page:** removed. Its numbers live on the Dashboard.
+
+**Account card** (sidebar bottom): opens **Profile** directly.
+
+**All apps launcher:** only other apps.
+
+- **Ticket:** address to come.
+- **Exclusive Alerts:** opens as its own app in the same shell, with its own sidebar (Alert Log, Alert Groups, Alert Task Setup) and its own name on the logo tile. The launcher goes back to HL Central.
+
+Old addresses (`/notifications`, `/reports/due-date`, `/reports/time`, `/goals/team`, `/admin/...`) redirect to their new homes, so links in emails and bookmarks keep working.
 
 ## Backend jobs (not on this branch)
 
