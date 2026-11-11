@@ -93,6 +93,20 @@ export function OrganizationPage() {
   const { toast, showToast, clearToast } = useToast();
   const deepLinked = useRef(false);
 
+  // Who the right-hand panel opens on when the link doesn't name a person.
+  // Arriving from a duty's "N people" link (?duty=…), that's the first person
+  // who holds the duty (nobody if no one does), so the panel matches the list
+  // on the left. Otherwise, the first person this viewer can edit.
+  function defaultPerson(o: OrgDto, d: DepartmentDto[]): string | null {
+    const dutyId = params.get('duty');
+    const live = (dep: DepartmentDto) =>
+      !dep.archived && dep.duties.some((u) => u.id === dutyId && !u.archived);
+    if (dutyId && d.some(live)) {
+      return o.people.filter((p) => p.dutyIds.includes(dutyId)).sort(byP)[0]?.id ?? null;
+    }
+    return o.people.find((p) => p.canEditDuties)?.id ?? o.people[0]?.id ?? null;
+  }
+
   async function load() {
     try {
       const [o, d] = await Promise.all([api.getOrg(), api.listDepartments()]);
@@ -100,7 +114,7 @@ export function OrganizationPage() {
       setDepartments(d);
       setDraft(draftFrom(o));
       setError(null);
-      setSelId((s) => s ?? o.people.find((p) => p.canEditDuties)?.id ?? o.people[0]?.id ?? null);
+      setSelId((s) => s ?? defaultPerson(o, d));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load the organization');
     }
