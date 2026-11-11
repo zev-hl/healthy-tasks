@@ -1,5 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  FileStack,
+  GripVertical,
+  Link2,
+  ListTree,
+  Paperclip,
+  Pencil,
+  Plus,
+  Repeat,
+  RotateCw,
+  Trash2,
+  UserRound,
+  X,
+} from 'lucide-react';
 import {
   RECURRENCE_TYPE_LABELS,
   RECURRENCE_UNIT_LABELS,
@@ -23,17 +41,42 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { todayLocalDate } from '../lib/datetime';
+import { addDays, formatDay } from '../lib/calendar';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useAuth } from '../auth/AuthContext';
 import { ModalShell } from '../components/exclusives/ModalShell';
 import { confirmDiscard, useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { DutyTag } from '../components/duties/DutyTag';
-import { GroupedOptions } from '../components/duties/GroupedOptions';
 import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from '../lib/duties';
-import { EmptyState } from '../components/ui/EmptyState';
 import { WeekdayPicker } from '../components/WeekdayPicker';
 import { RichTextEditor } from '../components/RichTextEditor';
-import { PageHeader } from '../components/harbor/PageHeader';
+import { PageBody, PageHeader } from '../components/harbor/PageHeader';
+import { Select, type SelectOption } from '../components/harbor/Select';
+import { DatePicker } from '../components/harbor/DatePicker';
+import { useToast } from '../components/harbor/Toast';
+import {
+  Btn,
+  Card,
+  CardHead,
+  Empty,
+  PRIORITY_DOT,
+  Pill,
+  PriorityMark,
+  Segmented,
+  Tile,
+  cx,
+  type Tone,
+} from '../components/harbor/ui';
+
+/**
+ * Templates, Harbor redesign. The list is a card of templates with filter
+ * tiles and a side panel (how templates work, the repeating schedules). The
+ * editor follows the task page: the template's details and its task tree on
+ * the left, how it repeats and what it makes on the right, and one Save bar.
+ * Each task in the tree is a row (drag handle, name, its settings as chips)
+ * that opens in place to edit everything else. "Create tasks" (instantiate)
+ * asks for Day 0, a label and who fills each role, then checks duties.
+ */
 
 // --- Editor model ----------------------------------------------------------
 
@@ -186,17 +229,46 @@ function toRequest(e: EditorState): CreateTemplateRequest {
   };
 }
 
+// --- Small shared bits -------------------------------------------------------
+
+const REC_TONE: Record<RecurrenceType, Tone> = {
+  None: 'grey',
+  Fixed: 'blue',
+  RelativeToCompletion: 'review',
+};
+
+/** Short words for the list, where the long labels would crowd the name. */
+const REC_SHORT: Record<RecurrenceType, string> = {
+  None: 'One-off',
+  Fixed: 'On a schedule',
+  RelativeToCompletion: 'After completion',
+};
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** "Day 2 → 5", "Due day 5", "Starts day 2", or null when no dates are set. */
+function offsetsLabel(start: number | null, due: number | null): string | null {
+  if (start != null && due != null) return `Day ${start} → ${due}`;
+  if (due != null) return `Due day ${due}`;
+  if (start != null) return `Starts day ${start}`;
+  return null;
+}
+
+type ListFilter = 'all' | 'repeating' | 'once' | 'paused';
+
 // --- Page ------------------------------------------------------------------
 
 export function TemplatesPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [list, setList] = useState<TemplateSummaryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [instantiating, setInstantiating] = useState<TemplateDto | null>(null);
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
+  const [filter, setFilter] = useState<ListFilter>('all');
+  const [q, setQ] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -244,12 +316,53 @@ export function TemplatesPage() {
     if (!window.confirm(`Delete template “${t.name}”? Already-created tasks are kept.`)) return;
     try {
       await api.deleteTemplate(t.id);
-      setNotice(`Deleted “${t.name}”.`);
+      toast({ message: `Deleted “${t.name}”. Tasks it made are kept.`, tone: 'success' });
       load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not delete the template');
     }
   }
+
+  async function openInstantiate(id: number) {
+    setError(null);
+    try {
+      setInstantiating(await api.getTemplate(id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Could not open the template');
+    }
+  }
+
+  const counts = useMemo(
+    () => ({
+      all: list.length,
+      repeating: list.filter((t) => t.recurrenceType !== 'None').length,
+      once: list.filter((t) => t.recurrenceType === 'None').length,
+      paused: list.filter((t) => t.recurrenceType !== 'None' && !t.isActive).length,
+      made: list.reduce((s, t) => s + t.occurrenceCount, 0),
+    }),
+    [list],
+  );
+  const shown = useMemo(() => {
+    const text = q.trim().toLowerCase();
+    return list
+      .filter((t) =>
+        filter === 'repeating'
+          ? t.recurrenceType !== 'None'
+          : filter === 'once'
+            ? t.recurrenceType === 'None'
+            : filter === 'paused'
+              ? t.recurrenceType !== 'None' && !t.isActive
+              : true,
+      )
+      .filter(
+        (t) =>
+          !text ||
+          t.name.toLowerCase().includes(text) ||
+          (t.description ?? '').toLowerCase().includes(text),
+      );
+  }, [list, filter, q]);
+  const repeating = list.filter((t) => t.recurrenceType !== 'None');
+  const toggle = (f: ListFilter) => setFilter((cur) => (cur === f ? 'all' : f));
 
   if (editor) {
     return (
@@ -260,7 +373,7 @@ export function TemplatesPage() {
         onCancel={() => setEditor(null)}
         onSaved={(msg) => {
           setEditor(null);
-          setNotice(msg);
+          toast({ message: msg, tone: 'success' });
           load();
         }}
       />
@@ -272,83 +385,239 @@ export function TemplatesPage() {
       <PageHeader
         title="Templates"
         subtitle={
-          loading
-            ? 'Reusable task trees'
-            : `${list.length} reusable task ${list.length === 1 ? 'tree' : 'trees'}, with relative dates, roles and repeats`
-        }
-        search={false}
-        newTask={false}
-        actions={
           <>
-            <button onClick={newTemplate}>New template</button>
+            <Link to="/tasks">Tasks</Link> ›{' '}
+            {loading
+              ? 'Reusable task trees'
+              : `${plural(list.length, 'template')} · reusable task trees with relative dates, roles and repeats`}
           </>
         }
+        newTask={false}
+        searchPlaceholder="Search templates"
+        searchLabel="Search templates"
+        searchValue={q}
+        onSearchChange={setQ}
+        actions={
+          <Btn kind="primary" onClick={newTemplate}>
+            <Plus size={16} aria-hidden="true" /> New template
+          </Btn>
+        }
       />
-      <div className="tasks-page hb-legacy-body">
-        {error && <div className="alert error">{error}</div>}
-        {notice && <div className="alert success">{notice}</div>}
-
-        {!loading && list.length === 0 ? (
-          <EmptyState title="No templates yet">
-            Create a reusable task tree with relative dates, role placeholders, and an optional
-            recurrence schedule.
-          </EmptyState>
-        ) : (
-          <div className="table-scroll">
-            <table className="results-table templates-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Recurrence</th>
-                  <th>Nodes</th>
-                  <th>Instances</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((t) => (
-                  <tr key={t.id}>
-                    <td className="templates-name">
-                      <strong>{t.name}</strong>
-                      {t.description && (
-                        <div className="muted templates-desc" title={t.description}>
-                          {t.description}
-                        </div>
-                      )}
-                    </td>
-                    <td className="templates-recurrence">
-                      {RECURRENCE_TYPE_LABELS[t.recurrenceType]}
-                    </td>
-                    <td className="mono">{t.nodeCount}</td>
-                    <td className="mono">{t.occurrenceCount}</td>
-                    <td>
-                      <span className={`badge ${t.isActive ? 'active' : 'inactive'}`}>
-                        {t.isActive ? 'Active' : 'Paused'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-                        <button className="btn-sm" onClick={() => void openInstantiate(t.id)}>
-                          Instantiate
-                        </button>
-                        <button
-                          className="secondary btn-sm"
-                          onClick={() => void editTemplate(t.id)}
-                        >
-                          Edit
-                        </button>
-                        <button className="secondary btn-sm" onClick={() => void removeTemplate(t)}>
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <PageBody>
+        {error && (
+          <div className="hb-alert" role="alert">
+            {error}
           </div>
         )}
+
+        <div className="hb-tiles">
+          <Tile
+            label="All templates"
+            value={counts.all}
+            hint="Every template"
+            pressed={filter === 'all' ? undefined : false}
+            onClick={() => setFilter('all')}
+          />
+          <Tile
+            label="Repeating"
+            value={counts.repeating}
+            tone="blue"
+            hint="Make tasks on a schedule"
+            pressed={filter === 'repeating'}
+            onClick={() => toggle('repeating')}
+          />
+          <Tile
+            label="One-off"
+            value={counts.once}
+            hint="Used when you need them"
+            pressed={filter === 'once'}
+            onClick={() => toggle('once')}
+          />
+          <Tile
+            label="Paused"
+            value={counts.paused}
+            tone={counts.paused ? 'amber' : undefined}
+            hint="Repeats switched off"
+            pressed={filter === 'paused'}
+            onClick={() => toggle('paused')}
+          />
+        </div>
+
+        <div className="hb-cols">
+          <div className="hb-col">
+            <Card className="hb-tpl-list">
+              <CardHead
+                icon={<FileStack size={16} aria-hidden="true" />}
+                title={
+                  filter === 'all'
+                    ? 'Templates'
+                    : filter === 'repeating'
+                      ? 'Repeating templates'
+                      : filter === 'once'
+                        ? 'One-off templates'
+                        : 'Paused templates'
+                }
+                right={
+                  <span className="hb-small">
+                    {loading ? 'Loading…' : `${shown.length} of ${list.length}`}
+                  </span>
+                }
+              />
+              {loading ? (
+                <Empty>Loading templates…</Empty>
+              ) : list.length === 0 ? (
+                <div className="hb-tpl-empty">
+                  <strong>No templates yet</strong>
+                  <span>
+                    A template is a task tree you reuse: dates count from a Day 0, people are roles
+                    you fill when you use it, and it can repeat on a schedule.
+                  </span>
+                  <Btn kind="primary" onClick={newTemplate}>
+                    <Plus size={16} aria-hidden="true" /> New template
+                  </Btn>
+                </div>
+              ) : shown.length === 0 ? (
+                <Empty>No templates match{q.trim() ? ` “${q.trim()}”` : ' this filter'}.</Empty>
+              ) : (
+                <div role="list">
+                  {shown.map((t) => (
+                    <div key={t.id} role="listitem" className="hb-row hb-tpl-row">
+                      <span
+                        className={cx('hb-ic', `tone-${REC_TONE[t.recurrenceType]}`)}
+                        aria-hidden="true"
+                      >
+                        {t.recurrenceType === 'None' ? (
+                          <ListTree size={16} />
+                        ) : (
+                          <Repeat size={16} />
+                        )}
+                      </span>
+                      <div className="hb-stack">
+                        <button
+                          type="button"
+                          className="hb-linklike hb-name"
+                          onClick={() => void editTemplate(t.id)}
+                        >
+                          {t.name}
+                        </button>
+                        <span className="hb-sub hb-tpl-desc" title={t.description ?? undefined}>
+                          {plural(t.nodeCount, 'task')} ·{' '}
+                          {t.occurrenceCount
+                            ? `used ${plural(t.occurrenceCount, 'time')}`
+                            : 'not used yet'}
+                          {' · '}
+                          {t.description || `by ${userLabel(t.createdBy)}`}
+                        </span>
+                      </div>
+                      <div className="hb-tpl-facts">
+                        <span title={RECURRENCE_TYPE_LABELS[t.recurrenceType]}>
+                          <Pill tone={REC_TONE[t.recurrenceType]}>
+                            {REC_SHORT[t.recurrenceType]}
+                          </Pill>
+                        </span>
+                        {t.recurrenceType !== 'None' && !t.isActive && (
+                          <Pill tone="amber">Paused</Pill>
+                        )}
+                      </div>
+                      <div className="hb-tpl-actions">
+                        <Btn
+                          kind="primary"
+                          className="hb-btn-sm"
+                          onClick={() => void openInstantiate(t.id)}
+                        >
+                          Create tasks
+                        </Btn>
+                        <button
+                          type="button"
+                          className="hb-icon-btn hb-icon-btn-sm"
+                          aria-label={`Edit ${t.name}`}
+                          title="Edit"
+                          onClick={() => void editTemplate(t.id)}
+                        >
+                          <Pencil size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
+                          aria-label={`Delete ${t.name}`}
+                          title="Delete"
+                          onClick={() => void removeTemplate(t)}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <aside className="hb-col">
+            <Card>
+              <CardHead
+                icon={<Repeat size={16} aria-hidden="true" />}
+                title="Repeating schedules"
+                right={
+                  counts.made > 0 ? (
+                    <span className="hb-small">Used {plural(counts.made, 'time')} in all</span>
+                  ) : undefined
+                }
+              />
+              {repeating.length === 0 ? (
+                <Empty>No template repeats yet. Turn on Repeat in a template to schedule it.</Empty>
+              ) : (
+                repeating.map((t) => (
+                  <div key={t.id} className="hb-row">
+                    <div className="hb-stack">
+                      <button
+                        type="button"
+                        className="hb-linklike hb-name"
+                        onClick={() => void editTemplate(t.id)}
+                      >
+                        {t.name}
+                      </button>
+                      <span className="hb-sub">
+                        {RECURRENCE_TYPE_LABELS[t.recurrenceType]} ·{' '}
+                        {t.occurrenceCount
+                          ? `made ${plural(t.occurrenceCount, 'time')}`
+                          : 'not made yet'}
+                      </span>
+                    </div>
+                    <Pill tone={t.isActive ? 'green' : 'amber'}>
+                      {t.isActive ? 'Active' : 'Paused'}
+                    </Pill>
+                  </div>
+                ))
+              )}
+            </Card>
+            <Card>
+              <CardHead
+                icon={<ListTree size={16} aria-hidden="true" />}
+                tone="grey"
+                title="How templates work"
+              />
+              <ol className="hb-tpl-how">
+                <li>
+                  <strong>Build a task tree.</strong> Each task can have sub-tasks, a duty, a
+                  priority, tags and tasks it waits on.
+                </li>
+                <li>
+                  <strong>Dates count from Day 0.</strong> “Due day 5” means five days after the
+                  start date you pick when you use it.
+                </li>
+                <li>
+                  <strong>People are roles.</strong> Name a role (Inspector, Buyer); you pick who
+                  fills it each time.
+                </li>
+                <li>
+                  <strong>Repeat it, or use it by hand.</strong> A repeating template makes its
+                  tasks on schedule; Create tasks makes them now.
+                </li>
+              </ol>
+            </Card>
+          </aside>
+        </div>
 
         {instantiating && (
           <InstantiateModal
@@ -357,24 +626,15 @@ export function TemplatesPage() {
             onClose={() => setInstantiating(null)}
             onDone={(rootTaskId) => {
               setInstantiating(null);
-              setNotice('Template instantiated.');
+              toast({ message: 'Tasks created from the template.', tone: 'success' });
               load();
               navigate(`/tasks/${rootTaskId}`);
             }}
           />
         )}
-      </div>
+      </PageBody>
     </>
   );
-
-  async function openInstantiate(id: number) {
-    setError(null);
-    try {
-      setInstantiating(await api.getTemplate(id));
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Could not open the template');
-    }
-  }
 }
 
 // --- Editor ----------------------------------------------------------------
@@ -400,7 +660,6 @@ function TemplateEditor({
   // materialized future instances, offer to re-sync them (never automatic).
   const [pendingFuture, setPendingFuture] = useState<FutureOccurrenceDto[] | null>(null);
   const [savedId, setSavedId] = useState<number | null>(null);
-  const [showRecurrence, setShowRecurrence] = useState(editor.recurrence.recurrenceType !== 'None');
   // Unsaved-work guard: the whole template (nodes, descriptions, dependencies,
   // recurrence) lives only here until saved, so leaving the page asks first.
   // Once saved (incl. while the "update future instances?" prompt is up) it's clean.
@@ -412,9 +671,13 @@ function TemplateEditor({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dropHint, setDropHint] = useState<{ key: string; pos: TemplateDropPosition } | null>(null);
-  // A node is only draggable while its handle is held (so the card's inputs stay
+  // A node is only draggable while its handle is held (so the row's inputs stay
   // fully usable). Collapsing never changes this — a collapsed node still drags.
   const [armed, setArmed] = useState<string | null>(null);
+  // Which tasks are open for editing. A new template opens its first task.
+  const [openKeys, setOpenKeys] = useState<Set<string>>(
+    () => new Set(editor.id ? [] : editor.nodes.slice(0, 1).map((n) => n.key)),
+  );
 
   const r = editor.recurrence;
   const recurrenceSummary =
@@ -426,6 +689,15 @@ function TemplateEditor({
     setEditor({ ...editor, recurrence: { ...r, ...p } });
   const patchNode = (key: string, p: Partial<EditorNode>) =>
     setEditor({ ...editor, nodes: editor.nodes.map((n) => (n.key === key ? { ...n, ...p } : n)) });
+
+  const setOpen = (key: string, open: boolean) =>
+    setOpenKeys((prev) => {
+      if (prev.has(key) === open) return prev;
+      const next = new Set(prev);
+      if (open) next.add(key);
+      else next.delete(key);
+      return next;
+    });
 
   // Expand `key` and every node above it, so a node just added or re-parented
   // under it is visible rather than silently hidden in a collapsed branch.
@@ -445,11 +717,13 @@ function TemplateEditor({
     });
   }
 
-  function addNode() {
+  function addNode(parentKey?: string) {
     const key = nextKey();
     const root = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
-    patch({ nodes: [...editor.nodes, blankNode(key, root?.key ?? null)] });
-    revealUnder(root?.key ?? null);
+    const parent = parentKey ?? root?.key ?? null;
+    patch({ nodes: [...editor.nodes, blankNode(key, parent)] });
+    revealUnder(parent);
+    setOpen(key, true);
   }
   function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
@@ -544,7 +818,30 @@ function TemplateEditor({
     setArmed(null);
   };
 
-  // Recursive tree render: a node card, indented by depth, followed by its
+  // --- Choices for the pickers ---
+  const priorityOptions: SelectOption<TaskPriority>[] = TASK_PRIORITIES.map((p) => ({
+    value: p,
+    label: p,
+    dot: PRIORITY_DOT[p],
+  }));
+  const dutyOptions = (selected: string): SelectOption<string>[] => [
+    { value: '', label: 'No duty' },
+    ...dutyOptionGroups(catalog.departments, {
+      holdings: catalog.holdings,
+      selectedId: selected || null,
+    }).flatMap((g) => g.options.map((o) => ({ value: o.value, label: o.label }))),
+  ];
+
+  // --- What the template makes (side panel) ---
+  const roles = [...new Set(editor.nodes.map((n) => n.assigneeRole.trim()).filter(Boolean))];
+  const dutyCount = new Set(editor.nodes.map((n) => n.dutyId).filter(Boolean)).size;
+  const offsets = editor.nodes
+    .flatMap((n) => [parseOffset(n.startOffsetDays), parseOffset(n.dueOffsetDays)])
+    .filter((v): v is number => v != null);
+  const span = offsets.length ? Math.max(...offsets) - Math.min(0, ...offsets) : null;
+  const attachments = editor.nodes.reduce((s, n) => s + n.attachmentCount, 0);
+
+  // Recursive tree render: a row per task, indented by depth, followed by its
   // children (hidden when the node is collapsed). Rendering from the derived
   // tree means a Parent change immediately nests the node under its new parent.
   const renderNode = (n: EditorNode, depth: number) => {
@@ -554,220 +851,297 @@ function TemplateEditor({
     const nodeCollapsed = isCollapsed(n.key);
     const hiddenCount = nodeCollapsed ? templateSubtreeKeys(editor.nodes, n.key).size - 1 : 0;
     const hint = dropHint?.key === n.key ? dropHint.pos : null;
+    const open = openKeys.has(n.key);
+    const dates = offsetsLabel(parseOffset(n.startOffsetDays), parseOffset(n.dueOffsetDays));
+    const blockedBy = editor.dependencies
+      .filter((d) => d.blockedKey === n.key)
+      .map((d) => d.blockerKey);
+    const blocks = editor.dependencies
+      .filter((d) => d.blockerKey === n.key)
+      .map((d) => d.blockedKey);
+    const duty = n.dutyId ? (catalog.duties.get(n.dutyId) ?? null) : null;
+    const tags = n.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     return (
-      <div key={n.key} className="tpl-tree-node" style={{ marginLeft: depth * 22 }}>
+      <div
+        key={n.key}
+        className="hb-tpl-branch"
+        style={{ ['--depth' as string]: depth } as CSSProperties}
+      >
         <div
-          className={`tpl-node${dragKey === n.key ? ' dragging' : ''}${hint ? ` drop-${hint}` : ''}`}
+          className={cx(
+            'hb-tpl-node',
+            open && 'is-open',
+            dragKey === n.key && 'is-dragging',
+            hint && `drop-${hint}`,
+          )}
           draggable={armed === n.key}
           onDragStart={(e) => onNodeDragStart(e, n.key)}
           onDragOver={(e) => onNodeDragOver(e, n.key)}
           onDrop={(e) => onNodeDrop(e, n.key)}
           onDragEnd={onNodeDragEnd}
         >
-          <div className="tpl-node-head">
-            <span className="tpl-node-headleft">
-              {isRoot ? (
-                <span className="tpl-drag-handle placeholder" aria-hidden="true" />
-              ) : (
-                <span
-                  className="tpl-drag-handle"
-                  role="button"
-                  aria-label="Drag to reorder"
-                  title="Drag to reorder"
-                  onMouseDown={() => setArmed(n.key)}
-                  onMouseUp={() => setArmed(null)}
-                >
-                  ⠿
+          <div className="hb-tpl-node-row">
+            {isRoot ? (
+              <span className="hb-tpl-grip is-blank" aria-hidden="true" />
+            ) : (
+              <span
+                className="hb-tpl-grip"
+                role="button"
+                aria-label="Drag to reorder"
+                title="Drag to reorder"
+                onMouseDown={() => setArmed(n.key)}
+                onMouseUp={() => setArmed(null)}
+              >
+                <GripVertical size={16} aria-hidden="true" />
+              </span>
+            )}
+            {kids.length > 0 ? (
+              <button
+                type="button"
+                className="hb-tpl-caret"
+                aria-expanded={!nodeCollapsed}
+                aria-label={nodeCollapsed ? 'Show sub-tasks' : 'Hide sub-tasks'}
+                title={nodeCollapsed ? 'Expand' : 'Collapse'}
+                onClick={() => toggleCollapse(n.key)}
+              >
+                {nodeCollapsed ? (
+                  <ChevronRight size={16} aria-hidden="true" />
+                ) : (
+                  <ChevronDown size={16} aria-hidden="true" />
+                )}
+              </button>
+            ) : (
+              <span className="hb-tpl-caret is-blank" aria-hidden="true" />
+            )}
+            <span className={cx('hb-tpl-num', isRoot && 'is-root')} title={`Node ${idx + 1}`}>
+              {idx + 1}
+            </span>
+            <input
+              className="hb-tpl-name"
+              value={n.name}
+              placeholder={isRoot ? 'Main task name' : 'Task name'}
+              aria-label={`Name for node ${idx + 1}`}
+              onChange={(e) => patchNode(n.key, { name: e.target.value })}
+            />
+            <span className="hb-tpl-chips">
+              {isRoot && <span className="hb-tpl-chip is-root">Main task</span>}
+              {n.defaultPriority !== 'Medium' && <PriorityMark priority={n.defaultPriority} />}
+              {n.assigneeRole.trim() && (
+                <span className="hb-tpl-chip">
+                  <UserRound size={13} aria-hidden="true" /> {n.assigneeRole.trim()}
                 </span>
               )}
-              {kids.length > 0 ? (
-                <button
-                  type="button"
-                  className="tpl-collapse"
-                  aria-expanded={!nodeCollapsed}
-                  title={nodeCollapsed ? 'Expand' : 'Collapse'}
-                  onClick={() => toggleCollapse(n.key)}
-                >
-                  {nodeCollapsed ? '▸' : '▾'}
-                </button>
-              ) : (
-                <span className="tpl-collapse placeholder" />
+              {duty && <DutyTag duty={duty} compact />}
+              {dates && (
+                <span className="hb-tpl-chip">
+                  <CalendarDays size={13} aria-hidden="true" /> {dates}
+                </span>
               )}
-              <strong>
-                Node {idx + 1}
-                {isRoot && (
-                  <span className="badge" style={{ marginLeft: 8 }}>
-                    Root
-                  </span>
-                )}
-                {n.name ? <span className="muted tpl-node-name"> · {n.name}</span> : null}
-                {hiddenCount > 0 && (
-                  <span className="muted tpl-collapsed-count"> ({hiddenCount} hidden)</span>
-                )}
-              </strong>
+              {blockedBy.length + blocks.length > 0 && (
+                <span
+                  className="hb-tpl-chip"
+                  title={`Waits on ${blockedBy.length}, holds up ${blocks.length}`}
+                >
+                  <Link2 size={13} aria-hidden="true" /> {blockedBy.length + blocks.length}
+                </span>
+              )}
+              {n.attachmentCount > 0 && (
+                <span className="hb-tpl-chip" title="Default attachments">
+                  <Paperclip size={13} aria-hidden="true" /> {n.attachmentCount}
+                </span>
+              )}
+              {hiddenCount > 0 && (
+                <span className="hb-tpl-chip is-muted">{hiddenCount} hidden</span>
+              )}
             </span>
+            <button
+              type="button"
+              className={cx('hb-tpl-edit', open && 'is-on')}
+              aria-expanded={open}
+              aria-label={`${open ? 'Close' : 'Edit'} details for node ${idx + 1}`}
+              onClick={() => setOpen(n.key, !open)}
+            >
+              {open ? 'Done' : 'Details'}
+            </button>
             {!isRoot && (
-              <button className="secondary btn-sm" onClick={() => removeNode(n.key)}>
-                Remove
+              <button
+                type="button"
+                className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
+                aria-label={`Remove node ${idx + 1}`}
+                title="Remove"
+                onClick={() => removeNode(n.key)}
+              >
+                <Trash2 size={15} aria-hidden="true" />
               </button>
             )}
           </div>
-          <div className="tpl-node-grid">
-            <div className="field tpl-node-wide">
-              <label>Name</label>
-              <input value={n.name} onChange={(e) => patchNode(n.key, { name: e.target.value })} />
-            </div>
-            <div className="field tpl-node-wide">
-              <label>Description</label>
-              <RichTextEditor
-                value={n.description}
-                onChange={(html) => patchNode(n.key, { description: html })}
-                ariaLabel={`Description for node ${idx + 1}`}
-              />
-            </div>
-            <div className="field">
-              <label>Parent</label>
-              {isRoot ? (
-                <input value="— (root)" disabled />
-              ) : (
-                <select
-                  value={n.parentKey ?? ''}
-                  onChange={(e) => {
-                    patchNode(n.key, { parentKey: e.target.value });
-                    revealUnder(e.target.value);
-                  }}
-                >
-                  {parentOptions(n.key).map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {nodeDisplay(o.key)}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="field">
-              <label>Priority</label>
-              <select
-                value={n.defaultPriority}
-                onChange={(e) =>
-                  patchNode(n.key, { defaultPriority: e.target.value as TaskPriority })
-                }
-              >
-                {TASK_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>Role placeholder</label>
-              <input
-                value={n.assigneeRole}
-                placeholder="e.g. Inspector"
-                onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>Department › Duty</label>
-              <select
-                value={n.dutyId}
-                aria-label={`Department › Duty for node ${idx + 1}`}
-                onChange={(e) => patchNode(n.key, { dutyId: e.target.value })}
-              >
-                <option value="">— No duty —</option>
-                <GroupedOptions
-                  groups={dutyOptionGroups(catalog.departments, {
-                    holdings: catalog.holdings,
-                    selectedId: n.dutyId || null,
-                  })}
-                />
-              </select>
-            </div>
-            <div className="field">
-              <label>Start (+days)</label>
-              <input
-                type="number"
-                value={n.startOffsetDays}
-                onChange={(e) => patchNode(n.key, { startOffsetDays: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label>Due (+days)</label>
-              <input
-                type="number"
-                value={n.dueOffsetDays}
-                onChange={(e) => patchNode(n.key, { dueOffsetDays: e.target.value })}
-              />
-            </div>
-            <div className="field tpl-node-wide">
-              <label>Tags</label>
-              <input
-                value={n.tags}
-                placeholder="Comma-separated, e.g. inspection, monthly"
-                onChange={(e) => patchNode(n.key, { tags: e.target.value })}
-              />
-            </div>
-            {n.attachmentCount > 0 && (
-              <div className="field tpl-node-wide">
-                <span className="muted tpl-attach-note">
-                  📎 {n.attachmentCount} default attachment{n.attachmentCount === 1 ? '' : 's'}{' '}
-                  copied onto each new task.
-                </span>
-              </div>
-            )}
-          </div>
 
-          {/* Dependencies live on the node, mirroring a real task's relationships.
-              Each edge shows as "Blocks" on one node and "Blocked by" on the other. */}
-          {editor.nodes.length > 1 && (
-            <div className="tpl-node-rels">
-              <TplRel
-                label="Blocked by"
-                linked={editor.dependencies
-                  .filter((d) => d.blockedKey === n.key)
-                  .map((d) => d.blockerKey)}
-                options={editor.nodes.filter((o) => o.key !== n.key)}
-                display={nodeDisplay}
-                onAdd={(other) =>
-                  patch({
-                    dependencies: [
-                      ...editor.dependencies,
-                      { blockerKey: other, blockedKey: n.key },
-                    ],
-                  })
-                }
-                onRemove={(other) =>
-                  patch({
-                    dependencies: editor.dependencies.filter(
-                      (d) => !(d.blockerKey === other && d.blockedKey === n.key),
-                    ),
-                  })
-                }
-              />
-              <TplRel
-                label="Blocks"
-                linked={editor.dependencies
-                  .filter((d) => d.blockerKey === n.key)
-                  .map((d) => d.blockedKey)}
-                options={editor.nodes.filter((o) => o.key !== n.key)}
-                display={nodeDisplay}
-                onAdd={(other) =>
-                  patch({
-                    dependencies: [
-                      ...editor.dependencies,
-                      { blockerKey: n.key, blockedKey: other },
-                    ],
-                  })
-                }
-                onRemove={(other) =>
-                  patch({
-                    dependencies: editor.dependencies.filter(
-                      (d) => !(d.blockerKey === n.key && d.blockedKey === other),
-                    ),
-                  })
-                }
-              />
+          {open && (
+            <div className="hb-tpl-node-body">
+              <div className="hb-tpl-grid">
+                <div className="hb-tpl-field is-wide">
+                  <span className="hb-tpl-flabel">Description</span>
+                  <RichTextEditor
+                    value={n.description}
+                    onChange={(html) => patchNode(n.key, { description: html })}
+                    ariaLabel={`Description for node ${idx + 1}`}
+                  />
+                </div>
+                <div className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Sub-task of</span>
+                  {isRoot ? (
+                    <span className="hb-tpl-static">Top of the tree</span>
+                  ) : (
+                    <Select
+                      label={`Parent of node ${idx + 1}`}
+                      value={n.parentKey ?? ''}
+                      options={parentOptions(n.key).map((o) => ({
+                        value: o.key,
+                        label: nodeDisplay(o.key),
+                      }))}
+                      onChange={(v) => {
+                        patchNode(n.key, { parentKey: v });
+                        revealUnder(v);
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Priority</span>
+                  <Select
+                    label={`Priority for node ${idx + 1}`}
+                    value={n.defaultPriority}
+                    options={priorityOptions}
+                    onChange={(v) => patchNode(n.key, { defaultPriority: v })}
+                  />
+                </div>
+                <label className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Role (who does it)</span>
+                  <input
+                    className="hb-tpl-input"
+                    value={n.assigneeRole}
+                    placeholder="e.g. Inspector"
+                    onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })}
+                  />
+                </label>
+                <div className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Department › Duty</span>
+                  <Select
+                    label={`Department › Duty for node ${idx + 1}`}
+                    value={n.dutyId}
+                    options={dutyOptions(n.dutyId)}
+                    searchPlaceholder="Search duties"
+                    onChange={(v) => patchNode(n.key, { dutyId: v })}
+                  />
+                </div>
+                <label className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Starts on day</span>
+                  <span className="hb-tpl-day">
+                    <span aria-hidden="true">Day</span>
+                    <input
+                      className="hb-tpl-input"
+                      type="number"
+                      value={n.startOffsetDays}
+                      placeholder="—"
+                      onChange={(e) => patchNode(n.key, { startOffsetDays: e.target.value })}
+                    />
+                  </span>
+                </label>
+                <label className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Due on day</span>
+                  <span className="hb-tpl-day">
+                    <span aria-hidden="true">Day</span>
+                    <input
+                      className="hb-tpl-input"
+                      type="number"
+                      value={n.dueOffsetDays}
+                      placeholder="—"
+                      onChange={(e) => patchNode(n.key, { dueOffsetDays: e.target.value })}
+                    />
+                  </span>
+                </label>
+                <label className="hb-tpl-field is-wide">
+                  <span className="hb-tpl-flabel">Tags</span>
+                  <input
+                    className="hb-tpl-input"
+                    value={n.tags}
+                    placeholder="Comma-separated, e.g. inspection, monthly"
+                    onChange={(e) => patchNode(n.key, { tags: e.target.value })}
+                  />
+                  {tags.length > 0 && (
+                    <span className="hb-tpl-tags">
+                      {tags.map((t) => (
+                        <span key={t} className="hb-tpl-chip is-tag">
+                          {t}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </label>
+                {n.attachmentCount > 0 && (
+                  <div className="hb-tpl-field is-wide hb-tpl-attach">
+                    <Paperclip size={14} aria-hidden="true" />
+                    {plural(n.attachmentCount, 'default attachment')} copied onto each new task.
+                  </div>
+                )}
+              </div>
+
+              {/* Dependencies live on the node, mirroring a real task's relationships.
+                  Each edge shows as "Blocks" on one node and "Blocked by" on the other. */}
+              {editor.nodes.length > 1 && (
+                <div className="hb-tpl-rels">
+                  <TplRel
+                    label="Blocked by"
+                    linked={blockedBy}
+                    options={editor.nodes.filter((o) => o.key !== n.key)}
+                    display={nodeDisplay}
+                    onAdd={(other) =>
+                      patch({
+                        dependencies: [
+                          ...editor.dependencies,
+                          { blockerKey: other, blockedKey: n.key },
+                        ],
+                      })
+                    }
+                    onRemove={(other) =>
+                      patch({
+                        dependencies: editor.dependencies.filter(
+                          (d) => !(d.blockerKey === other && d.blockedKey === n.key),
+                        ),
+                      })
+                    }
+                  />
+                  <TplRel
+                    label="Blocks"
+                    linked={blocks}
+                    options={editor.nodes.filter((o) => o.key !== n.key)}
+                    display={nodeDisplay}
+                    onAdd={(other) =>
+                      patch({
+                        dependencies: [
+                          ...editor.dependencies,
+                          { blockerKey: n.key, blockedKey: other },
+                        ],
+                      })
+                    }
+                    onRemove={(other) =>
+                      patch({
+                        dependencies: editor.dependencies.filter(
+                          (d) => !(d.blockerKey === n.key && d.blockedKey === other),
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              )}
+              <div className="hb-tpl-node-foot">
+                <Btn kind="ghost" className="hb-btn-sm" onClick={() => addNode(n.key)}>
+                  <Plus size={15} aria-hidden="true" /> Add a sub-task here
+                </Btn>
+              </div>
             </div>
           )}
         </div>
@@ -779,7 +1153,11 @@ function TemplateEditor({
   async function doSave() {
     setError(null);
     if (!editor.name.trim()) return setError('A template name is required');
-    if (editor.nodes.some((n) => !n.name.trim())) return setError('Every node needs a name');
+    const unnamed = editor.nodes.find((n) => !n.name.trim());
+    if (unnamed) {
+      revealUnder(unnamed.parentKey);
+      return setError('Every node needs a name');
+    }
     if (r.recurrenceType !== 'None' && !r.anchorDate)
       return setError('A recurring template needs a start (anchor) date');
 
@@ -823,258 +1201,379 @@ function TemplateEditor({
     onSaved('Template updated.');
   }
 
+  // Ctrl/⌘ + S saves, as on the task page.
+  const saveRef = useRef(doSave);
+  saveRef.current = doSave;
+  const canSaveRef = useRef(false);
+  canSaveRef.current = dirty && !saving;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (canSaveRef.current) void saveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const recTypeOptions: SelectOption<RecurrenceType>[] = (
+    ['None', 'Fixed', 'RelativeToCompletion'] as RecurrenceType[]
+  ).map((t) => ({ value: t, label: RECURRENCE_TYPE_LABELS[t] }));
+  const unitOptions: SelectOption<RecurrenceUnit>[] = RECURRENCE_UNITS.map((u) => ({
+    value: u,
+    label: RECURRENCE_UNIT_LABELS[u],
+  }));
+  const endOptions: SelectOption<RecurrenceEndType>[] = [
+    { value: 'Never', label: 'Never' },
+    { value: 'OnDate', label: 'On a date' },
+    {
+      value: 'AfterOccurrences',
+      label:
+        r.recurrenceType === 'RelativeToCompletion'
+          ? 'Stop after N completions'
+          : 'After N occurrences',
+    },
+  ];
+  const showBar = dirty || !!error;
+
   return (
     <>
       <PageHeader
-        title={editor.id ? 'Edit template' : 'New template'}
-        subtitle="Tasks › Templates"
-        search={false}
-        newTask={false}
-        actions={
+        title={editor.name.trim() || (editor.id ? 'Untitled template' : 'New template')}
+        subtitle={
           <>
+            <Link to="/tasks">Tasks</Link> ›{' '}
             <button
-              className="secondary"
+              type="button"
+              className="hb-tpl-crumb"
               onClick={() => {
                 if (confirmDiscard(dirty)) onCancel();
               }}
-              disabled={saving}
             >
-              Cancel
-            </button>
-            <button
-              onClick={() => void doSave()}
-              disabled={saving || !dirty}
-              title={dirty ? undefined : 'Nothing has changed yet'}
-            >
-              {saving ? 'Saving…' : 'Save template'}
-            </button>
+              Templates
+            </button>{' '}
+            › {editor.id ? 'Edit template' : 'New template'}
           </>
         }
+        search={false}
+        newTask={false}
+        actions={
+          <Btn
+            onClick={() => {
+              if (confirmDiscard(dirty)) onCancel();
+            }}
+            disabled={saving}
+          >
+            <ArrowLeft size={16} aria-hidden="true" /> All templates
+          </Btn>
+        }
       />
-      <div className="tasks-page hb-legacy-body">
-        {error && <div className="alert error">{error}</div>}
+      <PageBody className={cx(showBar && 'hb-has-savebar')}>
+        <div className="hb-cols">
+          <div className="hb-col">
+            <Card>
+              <div className="hb-card-pad hb-tpl-details">
+                <label className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Template name</span>
+                  <input
+                    className="hb-tpl-input hb-tpl-title"
+                    value={editor.name}
+                    placeholder="e.g. Monthly warehouse inspection"
+                    onChange={(e) => patch({ name: e.target.value })}
+                  />
+                </label>
+                <label className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Notes (optional)</span>
+                  <textarea
+                    className="hb-tpl-input"
+                    value={editor.description}
+                    rows={2}
+                    placeholder="What this template is for, shown in the list"
+                    onChange={(e) => patch({ description: e.target.value })}
+                  />
+                </label>
+              </div>
+            </Card>
 
-        <section className="card panel">
-          <div className="field">
-            <label htmlFor="tpl-name">Template name</label>
-            <input
-              id="tpl-name"
-              value={editor.name}
-              onChange={(e) => patch({ name: e.target.value })}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="tpl-desc">Notes (optional)</label>
-            <textarea
-              id="tpl-desc"
-              value={editor.description}
-              onChange={(e) => patch({ description: e.target.value })}
-              rows={2}
-            />
+            <Card className="hb-tpl-tree-card">
+              <CardHead
+                icon={<ListTree size={16} aria-hidden="true" />}
+                title="Task tree"
+                right={
+                  <span className="hb-tpl-tree-tools">
+                    <Btn
+                      kind="ghost"
+                      className="hb-btn-sm"
+                      onClick={collapseAll}
+                      disabled={!editor.nodes.some((n) => hasChildren(n.key))}
+                    >
+                      Collapse all
+                    </Btn>
+                    <Btn
+                      kind="ghost"
+                      className="hb-btn-sm"
+                      onClick={expandAll}
+                      disabled={collapsed.size === 0}
+                    >
+                      Expand all
+                    </Btn>
+                    <Btn className="hb-btn-sm" onClick={() => addNode()}>
+                      <Plus size={15} aria-hidden="true" /> Add task
+                    </Btn>
+                  </span>
+                }
+              />
+              <p className="hb-tpl-tree-hint">
+                The first task is the main one; the rest are its sub-tasks. Drag a row by its handle
+                to reorder it among its siblings; “Sub-task of” moves it elsewhere.
+              </p>
+              <div className="hb-tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
+            </Card>
           </div>
 
-          {/* Recurrence — collapsible, at the bottom of Name & Notes. */}
-          <div className="recur-collapse">
-            <button
-              type="button"
-              className="recur-collapse-head"
-              aria-expanded={showRecurrence}
-              onClick={() => setShowRecurrence((v) => !v)}
-            >
-              <span className="recur-caret" aria-hidden="true">
-                ▸
-              </span>
-              Recurrence
-              <span className="recur-collapse-summary">· {recurrenceSummary}</span>
-            </button>
-            {showRecurrence && (
-              <div className="recur-collapse-body">
-                <div className="field">
-                  <label>Repeat</label>
-                  <select
+          <aside className="hb-col">
+            <Card>
+              <CardHead
+                icon={<Repeat size={16} aria-hidden="true" />}
+                title="Repeat"
+                right={<span className="hb-small">{recurrenceSummary}</span>}
+              />
+              <div className="hb-card-pad hb-tpl-rec">
+                <div className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Repeat</span>
+                  <Select
+                    label="Repeat"
                     value={r.recurrenceType}
-                    onChange={(e) => patchRec({ recurrenceType: e.target.value as RecurrenceType })}
-                  >
-                    <option value="None">{RECURRENCE_TYPE_LABELS.None}</option>
-                    <option value="Fixed">{RECURRENCE_TYPE_LABELS.Fixed}</option>
-                    <option value="RelativeToCompletion">
-                      {RECURRENCE_TYPE_LABELS.RelativeToCompletion}
-                    </option>
-                  </select>
+                    options={recTypeOptions}
+                    onChange={(v) => patchRec({ recurrenceType: v })}
+                  />
                 </div>
-                {r.recurrenceType !== 'None' && (
+                {r.recurrenceType === 'None' ? (
+                  <p className="hb-tpl-note">
+                    Used by hand only: Create tasks on the Templates list makes a new set.
+                  </p>
+                ) : (
                   <>
-                    <div className="tpl-node-grid">
-                      <div className="field">
-                        <label>Repeat every</label>
-                        <div className="recur-interval">
-                          <input
-                            type="number"
-                            min={1}
-                            value={r.intervalCount}
-                            onChange={(e) => patchRec({ intervalCount: e.target.value })}
-                            style={{ width: 64 }}
-                          />
-                          <select
-                            value={r.intervalUnit}
-                            onChange={(e) =>
-                              patchRec({ intervalUnit: e.target.value as RecurrenceUnit })
-                            }
-                          >
-                            {RECURRENCE_UNITS.map((u) => (
-                              <option key={u} value={u}>
-                                {RECURRENCE_UNIT_LABELS[u]}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="field">
-                        <label>Start (anchor) date</label>
+                    <div className="hb-tpl-field">
+                      <span className="hb-tpl-flabel">Repeat every</span>
+                      <span className="hb-tpl-every">
                         <input
-                          type="date"
-                          value={r.anchorDate}
-                          onChange={(e) => patchRec({ anchorDate: e.target.value })}
+                          className="hb-tpl-input"
+                          type="number"
+                          min={1}
+                          aria-label="Repeat every"
+                          value={r.intervalCount}
+                          onChange={(e) => patchRec({ intervalCount: e.target.value })}
                         />
-                      </div>
-                      <div className="field">
-                        <label>Ends</label>
-                        <select
-                          value={r.endType}
-                          onChange={(e) =>
-                            patchRec({ endType: e.target.value as RecurrenceEndType })
-                          }
-                        >
-                          <option value="Never">Never</option>
-                          <option value="OnDate">On a date</option>
-                          <option value="AfterOccurrences">
-                            {r.recurrenceType === 'RelativeToCompletion'
-                              ? 'Stop after N completions'
-                              : 'After N occurrences'}
-                          </option>
-                        </select>
-                      </div>
-                      {r.endType === 'OnDate' && (
-                        <div className="field">
-                          <label>End date</label>
-                          <input
-                            type="date"
-                            value={r.endDate}
-                            onChange={(e) => patchRec({ endDate: e.target.value })}
-                          />
-                        </div>
-                      )}
-                      {r.endType === 'AfterOccurrences' && (
-                        <div className="field">
-                          <label>
-                            {r.recurrenceType === 'RelativeToCompletion'
-                              ? 'Completions'
-                              : 'Occurrences'}
-                          </label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={r.maxOccurrences}
-                            onChange={(e) => patchRec({ maxOccurrences: e.target.value })}
-                          />
-                        </div>
-                      )}
-                      <div className="field">
-                        <label>Label prefix (optional)</label>
-                        <input
-                          value={r.labelPrefix}
-                          placeholder="e.g. BATCH"
-                          onChange={(e) => patchRec({ labelPrefix: e.target.value })}
+                        <Select
+                          label="Repeat unit"
+                          value={r.intervalUnit}
+                          options={unitOptions}
+                          onChange={(v) => patchRec({ intervalUnit: v })}
                         />
-                      </div>
-                      <div className="field">
-                        <label>Status</label>
-                        <div className="seg" role="group" aria-label="Recurrence status">
-                          <button
-                            type="button"
-                            className={`seg-btn${r.isActive ? ' active' : ''}`}
-                            aria-pressed={r.isActive}
-                            onClick={() => patchRec({ isActive: true })}
-                          >
-                            Active
-                          </button>
-                          <button
-                            type="button"
-                            className={`seg-btn${!r.isActive ? ' active' : ''}`}
-                            aria-pressed={!r.isActive}
-                            onClick={() => patchRec({ isActive: false })}
-                          >
-                            Paused
-                          </button>
-                        </div>
-                      </div>
+                      </span>
                     </div>
                     {r.intervalUnit === 'Week' && (
-                      <div className="field" style={{ marginTop: '0.6rem' }}>
-                        <label>Repeat on</label>
+                      <div className="hb-tpl-field">
+                        <span className="hb-tpl-flabel">Repeat on</span>
                         <WeekdayPicker
                           value={r.weekdays}
                           onChange={(v) => patchRec({ weekdays: v })}
                         />
                       </div>
                     )}
+                    <div className="hb-tpl-field">
+                      <span className="hb-tpl-flabel">Start (anchor) date</span>
+                      <DatePicker
+                        label="Start (anchor) date"
+                        value={r.anchorDate || null}
+                        allowClear={false}
+                        placeholder="Pick the first Day 0"
+                        onChange={(v) => patchRec({ anchorDate: v ?? '' })}
+                      />
+                    </div>
+                    <div className="hb-tpl-field">
+                      <span className="hb-tpl-flabel">Ends</span>
+                      <Select
+                        label="Ends"
+                        value={r.endType}
+                        options={endOptions}
+                        onChange={(v) => patchRec({ endType: v })}
+                      />
+                    </div>
+                    {r.endType === 'OnDate' && (
+                      <div className="hb-tpl-field">
+                        <span className="hb-tpl-flabel">End date</span>
+                        <DatePicker
+                          label="End date"
+                          value={r.endDate || null}
+                          onChange={(v) => patchRec({ endDate: v ?? '' })}
+                        />
+                      </div>
+                    )}
+                    {r.endType === 'AfterOccurrences' && (
+                      <label className="hb-tpl-field">
+                        <span className="hb-tpl-flabel">
+                          {r.recurrenceType === 'RelativeToCompletion'
+                            ? 'Completions'
+                            : 'Occurrences'}
+                        </span>
+                        <input
+                          className="hb-tpl-input"
+                          type="number"
+                          min={1}
+                          value={r.maxOccurrences}
+                          onChange={(e) => patchRec({ maxOccurrences: e.target.value })}
+                        />
+                      </label>
+                    )}
+                    <label className="hb-tpl-field">
+                      <span className="hb-tpl-flabel">Label prefix (optional)</span>
+                      <input
+                        className="hb-tpl-input"
+                        value={r.labelPrefix}
+                        placeholder="e.g. BATCH"
+                        onChange={(e) => patchRec({ labelPrefix: e.target.value })}
+                      />
+                    </label>
+                    <div className="hb-tpl-field">
+                      <span className="hb-tpl-flabel">Status</span>
+                      <Segmented
+                        label="Recurrence status"
+                        value={r.isActive ? 'on' : 'off'}
+                        options={[
+                          { value: 'on', label: 'Active' },
+                          { value: 'off', label: 'Paused' },
+                        ]}
+                        onChange={(v) => patchRec({ isActive: v === 'on' })}
+                      />
+                    </div>
                   </>
                 )}
               </div>
-            )}
-          </div>
-        </section>
+            </Card>
 
-        {/* Nodes */}
-        <section className="card panel">
-          <div className="section-head">
-            <h3>Task tree</h3>
-            <span className="muted tpl-tree-hint">
-              Drag the ⠿ handle to reorder siblings; a Parent change nests a node.
-            </span>
-            <div className="spacer" />
-            <button
-              className="tertiary btn-sm"
-              onClick={collapseAll}
-              disabled={!editor.nodes.some((n) => hasChildren(n.key))}
-            >
-              Collapse all
-            </button>
-            <button className="tertiary btn-sm" onClick={expandAll} disabled={collapsed.size === 0}>
-              Expand all
-            </button>
-            <button className="tertiary btn-sm" onClick={addNode}>
-              + Add node
-            </button>
-          </div>
-          <div className="tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
-        </section>
-
-        {pendingFuture && (
-          <div className="modal-backdrop" onClick={() => void applyFuture(false)}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ marginTop: 0 }}>Update future instances?</h3>
-              <p>
-                This template has {pendingFuture.length} already-created future instance
-                {pendingFuture.length === 1 ? '' : 's'} that haven’t started yet. Update
-                {pendingFuture.length === 1 ? ' it' : ' them'} to match your edit? Completed and
-                in-progress work is never changed.
-              </p>
-              <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-                <button className="secondary" onClick={() => void applyFuture(false)}>
-                  Leave them
-                </button>
-                <button onClick={() => void applyFuture(true)}>Update them</button>
+            <Card>
+              <CardHead
+                icon={<FileStack size={16} aria-hidden="true" />}
+                tone="grey"
+                title="Each use makes"
+              />
+              <div className="hb-tpl-sum">
+                <div className="hb-kv">
+                  <span>Tasks</span>
+                  <strong>{editor.nodes.length}</strong>
+                </div>
+                <div className="hb-kv">
+                  <span>Spread over</span>
+                  <strong>{span == null ? 'No dates set' : plural(span + 1, 'day')}</strong>
+                </div>
+                <div className="hb-kv">
+                  <span>Dependencies</span>
+                  <strong>{editor.dependencies.length}</strong>
+                </div>
+                <div className="hb-kv">
+                  <span>Duties needed</span>
+                  <strong>{dutyCount}</strong>
+                </div>
+                {attachments > 0 && (
+                  <div className="hb-kv">
+                    <span>Attachments</span>
+                    <strong>{attachments}</strong>
+                  </div>
+                )}
+                <div className="hb-tpl-sum-roles">
+                  <span className="hb-label">Roles you fill each time</span>
+                  {roles.length === 0 ? (
+                    <span className="hb-small">
+                      None yet. Tasks without a role are made unassigned.
+                    </span>
+                  ) : (
+                    <span className="hb-tpl-tags">
+                      {roles.map((role) => (
+                        <span key={role} className="hb-tpl-chip">
+                          <UserRound size={13} aria-hidden="true" /> {role}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-      </div>
+            </Card>
+          </aside>
+        </div>
+      </PageBody>
+
+      {/* The one Save bar */}
+      {showBar && !pendingFuture && (
+        <div className="hb-savebar" role="region" aria-label="Unsaved changes">
+          <span className="hb-savebar-dot" aria-hidden="true" />
+          <strong>{dirty ? 'Unsaved changes' : 'Not saved'}</strong>
+          <span className="hb-savebar-what">
+            {editor.id ? 'to this template' : 'New template, not saved yet'}
+          </span>
+          {error && <span className="hb-savebar-err">{error}</span>}
+          <span className="hb-grow" />
+          <span className="hb-kbd">Ctrl + S</span>
+          <button
+            type="button"
+            className="hb-savebar-discard"
+            disabled={saving}
+            onClick={() => {
+              // An edit goes back to what was saved; a new template is left.
+              if (editor.id) {
+                setError(null);
+                setEditor(JSON.parse(original) as EditorState);
+              } else if (confirmDiscard(dirty)) onCancel();
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="hb-savebar-save"
+            onClick={() => void doSave()}
+            disabled={saving || !dirty}
+          >
+            {saving ? 'Saving…' : 'Save template'}
+          </button>
+        </div>
+      )}
+
+      {pendingFuture && (
+        <ModalShell
+          title="Update future instances?"
+          width="520px"
+          onBackdropClick={() => void applyFuture(false)}
+          actions={
+            <>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() => void applyFuture(false)}
+              >
+                Leave them
+              </button>
+              <button type="button" className="btn-sm" onClick={() => void applyFuture(true)}>
+                Update them
+              </button>
+            </>
+          }
+        >
+          <p className="exc-confirm-sub">
+            This template has {pendingFuture.length} already-created future instance
+            {pendingFuture.length === 1 ? '' : 's'} that haven’t started yet. Update
+            {pendingFuture.length === 1 ? ' it' : ' them'} to match your edit? Completed and
+            in-progress work is never changed.
+          </p>
+        </ModalShell>
+      )}
     </>
   );
 }
 
-// --- Instantiate modal -----------------------------------------------------
+// --- Instantiate modal ("Create tasks") ----------------------------------------
 
 function InstantiateModal({
   template,
@@ -1239,7 +1738,7 @@ function InstantiateModal({
             onClick={() => void recheck()}
             title="Check again after duties were added somewhere else"
           >
-            ↻ Re-check
+            <RotateCw size={14} aria-hidden="true" /> Re-check
           </button>
         }
         actions={
@@ -1270,72 +1769,96 @@ function InstantiateModal({
             ? 'Each template task goes to the person filling its role, and that person must hold the task’s duty. Add the missing duties below, or cancel and choose different people.'
             : 'You can now create the tasks.'}
         </p>
-        {error && <div className="alert error">{error}</div>}
-        {rows.map(({ p, ok }) => {
-          const person = userById.get(p.userId);
-          const duty = catalog.duties.get(p.dutyId) ?? null;
-          const name = person ? userLabel(person) : 'Someone';
-          const first = person?.firstName || name;
-          return (
-            <div key={`${p.role}:${p.userId}:${p.dutyId}`} className="dd-err-row">
-              {person && <Avatar user={person} decorative />}
-              <div className="grow">
-                <div>
-                  <b>{name}</b> <span className="muted">as</span>{' '}
-                  <span className="dd-role-chip">{p.role}</span>
+        {error && (
+          <div className="hb-alert" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="hb-tpl-problems">
+          {rows.map(({ p, ok }) => {
+            const person = userById.get(p.userId);
+            const duty = catalog.duties.get(p.dutyId) ?? null;
+            const name = person ? userLabel(person) : 'Someone';
+            const first = person?.firstName || name;
+            return (
+              <div
+                key={`${p.role}:${p.userId}:${p.dutyId}`}
+                className={cx('hb-tpl-problem', ok && 'is-ok')}
+              >
+                {person && <Avatar user={person} decorative />}
+                <div className="hb-stack">
+                  <div>
+                    <b>{name}</b> <span className="hb-small">as</span>{' '}
+                    <span className="hb-tpl-chip">{p.role}</span>
+                  </div>
+                  <div className="hb-tpl-problem-duty">
+                    {ok ? <Pill tone="green">Now holds</Pill> : <Pill tone="red">Missing</Pill>}{' '}
+                    <DutyTag duty={duty} />
+                  </div>
+                  <span className="hb-sub">
+                    Needed for:{' '}
+                    {p.nodeIds.map((id) => nodeById.get(id)?.name ?? `#${id}`).join('; ')}
+                  </span>
                 </div>
-                <div style={{ margin: '4px 0' }}>
-                  {ok ? (
-                    <span className="dd-tag ok">✓ Now holds</span>
+                <div className="hb-tpl-problem-act">
+                  {ok ? null : canManage(p.userId) ? (
+                    <Btn
+                      kind="primary"
+                      className="hb-btn-sm"
+                      disabled={granting !== null}
+                      onClick={() => void grant(p)}
+                    >
+                      {granting === `${p.userId}:${p.dutyId}`
+                        ? 'Giving…'
+                        : `Give ${first} this duty`}
+                    </Btn>
                   ) : (
-                    <b style={{ color: 'var(--danger-deep)' }}>Missing</b>
-                  )}{' '}
-                  <DutyTag duty={duty} />
-                </div>
-                <div className="muted" style={{ fontSize: 12 }}>
-                  Needed for: {p.nodeIds.map((id) => nodeById.get(id)?.name ?? `#${id}`).join('; ')}
+                    <>
+                      <span className="hb-small">
+                        Only {supervisorName(p.userId)} or an Admin can give {first} duties.
+                      </span>
+                      {me?.role !== 'Member' && (
+                        <a
+                          href={`/admin/organization?view=person&person=${p.userId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hb-tpl-orglink"
+                        >
+                          Open in Organization ↗
+                        </a>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
-              <div style={{ flex: 'none', maxWidth: 230, textAlign: 'right' }}>
-                {ok ? null : canManage(p.userId) ? (
-                  <button
-                    type="button"
-                    className="btn-sm"
-                    disabled={granting !== null}
-                    onClick={() => void grant(p)}
-                  >
-                    {granting === `${p.userId}:${p.dutyId}` ? 'Giving…' : `Give ${first} this duty`}
-                  </button>
-                ) : (
-                  <>
-                    <div className="duty-xc-perm" style={{ fontSize: 11.5 }}>
-                      Only {supervisorName(p.userId)} or an Admin can give {first} duties.
-                    </div>
-                    {me?.role !== 'Member' && (
-                      <a
-                        href={`/admin/organization?view=person&person=${p.userId}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ fontSize: 12, fontWeight: 600 }}
-                      >
-                        Open in Organization ↗
-                      </a>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </ModalShell>
     );
   }
 
   // --- Step 1: anchor, label and who fills each role ----------------------------
+  const sortedUsers = [...users].sort((a, b) => userLabel(a).localeCompare(userLabel(b)));
+  // The tasks it will make, in tree order, with their real dates for this Day 0.
+  const ordered: { id: number; depth: number }[] = [];
+  const walk = (parent: number | null, depth: number) => {
+    template.nodes
+      .filter((n) => n.parentNodeId === parent)
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .forEach((n) => {
+        ordered.push({ id: n.id, depth });
+        walk(n.id, depth + 1);
+      });
+  };
+  walk(null, 0);
+  const dayOf = (offset: number | null) =>
+    offset == null || !anchor ? null : formatDay(addDays(anchor, offset));
+
   return (
     <ModalShell
-      title={`Instantiate “${template.name}”`}
-      width="720px"
+      title={`Create tasks from “${template.name}”`}
+      width="760px"
       onBackdropClick={busy ? undefined : onClose}
       hint={`${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'} will be created`}
       actions={
@@ -1343,89 +1866,137 @@ function InstantiateModal({
           <button type="button" className="secondary btn-sm" onClick={onClose} disabled={busy}>
             Cancel
           </button>
-          <button type="button" className="btn-sm" onClick={() => void submit()} disabled={busy}>
+          <button
+            type="button"
+            className="btn-sm"
+            onClick={() => void submit()}
+            disabled={busy || !anchor}
+          >
             {busy ? 'Checking…' : `Create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
           </button>
         </>
       }
     >
-      {error && <div className="alert error">{error}</div>}
-      <div className="field">
-        <label htmlFor="inst-label">Instance label (optional)</label>
-        <input
-          id="inst-label"
-          value={label}
-          placeholder="e.g. PO-4521"
-          onChange={(e) => setLabel(e.target.value)}
-        />
-      </div>
-      <div className="field" style={{ maxWidth: 220 }}>
-        <label htmlFor="inst-anchor">Start date (Day 0)</label>
-        <input
-          id="inst-anchor"
-          type="date"
-          value={anchor}
-          onChange={(e) => setAnchor(e.target.value)}
-        />
-      </div>
-      {template.roles.length > 0 && (
-        <>
-          <div className="u-label" style={{ margin: '6px 0 2px' }}>
-            Fill each role with a person
+      {error && (
+        <div className="hb-alert" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="hb-tpl-inst">
+        <div className="hb-tpl-inst-top">
+          <div className="hb-tpl-field">
+            <span className="hb-tpl-flabel">Start date (Day 0)</span>
+            <DatePicker
+              label="Start date (Day 0)"
+              value={anchor || null}
+              allowClear={false}
+              onChange={(v) => setAnchor(v ?? today)}
+            />
           </div>
-          {template.roles.map((role) => {
-            const nodes = template.nodes.filter((n) => n.assigneeRole === role);
-            const needs = roleNeeds(role);
-            const pid = roleMap[role] ?? '';
-            const missing = pid ? needs.filter((u) => !holdsDuty(catalog.holdings, pid, u)) : [];
-            return (
-              <div key={role} className="dd-map-row">
-                <div>
-                  <span className="dd-role-chip">{role}</span>
-                  <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
-                    {nodes.length} {nodes.length === 1 ? 'task' : 'tasks'} · needs {needs.length}{' '}
-                    {needs.length === 1 ? 'duty' : 'duties'}
+          <label className="hb-tpl-field">
+            <span className="hb-tpl-flabel">Instance label (optional)</span>
+            <input
+              className="hb-tpl-input"
+              value={label}
+              placeholder="e.g. PO-4521"
+              onChange={(e) => setLabel(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {template.roles.length > 0 && (
+          <div className="hb-tpl-inst-sec">
+            <span className="hb-label">Who fills each role</span>
+            {template.roles.map((role) => {
+              const nodes = template.nodes.filter((n) => n.assigneeRole === role);
+              const needs = roleNeeds(role);
+              const pid = roleMap[role] ?? '';
+              const missing = pid ? needs.filter((u) => !holdsDuty(catalog.holdings, pid, u)) : [];
+              const options: SelectOption<string>[] = [
+                { value: '', label: 'Leave unassigned' },
+                ...sortedUsers.map((u) => {
+                  const ok = needs.every((d) => holdsDuty(catalog.holdings, u.id, d));
+                  return {
+                    value: u.id,
+                    label: userLabel(u),
+                    lead: <Avatar user={u} size="xs" decorative />,
+                    hint: ok ? undefined : '⚠ missing a duty',
+                  };
+                }),
+              ];
+              return (
+                <div key={role} className="hb-tpl-role">
+                  <div className="hb-stack">
+                    <span className="hb-tpl-chip">
+                      <UserRound size={13} aria-hidden="true" /> {role}
+                    </span>
+                    <span className="hb-sub">
+                      {plural(nodes.length, 'task')} · needs{' '}
+                      {plural(needs.length, 'duty', 'duties')}
+                    </span>
+                  </div>
+                  <Select
+                    label={`Person for ${role}`}
+                    value={pid}
+                    options={options}
+                    searchPlaceholder="Search people"
+                    onChange={(v) => setRoleMap((m) => ({ ...m, [role]: v }))}
+                  />
+                  <div className="hb-tpl-role-state">
+                    {!pid ? (
+                      <span className="hb-small">Tasks will be unassigned</span>
+                    ) : missing.length ? (
+                      missing.map((d) => {
+                        const duty = catalog.duties.get(d);
+                        return (
+                          <span key={d} className="hb-tpl-warn">
+                            ⚠ Doesn’t hold {duty ? dutyLabel(duty) : 'a required duty'}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      <Pill tone="green">✓ Holds every duty needed</Pill>
+                    )}
                   </div>
                 </div>
-                <select
-                  value={pid}
-                  aria-label={`Person for ${role}`}
-                  onChange={(e) => setRoleMap((m) => ({ ...m, [role]: e.target.value }))}
-                >
-                  <option value="">— Leave unassigned —</option>
-                  {[...users]
-                    .sort((a, b) => userLabel(a).localeCompare(userLabel(b)))
-                    .map((u) => {
-                      const ok = needs.every((d) => holdsDuty(catalog.holdings, u.id, d));
-                      return (
-                        <option key={u.id} value={u.id}>
-                          {ok ? '' : '⚠ '}
-                          {userLabel(u)}
-                        </option>
-                      );
-                    })}
-                </select>
-                <div style={{ fontSize: 12 }}>
-                  {!pid ? (
-                    <span className="muted">Tasks will be unassigned</span>
-                  ) : missing.length ? (
-                    missing.map((d) => {
-                      const duty = catalog.duties.get(d);
-                      return (
-                        <div key={d} style={{ color: 'var(--danger-deep)' }}>
-                          ⚠ Doesn’t hold {duty ? dutyLabel(duty) : 'a required duty'}
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <span className="dd-tag ok">✓ Holds every duty needed</span>
-                  )}
+              );
+            })}
+          </div>
+        )}
+
+        <div className="hb-tpl-inst-sec">
+          <span className="hb-label">What it makes</span>
+          <div className="hb-tpl-preview">
+            {ordered.map(({ id, depth }) => {
+              const n = nodeById.get(id)!;
+              const due = dayOf(n.dueOffsetDays);
+              const start = dayOf(n.startOffsetDays);
+              const filler = n.assigneeRole
+                ? userById.get(roleMap[n.assigneeRole] ?? '')
+                : undefined;
+              const who = filler ? userLabel(filler) : n.assigneeRole;
+              return (
+                <div key={id} className="hb-tpl-prow" style={{ paddingLeft: 12 + depth * 18 }}>
+                  <span className="hb-tpl-pname">
+                    {label.trim() && depth === 0 ? `${label.trim()} · ` : ''}
+                    {n.name}
+                  </span>
+                  {who && <span className="hb-small">{who}</span>}
+                  <span className="hb-tpl-pdate">
+                    {start && due
+                      ? `${start} → ${due}`
+                      : due
+                        ? `Due ${due}`
+                        : start
+                          ? `Starts ${start}`
+                          : 'No dates'}
+                  </span>
                 </div>
-              </div>
-            );
-          })}
-        </>
-      )}
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </ModalShell>
   );
 }
@@ -1449,40 +2020,34 @@ function TplRel({
 }) {
   const available = options.filter((o) => !linked.includes(o.key));
   return (
-    <div className="tpl-rel">
-      <span className="tpl-rel-label">{label}</span>
-      <div className="tpl-rel-items">
-        {linked.length === 0 && (
-          <span className="muted" style={{ fontSize: '0.8rem' }}>
-            None
-          </span>
-        )}
+    <div className="hb-tpl-rel">
+      <span className="hb-tpl-flabel">{label}</span>
+      <div className="hb-tpl-rel-items">
+        {linked.length === 0 && <span className="hb-small">None</span>}
         {linked.map((k) => (
-          <span key={k} className="filter-chip">
+          <span key={k} className="hb-tpl-chip">
             {display(k)}
             <button
               type="button"
-              className="chip-x"
+              className="hb-tpl-chip-x"
               aria-label={`Remove ${display(k)}`}
               onClick={() => onRemove(k)}
             >
-              ×
+              <X size={12} aria-hidden="true" />
             </button>
           </span>
         ))}
         {available.length > 0 && (
-          <select
-            value=""
-            aria-label={`Add ${label}`}
-            onChange={(e) => e.target.value && onAdd(e.target.value)}
-          >
-            <option value="">+ add…</option>
-            {available.map((o) => (
-              <option key={o.key} value={o.key}>
-                {display(o.key)}
-              </option>
-            ))}
-          </select>
+          <Select
+            variant="chip"
+            hideLabel
+            className="hb-tpl-rel-add"
+            label={`Add ${label}`}
+            value={null}
+            placeholder="+ Add"
+            options={available.map((o) => ({ value: o.key, label: display(o.key) }))}
+            onChange={(v) => onAdd(v)}
+          />
         )}
       </div>
     </div>
