@@ -198,3 +198,66 @@ describe('TaskDetailView — the expanded description', () => {
     expect(screen.queryByLabelText('Task description')).toBeNull();
   });
 });
+
+describe('TaskDetailView — Linked tasks', () => {
+  // jsdom has no scrollIntoView; the menus call it to keep the highlight in view.
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+  const ref = (id: number, name: string) =>
+    ({ id, name, status: 'Open', accessible: true }) as const;
+
+  async function renderLinked(over: Partial<TaskDetailDto>) {
+    renderWithDataRouter(
+      <TaskDetailView initialTask={{ ...makeTask(null), ...over }} currentUser={me} />,
+      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
+    );
+    await settle();
+    return screen.getByRole('heading', { name: 'Linked tasks' }).closest('section')!;
+  }
+
+  it('lists every link in one list with its type, and unlinks with ×', async () => {
+    const card = await renderLinked({
+      parent: ref(1, 'Quarter plan'),
+      isBlockedBy: [ref(3, 'Restock')],
+      blocks: [ref(11, 'Ship order')],
+    });
+    const rows = within(card).getAllByRole('listitem');
+    expect(rows.map((r) => r.querySelector('.hb-link-type')?.textContent)).toEqual([
+      'Parent',
+      'Blocked by',
+      'Blocks',
+    ]);
+    // The status shows once, as the pill.
+    expect(within(rows[1]!).queryByText('(Open)')).toBeNull();
+    const removeDependency = api.removeDependency as unknown as ReturnType<typeof vi.fn>;
+    removeDependency.mockResolvedValueOnce(makeTask(null));
+    fireEvent.click(within(card).getByRole('button', { name: 'Unlink blocked by #3' }));
+    await settle();
+    expect(removeDependency).toHaveBeenCalledWith(7, 'blockedBy', 3);
+  });
+
+  it('adds with two dropdowns: type, then a task search', async () => {
+    const card = await renderLinked({});
+    expect(within(card).getByText('Nothing linked yet.')).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: /^Link type/ }));
+    const opts = () => screen.getAllByRole('option').map((o) => o.textContent);
+    expect(opts()).toEqual([
+      'Blocked bywaits for it',
+      'Blocksit waits for this',
+      'Parentthis goes under it',
+    ]);
+    fireEvent.click(screen.getAllByRole('option')[1]!);
+    fireEvent.click(within(card).getByRole('button', { name: /Find a task/ }));
+    expect(screen.getByRole('dialog', { name: 'Blocks' })).toBeInTheDocument();
+  });
+
+  it('leaves Parent out of the types once a parent is set', async () => {
+    const card = await renderLinked({ parent: ref(1, 'Quarter plan') });
+    fireEvent.click(within(card).getByRole('button', { name: /^Link type/ }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Blocked bywaits for it',
+      'Blocksit waits for this',
+    ]);
+  });
+});

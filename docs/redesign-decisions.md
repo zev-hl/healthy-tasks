@@ -93,6 +93,8 @@ stated fallback.
 7. **Department-wide visibility:** "My team" means my departments, but access control may hide some colleagues' tasks from a supervisor who isn't above them. If so, decide whether the dashboard should see them. (To verify.)
 8. **Cross-task activity feed:** "My activity" and the team activity feed for a period. History is stored per task; there may be no endpoint that lists it across tasks. (To verify.)
 9. **Overloaded rule:** if it comes back, the rule and any settings for it.
+10. **"Related" links:** the brief's Linked tasks card has a third type, Related (no blocking). Only
+    Parent, Blocked by and Blocks exist today, so the card's type dropdown offers those three.
 
 ## How the older screens were brought in
 

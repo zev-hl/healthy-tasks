@@ -50,6 +50,8 @@ import {
   Trash2,
   Unlock,
   X,
+  ChevronDown,
+  Search,
 } from 'lucide-react';
 import {
   Bar,
@@ -94,6 +96,13 @@ const PICKER_TEXT: Record<PickerKind, { title: string; hint: string }> = {
   blocks: { title: 'Blocks', hint: 'The task you pick waits until this one is done.' },
 };
 
+/** The type column of the Linked tasks list. */
+const LINK_LABEL: Record<Exclude<PickerKind, 'child'>, string> = {
+  parent: 'Parent',
+  blockedBy: 'Blocked by',
+  blocks: 'Blocks',
+};
+
 interface Props {
   initialTask: TaskDetailDto;
   currentUser: UserDto;
@@ -118,6 +127,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerKind | null>(null);
+  const [linkType, setLinkType] = useState<Exclude<PickerKind, 'child'>>('blockedBy');
   // The button the link picker opened from: the popover sits under it.
   const pickerAnchor = useRef<HTMLElement | null>(null);
   function openPicker(kind: PickerKind, el: HTMLElement) {
@@ -653,6 +663,21 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     }),
     [task.parent, task.children, task.isBlockedBy, task.blocks],
   );
+  // One list of links, parent first (the brief's Linked tasks card).
+  const links: { kind: Exclude<PickerKind, 'child'>; task: TaskRef }[] = [
+    ...(task.parent ? [{ kind: 'parent' as const, task: task.parent }] : []),
+    ...task.isBlockedBy.map((t) => ({ kind: 'blockedBy' as const, task: t })),
+    ...task.blocks.map((t) => ({ kind: 'blocks' as const, task: t })),
+  ];
+  const linkTypeChoices: SelectOption<Exclude<PickerKind, 'child'>>[] = [
+    { value: 'blockedBy', label: 'Blocked by', hint: 'waits for it' },
+    { value: 'blocks', label: 'Blocks', hint: 'it waits for this' },
+    ...(task.parent
+      ? []
+      : [{ value: 'parent' as const, label: 'Parent', hint: 'this goes under it' }]),
+  ];
+  // Once a parent is set, "Parent" leaves the type list: fall back to Blocked by.
+  const addType = linkType === 'parent' && task.parent ? 'blockedBy' : linkType;
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
   // Review workflow: while in Review, Status + Assignee are locked; the two exits
   // (Reviewed / Recall) carry their own permissions.
@@ -1493,59 +1518,67 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 </span>
                 <h3>Linked tasks</h3>
               </div>
-              {(
-                [
-                  {
-                    key: 'parent',
-                    label: 'Parent',
-                    items: task.parent ? [task.parent] : [],
-                    add: !task.parent,
-                    remove: () => runRel(() => api.clearParent(task.id)),
-                  },
-                  { key: 'blockedBy', label: 'Blocked by', items: task.isBlockedBy, add: true },
-                  { key: 'blocks', label: 'Blocks', items: task.blocks, add: true },
-                ] as const
-              ).map((g) => (
-                <div key={g.key} className="hb-link-group">
-                  <div className="hb-link-head">
-                    <span className="hb-label">{g.label}</span>
-                    {canEdit && g.add && (
-                      <Btn
-                        kind="link"
-                        onClick={(e) => openPicker(g.key as PickerKind, e.currentTarget)}
-                      >
-                        + Link
-                      </Btn>
-                    )}
-                  </div>
-                  {g.items.length === 0 ? (
-                    <p className="hb-link-none">Nothing linked yet.</p>
-                  ) : (
-                    g.items.map((t) => (
-                      <div key={t.id} className="hb-link-row">
-                        <TaskRefLink task={t} />
-                        {'status' in t && t.status && <StatusPill status={t.status} />}
-                        {canEdit && (
-                          <button
-                            type="button"
-                            className="hb-x"
-                            aria-label={`Remove ${g.label.toLowerCase()} #${t.id}`}
-                            onClick={() =>
-                              g.key === 'parent'
-                                ? runRel(() => api.clearParent(task.id))
-                                : runRel(() =>
-                                    api.removeDependency(task.id, g.key as DependencyType, t.id),
-                                  )
-                            }
-                          >
-                            <X size={14} aria-hidden="true" />
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
+              {links.length === 0 ? (
+                <p className="hb-link-none">Nothing linked yet.</p>
+              ) : (
+                <ul className="hb-links">
+                  {links.map((l) => (
+                    <li key={`${l.kind}-${l.task.id}`} className="hb-link-row">
+                      <span className="hb-link-type">{LINK_LABEL[l.kind]}</span>
+                      <TaskRefLink task={l.task} hideStatus />
+                      {l.task.status && <StatusPill status={l.task.status} />}
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="hb-x"
+                          aria-label={`Unlink ${LINK_LABEL[l.kind].toLowerCase()} #${l.task.id}`}
+                          onClick={() =>
+                            l.kind === 'parent'
+                              ? runRel(() => api.clearParent(task.id))
+                              : runRel(() =>
+                                  api.removeDependency(
+                                    task.id,
+                                    l.kind as DependencyType,
+                                    l.task.id,
+                                  ),
+                                )
+                          }
+                        >
+                          <X size={14} aria-hidden="true" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {canEdit && (
+                <div className="hb-link-add">
+                  <Select
+                    label="Link type"
+                    variant="field"
+                    value={addType}
+                    options={linkTypeChoices}
+                    onChange={setLinkType}
+                    className="hb-link-add-type"
+                  />
+                  <button
+                    type="button"
+                    className="hb-select hb-select-field is-empty hb-link-add-task"
+                    aria-haspopup="dialog"
+                    aria-expanded={picker === addType}
+                    onClick={(e) => openPicker(addType, e.currentTarget)}
+                  >
+                    <Search size={14} aria-hidden="true" className="hb-link-add-ic" />
+                    <span className="hb-select-value">Find a task</span>
+                    <ChevronDown
+                      className="hb-select-caret"
+                      size={14}
+                      strokeWidth={2.4}
+                      aria-hidden="true"
+                    />
+                  </button>
                 </div>
-              ))}
+              )}
             </section>
 
             <section className="hb-card detail-attachments">
