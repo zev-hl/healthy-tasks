@@ -9694,6 +9694,31 @@ button.dd-quick-btn:hover {
   gap: 8px;
   margin: -4px 0 10px;
 }
+/* "Copy time from" another day, at the top of the day editor. */
+.dd-copy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--canvas);
+  font-size: 12.5px;
+}
+.dd-copy label {
+  font-weight: 600;
+  color: var(--ink);
+}
+.dd-copy input[type='date'] {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+.dd-copy-note {
+  flex-basis: 100%;
+  color: var(--muted);
+}
 
 /* --- Tables (review pivot, related tasks) ------------------------------------ */
 .dd-tbl-wrap {

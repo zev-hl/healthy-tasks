@@ -312,7 +312,7 @@ projects:
                 sync: false
               - key: FRONTEND_URL
                 sync: false
-              - key: CORS_ORIGIN # MUST equal the staging frontend origin
+              - key: CORS_ORIGIN # the staging frontend origin; comma-separated to add the redesign preview
                 sync: false
               - key: JWT_SECRET # different from prod
                 sync: false

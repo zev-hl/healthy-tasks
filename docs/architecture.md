@@ -721,7 +721,7 @@ only, as "noreferrer" would send its `Origin` as `null`.
 **Admins in without the password** (`middleware/queue-dashboard-access.ts`):
 
 - `POST /bullmq/enter` (form body read there only) gives a pass when the form
-  comes from the website (`Origin` equal to `CORS_ORIGIN`) and carries a good
+  comes from the website (`Origin` one of the origins in `CORS_ORIGIN`) and carries a good
   sign-in (`verifyAccessToken`) of an **active Admin** with the current
   `tokenVersion` (role read from the database). The pass goes in a cookie,
   `hl_queue_dashboard`: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/bullmq`, with

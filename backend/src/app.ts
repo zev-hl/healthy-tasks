@@ -20,6 +20,7 @@ import { orgRouter } from './routes/org.routes.js';
 import { timeRouter } from './routes/time.routes.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { enterQueueDashboard, queueDashboardGate } from './middleware/queue-dashboard-access.js';
+import { corsOriginOption } from './utils/cors-origins.js';
 
 export interface AppOptions {
   /**
@@ -36,7 +37,7 @@ export function createApp(options: AppOptions = {}) {
 
   app.use(
     cors({
-      origin: env.corsOrigin,
+      origin: corsOriginOption(env.corsOrigins),
       credentials: true,
       // Let the browser SPA read the rolling-session token off the response.
       exposedHeaders: ['X-Refreshed-Token'],

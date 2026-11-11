@@ -15,7 +15,14 @@ import { Avatar } from '../ui/Avatar';
 import { StatusPill } from '../ui/indicators';
 import { DutyTag, Swatch } from '../duties/DutyTag';
 import type { CatalogDuty } from '../../lib/duties';
-import { addDays, formatLongDay, splitMinutes, todayISO } from '../../lib/calendar';
+import {
+  DOW_SHORT,
+  addDays,
+  formatLongDay,
+  parseDate,
+  splitMinutes,
+  todayISO,
+} from '../../lib/calendar';
 import { isStaleWriteError } from '../../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
 
@@ -57,6 +64,9 @@ export function DayEditorModal({
   const [related, setRelated] = useState<RelatedTaskDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copyFrom, setCopyFrom] = useState('');
+  const [copyNote, setCopyNote] = useState<string | null>(null);
+  const [copying, setCopying] = useState(false);
   const userId = readOnly ? person?.id : undefined;
 
   function adopt(d: TimeDayDto) {
@@ -98,6 +108,27 @@ export function DayEditorModal({
     };
   }, [date, userId]);
 
+  // "Copy time from" starts on the most recent earlier day with time logged
+  // (looking back a month), else the day before.
+  useEffect(() => {
+    if (readOnly) return;
+    let alive = true;
+    setCopyFrom(addDays(date, -1));
+    setCopyNote(null);
+    void api
+      .listTimeDays(addDays(date, -31), addDays(date, -1))
+      .then((days) => {
+        const last = days
+          .filter((d) => d.date < date && d.entries.length > 0)
+          .sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+        if (alive && last) setCopyFrom(last.date);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [date, readOnly]);
+
   const locked = !readOnly && !!day?.completed;
   const total = Object.values(entries).reduce((s, m) => s + m, 0);
   const over = total > TIME_DAY_MAX_MINUTES;
@@ -132,8 +163,11 @@ export function DayEditorModal({
 
   // Duties shown in the editor: the ones held now, plus any that already carry
   // time on this day (no longer held / archived — clear-only).
+  const held = useMemo(
+    () => new Set(heldDutyIds.filter((id) => duties.get(id) && !duties.get(id)!.archived)),
+    [heldDutyIds, duties],
+  );
   const groups = useMemo(() => {
-    const held = new Set(heldDutyIds.filter((id) => duties.get(id) && !duties.get(id)!.archived));
     const ids = new Set<string>([...held, ...Object.keys(entries)]);
     const byDept = new Map<
       string,
@@ -153,7 +187,52 @@ export function DayEditorModal({
     return [...byDept.values()]
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((g) => ({ ...g, rows: g.rows.sort((a, b) => a.duty.name.localeCompare(b.duty.name)) }));
-  }, [heldDutyIds, duties, entries]);
+  }, [held, duties, entries]);
+
+  /**
+   * Fills this day with another day's time, duty by duty. It only fills the
+   * editor: nothing is saved until Save day. Time already entered here is
+   * replaced (after asking). Duties the person no longer holds are skipped, and
+   * the note and the Completed mark are not copied.
+   */
+  async function copyDay() {
+    if (!copyFrom || copyFrom === date) return;
+    const from = formatLongDay(copyFrom);
+    setCopying(true);
+    setCopyNote(null);
+    try {
+      const [src] = await api.listTimeDays(copyFrom, copyFrom);
+      const list = src?.entries ?? [];
+      const usable = list.filter((e) => held.has(e.dutyId));
+      const skipped = list
+        .filter((e) => !held.has(e.dutyId))
+        .map((e) => duties.get(e.dutyId)?.name ?? 'a duty');
+      if (list.length === 0) {
+        setCopyNote(`Nothing is logged on ${from}.`);
+        return;
+      }
+      if (usable.length === 0) {
+        setCopyNote(`Nothing to copy: ${from} only has time on duties you no longer hold.`);
+        return;
+      }
+      if (
+        total > 0 &&
+        !window.confirm(`Replace the ${formatHM(total)} entered here with the time from ${from}?`)
+      ) {
+        return;
+      }
+      setEntries(Object.fromEntries(usable.map((e) => [e.dutyId, e.minutes])));
+      const copied = usable.reduce((s, e) => s + e.minutes, 0);
+      setCopyNote(
+        `Copied ${formatHM(copied)} from ${from}. Check it, then Save day.` +
+          (skipped.length ? ` Skipped ${skipped.join(', ')}: no longer one of your duties.` : ''),
+      );
+    } catch (err) {
+      setCopyNote(err instanceof ApiError ? err.message : 'Couldn’t load that day');
+    } finally {
+      setCopying(false);
+    }
+  }
 
   function setMinutes(dutyId: string, minutes: number) {
     setEntries((e) => {
@@ -322,6 +401,36 @@ export function DayEditorModal({
       </div>
 
       {error && <div className="alert error">{error}</div>}
+      {day && !readOnly && !locked && held.size > 0 && (
+        <div className="dd-copy">
+          <label htmlFor="dd-copy-from">Copy time from</label>
+          <input
+            id="dd-copy-from"
+            type="date"
+            value={copyFrom}
+            max={todayISO()}
+            onChange={(e) => {
+              setCopyFrom(e.target.value);
+              setCopyNote(null);
+            }}
+          />
+          {copyFrom && <span className="muted">{DOW_SHORT[parseDate(copyFrom).getDay()]}</span>}
+          <button
+            type="button"
+            className="secondary btn-sm"
+            disabled={!copyFrom || copyFrom === date || copyFrom > todayISO() || copying}
+            title={copyFrom === date ? 'Pick a different day' : undefined}
+            onClick={() => void copyDay()}
+          >
+            {copying ? 'Copying…' : 'Copy'}
+          </button>
+          {copyNote && (
+            <span className="dd-copy-note" role="status">
+              {copyNote}
+            </span>
+          )}
+        </div>
+      )}
       {!day ? (
         <div className="dd-empty">{error ? '' : 'Loading…'}</div>
       ) : readOnly || locked ? (
