@@ -172,7 +172,12 @@ export function TaskTable({
                     <span className="hb-task-sub">
                       #{t.id}
                       {t.duty && <> · {dutyLabel(t.duty)}</>}
-                      {t.childrenCount > 0 && <> · {t.childrenCount} sub-tasks</>}
+                      {t.childrenCount > 0 && (
+                        <>
+                          {' '}
+                          · {t.childrenCount} sub-task{t.childrenCount === 1 ? '' : 's'}
+                        </>
+                      )}
                       {t.dutyMismatch && (
                         <span className="hb-warn-note"> · owner doesn’t hold this duty</span>
                       )}

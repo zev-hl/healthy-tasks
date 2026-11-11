@@ -1,15 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, Eye, Lock } from 'lucide-react';
 import {
   TASK_STATUSES,
   TASK_STATUS_LABELS,
+  dutyLabel,
   type TaskRowDto,
   type TaskStatus,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { Avatar, UnassignedAvatar, userLabel } from './ui/Avatar';
-import { PriorityRamp, statusColor } from './ui/indicators';
-import { DueDate } from './ui/dates';
+import { CountBadge, PriorityMark, STATUS_DOT, cx } from './harbor/ui';
+import { dueInfo } from './harbor/taskHelpers';
+import { useToast } from './harbor/Toast';
 import { ReviewerPicker } from './ReviewerPicker';
 
 interface Props {
@@ -19,75 +22,106 @@ interface Props {
   onChanged: () => void;
 }
 
-function TagChips({ tags }: { tags: string[] }) {
-  if (tags.length === 0) return null;
-  const shown = tags.slice(0, 3);
-  const extra = tags.length - shown.length;
-  return (
-    <div className="tags-cell">
-      {shown.map((t) => (
-        <span key={t} className="badge tag">
-          {t}
-        </span>
-      ))}
-      {extra > 0 && (
-        <span className="badge tag-more" title={tags.slice(3).join(', ')}>
-          +{extra}
-        </span>
-      )}
-    </div>
-  );
+const FOLD_KEY = 'hb-board-folded';
+/** Canceled starts folded: it's rarely a place work moves to. */
+const DEFAULT_FOLDED: TaskStatus[] = ['Canceled'];
+
+function readFolded(): TaskStatus[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(FOLD_KEY) ?? 'null') as TaskStatus[] | null;
+    return Array.isArray(v) ? v : DEFAULT_FOLDED;
+  } catch {
+    return DEFAULT_FOLDED;
+  }
 }
 
 /**
- * Kanban board (Phase 10). Six fixed columns in Status order; one card per task
- * (sub-tasks get their own card — Status is per-task). Dragging a card to another
- * column changes that task's Status through the same PATCH the List/Detail views
- * use, so the blocked-status rule and Review workflow apply identically:
- *  - dropping a blocked task on Review/Completed is rejected with the server's
- *    "blocked by #X" message (shown in place),
- *  - dropping on Review opens the reviewer picker,
- *  - cards already in Review are locked (not draggable) — they leave Review only
- *    via the Task Detail Reviewed / Recall buttons.
+ * The Board (Phase 10, Harbor redesign). Six columns in Status order; one card
+ * per task (sub-tasks get their own card — Status is per-task). Dragging a card
+ * to another column changes its Status through the same update the List and
+ * task page use, so the blocked-status rule and the Review workflow apply the
+ * same way:
+ *  - a refused move (e.g. "blocked by #X") snaps back with the reason in a toast,
+ *  - dropping on Review opens the reviewer menu under the card,
+ *  - cards in Review are locked: they leave it only from the task page,
+ *  - read-only cards (mentioned, or seen through the task tree) can't be moved.
+ * Every other move says what happened in a toast with Undo, and the card flashes.
+ * A column can be folded to a narrow strip (still a drop target); the choice is
+ * remembered in this browser.
  */
 export function TaskKanban({ rows, loading, onChanged }: Props) {
+  const toast = useToast();
   const [cards, setCards] = useState<TaskRowDto[]>(rows);
   const [dragId, setDragId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [pendingReview, setPendingReview] = useState<TaskRowDto | null>(null);
+  const [flash, setFlash] = useState<number | null>(null);
+  const [folded, setFolded] = useState<TaskStatus[]>(readFolded);
   const reviewAnchor = useRef<HTMLElement | null>(null);
+  // The dragged card, also kept outside state so a drop never reads a stale value.
+  const dragRef = useRef<number | null>(null);
 
   useEffect(() => setCards(rows), [rows]);
 
-  const byStatus = (status: TaskStatus): TaskRowDto[] => cards.filter((c) => c.status === status);
+  function toggleFold(s: TaskStatus) {
+    setFolded((f) => {
+      const next = f.includes(s) ? f.filter((x) => x !== s) : [...f, s];
+      try {
+        localStorage.setItem(FOLD_KEY, JSON.stringify(next));
+      } catch {
+        // Private mode: the fold just isn't remembered.
+      }
+      return next;
+    });
+  }
 
-  async function commitStatus(task: TaskRowDto, status: TaskStatus, reviewerId?: string) {
-    setError(null);
+  async function commitStatus(
+    task: TaskRowDto,
+    status: TaskStatus,
+    opts: { reviewerId?: string; undoable?: boolean } = {},
+  ) {
+    const from = task.status;
     // Optimistic move; the refetch (onChanged) reconciles with the server truth.
     setCards((cs) => cs.map((c) => (c.id === task.id ? { ...c, status } : c)));
     try {
-      await api.updateTask(task.id, { status, ...(reviewerId ? { reviewerId } : {}) });
+      await api.updateTask(task.id, {
+        status,
+        ...(opts.reviewerId ? { reviewerId: opts.reviewerId } : {}),
+      });
       onChanged();
+      setFlash(task.id);
+      window.setTimeout(() => setFlash((f) => (f === task.id ? null : f)), 1600);
+      toast({
+        message: `“${task.name}” moved to ${TASK_STATUS_LABELS[status]}.`,
+        undo:
+          opts.undoable === false
+            ? undefined
+            : () => void commitStatus({ ...task, status }, from, { undoable: false }),
+      });
     } catch (err) {
-      // Revert and surface the reason (e.g. blocked by #X).
-      setCards(rows);
-      setError(err instanceof ApiError ? err.message : 'Could not update status');
+      setCards((cs) => cs.map((c) => (c.id === task.id ? { ...c, status: from } : c)));
+      toast({
+        message: `“${task.name}” stayed in ${TASK_STATUS_LABELS[from]}: ${
+          err instanceof ApiError ? err.message : 'the status could not be changed'
+        }`,
+        tone: 'error',
+      });
     }
   }
 
   function onDrop(status: TaskStatus) {
-    const id = dragId;
+    const id = dragRef.current;
+    dragRef.current = null;
     setDragId(null);
     setOverCol(null);
     if (id == null) return;
     const task = cards.find((c) => c.id === id);
     if (!task || task.status === status) return;
     if (status === 'Review') {
-      // Choose a reviewer first; the commit happens on confirm.
-      // The reviewer menu opens under the dropped card.
+      // Choose a reviewer first; the commit happens on confirm. The menu opens
+      // under the dropped card.
       reviewAnchor.current = document.querySelector<HTMLElement>(
-        `.kanban-card[data-task-id="${task.id}"]`,
+        `.hb-bcard[data-task-id="${task.id}"]`,
       );
       reviewAnchor.current?.scrollIntoView({ block: 'nearest' });
       setPendingReview(task);
@@ -96,107 +130,186 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
     void commitStatus(task, status);
   }
 
+  const dragging = dragId != null;
+
   return (
-    <div className="kanban-wrap">
-      {error && <div className="alert error">{error}</div>}
-      <div className="kanban-board">
-        {TASK_STATUSES.map((status) => {
-          const column = byStatus(status);
+    <div className={cx('hb-board', dragging && 'is-dragging')}>
+      {TASK_STATUSES.map((status) => {
+        const column = cards.filter((c) => c.status === status);
+        const isFolded = folded.includes(status);
+        const label = TASK_STATUS_LABELS[status];
+        const dropProps = {
+          onDragOver: (e: DragEvent) => {
+            e.preventDefault();
+            if (overCol !== status) setOverCol(status);
+          },
+          onDragLeave: (e: DragEvent) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setOverCol((c) => (c === status ? null : c));
+            }
+          },
+          onDrop: (e: DragEvent) => {
+            e.preventDefault();
+            onDrop(status);
+          },
+        };
+
+        if (isFolded) {
           return (
             <section
               key={status}
-              className={`kanban-col${overCol === status ? ' drag-over' : ''}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (overCol !== status) setOverCol(status);
-              }}
-              onDragLeave={() => setOverCol((c) => (c === status ? null : c))}
-              onDrop={() => onDrop(status)}
+              className={cx('hb-bcol is-folded', overCol === status && 'is-over')}
+              aria-label={`${label}, ${column.length} tasks, folded`}
+              {...dropProps}
             >
-              <header className="kanban-col-head">
-                <span className="kanban-col-dot" style={{ background: statusColor(status) }} />
-                <span className="kanban-col-title">{TASK_STATUS_LABELS[status]}</span>
-                <span className="mono kanban-col-count">{column.length}</span>
-              </header>
-              <div className="kanban-col-body">
-                {column.map((task) => {
-                  const inReview = task.status === 'Review';
-                  // Read-only tasks (mention-only OR tree-inherited) can't change
-                  // Status/dates — not draggable — but commenting still works.
-                  const readOnly = task.mentionOnly || task.treeOnly;
-                  const locked = inReview || readOnly;
-                  return (
-                    <article
-                      key={task.id}
-                      data-task-id={task.id}
-                      className={`kanban-card${locked ? ' locked' : ''}${dragId === task.id ? ' dragging' : ''}`}
-                      draggable={!locked}
-                      onDragStart={(e) => {
-                        if (locked) return;
-                        setDragId(task.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('text/plain', String(task.id));
-                      }}
-                      onDragEnd={() => {
-                        setDragId(null);
-                        setOverCol(null);
-                      }}
-                    >
-                      <div className="kanban-card-top">
-                        <Link to={`/tasks/${task.id}`} className="mono task-id-link">
-                          #{task.id}
-                        </Link>
-                        <PriorityRamp
-                          priority={task.priority}
-                          dimmed={task.status === 'Completed'}
-                        />
-                      </div>
-                      <Link to={`/tasks/${task.id}`} className="kanban-card-title">
-                        {task.name}
-                      </Link>
-                      <TagChips tags={task.tags} />
-                      <div className="kanban-card-foot">
-                        <DueDate
-                          iso={task.dueAt}
-                          status={task.status}
-                          completedAt={task.statusChangedAt}
-                          isDue
-                          inline
-                        />
+              <button
+                type="button"
+                className="hb-bcol-unfold"
+                onClick={() => toggleFold(status)}
+                title={`Show ${label}`}
+                aria-label={`Show ${label}`}
+              >
+                <ChevronRight size={14} aria-hidden="true" />
+                <span className="hb-dot" style={{ background: STATUS_DOT[status] }} />
+                <span className="hb-bcol-vlabel">{label}</span>
+                <CountBadge n={column.length} />
+              </button>
+            </section>
+          );
+        }
+
+        return (
+          <section
+            key={status}
+            className={cx('hb-bcol', overCol === status && 'is-over')}
+            aria-label={`${label}, ${column.length} tasks`}
+            {...dropProps}
+          >
+            <header className="hb-bcol-head">
+              <span className="hb-dot" style={{ background: STATUS_DOT[status] }} />
+              <h3>{label}</h3>
+              <CountBadge n={column.length} />
+              <button
+                type="button"
+                className="hb-bcol-fold"
+                onClick={() => toggleFold(status)}
+                title={`Fold ${label}`}
+                aria-label={`Fold ${label}`}
+              >
+                <ChevronLeft size={14} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="hb-bcol-body">
+              {column.map((task) => {
+                const inReview = task.status === 'Review';
+                // Read-only tasks (mention-only or tree-inherited) can't change
+                // Status, so they don't drag; commenting still works.
+                const readOnly = task.mentionOnly || task.treeOnly;
+                const locked = inReview || readOnly;
+                const due = dueInfo(task.dueAt, task.status);
+                const done = task.status === 'Completed' || task.status === 'Canceled';
+                return (
+                  <article
+                    key={task.id}
+                    data-task-id={task.id}
+                    className={cx(
+                      'hb-bcard',
+                      locked && 'is-locked',
+                      dragId === task.id && 'is-dragging',
+                      flash === task.id && 'is-flash',
+                      done && 'is-done',
+                    )}
+                    draggable={!locked}
+                    onDragStart={(e) => {
+                      if (locked) return;
+                      dragRef.current = task.id;
+                      setDragId(task.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', String(task.id));
+                    }}
+                    onDragEnd={() => {
+                      dragRef.current = null;
+                      setDragId(null);
+                      setOverCol(null);
+                    }}
+                  >
+                    <Link to={`/tasks/${task.id}`} className="hb-bcard-title">
+                      {task.name}
+                    </Link>
+                    <span className="hb-bcard-sub">
+                      #{task.id}
+                      {task.duty && <> · {dutyLabel(task.duty)}</>}
+                      {task.childrenCount > 0 && (
+                        <>
+                          {' '}
+                          · {task.childrenCount} sub-task{task.childrenCount === 1 ? '' : 's'}
+                        </>
+                      )}
+                    </span>
+                    {task.tags.length > 0 && (
+                      <span className="hb-bcard-tags">
+                        {task.tags.slice(0, 2).map((t) => (
+                          <span key={t} className="hb-tag">
+                            {t}
+                          </span>
+                        ))}
+                        {task.tags.length > 2 && (
+                          <span className="hb-tag" title={task.tags.slice(2).join(', ')}>
+                            +{task.tags.length - 2}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    <div className="hb-bcard-foot">
+                      {due ? (
+                        <span className={cx('hb-bcard-due', due.late && 'is-late')}>
+                          {due.text}
+                        </span>
+                      ) : (
+                        <span className="hb-bcard-due is-none">No due date</span>
+                      )}
+                      {(task.priority === 'High' || task.priority === 'Urgent') && !done && (
+                        <PriorityMark priority={task.priority} />
+                      )}
+                      {inReview && (
+                        <span className="hb-bcard-flag" title="Locked while in review">
+                          <Lock size={12} aria-hidden="true" /> In review
+                        </span>
+                      )}
+                      {!inReview && readOnly && (
+                        <span
+                          className="hb-bcard-flag"
+                          title={
+                            task.treeOnly && !task.mentionOnly
+                              ? 'Read-only: you see it through its parent or sub-task'
+                              : 'Read-only: you see it because you were mentioned'
+                          }
+                        >
+                          <Eye size={12} aria-hidden="true" /> View only
+                        </span>
+                      )}
+                      <span
+                        className="hb-bcard-who"
+                        title={task.assignee ? userLabel(task.assignee) : 'Unassigned'}
+                      >
                         {task.assignee ? (
-                          <Avatar user={task.assignee} size="xs" />
+                          <Avatar user={task.assignee} px={24} decorative />
                         ) : (
                           <UnassignedAvatar size="xs" />
                         )}
-                      </div>
-                      {inReview && (
-                        <span className="kanban-lock" title="Locked while in Review">
-                          🔒
-                        </span>
-                      )}
-                      {!inReview && (task.mentionOnly || task.treeOnly) && (
-                        <span
-                          className="kanban-lock read-only-cue"
-                          title={
-                            task.treeOnly && !task.mentionOnly
-                              ? 'Read-only — visible via its parent/child tree position'
-                              : "Read-only — you can see this because you're mentioned"
-                          }
-                        >
-                          {task.treeOnly && !task.mentionOnly ? '🌳' : '👁'}
-                        </span>
-                      )}
-                    </article>
-                  );
-                })}
-                {column.length === 0 && (
-                  <div className="kanban-col-empty">{loading ? '…' : 'Drop here'}</div>
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+                      </span>
+                    </div>
+                  </article>
+                );
+              })}
+              {column.length === 0 && (
+                <div className="hb-bcol-empty">{loading ? 'Loading…' : 'None in this view'}</div>
+              )}
+              {dragging && column.length > 0 && <div className="hb-bcol-drop">Drop here</div>}
+            </div>
+          </section>
+        );
+      })}
 
       {pendingReview && (
         <ReviewerPicker
@@ -210,7 +323,7 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
           onPick={async (reviewerId) => {
             const task = pendingReview;
             setPendingReview(null);
-            await commitStatus(task, 'Review', reviewerId);
+            await commitStatus(task, 'Review', { reviewerId, undoable: false });
           }}
         />
       )}
