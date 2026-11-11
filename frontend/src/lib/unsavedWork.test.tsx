@@ -35,8 +35,7 @@ const { useBackdropDismiss } = await import('./useBackdropDismiss');
 const { TaskForm } = await import('../components/TaskForm');
 const { GoalForm } = await import('../components/goals/GoalForm');
 const { GoalPanel } = await import('../components/goals/GoalPanel');
-const { UserFormModal } = await import('../components/UserFormModal');
-const { UserEditModal } = await import('../components/UserEditModal');
+const { UserCreatePanel, UserEditPanel } = await import('../components/users/UserPanels');
 const { UNSAVED_CHANGES_MESSAGE } = await import('./useUnsavedChangesWarning');
 const { renderWithDataRouter } = await import('../test/render');
 const m = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
@@ -221,11 +220,11 @@ describe('Goal editor', () => {
 });
 
 describe('New user form', () => {
-  it('asks on a click outside once something is typed, and stays open on Cancel', () => {
+  it('asks on Close once something is typed, and stays open when told to stay', () => {
     const onClose = vi.fn();
-    renderWithSidebar(<UserFormModal onClose={onClose} onCreated={vi.fn()} />);
+    renderWithSidebar(<UserCreatePanel onClose={onClose} onCreated={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
-    clickBackdrop();
+    clickClose();
     expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -233,7 +232,7 @@ describe('New user form', () => {
   it('asks on its Cancel button too, and closes on OK', () => {
     confirm.mockReturnValue(true);
     const onClose = vi.fn();
-    renderWithSidebar(<UserFormModal onClose={onClose} onCreated={vi.fn()} />);
+    renderWithSidebar(<UserCreatePanel onClose={onClose} onCreated={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
     clickCancel();
     expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
@@ -242,14 +241,14 @@ describe('New user form', () => {
 
   it('closes on Cancel without asking while still empty', () => {
     const onClose = vi.fn();
-    renderWithSidebar(<UserFormModal onClose={onClose} onCreated={vi.fn()} />);
+    renderWithSidebar(<UserCreatePanel onClose={onClose} onCreated={vi.fn()} />);
     clickCancel();
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(confirm).not.toHaveBeenCalled();
   });
 
   it('keeps Create user off until something is filled in', () => {
-    renderWithSidebar(<UserFormModal onClose={vi.fn()} onCreated={vi.fn()} />);
+    renderWithSidebar(<UserCreatePanel onClose={vi.fn()} onCreated={vi.fn()} />);
     const create = () => screen.getByRole('button', { name: 'Create user' });
     expect(create()).toBeDisabled();
 
@@ -259,7 +258,7 @@ describe('New user form', () => {
     expect(create()).toBeDisabled();
 
     // Picking a role other than the default counts too.
-    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'Manager' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Manager' }));
     expect(create()).toBeEnabled();
   });
 });
@@ -277,14 +276,14 @@ describe('Edit user form', () => {
     isActive: true,
   } as unknown as UserDto;
 
-  it('asks on Cancel and on a click outside once something changed', () => {
+  it('asks on Cancel and on Close once something changed', () => {
     const onClose = vi.fn();
     renderWithSidebar(
-      <UserEditModal user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
+      <UserEditPanel user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
     );
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ana' } });
     clickCancel();
-    clickBackdrop();
+    clickClose();
     expect(confirm).toHaveBeenCalledTimes(2);
     expect(onClose).not.toHaveBeenCalled();
 
@@ -296,7 +295,7 @@ describe('Edit user form', () => {
   it('closes without asking when nothing changed', () => {
     const onClose = vi.fn();
     renderWithSidebar(
-      <UserEditModal user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
+      <UserEditPanel user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
     );
     clickCancel();
     expect(onClose).toHaveBeenCalledTimes(1);

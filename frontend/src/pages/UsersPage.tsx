@@ -23,9 +23,7 @@ import type {
 import { DEFAULT_PAGE_SIZE, ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { UserFormModal } from '../components/UserFormModal';
-import { UserEditModal } from '../components/UserEditModal';
-import { MergeUsersModal } from '../components/MergeUsersModal';
+import { MergeUsersPanel, UserCreatePanel, UserEditPanel } from '../components/users/UserPanels';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
@@ -79,6 +77,7 @@ export function UsersPage() {
   const [showMerge, setShowMerge] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const [editing, setEditing] = useState<UserDto | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -175,7 +174,20 @@ export function UsersPage() {
     }
   }
 
+  // One side panel at a time: add, edit or merge.
+  function openCreate() {
+    setEditing(null);
+    setShowMerge(false);
+    setShowCreate(true);
+  }
+  function openEdit(u: UserDto) {
+    setShowCreate(false);
+    setShowMerge(false);
+    setEditing(u);
+  }
   async function openMerge() {
+    setEditing(null);
+    setShowCreate(false);
     try {
       setMergeAll(await api.listUsers());
     } catch {
@@ -193,6 +205,12 @@ export function UsersPage() {
   }, [rows, supervisors, mergeAll]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const panelOpen = !!editing || showCreate || showMerge;
+  // On narrow screens the panel sits below the table: bring it into view.
+  useEffect(() => {
+    if (panelOpen && window.matchMedia?.('(max-width: 1359px)').matches)
+      panelRef.current?.scrollIntoView({ block: 'start' });
+  }, [panelOpen, editing?.id]);
 
   // --- Filter chips (as on Tasks) --------------------------------------------
   type ListKey = 'roles' | 'supervisorIds' | 'title' | 'firstName' | 'lastName' | 'email';
@@ -300,7 +318,7 @@ export function UsersPage() {
             <Btn onClick={() => void openMerge()}>
               <GitMerge size={16} aria-hidden="true" /> Merge users
             </Btn>
-            <Btn kind="primary" onClick={() => setShowCreate(true)}>
+            <Btn kind="primary" onClick={openCreate}>
               <Plus size={16} aria-hidden="true" /> Add user
             </Btn>
           </>
@@ -481,203 +499,214 @@ export function UsersPage() {
           )}
         </div>
 
-        <Card className="hb-table-card">
-          <div className="hb-table-wrap">
-            <table className="hb-table hb-users-table">
-              <thead>
-                <tr>
-                  {th('lastName', 'Person')}
-                  {th('role', 'Role')}
-                  {th('title', 'Title')}
-                  {th('supervisor', 'Supervisor')}
-                  {th('status', 'Status')}
-                  <th className="hb-users-act">
-                    <span className="hb-sr">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((u) => {
-                  const merged = u.mergedIntoId !== null;
-                  const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
-                  const hasName = !!(u.firstName || u.lastName);
-                  return (
-                    <tr key={u.id} className={cx(!u.isActive && 'is-off')}>
-                      <td>
-                        <div className="hb-user">
-                          <Avatar user={u} px={32} decorative />
-                          <div className="hb-stack">
-                            <span className="hb-name">
-                              {hasName ? (
-                                userLabel(u)
-                              ) : merged ? (
-                                <span className="hb-small">—</span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="hb-tpl-crumb"
-                                  onClick={() => setEditing(u)}
-                                >
-                                  + Add name
-                                </button>
-                              )}
-                              {me?.id === u.id && <span className="hb-you">You</span>}
-                            </span>
-                            <span className="hb-sub">{u.email}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <Pill tone={ROLE_TONE[u.role]}>{u.role}</Pill>
-                      </td>
-                      <td>{u.title ?? <span className="hb-small">—</span>}</td>
-                      <td>
-                        {supervisor ? (
-                          <span className="hb-user-mini">
-                            <Avatar user={supervisor} size="xs" decorative />
-                            {userLabel(supervisor)}
-                          </span>
-                        ) : (
-                          <span className="hb-small">—</span>
-                        )}
-                      </td>
-                      <td>{statusPill(u)}</td>
-                      <td className="hb-users-act">
-                        {merged ? (
-                          <span className="hb-small">
-                            → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
-                          </span>
-                        ) : (
-                          <span className="hb-users-btns">
-                            {/* A company account has no password, so a reset link
+        <div className={cx(panelOpen && 'hb-cols hb-users-cols')}>
+          <div className="hb-col">
+            <Card className="hb-table-card">
+              <div className="hb-table-wrap">
+                <table className="hb-table hb-users-table">
+                  <thead>
+                    <tr>
+                      {th('lastName', 'Person')}
+                      {th('role', 'Role')}
+                      {th('title', 'Title')}
+                      {th('supervisor', 'Supervisor')}
+                      {th('status', 'Status')}
+                      <th className="hb-users-act">
+                        <span className="hb-sr">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((u) => {
+                      const merged = u.mergedIntoId !== null;
+                      const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
+                      const hasName = !!(u.firstName || u.lastName);
+                      return (
+                        <tr
+                          key={u.id}
+                          className={cx(!u.isActive && 'is-off', editing?.id === u.id && 'is-sel')}
+                        >
+                          <td>
+                            <div className="hb-user">
+                              <Avatar user={u} px={32} decorative />
+                              <div className="hb-stack">
+                                <span className="hb-name">
+                                  {hasName ? (
+                                    userLabel(u)
+                                  ) : merged ? (
+                                    <span className="hb-small">—</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="hb-tpl-crumb"
+                                      onClick={() => openEdit(u)}
+                                    >
+                                      + Add name
+                                    </button>
+                                  )}
+                                  {me?.id === u.id && <span className="hb-you">You</span>}
+                                </span>
+                                <span className="hb-sub">{u.email}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <Pill tone={ROLE_TONE[u.role]}>{u.role}</Pill>
+                          </td>
+                          <td>{u.title ?? <span className="hb-small">—</span>}</td>
+                          <td>
+                            {supervisor ? (
+                              <span className="hb-user-mini">
+                                <Avatar user={supervisor} size="xs" decorative />
+                                {userLabel(supervisor)}
+                              </span>
+                            ) : (
+                              <span className="hb-small">—</span>
+                            )}
+                          </td>
+                          <td>{statusPill(u)}</td>
+                          <td className="hb-users-act">
+                            {merged ? (
+                              <span className="hb-small">
+                                → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
+                              </span>
+                            ) : (
+                              <span className="hb-users-btns">
+                                {/* A company account has no password, so a reset link
                               would lead nowhere. The server refuses it too; this
                               just stops an admin reaching for a dead button. */}
-                            {u.signInMethod === 'password' && (
-                              <Btn
-                                kind="ghost"
-                                className="hb-btn-sm"
-                                onClick={() => void handleReset(u)}
-                                title="Send this user a link to set a password"
-                              >
-                                <KeyRound size={14} aria-hidden="true" /> Reset password
-                              </Btn>
+                                {u.signInMethod === 'password' && (
+                                  <Btn
+                                    kind="ghost"
+                                    className="hb-btn-sm"
+                                    onClick={() => void handleReset(u)}
+                                    title="Send this user a link to set a password"
+                                  >
+                                    <KeyRound size={14} aria-hidden="true" /> Reset password
+                                  </Btn>
+                                )}
+                                <button
+                                  type="button"
+                                  className="hb-icon-btn hb-icon-btn-sm"
+                                  title={`Edit ${u.email}`}
+                                  aria-label={`Edit ${u.email}`}
+                                  onClick={() => openEdit(u)}
+                                >
+                                  <Pencil size={15} aria-hidden="true" />
+                                </button>
+                              </span>
                             )}
-                            <button
-                              type="button"
-                              className="hb-icon-btn hb-icon-btn-sm"
-                              title={`Edit ${u.email}`}
-                              aria-label={`Edit ${u.email}`}
-                              onClick={() => setEditing(u)}
-                            >
-                              <Pencil size={15} aria-hidden="true" />
-                            </button>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!loading && rows.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="hb-table-empty">
-                      No users match. Try other filters, or add a new user.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!loading && rows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="hb-table-empty">
+                          No users match. Try other filters, or add a new user.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="hb-pager">
+                <span className="hb-small">
+                  {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
+                </span>
+                <span className="hb-grow" />
+                <Select
+                  variant="chip"
+                  label="Rows"
+                  value={String(pageSize)}
+                  options={PAGE_SIZE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+                  onChange={(v) => {
+                    setPageSize(Number(v));
+                    setPage(1);
+                  }}
+                />
+                <span className="hb-small">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="hb-icon-btn hb-icon-btn-sm"
+                  aria-label="Previous page"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <ChevronLeft size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="hb-icon-btn hb-icon-btn-sm"
+                  aria-label="Next page"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </Card>
           </div>
-          <div className="hb-pager">
-            <span className="hb-small">
-              {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
-            </span>
-            <span className="hb-grow" />
-            <Select
-              variant="chip"
-              label="Rows"
-              value={String(pageSize)}
-              options={PAGE_SIZE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
-              onChange={(v) => {
-                setPageSize(Number(v));
-                setPage(1);
-              }}
-            />
-            <span className="hb-small">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className="hb-icon-btn hb-icon-btn-sm"
-              aria-label="Previous page"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft size={16} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="hb-icon-btn hb-icon-btn-sm"
-              aria-label="Next page"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              <ChevronRight size={16} aria-hidden="true" />
-            </button>
-          </div>
-        </Card>
+          {panelOpen && (
+            <aside className="hb-col hb-gside" ref={panelRef}>
+              {editing && (
+                <UserEditPanel
+                  key={editing.id}
+                  user={editing}
+                  supervisors={supervisors}
+                  onClose={() => setEditing(null)}
+                  onSaved={(message, link) => {
+                    setEditing(null);
+                    setNotice(message);
+                    // A set-password link when the new address needs one; otherwise
+                    // clear any link left from an earlier reset.
+                    setResetLink(link ?? null);
+                    void load();
+                    loadSupervisors();
+                    loadOptions();
+                    loadCounts();
+                  }}
+                />
+              )}
 
-        {editing && (
-          <UserEditModal
-            user={editing}
-            supervisors={supervisors}
-            onClose={() => setEditing(null)}
-            onSaved={(message, link) => {
-              setEditing(null);
-              setNotice(message);
-              // A set-password link when the new address needs one; otherwise
-              // clear any link left from an earlier reset.
-              setResetLink(link ?? null);
-              void load();
-              loadSupervisors();
-              loadOptions();
-              loadCounts();
-            }}
-          />
-        )}
+              {showCreate && (
+                <UserCreatePanel
+                  onClose={() => setShowCreate(false)}
+                  onCreated={(signInMethod) => {
+                    setShowCreate(false);
+                    setNotice(
+                      signInMethod === 'google'
+                        ? 'User created. They were sent a welcome message and sign in with Google — ' +
+                            'there is no password to hand over.'
+                        : 'User created. A welcome email with a link to set their password is on its way.',
+                    );
+                    void load();
+                    loadSupervisors();
+                    loadOptions();
+                    loadCounts();
+                  }}
+                />
+              )}
 
-        {showCreate && (
-          <UserFormModal
-            onClose={() => setShowCreate(false)}
-            onCreated={(signInMethod) => {
-              setShowCreate(false);
-              setNotice(
-                signInMethod === 'google'
-                  ? 'User created. They were sent a welcome message and sign in with Google — ' +
-                      'there is no password to hand over.'
-                  : 'User created. A welcome email with a link to set their password is on its way.',
-              );
-              void load();
-              loadSupervisors();
-              loadOptions();
-              loadCounts();
-            }}
-          />
-        )}
-
-        {showMerge && (
-          <MergeUsersModal
-            users={mergeAll}
-            onClose={() => setShowMerge(false)}
-            onMerged={(message) => {
-              setShowMerge(false);
-              setNotice(message);
-              void load();
-              loadSupervisors();
-              loadOptions();
-              loadCounts();
-            }}
-          />
-        )}
+              {showMerge && (
+                <MergeUsersPanel
+                  users={mergeAll}
+                  onClose={() => setShowMerge(false)}
+                  onMerged={(message) => {
+                    setShowMerge(false);
+                    setNotice(message);
+                    void load();
+                    loadSupervisors();
+                    loadOptions();
+                    loadCounts();
+                  }}
+                />
+              )}
+            </aside>
+          )}
+        </div>
       </PageBody>
     </>
   );

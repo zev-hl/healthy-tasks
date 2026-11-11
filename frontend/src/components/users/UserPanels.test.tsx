@@ -2,15 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/react';
 import type { EmailChangeSummary, UserDto } from '@healthy-tasks/shared';
 
-vi.mock('../api/client', () => ({
+vi.mock('../../api/client', () => ({
   api: { updateUser: vi.fn() },
   ApiError: class ApiError extends Error {},
 }));
 
-const { api } = await import('../api/client');
-const { UserEditModal, savedMessage } = await import('./UserEditModal');
+const { api } = await import('../../api/client');
+const { UserEditPanel, savedMessage } = await import('./UserPanels');
 // A data router: the modal's unsaved-changes guard uses useBlocker.
-const { renderWithDataRouter } = await import('../test/render');
+const { renderWithDataRouter } = await import('../../test/render');
 const updateUser = api.updateUser as unknown as ReturnType<typeof vi.fn>;
 
 const user = {
@@ -73,7 +73,7 @@ describe('what the admin is told after saving', () => {
   });
 });
 
-describe('UserEditModal', () => {
+describe('UserEditPanel', () => {
   it('passes on what the address change sent, and the set-password link', async () => {
     const summary = change({
       resetLink: 'http://x.test/reset-password?token=t',
@@ -82,7 +82,7 @@ describe('UserEditModal', () => {
     updateUser.mockResolvedValue({ ...user, email: 'user2@gmail.com', emailChange: summary });
     const onSaved = vi.fn();
     renderWithDataRouter(
-      <UserEditModal user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />,
+      <UserEditPanel user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />,
     );
 
     fireEvent.change(screen.getByLabelText('Email (login id)'), {
@@ -103,7 +103,7 @@ describe('UserEditModal', () => {
     updateUser.mockResolvedValue({ ...user, title: 'Lead' });
     const onSaved = vi.fn();
     renderWithDataRouter(
-      <UserEditModal user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />,
+      <UserEditPanel user={user} supervisors={[]} onClose={vi.fn()} onSaved={onSaved} />,
     );
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Lead' } });
