@@ -4618,3 +4618,55 @@ textarea.hb-tpl-input {
     margin-left: 56px;
   }
 }
+
+/* A section's own pages, under its sidebar item while you are in it. */
+.sidebar .side-nav-item.open {
+  color: #fff;
+  font-weight: 600;
+}
+.sidebar .side-sub-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  margin-left: 22px;
+  padding: 0 12px 0 20px;
+  border-radius: 8px;
+  color: var(--side-text);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background var(--dur) ease,
+    color var(--dur) ease;
+}
+.sidebar .side-sub-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -2px;
+  bottom: -2px;
+  border-left: 1px solid var(--side-line);
+}
+.sidebar .side-sub-item:hover {
+  background: var(--side-hover);
+  color: #fff;
+  text-decoration: none;
+}
+.sidebar .side-sub-item.active {
+  background: var(--side-active);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--side-active-bar);
+}
+/* The top bar on tablets and phones has no room for them: the section's
+   own header (the Templates button on Tasks) is the way in there. */
+@media (max-width: 819px) {
+  .sidebar .side-sub-item {
+    display: none;
+  }
+  .sidebar .side-nav-item.open {
+    background: var(--side-active);
+    box-shadow: inset 0 -3px 0 var(--side-active-bar);
+  }
+}

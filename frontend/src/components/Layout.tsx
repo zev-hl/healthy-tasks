@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   Clock,
   LayoutDashboard,
@@ -29,6 +29,8 @@ interface NavEntry {
   /** Other paths that light this item up (its tabs and sub-pages). */
   match: string[];
   roles?: Role[];
+  /** Pages inside this section, listed under it while you are in the section. */
+  subs?: { to: string; label: string; roles?: Role[] }[];
 }
 
 const MANAGERS: Role[] = ['Admin', 'Manager'];
@@ -41,7 +43,13 @@ const CENTRAL_NAV: NavEntry[] = [
     icon: LayoutDashboard,
     match: ['/notifications', '/reports/due-date'],
   },
-  { to: '/tasks', label: 'Tasks', icon: ListChecks, match: ['/tasks', '/admin/templates'] },
+  {
+    to: '/tasks',
+    label: 'Tasks',
+    icon: ListChecks,
+    match: ['/tasks', '/admin/templates'],
+    subs: [{ to: '/admin/templates', label: 'Templates', roles: MANAGERS }],
+  },
   { to: '/time', label: 'Time', icon: Clock, match: ['/time', '/reports/time'] },
   { to: '/goals', label: 'Goals', icon: Target, match: ['/goals'] },
   {
@@ -110,18 +118,37 @@ function Sidebar() {
         {nav.map((n) => {
           const active = isUnder(pathname, n.to) || n.match.some((m) => isUnder(pathname, m));
           const Icon = n.icon;
+          const subs = (n.subs ?? []).filter(
+            (s) => !s.roles || (user && s.roles.includes(user.role)),
+          );
+          const onSub = subs.some((s) => isUnder(pathname, s.to));
           return (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.to === '/'}
-              className={`side-nav-item${active ? ' active' : ''}`}
-              aria-current={active ? 'page' : undefined}
-              title={n.label}
-            >
-              <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
-              <span className="side-label">{n.label}</span>
-            </NavLink>
+            <Fragment key={n.to}>
+              <NavLink
+                to={n.to}
+                end={n.to === '/'}
+                className={`side-nav-item${active ? (onSub ? ' open' : ' active') : ''}`}
+                aria-current={active && !onSub ? 'page' : undefined}
+                title={n.label}
+              >
+                <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
+                <span className="side-label">{n.label}</span>
+              </NavLink>
+              {active &&
+                subs.map((s) => {
+                  const here = isUnder(pathname, s.to);
+                  return (
+                    <NavLink
+                      key={s.to}
+                      to={s.to}
+                      className={`side-sub-item${here ? ' active' : ''}`}
+                      aria-current={here ? 'page' : undefined}
+                    >
+                      {s.label}
+                    </NavLink>
+                  );
+                })}
+            </Fragment>
           );
         })}
       </nav>
