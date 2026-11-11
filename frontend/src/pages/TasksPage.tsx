@@ -39,7 +39,7 @@ import { useToast } from '../components/harbor/Toast';
 import { Btn, Card, CountBadge, Empty, Segmented, cx } from '../components/harbor/ui';
 import { PRIORITY_OPTIONS, dueIsoFromYmd, statusOptions } from '../components/harbor/taskHelpers';
 import { TaskKanban } from '../components/TaskKanban';
-import { TaskCalendar, type CalendarMode, type CalendarScale } from '../components/TaskCalendar';
+import { TaskCalendar, type CalendarScale } from '../components/TaskCalendar';
 import { TaskGantt } from '../components/TaskGantt';
 import { TaskTable, OPTIONAL_COLUMNS, type OptionalColumn, type RowEdit } from './tasks/TaskTable';
 import { MoreFilters } from './tasks/MoreFilters';
@@ -82,7 +82,6 @@ interface Stored {
   hbNest?: boolean;
   hbReadOnly?: boolean;
   hbCalScale?: CalendarScale;
-  hbCalMode?: CalendarMode;
 }
 
 function errorText(e: unknown, fallback = 'Something went wrong.'): string {
@@ -130,7 +129,6 @@ export function TasksPage() {
   const [nest, setNest] = useState(false);
   const [includeReadOnly, setIncludeReadOnly] = useState(true);
   const [calScale, setCalScale] = useState<CalendarScale>('month');
-  const [calMode, setCalMode] = useState<CalendarMode>('range');
   const [text, setText] = useState('');
   const debouncedText = useDebouncedValue(text, 300);
   const [page, setPage] = useState(1);
@@ -175,7 +173,6 @@ export function TasksPage() {
       if (typeof s.hbNest === 'boolean') setNest(s.hbNest);
       if (typeof s.hbReadOnly === 'boolean') setIncludeReadOnly(s.hbReadOnly);
       if (s.hbCalScale) setCalScale(s.hbCalScale);
-      if (s.hbCalMode) setCalMode(s.hbCalMode);
 
       const st = location.state as { filters?: TaskSearchFilters; text?: string } | null;
       const params = new URLSearchParams(location.search);
@@ -217,9 +214,8 @@ export function TasksPage() {
       hbNest: nest,
       hbReadOnly: includeReadOnly,
       hbCalScale: calScale,
-      hbCalMode: calMode,
     }),
-    [state, tab, views, view, columns, nest, includeReadOnly, calScale, calMode],
+    [state, tab, views, view, columns, nest, includeReadOnly, calScale],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -847,9 +843,7 @@ export function TasksPage() {
               rows={rows}
               loading={loading}
               scale={calScale}
-              mode={calMode}
               onScaleChange={setCalScale}
-              onModeChange={setCalMode}
               ghosts={ghosts}
               onChanged={() => {
                 void runQuery();

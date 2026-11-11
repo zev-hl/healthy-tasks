@@ -11,15 +11,12 @@ import { Avatar, userLabel } from './ui/Avatar';
 import { STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
 
 export type CalendarScale = 'month' | 'week' | 'day';
-export type CalendarMode = 'range' | 'marker';
 
 interface Props {
   rows: TaskRowDto[];
   loading: boolean;
   scale: CalendarScale;
-  mode: CalendarMode;
   onScaleChange: (s: CalendarScale) => void;
-  onModeChange: (m: CalendarMode) => void;
   /** Phase 11: computed future occurrences, shown as dashed ghost chips. */
   ghosts?: GhostOccurrenceDto[];
   onChanged?: () => void;
@@ -66,15 +63,13 @@ function fmtDateTime(iso: string): string {
   });
 }
 
-/** The [start,end] date span a task occupies for the current mode, or null if it can't be plotted. */
-function taskSpan(task: TaskRowDto, mode: CalendarMode): { start: Date; end: Date } | null {
-  const s = task.startAt ? dateOnly(task.startAt) : null;
-  const d = task.dueAt ? dateOnly(task.dueAt) : null;
-  if (mode === 'marker') return d ? { start: d, end: d } : null;
-  if (s && d) return { start: s <= d ? s : d, end: s <= d ? d : s };
-  if (d) return { start: d, end: d };
-  if (s) return { start: s, end: s };
-  return null;
+/**
+ * The one day a task shows on: its due day, or its start day when it has no
+ * due date. A task with neither isn't on the calendar.
+ */
+function taskDay(task: { startAt: string | null; dueAt: string | null }): Date | null {
+  const iso = task.dueAt ?? task.startAt;
+  return iso ? dateOnly(iso) : null;
 }
 
 type Item =
@@ -115,21 +110,18 @@ function layoutWeek(weekStart: Date, items: Item[]): Placed[] {
 }
 
 /**
- * Calendar view, Harbor redesign after Google Calendar: one clean grid, today
- * as a blue circle, and a task that spans days drawn as one continuous bar
- * across them (each task keeps its own lane through the week). A one-day task
- * is a dot, its time if it has one, and its name. Month view shows three
- * lanes a day and "+N more", which opens the Day view, as does a day's number.
- * "Range" plots Start→Due, "Due" only the due day. Dashed items are upcoming
- * repeats: click one to create it now.
+ * Calendar view, Harbor redesign after Google Calendar: one clean grid and
+ * today as a blue circle. Every task shows on ONE day — its due day, or its
+ * start day when it has no due date — as a dot in its status color, its time
+ * if it has one, and its name (red when late). Month view shows three a day
+ * and "N more", which opens the Day view, as does a day's number. Dashed
+ * items are upcoming repeats: click one to create it now.
  */
 export function TaskCalendar({
   rows,
   loading,
   scale,
-  mode,
   onScaleChange,
-  onModeChange,
   ghosts = [],
   onChanged,
 }: Props) {
@@ -158,23 +150,23 @@ export function TaskCalendar({
   const items = useMemo<Item[]>(() => {
     const out: Item[] = [];
     for (const task of rows) {
-      const span = taskSpan(task, mode);
-      if (span) out.push({ kind: 'task', key: `t${task.id}`, task, ...span });
+      const day = taskDay(task);
+      if (day) out.push({ kind: 'task', key: `t${task.id}`, task, start: day, end: day });
     }
-    // A ghost shows on the start day of its span (marker → the due day).
+    // An upcoming repeat shows on its own due (or start) day too.
     for (const ghost of ghosts) {
-      const span = taskSpan({ startAt: ghost.startAt, dueAt: ghost.dueAt } as TaskRowDto, mode);
-      if (span)
+      const day = taskDay(ghost);
+      if (day)
         out.push({
           kind: 'ghost',
           key: `g${ghost.sourceType}:${ghost.sourceId}:${ghost.seq}`,
           ghost,
-          start: span.start,
-          end: span.start,
+          start: day,
+          end: day,
         });
     }
     return out;
-  }, [rows, ghosts, mode]);
+  }, [rows, ghosts]);
 
   // The weeks shown: one for Week view, six for Month view.
   const weeks = useMemo(() => {
@@ -217,7 +209,7 @@ export function TaskCalendar({
   const isLate = (t: TaskRowDto) =>
     !!t.dueAt && dateOnly(t.dueAt) < today && t.status !== 'Completed' && t.status !== 'Canceled';
 
-  /** One item drawn in a week: a bar for a span, a dot-and-name for a single day. */
+  /** One item drawn on its day: a dot, the time if it has one, and the name. */
   function renderPlaced(p: Placed, top: number) {
     const left = `calc(${(p.from / 7) * 100}% + 4px)`;
     const width = `calc(${((p.to - p.from + 1) / 7) * 100}% - 8px)`;
@@ -240,22 +232,14 @@ export function TaskCalendar({
       );
     }
     const t = p.item.task;
-    const span = p.from !== p.to || p.clipStart || p.clipEnd;
     const readOnly = t.mentionOnly || t.treeOnly;
     const treeCue = t.treeOnly && !t.mentionOnly;
-    const time = timeOf(mode === 'marker' ? t.dueAt : (t.dueAt ?? t.startAt));
+    const time = timeOf(t.dueAt ?? t.startAt);
     return (
       <button
         key={p.item.key}
         type="button"
-        className={cx(
-          'hb-cal-ev',
-          span ? `is-span st-${t.status}` : 'is-dot',
-          p.clipStart && 'clip-start',
-          p.clipEnd && 'clip-end',
-          isLate(t) && 'is-late',
-          readOnly && 'is-readonly',
-        )}
+        className={cx('hb-cal-ev', isLate(t) && 'is-late', readOnly && 'is-readonly')}
         style={{ top, left, width }}
         title={`#${t.id} ${t.name} · ${TASK_STATUS_LABELS[t.status]}${
           readOnly
@@ -264,14 +248,14 @@ export function TaskCalendar({
         }`}
         onClick={() => openTask(t.id)}
       >
-        {!span && <i style={{ background: STATUS_DOT[t.status] }} aria-hidden="true" />}
+        <i style={{ background: STATUS_DOT[t.status] }} aria-hidden="true" />
         {readOnly &&
           (treeCue ? (
             <GitFork size={11} aria-hidden="true" />
           ) : (
             <Eye size={11} aria-hidden="true" />
           ))}
-        {!span && time && <span className="hb-cal-ev-time">{time}</span>}
+        {time && <span className="hb-cal-ev-time">{time}</span>}
         <span className="hb-cal-ev-name">{t.name}</span>
       </button>
     );
@@ -310,16 +294,6 @@ export function TaskCalendar({
         <span className="hb-grow" />
         <Segmented
           small
-          label="Calendar display mode"
-          value={mode}
-          options={[
-            { value: 'range', label: 'Start → Due' },
-            { value: 'marker', label: 'Due only' },
-          ]}
-          onChange={onModeChange}
-        />
-        <Segmented
-          small
           label="Calendar scale"
           value={scale}
           options={[
@@ -339,8 +313,7 @@ export function TaskCalendar({
 
       {scale === 'day' ? (
         <DayList
-          day={anchor}
-          items={items.filter((it) => it.start <= anchor && it.end >= anchor)}
+          items={items.filter((it) => sameDay(it.start, anchor))}
           isLate={isLate}
           materializing={materializing}
           onGhost={(g) => void materializeGhost(g)}
@@ -431,14 +404,12 @@ export function TaskCalendar({
 
 /** Day view: the day's tasks as rows — what, when, who and where it stands. */
 function DayList({
-  day,
   items,
   isLate,
   materializing,
   onGhost,
   onOpen,
 }: {
-  day: Date;
   items: Item[];
   isLate: (t: TaskRowDto) => boolean;
   materializing: string | null;
@@ -471,7 +442,6 @@ function DayList({
           );
         }
         const t = it.task;
-        const multi = !sameDay(it.start, it.end);
         return (
           <button key={it.key} type="button" className="hb-cal-dayrow" onClick={() => onOpen(t.id)}>
             <i style={{ background: STATUS_DOT[t.status] }} aria-hidden="true" />
@@ -481,7 +451,6 @@ function DayList({
                 #{t.id}
                 {t.startAt ? ` · Start ${fmtDateTime(t.startAt)}` : ''}
                 {t.dueAt ? ` · Due ${fmtDateTime(t.dueAt)}` : ''}
-                {multi && !sameDay(it.end, day) ? ' · continues' : ''}
               </span>
             </span>
             {t.assignee && (
