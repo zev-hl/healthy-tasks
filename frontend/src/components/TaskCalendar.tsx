@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, GitFork, Repeat } from 'lucide-react';
 import {
@@ -26,7 +26,9 @@ const DAY_MS = 86_400_000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LANE_H = 24;
 const NUM_H = 32;
-const MONTH_LANES = 3;
+const HEAD_H = 34; // the weekday row
+const MORE_H = 22; // room for "N more" at the foot of a day
+const MIN_WEEK_H = 84;
 
 function dateOnly(iso: string): Date {
   const d = new Date(iso);
@@ -113,8 +115,8 @@ function layoutWeek(weekStart: Date, items: Item[]): Placed[] {
  * Calendar view, Harbor redesign after Google Calendar: one clean grid and
  * today as a blue circle. Every task shows on ONE day — its due day, or its
  * start day when it has no due date — as a dot in its status color, its time
- * if it has one, and its name (red when late). Month view shows three a day
- * and "N more", which opens the Day view, as does a day's number. Dashed
+ * if it has one, and its name (red when late). Month view fits the window and
+ * shows as many a day as fit, then "N more", which opens the Day view, as does a day's number. Dashed
  * items are upcoming repeats: click one to create it now.
  */
 export function TaskCalendar({
@@ -129,6 +131,28 @@ export function TaskCalendar({
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [materializing, setMaterializing] = useState<string | null>(null);
   const [ghostError, setGhostError] = useState<string | null>(null);
+  // Month view fills the window down to its bottom edge: measure what's left
+  // below the grid's top and share it between the six weeks.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [avail, setAvail] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = gridRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      setAvail(Math.max(6 * MIN_WEEK_H + HEAD_H, window.innerHeight - top - 24));
+    };
+    measure();
+    // Again once the page above has settled (filters, chips and rows load in).
+    const raf = window.requestAnimationFrame(measure);
+    const late = window.setTimeout(measure, 300);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(late);
+      window.removeEventListener('resize', measure);
+    };
+  }, [scale, loading, ghostError, rows.length, ghosts.length]);
 
   async function materializeGhost(g: GhostOccurrenceDto) {
     const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
@@ -220,14 +244,14 @@ export function TaskCalendar({
         <button
           key={p.item.key}
           type="button"
-          className="hb-cal-ev is-ghost"
+          className="hb-tcal-ev is-ghost"
           style={{ top, left, width }}
           title={`Upcoming occurrence #${g.seq} of “${g.name}” — click to create it now`}
           onClick={() => void materializeGhost(g)}
           disabled={materializing === key}
         >
           <Repeat size={11} aria-hidden="true" />
-          <span className="hb-cal-ev-name">{materializing === key ? '…' : g.name}</span>
+          <span className="hb-tcal-ev-name">{materializing === key ? '…' : g.name}</span>
         </button>
       );
     }
@@ -239,7 +263,7 @@ export function TaskCalendar({
       <button
         key={p.item.key}
         type="button"
-        className={cx('hb-cal-ev', isLate(t) && 'is-late', readOnly && 'is-readonly')}
+        className={cx('hb-tcal-ev', isLate(t) && 'is-late', readOnly && 'is-readonly')}
         style={{ top, left, width }}
         title={`#${t.id} ${t.name} · ${TASK_STATUS_LABELS[t.status]}${
           readOnly
@@ -255,15 +279,15 @@ export function TaskCalendar({
           ) : (
             <Eye size={11} aria-hidden="true" />
           ))}
-        {time && <span className="hb-cal-ev-time">{time}</span>}
-        <span className="hb-cal-ev-name">{t.name}</span>
+        {time && <span className="hb-tcal-ev-time">{time}</span>}
+        <span className="hb-tcal-ev-name">{t.name}</span>
       </button>
     );
   }
 
   return (
-    <div className="hb-cal-wrap">
-      <div className="hb-cal-bar">
+    <div className="hb-tcal-wrap">
+      <div className="hb-tcal-bar">
         <button
           type="button"
           className="hb-btn hb-btn-secondary hb-btn-sm"
@@ -271,7 +295,7 @@ export function TaskCalendar({
         >
           Today
         </button>
-        <span className="hb-cal-nav">
+        <span className="hb-tcal-nav">
           <button
             type="button"
             className="hb-icon-btn hb-icon-btn-sm"
@@ -289,7 +313,7 @@ export function TaskCalendar({
             <ChevronRight size={18} aria-hidden="true" />
           </button>
         </span>
-        <h2 className="hb-cal-label">{label}</h2>
+        <h2 className="hb-tcal-label">{label}</h2>
         {loading && <span className="hb-small">Loading…</span>}
         <span className="hb-grow" />
         <Segmented
@@ -320,8 +344,8 @@ export function TaskCalendar({
           onOpen={openTask}
         />
       ) : (
-        <div className={cx('hb-cal', isMonth ? 'is-month' : 'is-week')}>
-          <div className="hb-cal-head">
+        <div ref={gridRef} className={cx('hb-tcal', isMonth ? 'is-month' : 'is-week')}>
+          <div className="hb-tcal-head">
             {weeks[0] &&
               Array.from({ length: 7 }, (_, i) => addDays(weeks[0]!, i)).map((d, i) => (
                 <span key={i} className={cx(!isMonth && sameDay(d, today) && 'is-today')}>
@@ -333,18 +357,25 @@ export function TaskCalendar({
           {weeks.map((ws) => {
             const placed = layoutWeek(ws, items);
             const lanes = placed.reduce((m, p) => Math.max(m, p.lane + 1), 0);
-            const shownLanes = isMonth ? Math.min(lanes, MONTH_LANES) : lanes;
+            const weekH = isMonth
+              ? Math.max(MIN_WEEK_H, Math.floor(((avail ?? 6 * 130 + HEAD_H) - HEAD_H - 2) / 6))
+              : 0;
+            // As many tasks a day as fit; keep a line for "N more" when some don't.
+            const fit = Math.max(1, Math.floor((weekH - NUM_H - 6) / LANE_H));
+            const shownLanes = isMonth
+              ? lanes <= fit
+                ? lanes
+                : Math.max(1, Math.floor((weekH - NUM_H - MORE_H) / LANE_H))
+              : lanes;
             // What doesn't fit in Month view, counted per day.
             const hidden = Array.from(
               { length: 7 },
               (_, d) =>
                 placed.filter((p) => p.lane >= shownLanes && p.from <= d && p.to >= d).length,
             );
-            const height = isMonth
-              ? NUM_H + MONTH_LANES * LANE_H + 22
-              : Math.max(360, NUM_H + lanes * LANE_H + 24);
+            const height = isMonth ? weekH : Math.max(360, NUM_H + lanes * LANE_H + 24);
             return (
-              <div key={ws.toISOString()} className="hb-cal-week" style={{ height }}>
+              <div key={ws.toISOString()} className="hb-tcal-week" style={{ height }}>
                 {Array.from({ length: 7 }, (_, d) => {
                   const day = addDays(ws, d);
                   const outside = isMonth && day.getMonth() !== anchor.getMonth();
@@ -353,7 +384,7 @@ export function TaskCalendar({
                     <div
                       key={d}
                       className={cx(
-                        'hb-cal-cell',
+                        'hb-tcal-cell',
                         outside && 'is-outside',
                         (d === 0 || d === 6) && 'is-weekend',
                       )}
@@ -361,7 +392,7 @@ export function TaskCalendar({
                       {isMonth && (
                         <button
                           type="button"
-                          className={cx('hb-cal-num', isToday && 'is-today')}
+                          className={cx('hb-tcal-num', isToday && 'is-today')}
                           title="Open this day"
                           aria-label={`Open ${day.toDateString()}`}
                           onClick={() => openDay(day)}
@@ -372,7 +403,7 @@ export function TaskCalendar({
                         </button>
                       )}
                       {hidden[d]! > 0 && (
-                        <button type="button" className="hb-cal-more" onClick={() => openDay(day)}>
+                        <button type="button" className="hb-tcal-more" onClick={() => openDay(day)}>
                           {hidden[d]} more
                         </button>
                       )}
@@ -385,7 +416,7 @@ export function TaskCalendar({
                     sameDay(addDays(ws, d), today) ? (
                       <span
                         key="today"
-                        className="hb-cal-todaycol"
+                        className="hb-tcal-todaycol"
                         style={{ left: `${(d / 7) * 100}%`, width: `${100 / 7}%` }}
                       />
                     ) : null,
@@ -417,9 +448,9 @@ function DayList({
   onOpen: (id: number) => void;
 }) {
   if (items.length === 0)
-    return <div className="hb-cal-dayempty">Nothing scheduled on this day.</div>;
+    return <div className="hb-tcal-dayempty">Nothing scheduled on this day.</div>;
   return (
-    <div className="hb-cal-day">
+    <div className="hb-tcal-day">
       {items.map((it) => {
         if (it.kind === 'ghost') {
           const g = it.ghost;
@@ -428,7 +459,7 @@ function DayList({
             <button
               key={it.key}
               type="button"
-              className="hb-cal-dayrow is-ghost"
+              className="hb-tcal-dayrow is-ghost"
               disabled={materializing === key}
               onClick={() => onGhost(g)}
               title="Upcoming repeat — click to create it now"
@@ -443,7 +474,12 @@ function DayList({
         }
         const t = it.task;
         return (
-          <button key={it.key} type="button" className="hb-cal-dayrow" onClick={() => onOpen(t.id)}>
+          <button
+            key={it.key}
+            type="button"
+            className="hb-tcal-dayrow"
+            onClick={() => onOpen(t.id)}
+          >
             <i style={{ background: STATUS_DOT[t.status] }} aria-hidden="true" />
             <span className="hb-stack">
               <b>{t.name}</b>

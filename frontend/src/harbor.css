@@ -6794,47 +6794,47 @@ textarea.hb-tpl-input {
 }
 
 /* ===== Tasks › Calendar (after Google Calendar) ===== */
-.hb-cal-wrap {
+.hb-tcal-wrap {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
-.hb-cal-bar {
+.hb-tcal-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
 }
-.hb-cal-nav {
+.hb-tcal-nav {
   display: inline-flex;
   gap: 2px;
 }
-.hb-cal-nav .hb-icon-btn {
+.hb-tcal-nav .hb-icon-btn {
   border-color: transparent;
   background: transparent;
 }
-.hb-cal-nav .hb-icon-btn:hover {
+.hb-tcal-nav .hb-icon-btn:hover {
   background: var(--canvas-deep);
 }
-.hb-cal-label {
+.hb-tcal-label {
   margin: 0;
   font-size: 20px;
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
-.hb-cal {
+.hb-tcal {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   overflow: hidden;
 }
-.hb-cal-head {
+.hb-tcal-head {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--border);
 }
-.hb-cal-head span {
+.hb-tcal-head span {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -6846,10 +6846,10 @@ textarea.hb-tpl-input {
   letter-spacing: 0.06em;
   color: var(--muted);
 }
-.hb-cal-head span + span {
+.hb-tcal-head span + span {
   border-left: 1px solid var(--border-soft, #edf1f6);
 }
-.hb-cal-head b {
+.hb-tcal-head b {
   display: grid;
   place-items: center;
   width: 40px;
@@ -6860,38 +6860,38 @@ textarea.hb-tpl-input {
   letter-spacing: 0;
   color: var(--ink);
 }
-.hb-cal-head span.is-today {
+.hb-tcal-head span.is-today {
   color: var(--accent);
 }
-.hb-cal-head span.is-today b {
+.hb-tcal-head span.is-today b {
   background: var(--accent);
   color: #fff;
 }
-.hb-cal-week {
+.hb-tcal-week {
   position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
-.hb-cal-week + .hb-cal-week {
+.hb-tcal-week + .hb-tcal-week {
   border-top: 1px solid var(--border-soft, #edf1f6);
 }
-.hb-cal-cell {
+.hb-tcal-cell {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   min-width: 0;
 }
-.hb-cal-cell + .hb-cal-cell {
+.hb-tcal-cell + .hb-tcal-cell {
   border-left: 1px solid var(--border-soft, #edf1f6);
 }
-.hb-cal-cell.is-outside {
+.hb-tcal-cell.is-outside {
   background: #fafbfd;
 }
-.hb-cal-cell.is-outside .hb-cal-num {
+.hb-tcal-cell.is-outside .hb-tcal-num {
   color: #b0bccb;
 }
-.hb-cal-num {
+.hb-tcal-num {
   margin-top: 4px;
   min-width: 26px;
   height: 26px;
@@ -6904,14 +6904,14 @@ textarea.hb-tpl-input {
   color: var(--ink);
   cursor: pointer;
 }
-.hb-cal-num:hover {
+.hb-tcal-num:hover {
   background: var(--canvas-deep);
 }
-.hb-cal-num.is-today {
+.hb-tcal-num.is-today {
   background: var(--accent);
   color: #fff;
 }
-.hb-cal-more {
+.hb-tcal-more {
   position: absolute;
   left: 4px;
   right: 4px;
@@ -6927,10 +6927,10 @@ textarea.hb-tpl-input {
   text-align: left;
   cursor: pointer;
 }
-.hb-cal-more:hover {
+.hb-tcal-more:hover {
   background: var(--canvas-deep);
 }
-.hb-cal-todaycol {
+.hb-tcal-todaycol {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -6939,7 +6939,7 @@ textarea.hb-tpl-input {
 }
 
 /* An item in the grid: a bar for a span, a dot-and-name for a single day */
-.hb-cal-ev {
+.hb-tcal-ev {
   position: absolute;
   z-index: 1;
   display: flex;
@@ -6958,49 +6958,49 @@ textarea.hb-tpl-input {
   cursor: pointer;
   min-width: 0;
 }
-.hb-cal-ev:hover {
+.hb-tcal-ev:hover {
   background: var(--canvas-deep);
 }
-.hb-cal-ev > i {
+.hb-tcal-ev > i {
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
-.hb-cal-ev-time {
+.hb-tcal-ev-time {
   flex: none;
   color: var(--text-secondary);
   font-weight: 400;
 }
-.hb-cal-ev-name {
+.hb-tcal-ev-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hb-cal-ev.is-late .hb-cal-ev-name {
+.hb-tcal-ev.is-late .hb-tcal-ev-name {
   color: var(--danger-deep);
 }
-.hb-cal-ev.is-readonly {
+.hb-tcal-ev.is-readonly {
   opacity: 0.75;
 }
-.hb-cal-ev.is-ghost {
+.hb-tcal-ev.is-ghost {
   border: 1px dashed var(--accent);
   background: rgba(31, 95, 191, 0.05);
   color: var(--accent-deep);
 }
-.hb-cal.is-week .hb-cal-cell {
+.hb-tcal.is-week .hb-tcal-cell {
   align-items: stretch;
 }
 
 /* Day view: the day's tasks as rows */
-.hb-cal-day {
+.hb-tcal-day {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
   overflow: hidden;
 }
-.hb-cal-dayrow {
+.hb-tcal-dayrow {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -7014,31 +7014,31 @@ textarea.hb-tpl-input {
   font: inherit;
   cursor: pointer;
 }
-.hb-cal-dayrow + .hb-cal-dayrow {
+.hb-tcal-dayrow + .hb-tcal-dayrow {
   border-top: 1px solid var(--row-line, var(--border));
 }
-.hb-cal-dayrow:hover {
+.hb-tcal-dayrow:hover {
   background: #f8fafc;
 }
-.hb-cal-dayrow > i {
+.hb-tcal-dayrow > i {
   flex: none;
   width: 10px;
   height: 10px;
   border-radius: 50%;
 }
-.hb-cal-dayrow .hb-stack {
+.hb-tcal-dayrow .hb-stack {
   flex: 1;
   min-width: 0;
 }
-.hb-cal-dayrow b {
+.hb-tcal-dayrow b {
   font-size: 14px;
   color: var(--ink);
 }
-.hb-cal-dayrow.is-ghost {
+.hb-tcal-dayrow.is-ghost {
   color: var(--accent-deep);
   background: rgba(31, 95, 191, 0.03);
 }
-.hb-cal-dayempty {
+.hb-tcal-dayempty {
   padding: 40px 18px;
   border: 1px dashed var(--border-strong);
   border-radius: 12px;
@@ -7047,29 +7047,48 @@ textarea.hb-tpl-input {
   background: var(--surface);
 }
 @media (max-width: 719px) {
-  .hb-cal-head b {
+  .hb-tcal-head b {
     width: 30px;
     height: 30px;
     font-size: 16px;
   }
-  .hb-cal-ev {
+  .hb-tcal-ev {
     padding: 0 3px;
     font-size: 11px;
   }
-  .hb-cal-ev-time {
+  .hb-tcal-ev-time {
     display: none;
   }
-  .hb-cal-dayrow .hb-user-mini {
+  .hb-tcal-dayrow .hb-user-mini {
     display: none;
   }
 }
 .hb-legacy-view,
-.hb-cal-wrap,
-.hb-cal {
+.hb-tcal-wrap,
+.hb-tcal {
   width: 100%;
 }
-.hb-cal-more {
+.hb-tcal-more {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Month view fits the window: less room around the calendar. */
+.hb-content:has(.hb-tcal.is-month) {
+  padding-bottom: 16px;
+}
+.hb-tcal-wrap {
+  gap: 8px;
+}
+.hb-tcal-label {
+  font-size: 18px;
+}
+.hb-tcal-head span {
+  padding: 6px 0 5px;
+}
+.hb-tcal.is-month .hb-tcal-head {
+  height: 34px;
+}
+.hb-tcal {
+  padding: 0;
 }
