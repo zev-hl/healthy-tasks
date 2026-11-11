@@ -8,7 +8,8 @@ import {
   type UserDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError, uploadToStorage } from '../api/client';
-import { attachmentProblem, fileIcon, humanSize, sameFile } from '../lib/attachmentFile';
+import { attachmentProblem, humanSize, sameFile } from '../lib/attachmentFile';
+import { FileTile } from './ui/FileTile';
 import { RichTextEditor } from './RichTextEditor';
 import { RichText } from './RichText';
 import { AttachmentSection } from './AttachmentSection';
@@ -16,6 +17,7 @@ import { Avatar, userLabel } from './ui/Avatar';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { TimeStamp } from './ui/TimeStamp';
+import { Paperclip } from 'lucide-react';
 
 interface Props {
   task: TaskDetailDto;
@@ -226,7 +228,16 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
           You have read-only access to this task, so you can’t add comments.
         </p>
       ) : (
-        <div className="comment-composer">
+        <div
+          className="comment-composer"
+          onKeyDown={(e) => {
+            // Ctrl+Enter (⌘+Enter on a Mac) posts, as the brief asks.
+            if (composerOpen && e.key === 'Enter' && (e.ctrlKey || e.metaKey) && composerActive) {
+              e.preventDefault();
+              void submitComment();
+            }
+          }}
+        >
           {composerOpen ? (
             <>
               <RichTextEditor
@@ -255,10 +266,11 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                   disabled={submitting || pending.length >= COMMENT_MAX_ATTACHMENTS}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  📎 {pending.length === 0 ? 'Attach File' : 'Add more files'}
+                  <Paperclip size={14} aria-hidden="true" />{' '}
+                  {pending.length === 0 ? 'Attach files' : 'Add more files'}
                 </button>
                 <span className="muted composer-attach-hint">
-                  {pending.length}/{COMMENT_MAX_ATTACHMENTS} · up to 25 MB each
+                  {pending.length}/{COMMENT_MAX_ATTACHMENTS} · up to 25 MB each · Ctrl + Enter posts
                 </span>
               </div>
 
@@ -266,7 +278,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                 <ul className="composer-files">
                   {pending.map((file) => (
                     <li key={`${file.name}-${file.size}-${file.lastModified}`}>
-                      <span aria-hidden>{fileIcon(file.type)}</span>
+                      <FileTile contentType={file.type} filename={file.name} small />
                       <span className="composer-file-name">{file.name}</span>
                       <span className="muted composer-file-size">{humanSize(file.size)}</span>
                       <button
@@ -289,7 +301,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                   disabled={submitting || !composerActive}
                   onClick={submitComment}
                 >
-                  {submitting ? 'Saving…' : 'Comment'}
+                  {submitting ? 'Posting…' : 'Post comment'}
                 </button>
                 <button
                   type="button"
@@ -307,7 +319,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
               className="comment-composer-stub"
               onClick={() => setComposerOpen(true)}
             >
-              Add a comment…
+              Write a comment… use @ to mention someone
             </button>
           )}
         </div>

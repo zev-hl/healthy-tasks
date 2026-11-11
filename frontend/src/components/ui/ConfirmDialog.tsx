@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { ModalShell, type ModalTone } from '../exclusives/ModalShell';
+import { Btn } from '../harbor/ui';
 
 export function ConfirmDialog({
   title,
@@ -55,23 +56,12 @@ export function ConfirmDialog({
       onBackdropClick={busy ? undefined : onCancel}
       actions={
         <>
-          <button
-            type="button"
-            className="secondary"
-            ref={cancelRef}
-            disabled={busy}
-            onClick={onCancel}
-          >
+          <Btn ref={cancelRef} disabled={busy} onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={tone === 'danger' ? 'danger' : undefined}
-            disabled={busy}
-            onClick={onConfirm}
-          >
+          </Btn>
+          <Btn kind={tone === 'danger' ? 'danger' : 'primary'} disabled={busy} onClick={onConfirm}>
             {busy ? 'Working…' : confirmLabel}
-          </button>
+          </Btn>
         </>
       }
     >

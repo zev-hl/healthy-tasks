@@ -58,9 +58,9 @@
   --ok-deep: #145223;
   --ok-soft: #e3f3e6;
   --ok-line: #bfe0c6;
-  --review: #4b47b5; /* Review status: an info color, set apart from In Progress */
-  --review-deep: #36338a;
-  --review-soft: #e7e6f8;
+  --review: #6e95d3; /* Review status: blue info (decisions), an outlined pill so it reads apart from In Progress */
+  --review-deep: #174a96;
+  --review-soft: #f5f9fe;
   --info-soft: #dce8f8;
   --info-text: #174a96;
   --info-dot: #1f5fbf;
@@ -2904,7 +2904,7 @@ button.btn-sm {
 }
 .prio-label-High {
   font-weight: 600;
-  color: var(--warn-deep);
+  color: var(--danger);
 }
 .prio-label-Urgent {
   font-weight: 600;

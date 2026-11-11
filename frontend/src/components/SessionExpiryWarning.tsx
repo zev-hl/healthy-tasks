@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { ModalShell } from './exclusives/ModalShell';
+import { Btn } from './harbor/ui';
 
 /**
  * Shown in the final minute before an idle session expires. "Continue" renews
@@ -21,16 +23,20 @@ export function SessionExpiryWarning() {
   }
 
   return (
-    <div className="modal-backdrop">
-      <div className="modal" style={{ maxWidth: 420 }}>
-        <h3 style={{ marginTop: 0 }}>Session expiring</h3>
-        <p>Session will expire due to inactivity. Continue the session?</p>
-        <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" onClick={continueSession} disabled={busy}>
-            {busy ? 'Continuing…' : 'Continue'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <ModalShell
+      title="Still there?"
+      tone="warn"
+      role="alertdialog"
+      width="min(420px, calc(100vw - 32px))"
+      actions={
+        <Btn kind="primary" onClick={() => void continueSession()} disabled={busy} autoFocus>
+          {busy ? 'Continuing…' : 'Stay signed in'}
+        </Btn>
+      }
+    >
+      <p className="exc-confirm-sub">
+        You’ll be signed out in under a minute because nothing has happened for a while.
+      </p>
+    </ModalShell>
   );
 }

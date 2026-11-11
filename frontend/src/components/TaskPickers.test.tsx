@@ -10,7 +10,7 @@ vi.mock('../api/client', () => ({
 
 const { api } = await import('../api/client');
 const { TaskLinkPicker } = await import('./TaskLinkPicker');
-const { ReviewerPickerModal } = await import('./ReviewerPickerModal');
+const { ReviewerPicker } = await import('./ReviewerPicker');
 const searchTasks = api.searchTasks as unknown as ReturnType<typeof vi.fn>;
 const getCandidates = api.getReviewerCandidates as unknown as ReturnType<typeof vi.fn>;
 
@@ -74,18 +74,32 @@ describe('TaskLinkPicker', () => {
   });
 });
 
-describe('ReviewerPickerModal', () => {
+/** The picker opens under a control: give it one. */
+function withAnchor(picker: (anchor: React.RefObject<HTMLButtonElement>) => React.ReactElement) {
+  const anchor = createRef<HTMLButtonElement>();
+  return (
+    <>
+      <button ref={anchor}>Status</button>
+      {picker(anchor)}
+    </>
+  );
+}
+
+describe('ReviewerPicker', () => {
   it('chooses the only reviewer already and sends to them', async () => {
     getCandidates.mockResolvedValue([person('u1', 'Dana')]);
     const onPick = vi.fn();
     render(
-      <ReviewerPickerModal
-        taskId={5}
-        currentAssignee="Sam Test"
-        returnStatus="In Progress"
-        onPick={onPick}
-        onClose={vi.fn()}
-      />,
+      withAnchor((a) => (
+        <ReviewerPicker
+          anchorRef={a}
+          taskId={5}
+          currentAssignee="Sam Test"
+          returnStatus="In Progress"
+          onPick={onPick}
+          onClose={vi.fn()}
+        />
+      )),
     );
     await waitFor(() =>
       expect(screen.getByRole('option', { name: /Dana Test/ }).getAttribute('aria-selected')).toBe(
@@ -102,7 +116,11 @@ describe('ReviewerPickerModal', () => {
   it('waits for a choice when several people can review, and Esc closes', async () => {
     getCandidates.mockResolvedValue([person('u1', 'Dana'), person('u2', 'Eli', 'Admin')]);
     const onClose = vi.fn();
-    render(<ReviewerPickerModal taskId={5} onPick={vi.fn()} onClose={onClose} />);
+    render(
+      withAnchor((a) => (
+        <ReviewerPicker anchorRef={a} taskId={5} onPick={vi.fn()} onClose={onClose} />
+      )),
+    );
     await waitFor(() => expect(screen.getByRole('option', { name: /Eli Test/ })).toBeTruthy());
     const send = screen.getByRole('button', { name: 'Send for review' }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);

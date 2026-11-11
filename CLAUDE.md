@@ -166,8 +166,8 @@ via `useStaleWriteGuard` / `ConflictBanner`.
 ### Task special attributes (HLAI-118)
 Optional, fixed-list attributes on a task — Alert Group (`Task.alertGroupId` →
 `AlertGroup`) and Alert Type (`Task.alertType`, one of `EXCLUSIVES_ALERT_TYPES`) —
-shown under the task page's property row (pencil → searchable dropdowns, saved
-together with Save), as a capsule column in the task list, and as a list filter with "(not
+shown under the task page's property row (two searchable chips, staged and saved
+with the page's one Save bar), as a capsule column in the task list, and as a list filter with "(not
 set)". One list drives all of it: `TASK_ATTRIBUTE_KEYS` (shared) +
 `lib/taskAttributes.ts`. A group an Admin switches off stays on its tasks (red
 mark on the task page) but can no longer be picked. See `docs/architecture.md` §15.

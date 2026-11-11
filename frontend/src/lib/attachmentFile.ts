@@ -13,12 +13,32 @@ export function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function fileIcon(contentType: string): string {
-  if (contentType.startsWith('image/')) return '🖼️';
-  if (contentType.startsWith('audio/')) return '🎵';
-  if (contentType.startsWith('video/')) return '🎬';
-  return '📄';
+export type FileKind = 'pdf' | 'xls' | 'doc' | 'img' | 'other';
+
+/** The brief's file-type tiles: PDF, XLS, DOC, IMG, or other. */
+export function fileKind(contentType: string, filename = ''): FileKind {
+  const ext = filename.toLowerCase().split('.').pop() ?? '';
+  if (contentType === 'application/pdf' || ext === 'pdf') return 'pdf';
+  if (contentType.startsWith('image/')) return 'img';
+  if (/sheet|excel|csv/.test(contentType) || ['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+    return 'xls';
+  }
+  if (
+    /word|document|text\//.test(contentType) ||
+    ['doc', 'docx', 'txt', 'rtf', 'odt'].includes(ext)
+  ) {
+    return 'doc';
+  }
+  return 'other';
 }
+
+export const FILE_KIND_LABEL: Record<FileKind, string> = {
+  pdf: 'PDF',
+  xls: 'XLS',
+  doc: 'DOC',
+  img: 'IMG',
+  other: 'FILE',
+};
 
 /** Why this file can't be attached, or null when it's fine. */
 export function attachmentProblem(file: File): string | null {

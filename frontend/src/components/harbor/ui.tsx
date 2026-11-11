@@ -3,7 +3,7 @@
  * controls, buttons and empty states (docs/redesign-brief.md §5). Classes are
  * `hb-` prefixed so they never collide with the older styles.css.
  */
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import { TASK_STATUS_LABELS, type TaskPriority, type TaskStatus } from '@healthy-tasks/shared';
 
@@ -23,7 +23,7 @@ export const STATUS_DOT: Record<TaskStatus, string> = {
   Open: '#8a9ab0',
   InProgress: '#1f5fbf',
   OnHold: '#b86e00',
-  Review: '#4b47b5',
+  Review: '#6e95d3',
   Completed: '#1b6b2e',
   Canceled: '#c9d0da',
 };
@@ -106,18 +106,16 @@ export function PriorityMark({ priority }: { priority: TaskPriority }) {
 
 type BtnKind = 'primary' | 'secondary' | 'ok' | 'ghost' | 'danger' | 'link';
 
-export function Btn({
-  kind = 'secondary',
-  className,
-  children,
-  ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { kind?: BtnKind }) {
+export const Btn = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & { kind?: BtnKind }
+>(function Btn({ kind = 'secondary', className, children, ...rest }, ref) {
   return (
-    <button type="button" className={cx('hb-btn', `hb-btn-${kind}`, className)} {...rest}>
+    <button ref={ref} type="button" className={cx('hb-btn', `hb-btn-${kind}`, className)} {...rest}>
       {children}
     </button>
   );
-}
+});
 
 export function Segmented<T extends string>({
   value,

@@ -1,3 +1,4 @@
+import { ActivitySoon } from './ActivitySoon';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Building2, Target } from 'lucide-react';
@@ -512,6 +513,7 @@ export function MyTeam({
             />
             <PerformanceBody totals={active ? totals : null} />
           </Card>
+          <ActivitySoon team />
         </aside>
       </div>
     </>

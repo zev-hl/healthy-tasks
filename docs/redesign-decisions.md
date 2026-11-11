@@ -95,6 +95,41 @@ stated fallback.
 9. **Overloaded rule:** if it comes back, the rule and any settings for it.
 10. **"Related" links:** the brief's Linked tasks card has a third type, Related (no blocking). Only
     Parent, Blocked by and Blocks exist today, so the card's type dropdown offers those three.
+11. **Search by person:** the brief's Tasks search matches people too. The search endpoint
+    matches title, #number and tags only, so the box says "Search by title, #number or tag".
+
+## Changed from the brief, at the user's request
+
+These replace what the brief says. Don't "fix" them back.
+
+- **Sidebar:** slimmer and Google-like: 220px, 36px pill-shaped items, 18px icons (stroke 1.7),
+  13.5px labels at 400, a soft `rgba(138,180,248,.2)` pill for the active item and no colored edge
+  bar, a 28px logo tile and a compact account row. Templates sits indented under Tasks.
+- **Tasks filter row:** no task count unless filters or search narrow the list ("N match") or a
+  saved view is open; the count is already on the view tab.
+- **Calendar view:** every task shows on one day only (its due date, else its start date); no
+  multi-day bars. The month fits the window without scrolling. Its controls sit in the filter
+  row, where Sort is hidden.
+- **Side panels instead of pop-ups:** People (Add, Edit, Merge users), Goals, the Time day editor,
+  and Templates' Create tasks open in the page's side column.
+- **Other menus instead of pop-ups:** linking a task (a search under the Type + Task dropdowns),
+  Send for review (under the Status chip, or the Board card dropped into Review), Duplicate and
+  Save as template (under the ⋯ button), New sub-task (an inline row in its card), and the alert
+  attributes (two chips under the property row, saved with the one Save bar).
+- **Dialogs that stay** (they must interrupt): delete and other confirmations, "Update future
+  instances?", the session-expiry warning, and the enlarged description editor. All use the one
+  dialog style (`ModalShell` / `ConfirmDialog`) with Harbor buttons.
+- **Task page Activity:** Comments and History stay as two tabs (not one mixed timeline). The
+  comment box reads "Write a comment… use @ to mention someone"; Ctrl + Enter posts.
+- **Organization:** rebuilt after the My team view (attention card, people cards, drag to change
+  supervisor). Its Departments view was removed: duties are managed only in Settings ›
+  Departments & duties, which is two panes (departments, then duties with their holders; type a
+  duty and press Enter; holders staged behind one Save bar; "Show archived" switch).
+- **Templates:** no stat tiles.
+- **Goals:** side panels, numbered SMART steps, no progress bars (they misled for reduction goals).
+- **Colors:** Review is blue (decisions table), drawn as an outlined pill (`#F5F9FE`, border
+  `#B7CDEE`) so it reads apart from In Progress. High priority is red everywhere (two bars on the
+  Board; Urgent has three).
 
 ## How the older screens were brought in
 

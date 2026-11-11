@@ -11,6 +11,8 @@ import {
   type TaskDetailDto,
   type TaskPriority,
   type TaskRef,
+  type ExclusivesAlertType,
+  type ExclusivesGroupOptionDto,
   type TaskStatus,
   type UserDto,
 } from '@healthy-tasks/shared';
@@ -23,13 +25,14 @@ import { AttachmentSection } from './AttachmentSection';
 import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
 import { TaskLinkPicker } from './TaskLinkPicker';
-import { ReviewerPickerModal } from './ReviewerPickerModal';
+import { ReviewerPicker } from './ReviewerPicker';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { Avatar, userLabel } from './ui/Avatar';
 import {
   AlarmClock,
+  Repeat,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -68,17 +71,17 @@ import {
 import { Select, type SelectOption } from './harbor/Select';
 import { DatePicker, formatShortDay } from './harbor/DatePicker';
 import { Popover } from './harbor/Popover';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { TimeBlock } from './harbor/TimeBlock';
 import { useToast } from './harbor/Toast';
 import { PRIORITY_OPTIONS, dueInfo } from './harbor/taskHelpers';
 import { formatClock, useTimer } from '../lib/timer';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
-import { useBackdropDismiss } from '../lib/useBackdropDismiss';
 import { isMismatch, useDutyCatalog } from '../lib/duties';
 import { DutyCrossCheck } from './duties/DutyCrossCheck';
 import { TaskAttributesBar } from './TaskAttributesBar';
-import { TaskAttributesModal } from './TaskAttributesModal';
+import { TaskAttributeChips } from './TaskAttributeChips';
 import { ExpandIcon } from './ui/ExpandIcon';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
@@ -140,7 +143,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   }
   const [confirmDelete, setConfirmDelete] = useState(false);
   // HLAI-118: the attributes pop-up behind the pencil.
-  const [editingAttrs, setEditingAttrs] = useState(false);
+  // HLAI-118 attributes, staged like the other chips (saved with the Save bar).
+  const [attrGroupId, setAttrGroupId] = useState(
+    initialTask.alertGroup ? String(initialTask.alertGroup.id) : '',
+  );
+  const [attrType, setAttrType] = useState<string>(initialTask.alertType ?? '');
+  const [alertGroups, setAlertGroups] = useState<ExclusivesGroupOptionDto[] | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [dupOpen, setDupOpen] = useState(false);
   const [copyAttachments, setCopyAttachments] = useState(false);
@@ -157,7 +165,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setNewSubName('');
     setNewSubError(null);
   };
-  const newSubBackdrop = useBackdropDismiss(closeNewSub, newSubDirty || creatingSub);
   const [tplOpen, setTplOpen] = useState(false);
   const [tplName, setTplName] = useState('');
   const [tplScope, setTplScope] = useState<'single' | 'tree'>('single');
@@ -171,6 +178,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Review workflow (Phase 10): reviewer-picker visibility + a busy flag for the
   // Reviewed / Recall actions.
   const [pendingReview, setPendingReview] = useState(false);
+  // The reviewer menu opens under the Status chip.
+  const statusChipRef = useRef<HTMLSpanElement>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
   // Reminders overhaul: when a Save would clear the Start Date or Cancel a task
   // that HAS reminders, confirm first (the reason drives the dialog copy).
@@ -221,6 +230,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       .listTaskTags()
       .then(setAllTags)
       .catch(() => setAllTags([]));
+    api
+      .listExclusivesGroupOptions()
+      .then(setAlertGroups)
+      .catch(() => setAlertGroups([]));
   }, []);
 
   // --- Staged property edits (Status / Priority / Assignee / Start / Due) ---
@@ -258,6 +271,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // state — shown as a note on the Reminders section title (see TaskReminders,
   // which disables Add for the same reason, and the server, which also 400s).
   const reminderBlock = reminderAddBlock(task.startAt, task.status, new Date());
+  const savedAttrGroupId = task.alertGroup ? String(task.alertGroup.id) : '';
+  // Only a changed attribute is sent.
+  const attrChanges = {
+    ...(attrGroupId !== savedAttrGroupId && {
+      alertGroupId: attrGroupId === '' ? null : Number(attrGroupId),
+    }),
+    ...(attrType !== (task.alertType ?? '') && {
+      alertType: (attrType || null) as ExclusivesAlertType | null,
+    }),
+  };
   const fieldsDirty =
     assigneeId !== (task.assigneeId ?? '') ||
     priority !== task.priority ||
@@ -267,6 +290,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     dueDate !== persistedDue.date ||
     dueTime !== persistedDue.time ||
     dutyId !== (task.dutyId ?? '') ||
+    attrGroupId !== savedAttrGroupId ||
+    attrType !== (task.alertType ?? '') ||
     nameDraft.trim() !== task.name;
 
   // Commit all staged fields at once (status, priority, assignee, and dates),
@@ -305,6 +330,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     // Transitioning INTO Review requires choosing a reviewer first — the actual
     // save happens in saveReview() once the reviewer-picker is confirmed.
     if (nextStatus === 'Review' && task.status !== 'Review') {
+      // The menu opens under the Status chip: bring it into view first.
+      statusChipRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
       setPendingReview(true);
       return;
     }
@@ -321,6 +348,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             startAt: stagedStartIso,
             dueAt: stagedDueIso,
             dutyId: dutyId === '' ? null : dutyId,
+            ...attrChanges,
             ...(nameChanged ? { name: nameDraft.trim() } : {}),
           },
           task.updatedAt,
@@ -355,6 +383,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setStartTime(s.time);
     setDueDate(d.date);
     setDueTime(d.time);
+    setAttrGroupId(t.alertGroup ? String(t.alertGroup.id) : '');
+    setAttrType(t.alertType ?? '');
   }
 
   // Revert staged fields to the persisted task.
@@ -406,6 +436,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             startAt: stagedStartIso,
             dueAt: stagedDueIso,
             dutyId: dutyId === '' ? null : dutyId,
+            ...attrChanges,
             ...(nameDraft.trim() !== task.name && nameDraft.trim().length >= TASK_NAME_MIN_LENGTH
               ? { name: nameDraft.trim() }
               : {}),
@@ -821,6 +852,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     (startDate !== persistedStart.date || startTime !== persistedStart.time) && 'start date',
     priority !== task.priority && 'priority',
     dutyId !== (task.dutyId ?? '') && 'duty',
+    attrGroupId !== savedAttrGroupId && 'alert group',
+    attrType !== (task.alertType ?? '') && 'alert type',
   ].filter(Boolean) as string[];
 
   const saveRef = useRef(saveFields);
@@ -1134,25 +1167,27 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <StatusPill status={task.status} />
               </span>
             ) : (
-              <Select
-                variant="chip"
-                hideLabel
-                className={`hb-prop tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
-                label="Status"
-                value={status}
-                options={statusChoices}
-                renderValue={(o) => (
-                  <>
-                    <span
-                      className="hb-dot"
-                      style={{ background: STATUS_DOT[status] }}
-                      aria-hidden="true"
-                    />{' '}
-                    {o?.label}
-                  </>
-                )}
-                onChange={(v) => setStatus(v)}
-              />
+              <span ref={statusChipRef} className="hb-prop-anchor">
+                <Select
+                  variant="chip"
+                  hideLabel
+                  className={`hb-prop tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
+                  label="Status"
+                  value={status}
+                  options={statusChoices}
+                  renderValue={(o) => (
+                    <>
+                      <span
+                        className="hb-dot"
+                        style={{ background: STATUS_DOT[status] }}
+                        aria-hidden="true"
+                      />{' '}
+                      {o?.label}
+                    </>
+                  )}
+                  onChange={(v) => setStatus(v)}
+                />
+              </span>
             )}
 
             {isInReview || !canEdit ? (
@@ -1347,7 +1382,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </div>
 
           {/* HLAI-118: the special attributes, under the chips. */}
-          <TaskAttributesBar task={task} canEdit={canEdit} onEdit={() => setEditingAttrs(true)} />
+          {canEdit ? (
+            <TaskAttributeChips
+              savedGroup={task.alertGroup}
+              groups={alertGroups}
+              groupId={attrGroupId}
+              onGroup={setAttrGroupId}
+              alertType={attrType}
+              onType={setAttrType}
+              savedType={task.alertType ?? ''}
+            />
+          ) : (
+            <TaskAttributesBar task={task} />
+          )}
 
           {dutyMismatch && stagedDuty && doer && doerId && (
             <DutyCrossCheck
@@ -1481,6 +1528,45 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   <Bar value={doneChildren} max={task.children.length} tone="green" />
                 </div>
               )}
+              {newSubOpen && (
+                <form
+                  className="hb-newsub"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void createSubtask();
+                  }}
+                >
+                  <input
+                    className="hb-tpl-input"
+                    aria-label="New sub-task name"
+                    placeholder="Sub-task name, then Enter"
+                    value={newSubName}
+                    autoFocus
+                    maxLength={300}
+                    disabled={creatingSub}
+                    onChange={(e) => setNewSubName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        closeNewSub();
+                      }
+                    }}
+                  />
+                  <Btn
+                    kind="primary"
+                    type="submit"
+                    disabled={creatingSub || newSubName.trim().length < TASK_NAME_MIN_LENGTH}
+                  >
+                    {creatingSub ? 'Creating…' : 'Create'}
+                  </Btn>
+                  <Btn onClick={closeNewSub} disabled={creatingSub}>
+                    Cancel
+                  </Btn>
+                  <span className={`hb-newsub-hint${newSubError ? ' is-error' : ''}`}>
+                    {newSubError ?? 'Assigned to you, with no dates; fill in the rest later.'}
+                  </span>
+                </form>
+              )}
               {task.children.length === 0 ? (
                 <Empty>No sub-tasks yet.</Empty>
               ) : (
@@ -1600,7 +1686,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
             </section>
 
-            <section className="hb-card">
+            <section className="hb-card hb-recur-card">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <Repeat size={16} aria-hidden="true" />
+                </span>
+                <h3>Recurrence</h3>
+              </div>
               <div className="hb-card-pad hb-legacy-rail">
                 <TaskRecurrencePanel task={task} onChanged={applyTask} />
               </div>
@@ -1723,7 +1815,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       )}
 
       {pendingReview && (
-        <ReviewerPickerModal
+        <ReviewerPicker
+          anchorRef={statusChipRef}
           taskId={task.id}
           taskRef={`#${task.id}`}
           taskName={task.name}
@@ -1750,47 +1843,42 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       )}
 
       {pendingReminderRemoval && (
-        <div className="modal-backdrop" onClick={() => setPendingReminderRemoval(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>
-              {pendingReminderRemoval === 'task-canceled'
-                ? 'Cancel this task?'
-                : 'Clear the Start Date?'}
-            </h3>
-            <p>
-              {pendingReminderRemoval === 'task-canceled'
-                ? 'Canceling this task will remove its reminders.'
-                : 'Clearing the Start Date will remove this task’s reminders.'}{' '}
-              Your own reminders are deleted; anyone else with one sees a “Canceled” notice.
-              Continue?
-            </p>
-            <div className="btn-row">
-              <button
-                type="button"
-                disabled={savingFields}
-                onClick={() => {
-                  setPendingReminderRemoval(null);
-                  void saveFields(true);
-                }}
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setPendingReminderRemoval(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          tone="warn"
+          title={
+            pendingReminderRemoval === 'task-canceled'
+              ? 'Cancel this task?'
+              : 'Clear the Start Date?'
+          }
+          message={`${
+            pendingReminderRemoval === 'task-canceled'
+              ? 'Canceling this task removes its reminders.'
+              : 'Clearing the Start Date removes this task’s reminders.'
+          } Your own reminders are deleted; anyone else with one sees a “Canceled” notice.`}
+          confirmLabel="Save"
+          cancelLabel="Keep editing"
+          busy={savingFields}
+          onCancel={() => setPendingReminderRemoval(null)}
+          onConfirm={() => {
+            setPendingReminderRemoval(null);
+            void saveFields(true);
+          }}
+        />
       )}
 
       {dupOpen && (
-        <div className="modal-backdrop" onClick={() => setDupOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Duplicate task</h3>
+        <Popover
+          anchorRef={menuRef}
+          open
+          onClose={() => !duplicating && setDupOpen(false)}
+          minWidth={420}
+          matchWidth={false}
+          closeOnTab={false}
+          className="hb-actpanel"
+          label="Duplicate task"
+        >
+          <div>
+            <h3 className="hb-actpanel-title">Duplicate task</h3>
             {task.children.length > 0 ? (
               <p>
                 “{task.name}” has {task.children.length} sub-task
@@ -1848,60 +1936,22 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )}
             </div>
           </div>
-        </div>
-      )}
-
-      {newSubOpen && (
-        <div className="modal-backdrop" {...newSubBackdrop}>
-          <div className="modal" role="dialog" aria-labelledby="new-sub-title">
-            <h3 id="new-sub-title" style={{ marginTop: 0 }}>
-              New sub-task
-            </h3>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void createSubtask();
-              }}
-            >
-              {newSubError && <div className="alert error">{newSubError}</div>}
-              <div className="field">
-                <label htmlFor="new-sub-name">Task name</label>
-                <input
-                  id="new-sub-name"
-                  value={newSubName}
-                  autoFocus
-                  maxLength={300}
-                  onChange={(e) => setNewSubName(e.target.value)}
-                />
-              </div>
-              <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
-                It will be assigned to you, with no dates. You can fill in the rest later.
-              </p>
-              <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={closeNewSub}
-                  disabled={creatingSub}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingSub || newSubName.trim().length < TASK_NAME_MIN_LENGTH}
-                >
-                  {creatingSub ? 'Creating…' : 'Create sub-task'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        </Popover>
       )}
 
       {tplOpen && (
-        <div className="modal-backdrop" onClick={() => setTplOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Save as template</h3>
+        <Popover
+          anchorRef={menuRef}
+          open
+          onClose={() => !savingTpl && setTplOpen(false)}
+          minWidth={420}
+          matchWidth={false}
+          closeOnTab={false}
+          className="hb-actpanel"
+          label="Save as template"
+        >
+          <div>
+            <h3 className="hb-actpanel-title">Save as template</h3>
             {savedTplId != null ? (
               <>
                 <p>Created a reusable template from “{task.name}”. Your task is unchanged.</p>
@@ -1994,40 +2044,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </>
             )}
           </div>
-        </div>
-      )}
-
-      {editingAttrs && (
-        <TaskAttributesModal
-          task={task}
-          onClose={() => setEditingAttrs(false)}
-          onSaved={applyTask}
-        />
+        </Popover>
       )}
 
       {confirmDelete && (
-        <div className="modal-backdrop" onClick={() => setConfirmDelete(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Delete task?</h3>
-            <p>
-              This permanently deletes task #{task.id} “{task.name}”, along with its comments and
-              attachments. This cannot be undone.
-            </p>
-            <div className="btn-row">
-              <button
-                type="button"
-                className="danger"
-                disabled={deleting}
-                onClick={handleDeleteTask}
-              >
-                {deleting ? 'Deleting…' : 'Delete task'}
-              </button>
-              <button type="button" className="secondary" onClick={() => setConfirmDelete(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this task?"
+          message={`This permanently deletes #${task.id} “${task.name}”, with its comments and files. This cannot be undone.`}
+          confirmLabel={deleting ? 'Deleting…' : 'Delete task'}
+          busy={deleting}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDeleteTask}
+        />
       )}
     </div>
   );

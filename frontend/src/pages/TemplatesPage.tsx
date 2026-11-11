@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -263,6 +271,12 @@ export function TemplatesPage() {
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [instantiating, setInstantiating] = useState<TemplateDto | null>(null);
+  // Below 1360px the side column sits under the list: bring the panel into view.
+  useEffect(() => {
+    if (instantiating) {
+      document.querySelector('.hb-tpl-instpanel')?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [instantiating]);
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [q, setQ] = useState('');
 
@@ -386,7 +400,7 @@ export function TemplatesPage() {
           </div>
         )}
 
-        <div className="hb-cols">
+        <div className={cx('hb-cols', instantiating && 'hb-users-cols')}>
           <div className="hb-col">
             <Card className="hb-tpl-list">
               <CardHead
@@ -492,85 +506,89 @@ export function TemplatesPage() {
             </Card>
           </div>
 
-          <aside className="hb-col">
-            <Card>
-              <CardHead
-                icon={<Repeat size={16} aria-hidden="true" />}
-                title="Repeating schedules"
-                right={
-                  made > 0 ? (
-                    <span className="hb-small">Used {plural(made, 'time')} in all</span>
-                  ) : undefined
-                }
+          <aside className={cx('hb-col', instantiating && 'hb-gside')}>
+            {instantiating ? (
+              <InstantiatePanel
+                template={instantiating}
+                users={users}
+                onClose={() => setInstantiating(null)}
+                onDone={(rootTaskId) => {
+                  setInstantiating(null);
+                  toast({ message: 'Tasks created from the template.', tone: 'success' });
+                  load();
+                  navigate(`/tasks/${rootTaskId}`);
+                }}
               />
-              {repeating.length === 0 ? (
-                <Empty>No template repeats yet. Turn on Repeat in a template to schedule it.</Empty>
-              ) : (
-                repeating.map((t) => (
-                  <div key={t.id} className="hb-row">
-                    <div className="hb-stack">
-                      <button
-                        type="button"
-                        className="hb-linklike hb-name"
-                        onClick={() => void editTemplate(t.id)}
-                      >
-                        {t.name}
-                      </button>
-                      <span className="hb-sub">
-                        {RECURRENCE_TYPE_LABELS[t.recurrenceType]} ·{' '}
-                        {t.occurrenceCount
-                          ? `made ${plural(t.occurrenceCount, 'time')}`
-                          : 'not made yet'}
-                      </span>
-                    </div>
-                    <Pill tone={t.isActive ? 'green' : 'amber'}>
-                      {t.isActive ? 'Active' : 'Paused'}
-                    </Pill>
-                  </div>
-                ))
-              )}
-            </Card>
-            <Card>
-              <CardHead
-                icon={<ListTree size={16} aria-hidden="true" />}
-                tone="grey"
-                title="How templates work"
-              />
-              <ol className="hb-tpl-how">
-                <li>
-                  <strong>Build a task tree.</strong> Each task can have sub-tasks, a duty, a
-                  priority, tags and tasks it waits on.
-                </li>
-                <li>
-                  <strong>Dates count from Day 0.</strong> “Due day 5” means five days after the
-                  start date you pick when you use it.
-                </li>
-                <li>
-                  <strong>People are roles.</strong> Name a role (Inspector, Buyer); you pick who
-                  fills it each time.
-                </li>
-                <li>
-                  <strong>Repeat it, or use it by hand.</strong> A repeating template makes its
-                  tasks on schedule; Create tasks makes them now.
-                </li>
-              </ol>
-            </Card>
+            ) : (
+              <>
+                <Card>
+                  <CardHead
+                    icon={<Repeat size={16} aria-hidden="true" />}
+                    title="Repeating schedules"
+                    right={
+                      made > 0 ? (
+                        <span className="hb-small">Used {plural(made, 'time')} in all</span>
+                      ) : undefined
+                    }
+                  />
+                  {repeating.length === 0 ? (
+                    <Empty>
+                      No template repeats yet. Turn on Repeat in a template to schedule it.
+                    </Empty>
+                  ) : (
+                    repeating.map((t) => (
+                      <div key={t.id} className="hb-row">
+                        <div className="hb-stack">
+                          <button
+                            type="button"
+                            className="hb-linklike hb-name"
+                            onClick={() => void editTemplate(t.id)}
+                          >
+                            {t.name}
+                          </button>
+                          <span className="hb-sub">
+                            {RECURRENCE_TYPE_LABELS[t.recurrenceType]} ·{' '}
+                            {t.occurrenceCount
+                              ? `made ${plural(t.occurrenceCount, 'time')}`
+                              : 'not made yet'}
+                          </span>
+                        </div>
+                        <Pill tone={t.isActive ? 'green' : 'amber'}>
+                          {t.isActive ? 'Active' : 'Paused'}
+                        </Pill>
+                      </div>
+                    ))
+                  )}
+                </Card>
+                <Card>
+                  <CardHead
+                    icon={<ListTree size={16} aria-hidden="true" />}
+                    tone="grey"
+                    title="How templates work"
+                  />
+                  <ol className="hb-tpl-how">
+                    <li>
+                      <strong>Build a task tree.</strong> Each task can have sub-tasks, a duty, a
+                      priority, tags and tasks it waits on.
+                    </li>
+                    <li>
+                      <strong>Dates count from Day 0.</strong> “Due day 5” means five days after the
+                      start date you pick when you use it.
+                    </li>
+                    <li>
+                      <strong>People are roles.</strong> Name a role (Inspector, Buyer); you pick
+                      who fills it each time.
+                    </li>
+                    <li>
+                      <strong>Repeat it, or use it by hand.</strong> A repeating template makes its
+                      tasks on schedule; Create tasks makes them now.
+                    </li>
+                  </ol>
+                </Card>
+              </>
+            )}
           </aside>
         </div>
-
-        {instantiating && (
-          <InstantiateModal
-            template={instantiating}
-            users={users}
-            onClose={() => setInstantiating(null)}
-            onDone={(rootTaskId) => {
-              setInstantiating(null);
-              toast({ message: 'Tasks created from the template.', tone: 'success' });
-              load();
-              navigate(`/tasks/${rootTaskId}`);
-            }}
-          />
-        )}
       </PageBody>
     </>
   );
@@ -1487,16 +1505,10 @@ function TemplateEditor({
           onBackdropClick={() => void applyFuture(false)}
           actions={
             <>
-              <button
-                type="button"
-                className="secondary btn-sm"
-                onClick={() => void applyFuture(false)}
-              >
-                Leave them
-              </button>
-              <button type="button" className="btn-sm" onClick={() => void applyFuture(true)}>
+              <Btn onClick={() => void applyFuture(false)}>Leave them</Btn>
+              <Btn kind="primary" onClick={() => void applyFuture(true)}>
                 Update them
-              </button>
+              </Btn>
             </>
           }
         >
@@ -1512,9 +1524,9 @@ function TemplateEditor({
   );
 }
 
-// --- Instantiate modal ("Create tasks") ----------------------------------------
+// --- Instantiate panel ("Create tasks"), in the page's side column ------------
 
-function InstantiateModal({
+function InstantiatePanel({
   template,
   users,
   onClose,
@@ -1660,46 +1672,32 @@ function InstantiateModal({
       ...fixed.map((p) => ({ p, ok: true })),
     ];
     return (
-      <ModalShell
+      <InstPanel
+        onClose={onClose}
+        busy={busy}
         title={
           open
             ? `${open} required ${open === 1 ? 'duty isn’t' : 'duties aren’t'} held`
             : 'All required duties are now held'
         }
-        tone={open ? 'danger' : 'accent'}
-        role="alertdialog"
-        width="720px"
         hint={
-          <button
-            type="button"
-            className="secondary btn-sm"
+          <Btn
+            kind="link"
             disabled={busy}
             onClick={() => void recheck()}
             title="Check again after duties were added somewhere else"
           >
             <RotateCw size={14} aria-hidden="true" /> Re-check
-          </button>
+          </Btn>
         }
         actions={
           <>
-            <button
-              type="button"
-              className="secondary btn-sm"
-              disabled={busy}
-              onClick={() => setProblems(null)}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn-sm"
-              disabled={busy || open > 0}
-              onClick={() => void create()}
-            >
-              {busy
-                ? 'Creating…'
-                : `Proceed — create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
-            </button>
+            <Btn disabled={busy} onClick={() => setProblems(null)}>
+              Back
+            </Btn>
+            <Btn kind="primary" disabled={busy || open > 0} onClick={() => void create()}>
+              {busy ? 'Creating…' : `Create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
+            </Btn>
           </>
         }
       >
@@ -1773,7 +1771,7 @@ function InstantiateModal({
             );
           })}
         </div>
-      </ModalShell>
+      </InstPanel>
     );
   }
 
@@ -1795,24 +1793,19 @@ function InstantiateModal({
     offset == null || !anchor ? null : formatDay(addDays(anchor, offset));
 
   return (
-    <ModalShell
+    <InstPanel
+      onClose={onClose}
+      busy={busy}
       title={`Create tasks from “${template.name}”`}
-      width="760px"
-      onBackdropClick={busy ? undefined : onClose}
       hint={`${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'} will be created`}
       actions={
         <>
-          <button type="button" className="secondary btn-sm" onClick={onClose} disabled={busy}>
+          <Btn onClick={onClose} disabled={busy}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="btn-sm"
-            onClick={() => void submit()}
-            disabled={busy || !anchor}
-          >
+          </Btn>
+          <Btn kind="primary" onClick={() => void submit()} disabled={busy || !anchor}>
             {busy ? 'Checking…' : `Create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
-          </button>
+          </Btn>
         </>
       }
     >
@@ -1889,7 +1882,7 @@ function InstantiateModal({
                         const duty = catalog.duties.get(d);
                         return (
                           <span key={d} className="hb-tpl-warn">
-                            ⚠ Doesn’t hold {duty ? dutyLabel(duty) : 'a required duty'}
+                            Doesn’t hold {duty ? dutyLabel(duty) : 'a required duty'}
                           </span>
                         );
                       })
@@ -1936,7 +1929,51 @@ function InstantiateModal({
           </div>
         </div>
       </div>
-    </ModalShell>
+    </InstPanel>
+  );
+}
+
+/** The side panel the two steps of Create tasks sit in. */
+function InstPanel({
+  title,
+  hint,
+  actions,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  hint?: ReactNode;
+  actions: ReactNode;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="hb-gpanel hb-tpl-instpanel">
+      <section aria-label={title}>
+        <div className="hb-gpanel-head">
+          <div className="hb-stack">
+            <span className="hb-gpanel-eyebrow">Create tasks</span>
+            <h2>{title}</h2>
+          </div>
+          <button
+            type="button"
+            className="hb-icon-btn hb-icon-btn-sm"
+            aria-label="Close"
+            disabled={busy}
+            onClick={onClose}
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="hb-gpanel-body">{children}</div>
+        <div className="hb-gpanel-foot">
+          {hint && <span className="hb-tpl-insthint">{hint}</span>}
+          {actions}
+        </div>
+      </section>
+    </Card>
   );
 }
 

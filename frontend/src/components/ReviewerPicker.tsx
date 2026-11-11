@@ -1,12 +1,14 @@
-import { useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type KeyboardEvent, type RefObject } from 'react';
 import { ArrowRight, Check, Search } from 'lucide-react';
 import { type ActiveUserDto } from '@healthy-tasks/shared';
 import { api } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
-import { ModalShell } from './exclusives/ModalShell';
+import { Popover } from './harbor/Popover';
 import { Btn, Pill, cx } from './harbor/ui';
 
 interface Props {
+  /** The control it opens under: the task page's Status chip, or the Board card. */
+  anchorRef: RefObject<HTMLElement>;
   /** Task whose reviewer pool to load (Admin + the assignee's supervisor chain). */
   taskId: number;
   /** Task ref for the subtitle, e.g. "#482". */
@@ -23,15 +25,18 @@ interface Props {
 }
 
 /**
- * Reviewer selection (Phase 10, scoped in Phase 13; Harbor dialog in the
- * redesign). Shown whenever a task's Status is set to Review — from the task
- * page's Status field or a Kanban drop into Review. Lists only the eligible
+ * Reviewer selection (Phase 10, scoped in Phase 13). In the redesign it's a
+ * menu under the control that asked for it, not a pop-up window (brief §5:
+ * no modals unless something must interrupt). Shown whenever a task's Status
+ * is set to Review — from the task page's Status chip or a Board drop into
+ * Review. Lists only the eligible
  * reviewer pool for THIS task (Admin + the current assignee's supervisor
  * chain); the chosen reviewer becomes the task's temporary assignee, and the
- * "What happens" box spells out what is restored later. It stays a dialog
- * because nothing changes until it's confirmed.
+ * "What happens" box spells out what is restored later. Nothing changes
+ * until it's confirmed.
  */
-export function ReviewerPickerModal({
+export function ReviewerPicker({
+  anchorRef,
   taskId,
   taskRef,
   taskName,
@@ -65,14 +70,6 @@ export function ReviewerPickerModal({
       cancelled = true;
     };
   }, [taskId]);
-
-  useEffect(() => {
-    function onKey(e: globalThis.KeyboardEvent) {
-      if (e.key === 'Escape' && !submitting) onClose();
-    }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose, submitting]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -111,23 +108,17 @@ export function ReviewerPickerModal({
   const subtitle = [taskRef, taskName].filter(Boolean).join(' ');
 
   return (
-    <ModalShell
-      title="Send for review"
-      tone="accent"
-      width="min(520px, calc(100vw - 32px))"
-      onBackdropClick={submitting ? undefined : onClose}
-      hint="Only Admins and the assignee’s supervisors can review."
-      actions={
-        <>
-          <Btn onClick={onClose} disabled={submitting}>
-            Cancel
-          </Btn>
-          <Btn kind="primary" onClick={() => void confirm()} disabled={!selected || submitting}>
-            {submitting ? 'Sending…' : 'Send for review'}
-          </Btn>
-        </>
-      }
+    <Popover
+      anchorRef={anchorRef}
+      open
+      onClose={() => !submitting && onClose()}
+      label="Send for review"
+      minWidth={420}
+      matchWidth={false}
+      closeOnTab={false}
+      className="hb-rvw"
     >
+      <div className="hb-rvw-head">Send for review</div>
       <p className="hb-rvw-sub">
         {subtitle ? <strong>{subtitle}</strong> : null}
         {subtitle ? <br /> : null}
@@ -214,6 +205,16 @@ export function ReviewerPickerModal({
           </span>
         </div>
       </div>
-    </ModalShell>
+
+      <div className="hb-rvw-foot">
+        <span className="hb-rvw-hint">Only Admins and the assignee’s supervisors can review.</span>
+        <Btn onClick={onClose} disabled={submitting}>
+          Cancel
+        </Btn>
+        <Btn kind="primary" onClick={() => void confirm()} disabled={!selected || submitting}>
+          {submitting ? 'Sending…' : 'Send for review'}
+        </Btn>
+      </div>
+    </Popover>
   );
 }

@@ -5,11 +5,7 @@
  * the cue draws the eye. The colors live in JS (not CSS attribute selectors) so
  * they can't silently break if an enum label changes.
  */
-import {
-  TASK_STATUS_LABELS,
-  type TaskPriority,
-  type TaskStatus,
-} from '@healthy-tasks/shared';
+import { TASK_STATUS_LABELS, type TaskPriority, type TaskStatus } from '@healthy-tasks/shared';
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
   Open: 'var(--status-open)',
@@ -66,7 +62,11 @@ export function StatusPill({
     >
       <span className="status-pill-dot" style={{ background: c.dot }} />
       {TASK_STATUS_LABELS[status] ?? status}
-      {caret && <span className="status-pill-caret" aria-hidden="true">▾</span>}
+      {caret && (
+        <span className="status-pill-caret" aria-hidden="true">
+          ▾
+        </span>
+      )}
     </span>
   );
 }
@@ -74,7 +74,7 @@ export function StatusPill({
 const PRIO_BARS: Record<TaskPriority, [string, string, string]> = {
   Low: ['var(--faint-2)', 'var(--faint-2)', 'var(--faint-2)'],
   Medium: ['var(--muted)', 'var(--muted)', 'var(--border-soft)'],
-  High: ['var(--warn)', 'var(--warn)', 'var(--warn)'],
+  High: ['var(--danger)', 'var(--danger)', 'var(--border-soft)'],
   Urgent: ['var(--danger)', 'var(--danger)', 'var(--danger)'],
 };
 

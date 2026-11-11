@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   TASK_STATUSES,
@@ -10,7 +10,7 @@ import { api, ApiError } from '../api/client';
 import { Avatar, UnassignedAvatar, userLabel } from './ui/Avatar';
 import { PriorityRamp, statusColor } from './ui/indicators';
 import { DueDate } from './ui/dates';
-import { ReviewerPickerModal } from './ReviewerPickerModal';
+import { ReviewerPicker } from './ReviewerPicker';
 
 interface Props {
   rows: TaskRowDto[];
@@ -56,6 +56,7 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
   const [overCol, setOverCol] = useState<TaskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingReview, setPendingReview] = useState<TaskRowDto | null>(null);
+  const reviewAnchor = useRef<HTMLElement | null>(null);
 
   useEffect(() => setCards(rows), [rows]);
 
@@ -84,6 +85,11 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
     if (!task || task.status === status) return;
     if (status === 'Review') {
       // Choose a reviewer first; the commit happens on confirm.
+      // The reviewer menu opens under the dropped card.
+      reviewAnchor.current = document.querySelector<HTMLElement>(
+        `.kanban-card[data-task-id="${task.id}"]`,
+      );
+      reviewAnchor.current?.scrollIntoView({ block: 'nearest' });
       setPendingReview(task);
       return;
     }
@@ -122,6 +128,7 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                   return (
                     <article
                       key={task.id}
+                      data-task-id={task.id}
                       className={`kanban-card${locked ? ' locked' : ''}${dragId === task.id ? ' dragging' : ''}`}
                       draggable={!locked}
                       onDragStart={(e) => {
@@ -149,7 +156,13 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                       </Link>
                       <TagChips tags={task.tags} />
                       <div className="kanban-card-foot">
-                        <DueDate iso={task.dueAt} status={task.status} completedAt={task.statusChangedAt} isDue inline />
+                        <DueDate
+                          iso={task.dueAt}
+                          status={task.status}
+                          completedAt={task.statusChangedAt}
+                          isDue
+                          inline
+                        />
                         {task.assignee ? (
                           <Avatar user={task.assignee} size="xs" />
                         ) : (
@@ -186,7 +199,8 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
       </div>
 
       {pendingReview && (
-        <ReviewerPickerModal
+        <ReviewerPicker
+          anchorRef={reviewAnchor}
           taskId={pendingReview.id}
           taskRef={`#${pendingReview.id}`}
           taskName={pendingReview.name}

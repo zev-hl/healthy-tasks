@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
 import type { AttachmentDto, TaskDetailDto, UserDto } from '@healthy-tasks/shared';
 import { api, ApiError, uploadToStorage } from '../api/client';
-import { attachmentProblem, fileIcon, humanSize } from '../lib/attachmentFile';
-import { UserChip } from './ui/Avatar';
+import { attachmentProblem, humanSize } from '../lib/attachmentFile';
+import { userLabel } from './ui/Avatar';
+import { FileTile } from './ui/FileTile';
+import { X } from 'lucide-react';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 
 type Target = { kind: 'task'; taskId: number } | { kind: 'comment'; commentId: string };
@@ -27,6 +29,13 @@ export function AttachmentSection({
   const [busy, setBusy] = useState(false);
   /** The attachment awaiting confirmation, if the delete dialog is open. */
   const [confirming, setConfirming] = useState<AttachmentDto | null>(null);
+  const [dragging, setDragging] = useState(false);
+  // The task's Files card gets the drop zone; a comment's files stay compact.
+  const isTask = target.kind === 'task';
+
+  async function handleFiles(files: FileList | null | undefined) {
+    for (const f of Array.from(files ?? [])) await handleFile(f);
+  }
 
   // The API also allows an org-superior of the uploader to delete; the button is
   // shown for the clear cases (uploader or Admin) and the server enforces the rest.
@@ -85,42 +94,42 @@ export function AttachmentSection({
   }
 
   return (
-    <div className="attachments">
+    <div className={`attachments${isTask ? ' hb-files' : ''}`}>
       {error && <div className="alert error">{error}</div>}
 
       {attachments.length === 0 ? (
-        target.kind === 'task' ? (
-          <p className="muted" style={{ margin: '0.25rem 0' }}>
-            No attachments yet.
-          </p>
-        ) : null
+        isTask && !canUpload && <p className="hb-files-none">No files yet.</p>
       ) : (
-        <ul className="attachment-list">
+        <ul className="hb-files-list">
           {attachments.map((att) => (
-            <li key={att.id} className="attachment-row">
-              <span className="attachment-icon" aria-hidden>
-                {fileIcon(att.contentType)}
-              </span>
-              <button
-                type="button"
-                className="attachment-name link-button"
-                onClick={() => handleDownload(att)}
-                title="Download"
-              >
-                {att.filename}
-              </button>
-              <span className="muted attachment-meta">
-                {humanSize(att.size)} · <UserChip user={att.uploadedBy} />
+            <li key={att.id} className="hb-file">
+              <FileTile contentType={att.contentType} filename={att.filename} />
+              <span className="hb-file-text">
+                <button
+                  type="button"
+                  className="hb-file-name"
+                  onClick={() => handleDownload(att)}
+                  title="Download"
+                >
+                  {att.filename}
+                </button>
+                <span className="hb-file-meta">
+                  {humanSize(att.size)} · added by {userLabel(att.uploadedBy)} ·{' '}
+                  {new Date(att.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </span>
               </span>
               {canDelete(att) && (
                 <button
                   type="button"
-                  className="rel-x"
+                  className="hb-x"
                   aria-label={`Delete ${att.filename}`}
                   disabled={busy}
                   onClick={() => setConfirming(att)}
                 >
-                  ×
+                  <X size={14} aria-hidden="true" />
                 </button>
               )}
             </li>
@@ -129,26 +138,57 @@ export function AttachmentSection({
       )}
 
       {canUpload && (
-        <div style={{ marginTop: '0.5rem' }}>
+        <>
           <input
             ref={inputRef}
             type="file"
+            multiple={isTask}
             style={{ display: 'none' }}
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleFile(file);
+              void handleFiles(e.target.files);
               e.target.value = ''; // allow re-selecting the same file
             }}
           />
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => inputRef.current?.click()}
-          >
-            {busy ? 'Uploading…' : '+ Attach file'}
-          </button>
-        </div>
+          {isTask ? (
+            <div
+              className={`hb-drop${dragging ? ' is-over' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                void handleFiles(e.dataTransfer.files);
+              }}
+            >
+              {busy ? (
+                'Uploading…'
+              ) : (
+                <>
+                  Drop files here or{' '}
+                  <button
+                    type="button"
+                    className="hb-drop-browse"
+                    onClick={() => inputRef.current?.click()}
+                  >
+                    browse
+                  </button>
+                </>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => inputRef.current?.click()}
+            >
+              {busy ? 'Uploading…' : '+ Attach file'}
+            </button>
+          )}
+        </>
       )}
 
       {confirming && (

@@ -70,7 +70,9 @@ export function TaskReminders({ taskId, startAt, status }: Props) {
   // Rendered bare inside the Task Detail right-rail "Reminders" section.
   return (
     <div className="rail-reminders">
-      <p className="muted rail-reminders-hint">Personal to you — surfaces in Notifications near the Start time.</p>
+      <p className="muted rail-reminders-hint">
+        Personal to you — surfaces in Notifications near the Start time.
+      </p>
       {error && <div className="alert error">{error}</div>}
       <ul className="reminder-list">
         {reminders.map((r) => (
@@ -97,7 +99,8 @@ export function TaskReminders({ taskId, startAt, status }: Props) {
           ))}
         </select>
         <button
-          className="btn-sm"
+          type="button"
+          className="secondary btn-sm"
           onClick={() => void add()}
           disabled={busy || block !== null}
           title={block ? REMINDER_BLOCK_LABELS[block] : undefined}

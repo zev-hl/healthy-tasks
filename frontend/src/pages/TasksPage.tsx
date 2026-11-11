@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  ArrowDownWideNarrow,
-  ArrowUpNarrowWide,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -608,7 +606,7 @@ export function TasksPage() {
             {overdueInScope > 0 && <span className="hb-late"> · {overdueInScope} overdue</span>}
           </>
         }
-        searchPlaceholder="Search by title or #number"
+        searchPlaceholder="Search by title, #number or tag"
         searchValue={text}
         onSearchChange={setText}
         onSearch={() => {}}
@@ -747,16 +745,12 @@ export function TasksPage() {
               />
               <button
                 type="button"
-                className="hb-icon-btn hb-icon-btn-sm"
+                className="hb-sortdir"
                 onClick={() => patch({ sortDir: state.sortDir === 'asc' ? 'desc' : 'asc' })}
                 aria-label={`Sort direction: ${dirLabel(state.sortField, state.sortDir)}. Click to reverse.`}
-                title={dirLabel(state.sortField, state.sortDir)}
+                title="Reverse the order"
               >
-                {state.sortDir === 'asc' ? (
-                  <ArrowUpNarrowWide size={17} aria-hidden="true" />
-                ) : (
-                  <ArrowDownWideNarrow size={17} aria-hidden="true" />
-                )}
+                {dirLabel(state.sortField, state.sortDir)}
               </button>
             </>
           )}

@@ -77,7 +77,9 @@ function file(name: string, type = 'application/pdf', size = 1024): File {
 /** Open the composer and return the hidden file input behind "Attach File". */
 function openComposer() {
   renderWithRouter(<Comments task={task} currentUser={currentUser} onChanged={() => {}} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Add a comment…' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Write a comment… use @ to mention someone' }),
+  );
   return document.querySelector('input[type="file"]') as HTMLInputElement;
 }
 
@@ -127,8 +129,8 @@ describe('Comments delete confirmation', () => {
 describe('Comments composer', () => {
   it('offers Attach File straight away, with the comment box still empty', () => {
     openComposer();
-    expect(screen.getByRole('button', { name: /Attach File/ })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Comment' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Attach files/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Post comment' })).toBeDisabled();
   });
 
   it('enables Comment once a file is chosen, with no text at all', async () => {
@@ -137,14 +139,14 @@ describe('Comments composer', () => {
     await settle();
 
     expect(screen.getByText('report.pdf')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Comment' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Post comment' })).toBeEnabled();
   });
 
   it('posts a file with no text as one call, after uploading it', async () => {
     const input = openComposer();
     fireEvent.change(input, { target: { files: [file('report.pdf')] } });
     await settle();
-    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Post comment' }));
     await waitFor(() => expect(createComment).toHaveBeenCalled());
 
     expect(upload).toHaveBeenCalledTimes(1);
@@ -167,7 +169,7 @@ describe('Comments composer', () => {
     fireEvent.change(screen.getByLabelText('New comment'), { target: { value: '<p>Here</p>' } });
     fireEvent.change(input, { target: { files: [file('a.pdf'), file('b.png', 'image/png')] } });
     await settle();
-    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Post comment' }));
     await waitFor(() => expect(createComment).toHaveBeenCalled());
 
     const [, body] = createComment.mock.calls[0] as [number, { body: string; attachments: [] }];
@@ -184,7 +186,7 @@ describe('Comments composer', () => {
     await settle();
 
     expect(screen.queryByText('gone.pdf')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Comment' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Post comment' })).toBeDisabled();
   });
 
   it('says so when the same file is picked twice', async () => {
@@ -223,7 +225,7 @@ describe('Comments composer', () => {
     const input = openComposer();
     fireEvent.change(input, { target: { files: [file('doomed.pdf')] } });
     await settle();
-    fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Post comment' }));
     await waitFor(() => expect(screen.getByText(/Upload failed/)).toBeInTheDocument());
 
     expect(createComment).not.toHaveBeenCalled();

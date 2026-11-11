@@ -1,3 +1,4 @@
+import { ActivitySoon } from './ActivitySoon';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -562,6 +563,7 @@ export function MyDashboard({
             />
             <PerformanceBody totals={perf} />
           </Card>
+          <ActivitySoon />
         </aside>
       </div>
     </>
@@ -573,7 +575,7 @@ function dotFor(s: TaskStatus): string {
     Open: '#8a9ab0',
     InProgress: '#1f5fbf',
     OnHold: '#b86e00',
-    Review: '#4b47b5',
+    Review: '#6e95d3',
     Completed: '#1b6b2e',
     Canceled: '#c9d0da',
   }[s];
