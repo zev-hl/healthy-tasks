@@ -30,16 +30,10 @@ const TaskCreatePage = lazy(() =>
 const TaskDetailPage = lazy(() =>
   import('./pages/TaskDetailPage').then((m) => ({ default: m.TaskDetailPage })),
 );
-const NotificationsPage = lazy(() =>
-  import('./pages/NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
-);
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const MyGoalsPage = lazy(() => import('./pages/MyGoalsPage').then((m) => ({ default: m.MyGoalsPage })));
 const TeamGoalsPage = lazy(() =>
   import('./pages/TeamGoalsPage').then((m) => ({ default: m.TeamGoalsPage })),
-);
-const DueDatePerformancePage = lazy(() =>
-  import('./pages/DueDatePerformancePage').then((m) => ({ default: m.DueDatePerformancePage })),
 );
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })),
@@ -109,7 +103,8 @@ export const router = createBrowserRouter([
           { path: '/tasks', element: <TasksPage /> },
           { path: '/tasks/new', element: <TaskCreatePage /> },
           { path: '/tasks/:id', element: <TaskDetailPage /> },
-          { path: '/notifications', element: <NotificationsPage /> },
+          // Notifications are the bell and a Dashboard section now (redesign).
+          { path: '/notifications', element: <Navigate to="/" replace /> },
           // Exclusives (HLAI-71). Open to any authenticated user for now; role
           // gating is a deliberate later pass (see .claude/docs/plans/HLAI-71.md).
           { path: '/exclusives/groups', element: <ExclusivesGroupsPage /> },
@@ -126,7 +121,8 @@ export const router = createBrowserRouter([
             ),
           },
           { path: '/profile', element: <ProfilePage /> },
-          { path: '/reports/due-date', element: <DueDatePerformancePage /> },
+          // Due-date performance lives on the Dashboard now (redesign).
+          { path: '/reports/due-date', element: <Navigate to="/" replace /> },
           { path: '/goals', element: <MyGoalsPage /> },
           {
             path: '/goals/team',

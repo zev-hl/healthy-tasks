@@ -24,6 +24,7 @@ import { CaretIcon, SearchIcon } from '../components/duties/icons';
 import { highlight } from './DepartmentsPage';
 import { isStaleWriteError } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 /**
  * Organization (Department Duties): who reports to whom, and which duties each
@@ -631,166 +632,170 @@ export function OrganizationPage() {
   const sel = selId ? P.get(selId) : null;
 
   return (
-    <div className="dd-page">
-      <div className="dd-page-head">
-        <div>
-          <div className="dd-crumbs">Manage</div>
-          <h1>Organization</h1>
-          <div className="dd-page-sub">
+    <>
+      <PageHeader
+        title="Organization"
+        subtitle={
+          <>
             {people.length} {people.length === 1 ? 'person' : 'people'}
             {org?.scope === 'all'
               ? ` · ${people.filter((p) => !draft.sup[p.id]).length} without a supervisor`
               : ' · you and your team'}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+        search={false}
+        newTask={false}
+      />
+      <div className="dd-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
 
-      {error && <div className="alert error">{error}</div>}
-
-      <div className="dd-toolbar">
-        <div className="seg" role="group" aria-label="View">
-          {VIEWS.map(([k, l]) => (
-            <button
-              key={k}
-              type="button"
-              className={`seg-btn${view === k ? ' active' : ''}`}
-              aria-pressed={view === k}
-              onClick={() => {
-                setView(k);
-                setExpanded(null);
-              }}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        <div className="dd-search org-search">
-          <SearchIcon />
-          <input
-            placeholder="Search people, departments, duties…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Search"
-          />
-        </div>
-        {view !== 'lines' && (
-          <select
-            value={deptFilter}
-            onChange={(e) => setDeptFilter(e.target.value)}
-            aria-label="Department"
-          >
-            <option value="">All departments</option>
-            {activeDepts.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
+        <div className="dd-toolbar">
+          <div className="seg" role="group" aria-label="View">
+            {VIEWS.map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                className={`seg-btn${view === k ? ' active' : ''}`}
+                aria-pressed={view === k}
+                onClick={() => {
+                  setView(k);
+                  setExpanded(null);
+                }}
+              >
+                {l}
+              </button>
             ))}
-          </select>
-        )}
-        <span className="spacer" />
-        <button
-          type="button"
-          className="secondary btn-sm"
-          onClick={() => setExpanded(new Set(allKeys(nodes)))}
-        >
-          Expand all
-        </button>
-        <button type="button" className="secondary btn-sm" onClick={() => setExpanded(new Set())}>
-          Collapse all
-        </button>
-      </div>
-
-      <div className="dd-org-grid">
-        <div className="dd-tree">
-          <div className="dd-tree-head">
-            <span>{HINT[view]}</span>
           </div>
-          {!org ? (
-            <div className="dd-empty">Loading…</div>
-          ) : nodes.length ? (
-            renderNodes(nodes, 0)
-          ) : (
-            <div className="dd-empty">
-              {query ? `Nothing matches “${q}”.` : 'Nothing to show yet.'}
-            </div>
-          )}
-          {view === 'lines' && org?.scope === 'all' && (
-            <div
-              className={`dd-dropzone${dropTarget?.id === '__root' && dropTarget.ok ? ' drop-ok' : ''}`}
-              {...dropHandlers('__root')}
+          <div className="dd-search org-search">
+            <SearchIcon />
+            <input
+              placeholder="Search people, departments, duties…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Search"
+            />
+          </div>
+          {view !== 'lines' && (
+            <select
+              value={deptFilter}
+              onChange={(e) => setDeptFilter(e.target.value)}
+              aria-label="Department"
             >
-              Drop here to remove the supervisor (top level)
-            </div>
+              <option value="">All departments</option>
+              {activeDepts.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
           )}
-        </div>
-
-        {sel ? (
-          <PersonPanel
-            person={sel}
-            people={people}
-            draft={draft}
-            activeDepts={activeDepts}
-            pdOpen={pdOpen}
-            scope={org?.scope ?? 'team'}
-            onToggleDept={(key, open) => setPdOpen((m) => new Map(m).set(key, !open))}
-            onSelect={setSelId}
-            onSupervisor={(sup) => {
-              setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }));
-              revealUnder(sup);
-            }}
-            onDuties={(next) =>
-              setDraft((d) => ({ ...d, duties: { ...d.duties, [sel.id]: next } }))
-            }
-          />
-        ) : (
-          <div className="dd-panel" style={{ padding: 18 }}>
-            <span className="muted">Select a person.</span>
-          </div>
-        )}
-      </div>
-
-      {dirty.any && (
-        <div className="dd-savebar" role="status">
-          <span className="dot" />
-          <b>Unsaved changes</b>
-          <span className="muted">
-            {[
-              dirty.sup ? `${dirty.sup} supervisor ${dirty.sup === 1 ? 'change' : 'changes'}` : '',
-              dirty.dut ? `${dirty.dut} duty ${dirty.dut === 1 ? 'change' : 'changes'}` : '',
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </span>
           <span className="spacer" />
           <button
             type="button"
             className="secondary btn-sm"
-            disabled={saving}
-            onClick={() => {
-              if (org) setDraft(draftFrom(org));
-              showToast('Changes discarded', 'info');
-            }}
+            onClick={() => setExpanded(new Set(allKeys(nodes)))}
           >
-            Discard
+            Expand all
           </button>
-          {saveBlockedBy && (
-            <span className="dd-savebar-block">
-              Can’t save: a duty Alert Task Setup needs is being removed
-            </span>
-          )}
-          <button
-            type="button"
-            className="btn-sm"
-            disabled={saving || saveBlockedBy !== undefined}
-            title={saveBlockedBy}
-            onClick={() => void save()}
-          >
-            {saving ? 'Saving…' : 'Save changes'}
+          <button type="button" className="secondary btn-sm" onClick={() => setExpanded(new Set())}>
+            Collapse all
           </button>
         </div>
-      )}
-      <Toast toast={toast} onClose={clearToast} />
-    </div>
+
+        <div className="dd-org-grid">
+          <div className="dd-tree">
+            <div className="dd-tree-head">
+              <span>{HINT[view]}</span>
+            </div>
+            {!org ? (
+              <div className="dd-empty">Loading…</div>
+            ) : nodes.length ? (
+              renderNodes(nodes, 0)
+            ) : (
+              <div className="dd-empty">
+                {query ? `Nothing matches “${q}”.` : 'Nothing to show yet.'}
+              </div>
+            )}
+            {view === 'lines' && org?.scope === 'all' && (
+              <div
+                className={`dd-dropzone${dropTarget?.id === '__root' && dropTarget.ok ? ' drop-ok' : ''}`}
+                {...dropHandlers('__root')}
+              >
+                Drop here to remove the supervisor (top level)
+              </div>
+            )}
+          </div>
+
+          {sel ? (
+            <PersonPanel
+              person={sel}
+              people={people}
+              draft={draft}
+              activeDepts={activeDepts}
+              pdOpen={pdOpen}
+              scope={org?.scope ?? 'team'}
+              onToggleDept={(key, open) => setPdOpen((m) => new Map(m).set(key, !open))}
+              onSelect={setSelId}
+              onSupervisor={(sup) => {
+                setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }));
+                revealUnder(sup);
+              }}
+              onDuties={(next) =>
+                setDraft((d) => ({ ...d, duties: { ...d.duties, [sel.id]: next } }))
+              }
+            />
+          ) : (
+            <div className="dd-panel" style={{ padding: 18 }}>
+              <span className="muted">Select a person.</span>
+            </div>
+          )}
+        </div>
+
+        {dirty.any && (
+          <div className="dd-savebar" role="status">
+            <span className="dot" />
+            <b>Unsaved changes</b>
+            <span className="muted">
+              {[
+                dirty.sup
+                  ? `${dirty.sup} supervisor ${dirty.sup === 1 ? 'change' : 'changes'}`
+                  : '',
+                dirty.dut ? `${dirty.dut} duty ${dirty.dut === 1 ? 'change' : 'changes'}` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            <span className="spacer" />
+            <button
+              type="button"
+              className="secondary btn-sm"
+              disabled={saving}
+              onClick={() => {
+                if (org) setDraft(draftFrom(org));
+                showToast('Changes discarded', 'info');
+              }}
+            >
+              Discard
+            </button>
+            {saveBlockedBy && (
+              <span className="dd-savebar-block">
+                Can’t save: a duty Alert Task Setup needs is being removed
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn-sm"
+              disabled={saving || saveBlockedBy !== undefined}
+              title={saveBlockedBy}
+              onClick={() => void save()}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        )}
+        <Toast toast={toast} onClose={clearToast} />
+      </div>
+    </>
   );
 }
 

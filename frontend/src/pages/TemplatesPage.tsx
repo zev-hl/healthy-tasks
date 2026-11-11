@@ -33,6 +33,7 @@ import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from 
 import { EmptyState } from '../components/ui/EmptyState';
 import { WeekdayPicker } from '../components/WeekdayPicker';
 import { RichTextEditor } from '../components/RichTextEditor';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 // --- Editor model ----------------------------------------------------------
 
@@ -85,7 +86,19 @@ const emptyRecurrence = (): EditorRecurrence => ({
 });
 
 function blankNode(key: string, parentKey: string | null): EditorNode {
-  return { key, parentKey, name: '', description: '', defaultPriority: 'Medium', startOffsetDays: '', dueOffsetDays: '', assigneeRole: '', dutyId: '', tags: '', attachmentCount: 0 };
+  return {
+    key,
+    parentKey,
+    name: '',
+    description: '',
+    defaultPriority: 'Medium',
+    startOffsetDays: '',
+    dueOffsetDays: '',
+    assigneeRole: '',
+    dutyId: '',
+    tags: '',
+    attachmentCount: 0,
+  };
 }
 
 /** Load an existing template into the editor model. */
@@ -109,7 +122,10 @@ function toEditor(t: TemplateDto): EditorState {
       tags: n.tags.join(', '),
       attachmentCount: n.attachmentCount,
     })),
-    dependencies: t.dependencies.map((d) => ({ blockerKey: keyOf(d.blockerNodeId), blockedKey: keyOf(d.blockedNodeId) })),
+    dependencies: t.dependencies.map((d) => ({
+      blockerKey: keyOf(d.blockerNodeId),
+      blockedKey: keyOf(d.blockedNodeId),
+    })),
     recurrence: {
       recurrenceType: t.recurrenceType,
       intervalCount: String(t.intervalCount ?? 1),
@@ -192,7 +208,10 @@ export function TemplatesPage() {
   };
   useEffect(load, []);
   useEffect(() => {
-    api.listActiveUsers().then(setUsers).catch(() => setUsers([]));
+    api
+      .listActiveUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
   }, []);
 
   const keyCounter = useRef(0);
@@ -249,91 +268,103 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="tasks-page">
-      <div className="tasks-toolbar">
-        <h1>Task templates</h1>
-        <span className="mono tasks-total">{loading ? '…' : list.length}</span>
-        <div className="spacer" />
-        <button onClick={newTemplate}>New template</button>
-      </div>
+    <>
+      <PageHeader
+        title="Templates"
+        subtitle={
+          loading
+            ? 'Reusable task trees'
+            : `${list.length} reusable task ${list.length === 1 ? 'tree' : 'trees'}, with relative dates, roles and repeats`
+        }
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            <button onClick={newTemplate}>New template</button>
+          </>
+        }
+      />
+      <div className="tasks-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
+        {notice && <div className="alert success">{notice}</div>}
 
-      {error && <div className="alert error">{error}</div>}
-      {notice && <div className="alert success">{notice}</div>}
-
-      {!loading && list.length === 0 ? (
-        <EmptyState title="No templates yet" >
-          Create a reusable task tree with relative dates, role placeholders, and an optional
-          recurrence schedule.
-        </EmptyState>
-      ) : (
-        <div className="table-scroll">
-          <table className="results-table templates-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Recurrence</th>
-                <th>Nodes</th>
-                <th>Instances</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((t) => (
-                <tr key={t.id}>
-                  <td className="templates-name">
-                    <strong>{t.name}</strong>
-                    {t.description && (
-                      <div className="muted templates-desc" title={t.description}>
-                        {t.description}
-                      </div>
-                    )}
-                  </td>
-                  <td className="templates-recurrence">{RECURRENCE_TYPE_LABELS[t.recurrenceType]}</td>
-                  <td className="mono">{t.nodeCount}</td>
-                  <td className="mono">{t.occurrenceCount}</td>
-                  <td>
-                    <span className={`badge ${t.isActive ? 'active' : 'inactive'}`}>
-                      {t.isActive ? 'Active' : 'Paused'}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-                      <button
-                        className="btn-sm"
-                        onClick={() => void openInstantiate(t.id)}
-                      >
-                        Instantiate
-                      </button>
-                      <button className="secondary btn-sm" onClick={() => void editTemplate(t.id)}>
-                        Edit
-                      </button>
-                      <button className="secondary btn-sm" onClick={() => void removeTemplate(t)}>
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+        {!loading && list.length === 0 ? (
+          <EmptyState title="No templates yet">
+            Create a reusable task tree with relative dates, role placeholders, and an optional
+            recurrence schedule.
+          </EmptyState>
+        ) : (
+          <div className="table-scroll">
+            <table className="results-table templates-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Recurrence</th>
+                  <th>Nodes</th>
+                  <th>Instances</th>
+                  <th>Status</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {list.map((t) => (
+                  <tr key={t.id}>
+                    <td className="templates-name">
+                      <strong>{t.name}</strong>
+                      {t.description && (
+                        <div className="muted templates-desc" title={t.description}>
+                          {t.description}
+                        </div>
+                      )}
+                    </td>
+                    <td className="templates-recurrence">
+                      {RECURRENCE_TYPE_LABELS[t.recurrenceType]}
+                    </td>
+                    <td className="mono">{t.nodeCount}</td>
+                    <td className="mono">{t.occurrenceCount}</td>
+                    <td>
+                      <span className={`badge ${t.isActive ? 'active' : 'inactive'}`}>
+                        {t.isActive ? 'Active' : 'Paused'}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
+                        <button className="btn-sm" onClick={() => void openInstantiate(t.id)}>
+                          Instantiate
+                        </button>
+                        <button
+                          className="secondary btn-sm"
+                          onClick={() => void editTemplate(t.id)}
+                        >
+                          Edit
+                        </button>
+                        <button className="secondary btn-sm" onClick={() => void removeTemplate(t)}>
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {instantiating && (
-        <InstantiateModal
-          template={instantiating}
-          users={users}
-          onClose={() => setInstantiating(null)}
-          onDone={(rootTaskId) => {
-            setInstantiating(null);
-            setNotice('Template instantiated.');
-            load();
-            navigate(`/tasks/${rootTaskId}`);
-          }}
-        />
-      )}
-    </div>
+        {instantiating && (
+          <InstantiateModal
+            template={instantiating}
+            users={users}
+            onClose={() => setInstantiating(null)}
+            onDone={(rootTaskId) => {
+              setInstantiating(null);
+              setNotice('Template instantiated.');
+              load();
+              navigate(`/tasks/${rootTaskId}`);
+            }}
+          />
+        )}
+      </div>
+    </>
   );
 
   async function openInstantiate(id: number) {
@@ -391,7 +422,8 @@ function TemplateEditor({
       ? 'Does not repeat'
       : `Every ${r.intervalCount} ${RECURRENCE_UNIT_LABELS[r.intervalUnit]}`;
   const patch = (p: Partial<EditorState>) => setEditor({ ...editor, ...p });
-  const patchRec = (p: Partial<EditorRecurrence>) => setEditor({ ...editor, recurrence: { ...r, ...p } });
+  const patchRec = (p: Partial<EditorRecurrence>) =>
+    setEditor({ ...editor, recurrence: { ...r, ...p } });
   const patchNode = (key: string, p: Partial<EditorNode>) =>
     setEditor({ ...editor, nodes: editor.nodes.map((n) => (n.key === key ? { ...n, ...p } : n)) });
 
@@ -426,7 +458,9 @@ function TemplateEditor({
     const hasContent = node.name.trim() !== '' || node.description !== '';
     if (
       hasContent &&
-      !window.confirm(`Remove “${node.name.trim() || 'this node'}” and its description and settings?`)
+      !window.confirm(
+        `Remove “${node.name.trim() || 'this node'}” and its description and settings?`,
+      )
     ) {
       return;
     }
@@ -434,7 +468,9 @@ function TemplateEditor({
     const nodes = editor.nodes
       .filter((n) => n.key !== key)
       .map((n) => (n.parentKey === key ? { ...n, parentKey: node.parentKey } : n));
-    const dependencies = editor.dependencies.filter((d) => d.blockerKey !== key && d.blockedKey !== key);
+    const dependencies = editor.dependencies.filter(
+      (d) => d.blockerKey !== key && d.blockedKey !== key,
+    );
     patch({ nodes, dependencies });
   }
 
@@ -466,7 +502,8 @@ function TemplateEditor({
       else next.add(key);
       return next;
     });
-  const collapseAll = () => setCollapsed(new Set(editor.nodes.filter((n) => hasChildren(n.key)).map((n) => n.key)));
+  const collapseAll = () =>
+    setCollapsed(new Set(editor.nodes.filter((n) => hasChildren(n.key)).map((n) => n.key)));
   const expandAll = () => setCollapsed(new Set());
 
   // --- Sibling drag-and-drop reordering ---
@@ -558,7 +595,11 @@ function TemplateEditor({
               )}
               <strong>
                 Node {idx + 1}
-                {isRoot && <span className="badge" style={{ marginLeft: 8 }}>Root</span>}
+                {isRoot && (
+                  <span className="badge" style={{ marginLeft: 8 }}>
+                    Root
+                  </span>
+                )}
                 {n.name ? <span className="muted tpl-node-name"> · {n.name}</span> : null}
                 {hiddenCount > 0 && (
                   <span className="muted tpl-collapsed-count"> ({hiddenCount} hidden)</span>
@@ -606,7 +647,12 @@ function TemplateEditor({
             </div>
             <div className="field">
               <label>Priority</label>
-              <select value={n.defaultPriority} onChange={(e) => patchNode(n.key, { defaultPriority: e.target.value as TaskPriority })}>
+              <select
+                value={n.defaultPriority}
+                onChange={(e) =>
+                  patchNode(n.key, { defaultPriority: e.target.value as TaskPriority })
+                }
+              >
                 {TASK_PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -616,7 +662,11 @@ function TemplateEditor({
             </div>
             <div className="field">
               <label>Role placeholder</label>
-              <input value={n.assigneeRole} placeholder="e.g. Inspector" onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })} />
+              <input
+                value={n.assigneeRole}
+                placeholder="e.g. Inspector"
+                onChange={(e) => patchNode(n.key, { assigneeRole: e.target.value })}
+              />
             </div>
             <div className="field">
               <label>Department › Duty</label>
@@ -636,11 +686,19 @@ function TemplateEditor({
             </div>
             <div className="field">
               <label>Start (+days)</label>
-              <input type="number" value={n.startOffsetDays} onChange={(e) => patchNode(n.key, { startOffsetDays: e.target.value })} />
+              <input
+                type="number"
+                value={n.startOffsetDays}
+                onChange={(e) => patchNode(n.key, { startOffsetDays: e.target.value })}
+              />
             </div>
             <div className="field">
               <label>Due (+days)</label>
-              <input type="number" value={n.dueOffsetDays} onChange={(e) => patchNode(n.key, { dueOffsetDays: e.target.value })} />
+              <input
+                type="number"
+                value={n.dueOffsetDays}
+                onChange={(e) => patchNode(n.key, { dueOffsetDays: e.target.value })}
+              />
             </div>
             <div className="field tpl-node-wide">
               <label>Tags</label>
@@ -653,7 +711,8 @@ function TemplateEditor({
             {n.attachmentCount > 0 && (
               <div className="field tpl-node-wide">
                 <span className="muted tpl-attach-note">
-                  📎 {n.attachmentCount} default attachment{n.attachmentCount === 1 ? '' : 's'} copied onto each new task.
+                  📎 {n.attachmentCount} default attachment{n.attachmentCount === 1 ? '' : 's'}{' '}
+                  copied onto each new task.
                 </span>
               </div>
             )}
@@ -665,22 +724,48 @@ function TemplateEditor({
             <div className="tpl-node-rels">
               <TplRel
                 label="Blocked by"
-                linked={editor.dependencies.filter((d) => d.blockedKey === n.key).map((d) => d.blockerKey)}
+                linked={editor.dependencies
+                  .filter((d) => d.blockedKey === n.key)
+                  .map((d) => d.blockerKey)}
                 options={editor.nodes.filter((o) => o.key !== n.key)}
                 display={nodeDisplay}
-                onAdd={(other) => patch({ dependencies: [...editor.dependencies, { blockerKey: other, blockedKey: n.key }] })}
+                onAdd={(other) =>
+                  patch({
+                    dependencies: [
+                      ...editor.dependencies,
+                      { blockerKey: other, blockedKey: n.key },
+                    ],
+                  })
+                }
                 onRemove={(other) =>
-                  patch({ dependencies: editor.dependencies.filter((d) => !(d.blockerKey === other && d.blockedKey === n.key)) })
+                  patch({
+                    dependencies: editor.dependencies.filter(
+                      (d) => !(d.blockerKey === other && d.blockedKey === n.key),
+                    ),
+                  })
                 }
               />
               <TplRel
                 label="Blocks"
-                linked={editor.dependencies.filter((d) => d.blockerKey === n.key).map((d) => d.blockedKey)}
+                linked={editor.dependencies
+                  .filter((d) => d.blockerKey === n.key)
+                  .map((d) => d.blockedKey)}
                 options={editor.nodes.filter((o) => o.key !== n.key)}
                 display={nodeDisplay}
-                onAdd={(other) => patch({ dependencies: [...editor.dependencies, { blockerKey: n.key, blockedKey: other }] })}
+                onAdd={(other) =>
+                  patch({
+                    dependencies: [
+                      ...editor.dependencies,
+                      { blockerKey: n.key, blockedKey: other },
+                    ],
+                  })
+                }
                 onRemove={(other) =>
-                  patch({ dependencies: editor.dependencies.filter((d) => !(d.blockerKey === n.key && d.blockedKey === other)) })
+                  patch({
+                    dependencies: editor.dependencies.filter(
+                      (d) => !(d.blockerKey === n.key && d.blockedKey === other),
+                    ),
+                  })
                 }
               />
             </div>
@@ -695,7 +780,8 @@ function TemplateEditor({
     setError(null);
     if (!editor.name.trim()) return setError('A template name is required');
     if (editor.nodes.some((n) => !n.name.trim())) return setError('Every node needs a name');
-    if (r.recurrenceType !== 'None' && !r.anchorDate) return setError('A recurring template needs a start (anchor) date');
+    if (r.recurrenceType !== 'None' && !r.anchorDate)
+      return setError('A recurring template needs a start (anchor) date');
 
     setSaving(true);
     try {
@@ -724,7 +810,10 @@ function TemplateEditor({
   async function applyFuture(apply: boolean) {
     if (apply && savedId && pendingFuture) {
       try {
-        await api.applyTemplateToFuture(savedId, pendingFuture.map((f) => f.occurrenceId));
+        await api.applyTemplateToFuture(
+          savedId,
+          pendingFuture.map((f) => f.occurrenceId),
+        );
       } catch (e) {
         setError(e instanceof ApiError ? e.message : 'Could not update future instances');
         setPendingFuture(null);
@@ -735,182 +824,253 @@ function TemplateEditor({
   }
 
   return (
-    <div className="tasks-page">
-      <div className="tasks-toolbar">
-        <h1>{editor.id ? 'Edit template' : 'New template'}</h1>
-        <div className="spacer" />
-        <button
-          className="secondary"
-          onClick={() => {
-            if (confirmDiscard(dirty)) onCancel();
-          }}
-          disabled={saving}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={() => void doSave()}
-          disabled={saving || !dirty}
-          title={dirty ? undefined : 'Nothing has changed yet'}
-        >
-          {saving ? 'Saving…' : 'Save template'}
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title={editor.id ? 'Edit template' : 'New template'}
+        subtitle="Tasks › Templates"
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            <button
+              className="secondary"
+              onClick={() => {
+                if (confirmDiscard(dirty)) onCancel();
+              }}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void doSave()}
+              disabled={saving || !dirty}
+              title={dirty ? undefined : 'Nothing has changed yet'}
+            >
+              {saving ? 'Saving…' : 'Save template'}
+            </button>
+          </>
+        }
+      />
+      <div className="tasks-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
 
-      {error && <div className="alert error">{error}</div>}
+        <section className="card panel">
+          <div className="field">
+            <label htmlFor="tpl-name">Template name</label>
+            <input
+              id="tpl-name"
+              value={editor.name}
+              onChange={(e) => patch({ name: e.target.value })}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="tpl-desc">Notes (optional)</label>
+            <textarea
+              id="tpl-desc"
+              value={editor.description}
+              onChange={(e) => patch({ description: e.target.value })}
+              rows={2}
+            />
+          </div>
 
-      <section className="card panel">
-        <div className="field">
-          <label htmlFor="tpl-name">Template name</label>
-          <input id="tpl-name" value={editor.name} onChange={(e) => patch({ name: e.target.value })} />
-        </div>
-        <div className="field">
-          <label htmlFor="tpl-desc">Notes (optional)</label>
-          <textarea id="tpl-desc" value={editor.description} onChange={(e) => patch({ description: e.target.value })} rows={2} />
-        </div>
-
-        {/* Recurrence — collapsible, at the bottom of Name & Notes. */}
-        <div className="recur-collapse">
-          <button
-            type="button"
-            className="recur-collapse-head"
-            aria-expanded={showRecurrence}
-            onClick={() => setShowRecurrence((v) => !v)}
-          >
-            <span className="recur-caret" aria-hidden="true">▸</span>
-            Recurrence
-            <span className="recur-collapse-summary">· {recurrenceSummary}</span>
-          </button>
-          {showRecurrence && (
-            <div className="recur-collapse-body">
-              <div className="field">
-                <label>Repeat</label>
-                <select value={r.recurrenceType} onChange={(e) => patchRec({ recurrenceType: e.target.value as RecurrenceType })}>
-                  <option value="None">{RECURRENCE_TYPE_LABELS.None}</option>
-                  <option value="Fixed">{RECURRENCE_TYPE_LABELS.Fixed}</option>
-                  <option value="RelativeToCompletion">{RECURRENCE_TYPE_LABELS.RelativeToCompletion}</option>
-                </select>
-              </div>
-              {r.recurrenceType !== 'None' && (
-                <>
-                  <div className="tpl-node-grid">
-                    <div className="field">
-                      <label>Repeat every</label>
-                      <div className="recur-interval">
-                        <input type="number" min={1} value={r.intervalCount} onChange={(e) => patchRec({ intervalCount: e.target.value })} style={{ width: 64 }} />
-                        <select value={r.intervalUnit} onChange={(e) => patchRec({ intervalUnit: e.target.value as RecurrenceUnit })}>
-                          {RECURRENCE_UNITS.map((u) => (
-                            <option key={u} value={u}>{RECURRENCE_UNIT_LABELS[u]}</option>
-                          ))}
+          {/* Recurrence — collapsible, at the bottom of Name & Notes. */}
+          <div className="recur-collapse">
+            <button
+              type="button"
+              className="recur-collapse-head"
+              aria-expanded={showRecurrence}
+              onClick={() => setShowRecurrence((v) => !v)}
+            >
+              <span className="recur-caret" aria-hidden="true">
+                ▸
+              </span>
+              Recurrence
+              <span className="recur-collapse-summary">· {recurrenceSummary}</span>
+            </button>
+            {showRecurrence && (
+              <div className="recur-collapse-body">
+                <div className="field">
+                  <label>Repeat</label>
+                  <select
+                    value={r.recurrenceType}
+                    onChange={(e) => patchRec({ recurrenceType: e.target.value as RecurrenceType })}
+                  >
+                    <option value="None">{RECURRENCE_TYPE_LABELS.None}</option>
+                    <option value="Fixed">{RECURRENCE_TYPE_LABELS.Fixed}</option>
+                    <option value="RelativeToCompletion">
+                      {RECURRENCE_TYPE_LABELS.RelativeToCompletion}
+                    </option>
+                  </select>
+                </div>
+                {r.recurrenceType !== 'None' && (
+                  <>
+                    <div className="tpl-node-grid">
+                      <div className="field">
+                        <label>Repeat every</label>
+                        <div className="recur-interval">
+                          <input
+                            type="number"
+                            min={1}
+                            value={r.intervalCount}
+                            onChange={(e) => patchRec({ intervalCount: e.target.value })}
+                            style={{ width: 64 }}
+                          />
+                          <select
+                            value={r.intervalUnit}
+                            onChange={(e) =>
+                              patchRec({ intervalUnit: e.target.value as RecurrenceUnit })
+                            }
+                          >
+                            {RECURRENCE_UNITS.map((u) => (
+                              <option key={u} value={u}>
+                                {RECURRENCE_UNIT_LABELS[u]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label>Start (anchor) date</label>
+                        <input
+                          type="date"
+                          value={r.anchorDate}
+                          onChange={(e) => patchRec({ anchorDate: e.target.value })}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Ends</label>
+                        <select
+                          value={r.endType}
+                          onChange={(e) =>
+                            patchRec({ endType: e.target.value as RecurrenceEndType })
+                          }
+                        >
+                          <option value="Never">Never</option>
+                          <option value="OnDate">On a date</option>
+                          <option value="AfterOccurrences">
+                            {r.recurrenceType === 'RelativeToCompletion'
+                              ? 'Stop after N completions'
+                              : 'After N occurrences'}
+                          </option>
                         </select>
                       </div>
-                    </div>
-                    <div className="field">
-                      <label>Start (anchor) date</label>
-                      <input type="date" value={r.anchorDate} onChange={(e) => patchRec({ anchorDate: e.target.value })} />
-                    </div>
-                    <div className="field">
-                      <label>Ends</label>
-                      <select value={r.endType} onChange={(e) => patchRec({ endType: e.target.value as RecurrenceEndType })}>
-                        <option value="Never">Never</option>
-                        <option value="OnDate">On a date</option>
-                        <option value="AfterOccurrences">
-                          {r.recurrenceType === 'RelativeToCompletion'
-                            ? 'Stop after N completions'
-                            : 'After N occurrences'}
-                        </option>
-                      </select>
-                    </div>
-                    {r.endType === 'OnDate' && (
+                      {r.endType === 'OnDate' && (
+                        <div className="field">
+                          <label>End date</label>
+                          <input
+                            type="date"
+                            value={r.endDate}
+                            onChange={(e) => patchRec({ endDate: e.target.value })}
+                          />
+                        </div>
+                      )}
+                      {r.endType === 'AfterOccurrences' && (
+                        <div className="field">
+                          <label>
+                            {r.recurrenceType === 'RelativeToCompletion'
+                              ? 'Completions'
+                              : 'Occurrences'}
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={r.maxOccurrences}
+                            onChange={(e) => patchRec({ maxOccurrences: e.target.value })}
+                          />
+                        </div>
+                      )}
                       <div className="field">
-                        <label>End date</label>
-                        <input type="date" value={r.endDate} onChange={(e) => patchRec({ endDate: e.target.value })} />
+                        <label>Label prefix (optional)</label>
+                        <input
+                          value={r.labelPrefix}
+                          placeholder="e.g. BATCH"
+                          onChange={(e) => patchRec({ labelPrefix: e.target.value })}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Status</label>
+                        <div className="seg" role="group" aria-label="Recurrence status">
+                          <button
+                            type="button"
+                            className={`seg-btn${r.isActive ? ' active' : ''}`}
+                            aria-pressed={r.isActive}
+                            onClick={() => patchRec({ isActive: true })}
+                          >
+                            Active
+                          </button>
+                          <button
+                            type="button"
+                            className={`seg-btn${!r.isActive ? ' active' : ''}`}
+                            aria-pressed={!r.isActive}
+                            onClick={() => patchRec({ isActive: false })}
+                          >
+                            Paused
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    {r.intervalUnit === 'Week' && (
+                      <div className="field" style={{ marginTop: '0.6rem' }}>
+                        <label>Repeat on</label>
+                        <WeekdayPicker
+                          value={r.weekdays}
+                          onChange={(v) => patchRec({ weekdays: v })}
+                        />
                       </div>
                     )}
-                    {r.endType === 'AfterOccurrences' && (
-                      <div className="field">
-                        <label>{r.recurrenceType === 'RelativeToCompletion' ? 'Completions' : 'Occurrences'}</label>
-                        <input type="number" min={1} value={r.maxOccurrences} onChange={(e) => patchRec({ maxOccurrences: e.target.value })} />
-                      </div>
-                    )}
-                    <div className="field">
-                      <label>Label prefix (optional)</label>
-                      <input value={r.labelPrefix} placeholder="e.g. BATCH" onChange={(e) => patchRec({ labelPrefix: e.target.value })} />
-                    </div>
-                    <div className="field">
-                      <label>Status</label>
-                      <div className="seg" role="group" aria-label="Recurrence status">
-                        <button
-                          type="button"
-                          className={`seg-btn${r.isActive ? ' active' : ''}`}
-                          aria-pressed={r.isActive}
-                          onClick={() => patchRec({ isActive: true })}
-                        >
-                          Active
-                        </button>
-                        <button
-                          type="button"
-                          className={`seg-btn${!r.isActive ? ' active' : ''}`}
-                          aria-pressed={!r.isActive}
-                          onClick={() => patchRec({ isActive: false })}
-                        >
-                          Paused
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {r.intervalUnit === 'Week' && (
-                    <div className="field" style={{ marginTop: '0.6rem' }}>
-                      <label>Repeat on</label>
-                      <WeekdayPicker value={r.weekdays} onChange={(v) => patchRec({ weekdays: v })} />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </section>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
 
-      {/* Nodes */}
-      <section className="card panel">
-        <div className="section-head">
-          <h3>Task tree</h3>
-          <span className="muted tpl-tree-hint">Drag the ⠿ handle to reorder siblings; a Parent change nests a node.</span>
-          <div className="spacer" />
-          <button className="tertiary btn-sm" onClick={collapseAll} disabled={!editor.nodes.some((n) => hasChildren(n.key))}>
-            Collapse all
-          </button>
-          <button className="tertiary btn-sm" onClick={expandAll} disabled={collapsed.size === 0}>
-            Expand all
-          </button>
-          <button className="tertiary btn-sm" onClick={addNode}>
-            + Add node
-          </button>
-        </div>
-        <div className="tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
-      </section>
+        {/* Nodes */}
+        <section className="card panel">
+          <div className="section-head">
+            <h3>Task tree</h3>
+            <span className="muted tpl-tree-hint">
+              Drag the ⠿ handle to reorder siblings; a Parent change nests a node.
+            </span>
+            <div className="spacer" />
+            <button
+              className="tertiary btn-sm"
+              onClick={collapseAll}
+              disabled={!editor.nodes.some((n) => hasChildren(n.key))}
+            >
+              Collapse all
+            </button>
+            <button className="tertiary btn-sm" onClick={expandAll} disabled={collapsed.size === 0}>
+              Expand all
+            </button>
+            <button className="tertiary btn-sm" onClick={addNode}>
+              + Add node
+            </button>
+          </div>
+          <div className="tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
+        </section>
 
-      {pendingFuture && (
-        <div className="modal-backdrop" onClick={() => void applyFuture(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0 }}>Update future instances?</h3>
-            <p>
-              This template has {pendingFuture.length} already-created future instance
-              {pendingFuture.length === 1 ? '' : 's'} that haven’t started yet. Update
-              {pendingFuture.length === 1 ? ' it' : ' them'} to match your edit? Completed and
-              in-progress work is never changed.
-            </p>
-            <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
-              <button className="secondary" onClick={() => void applyFuture(false)}>
-                Leave them
-              </button>
-              <button onClick={() => void applyFuture(true)}>Update them</button>
+        {pendingFuture && (
+          <div className="modal-backdrop" onClick={() => void applyFuture(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ marginTop: 0 }}>Update future instances?</h3>
+              <p>
+                This template has {pendingFuture.length} already-created future instance
+                {pendingFuture.length === 1 ? '' : 's'} that haven’t started yet. Update
+                {pendingFuture.length === 1 ? ' it' : ' them'} to match your edit? Completed and
+                in-progress work is never changed.
+              </p>
+              <div className="btn-row" style={{ justifyContent: 'flex-end' }}>
+                <button className="secondary" onClick={() => void applyFuture(false)}>
+                  Leave them
+                </button>
+                <button onClick={() => void applyFuture(true)}>Update them</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -946,11 +1106,16 @@ function InstantiateModal({
   const [granting, setGranting] = useState<string | null>(null);
 
   const roleNeeds = (role: string) => [
-    ...new Set(template.nodes.filter((n) => n.assigneeRole === role && n.dutyId).map((n) => n.dutyId as string)),
+    ...new Set(
+      template.nodes
+        .filter((n) => n.assigneeRole === role && n.dutyId)
+        .map((n) => n.dutyId as string),
+    ),
   ];
   const nodeById = new Map(template.nodes.map((n) => [n.id, n]));
   const userById = new Map(users.map((u) => [u.id, u]));
-  const roleAssignments = () => template.roles.map((role) => ({ role, assigneeId: roleMap[role] || null }));
+  const roleAssignments = () =>
+    template.roles.map((role) => ({ role, assigneeId: roleMap[role] || null }));
   const canManage = (userId: string): boolean => {
     if (!me) return false;
     if (me.role === 'Admin') return true;
@@ -1017,7 +1182,9 @@ function InstantiateModal({
       await api.grantDuty(p.userId, p.dutyId);
       catalog.grantLocally(p.userId, p.dutyId);
       setFixed((f) => [...f, p]);
-      setProblems((list) => (list ?? []).filter((x) => !(x.userId === p.userId && x.dutyId === p.dutyId)));
+      setProblems((list) =>
+        (list ?? []).filter((x) => !(x.userId === p.userId && x.dutyId === p.dutyId)),
+      );
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not give the duty');
     } finally {
@@ -1033,7 +1200,9 @@ function InstantiateModal({
       const found = await check();
       setFixed((f) => [
         ...f,
-        ...(problems ?? []).filter((p) => !found.some((x) => x.userId === p.userId && x.dutyId === p.dutyId)),
+        ...(problems ?? []).filter(
+          (p) => !found.some((x) => x.userId === p.userId && x.dutyId === p.dutyId),
+        ),
       ]);
       setProblems(found);
     } catch (e) {
@@ -1048,25 +1217,50 @@ function InstantiateModal({
   // --- Step 2: the missing-duties pop-up -------------------------------------
   if (problems) {
     const open = problems.length;
-    const rows = [...problems.map((p) => ({ p, ok: false })), ...fixed.map((p) => ({ p, ok: true }))];
+    const rows = [
+      ...problems.map((p) => ({ p, ok: false })),
+      ...fixed.map((p) => ({ p, ok: true })),
+    ];
     return (
       <ModalShell
-        title={open ? `${open} required ${open === 1 ? 'duty isn’t' : 'duties aren’t'} held` : 'All required duties are now held'}
+        title={
+          open
+            ? `${open} required ${open === 1 ? 'duty isn’t' : 'duties aren’t'} held`
+            : 'All required duties are now held'
+        }
         tone={open ? 'danger' : 'accent'}
         role="alertdialog"
         width="720px"
         hint={
-          <button type="button" className="secondary btn-sm" disabled={busy} onClick={() => void recheck()} title="Check again after duties were added somewhere else">
+          <button
+            type="button"
+            className="secondary btn-sm"
+            disabled={busy}
+            onClick={() => void recheck()}
+            title="Check again after duties were added somewhere else"
+          >
             ↻ Re-check
           </button>
         }
         actions={
           <>
-            <button type="button" className="secondary btn-sm" disabled={busy} onClick={() => setProblems(null)}>
+            <button
+              type="button"
+              className="secondary btn-sm"
+              disabled={busy}
+              onClick={() => setProblems(null)}
+            >
               Cancel
             </button>
-            <button type="button" className="btn-sm" disabled={busy || open > 0} onClick={() => void create()}>
-              {busy ? 'Creating…' : `Proceed — create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
+            <button
+              type="button"
+              className="btn-sm"
+              disabled={busy || open > 0}
+              onClick={() => void create()}
+            >
+              {busy
+                ? 'Creating…'
+                : `Proceed — create ${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'}`}
             </button>
           </>
         }
@@ -1087,10 +1281,15 @@ function InstantiateModal({
               {person && <Avatar user={person} decorative />}
               <div className="grow">
                 <div>
-                  <b>{name}</b> <span className="muted">as</span> <span className="dd-role-chip">{p.role}</span>
+                  <b>{name}</b> <span className="muted">as</span>{' '}
+                  <span className="dd-role-chip">{p.role}</span>
                 </div>
                 <div style={{ margin: '4px 0' }}>
-                  {ok ? <span className="dd-tag ok">✓ Now holds</span> : <b style={{ color: 'var(--danger-deep)' }}>Missing</b>}{' '}
+                  {ok ? (
+                    <span className="dd-tag ok">✓ Now holds</span>
+                  ) : (
+                    <b style={{ color: 'var(--danger-deep)' }}>Missing</b>
+                  )}{' '}
                   <DutyTag duty={duty} />
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>
@@ -1113,7 +1312,12 @@ function InstantiateModal({
                       Only {supervisorName(p.userId)} or an Admin can give {first} duties.
                     </div>
                     {me?.role !== 'Member' && (
-                      <a href={`/admin/organization?view=person&person=${p.userId}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600 }}>
+                      <a
+                        href={`/admin/organization?view=person&person=${p.userId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: 12, fontWeight: 600 }}
+                      >
                         Open in Organization ↗
                       </a>
                     )}
@@ -1148,11 +1352,21 @@ function InstantiateModal({
       {error && <div className="alert error">{error}</div>}
       <div className="field">
         <label htmlFor="inst-label">Instance label (optional)</label>
-        <input id="inst-label" value={label} placeholder="e.g. PO-4521" onChange={(e) => setLabel(e.target.value)} />
+        <input
+          id="inst-label"
+          value={label}
+          placeholder="e.g. PO-4521"
+          onChange={(e) => setLabel(e.target.value)}
+        />
       </div>
       <div className="field" style={{ maxWidth: 220 }}>
         <label htmlFor="inst-anchor">Start date (Day 0)</label>
-        <input id="inst-anchor" type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} />
+        <input
+          id="inst-anchor"
+          type="date"
+          value={anchor}
+          onChange={(e) => setAnchor(e.target.value)}
+        />
       </div>
       {template.roles.length > 0 && (
         <>
@@ -1238,17 +1452,30 @@ function TplRel({
     <div className="tpl-rel">
       <span className="tpl-rel-label">{label}</span>
       <div className="tpl-rel-items">
-        {linked.length === 0 && <span className="muted" style={{ fontSize: '0.8rem' }}>None</span>}
+        {linked.length === 0 && (
+          <span className="muted" style={{ fontSize: '0.8rem' }}>
+            None
+          </span>
+        )}
         {linked.map((k) => (
           <span key={k} className="filter-chip">
             {display(k)}
-            <button type="button" className="chip-x" aria-label={`Remove ${display(k)}`} onClick={() => onRemove(k)}>
+            <button
+              type="button"
+              className="chip-x"
+              aria-label={`Remove ${display(k)}`}
+              onClick={() => onRemove(k)}
+            >
               ×
             </button>
           </span>
         ))}
         {available.length > 0 && (
-          <select value="" aria-label={`Add ${label}`} onChange={(e) => e.target.value && onAdd(e.target.value)}>
+          <select
+            value=""
+            aria-label={`Add ${label}`}
+            onChange={(e) => e.target.value && onAdd(e.target.value)}
+          >
             <option value="">+ add…</option>
             {available.map((o) => (
               <option key={o.key} value={o.key}>

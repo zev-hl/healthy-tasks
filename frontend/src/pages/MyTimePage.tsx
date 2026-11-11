@@ -25,6 +25,7 @@ import {
   todayISO,
   weekStart,
 } from '../lib/calendar';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 /**
  * My Time (Department Duties). Each person logs hours and minutes against the
@@ -266,124 +267,128 @@ export function MyTimePage() {
   }
 
   return (
-    <div className="dd-page">
-      <div className="dd-page-head">
-        <div>
-          <h1>My Time</h1>
-          <div className="dd-page-sub">Log the time you spend on your duties each day.</div>
-        </div>
-        <span className="spacer" />
-        <div className="seg" role="group" aria-label="View">
-          {(
-            [
-              ['week', 'Week'],
-              ['month', 'Month'],
-            ] as const
-          ).map(([k, l]) => (
+    <>
+      <PageHeader
+        title="My Time"
+        subtitle="Log the time you spend on your duties each day."
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            <div className="seg" role="group" aria-label="View">
+              {(
+                [
+                  ['week', 'Week'],
+                  ['month', 'Month'],
+                ] as const
+              ).map(([k, l]) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`seg-btn${view === k ? ' active' : ''}`}
+                  aria-pressed={view === k}
+                  onClick={() => setView(k)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </>
+        }
+      />
+      <div className="dd-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
+
+        <div className="dd-toolbar">
+          <div className="dd-navgrp">
             <button
-              key={k}
               type="button"
-              className={`seg-btn${view === k ? ' active' : ''}`}
-              aria-pressed={view === k}
-              onClick={() => setView(k)}
+              className="secondary btn-sm"
+              aria-label="Previous"
+              onClick={() => navigate(-1)}
             >
-              {l}
+              ‹
             </button>
+            <button type="button" className="secondary btn-sm" onClick={() => setAnchor(today)}>
+              Today
+            </button>
+            <button
+              type="button"
+              className="secondary btn-sm"
+              aria-label="Next"
+              onClick={() => navigate(1)}
+            >
+              ›
+            </button>
+          </div>
+          <span className="dd-range-label">{rangeLabel}</span>
+          <span className="spacer" />
+          <label className="dd-check">
+            <input type="checkbox" checked={hideWe} onChange={(e) => setHideWe(e.target.checked)} />{' '}
+            Hide Sat &amp; Sun
+          </label>
+        </div>
+
+        <div className="dd-my-duties">
+          <span className="u-label" style={{ marginRight: 4 }}>
+            Your duties
+          </span>
+          {myDepts.length ? (
+            myDepts.map((d) => (
+              <span key={d.name} className="dd-chip">
+                <Swatch color={d.color} size={7} />
+                {d.name} · {d.n}
+              </span>
+            ))
+          ) : (
+            <span className="dd-tag warn">
+              {catalogLoading
+                ? 'Loading…'
+                : departments.length
+                  ? 'None yet — ask your supervisor or an Admin to assign some'
+                  : 'None yet'}
+            </span>
+          )}
+        </div>
+
+        <div className="dd-kpis">
+          {kpis.map((k) => (
+            <div key={k.l} className={`dd-kpi${k.tone ? ` ${k.tone}` : ''}`}>
+              <span className="dd-kpi-v mono">{k.v}</span>
+              <span className="dd-kpi-l">{k.l}</span>
+            </div>
           ))}
         </div>
-      </div>
 
-      {error && <div className="alert error">{error}</div>}
+        {body}
 
-      <div className="dd-toolbar">
-        <div className="dd-navgrp">
-          <button
-            type="button"
-            className="secondary btn-sm"
-            aria-label="Previous"
-            onClick={() => navigate(-1)}
-          >
-            ‹
-          </button>
-          <button type="button" className="secondary btn-sm" onClick={() => setAnchor(today)}>
-            Today
-          </button>
-          <button
-            type="button"
-            className="secondary btn-sm"
-            aria-label="Next"
-            onClick={() => navigate(1)}
-          >
-            ›
-          </button>
-        </div>
-        <span className="dd-range-label">{rangeLabel}</span>
-        <span className="spacer" />
-        <label className="dd-check">
-          <input type="checkbox" checked={hideWe} onChange={(e) => setHideWe(e.target.checked)} />{' '}
-          Hide Sat &amp; Sun
-        </label>
-      </div>
-
-      <div className="dd-my-duties">
-        <span className="u-label" style={{ marginRight: 4 }}>
-          Your duties
-        </span>
-        {myDepts.length ? (
-          myDepts.map((d) => (
-            <span key={d.name} className="dd-chip">
-              <Swatch color={d.color} size={7} />
-              {d.name} · {d.n}
-            </span>
-          ))
-        ) : (
-          <span className="dd-tag warn">
-            {catalogLoading
-              ? 'Loading…'
-              : departments.length
-                ? 'None yet — ask your supervisor or an Admin to assign some'
-                : 'None yet'}
-          </span>
+        {openDate && user && (
+          <DayEditorModal
+            date={openDate}
+            readOnly={false}
+            person={null}
+            duties={duties}
+            heldDutyIds={myDutyIds}
+            onClose={() => setOpenDate(null)}
+            onNavigate={setOpenDate}
+            onChanged={(d, how) => {
+              setDays((m) => new Map(m).set(d.date, d));
+              const when = `${DOW_LONG[dayOfWeek(d.date)]}, ${formatDay(d.date)}`;
+              if (how === 'reopened') {
+                showToast(`${when} reopened — you can edit it now`, 'info');
+              } else {
+                const total = d.entries.reduce((s, e) => s + e.minutes, 0);
+                showToast(
+                  `Saved ${formatDuration(total)} for ${when}${d.completed ? ' · completed' : ''}`,
+                  'success',
+                );
+              }
+            }}
+          />
         )}
+        <Toast toast={toast} onClose={clearToast} />
       </div>
-
-      <div className="dd-kpis">
-        {kpis.map((k) => (
-          <div key={k.l} className={`dd-kpi${k.tone ? ` ${k.tone}` : ''}`}>
-            <span className="dd-kpi-v mono">{k.v}</span>
-            <span className="dd-kpi-l">{k.l}</span>
-          </div>
-        ))}
-      </div>
-
-      {body}
-
-      {openDate && user && (
-        <DayEditorModal
-          date={openDate}
-          readOnly={false}
-          person={null}
-          duties={duties}
-          heldDutyIds={myDutyIds}
-          onClose={() => setOpenDate(null)}
-          onNavigate={setOpenDate}
-          onChanged={(d, how) => {
-            setDays((m) => new Map(m).set(d.date, d));
-            const when = `${DOW_LONG[dayOfWeek(d.date)]}, ${formatDay(d.date)}`;
-            if (how === 'reopened') {
-              showToast(`${when} reopened — you can edit it now`, 'info');
-            } else {
-              const total = d.entries.reduce((s, e) => s + e.minutes, 0);
-              showToast(
-                `Saved ${formatDuration(total)} for ${when}${d.completed ? ' · completed' : ''}`,
-                'success',
-              );
-            }
-          }}
-        />
-      )}
-      <Toast toast={toast} onClose={clearToast} />
-    </div>
+    </>
   );
 }
 

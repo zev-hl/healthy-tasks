@@ -36,6 +36,7 @@ import { NoticeModal } from '../components/exclusives/NoticeModal';
 import { AsinTakenModal } from '../components/exclusives/AsinTakenModal';
 import { WarningIcon } from '../components/exclusives/icons';
 import { BulkImportModal, type ImportRow } from '../components/exclusives/BulkImportModal';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 type Settings = Record<ExclusivesAlertType, ExclusivesAlertMode>;
 
@@ -453,330 +454,337 @@ export function ExclusivesEditorPage() {
   const crumb = isNew ? 'New group' : name || 'Group';
 
   return (
-    <div className="exc-page exc-editor">
-      <div className="exc-crumbbar">
-        <Link to={listUrl} className="exc-crumb-link mono">
-          Alert Groups
-        </Link>
-        <span className="exc-crumb-sep mono">/</span>
-        <span className="exc-crumb mono">{crumb}</span>
-        <div className="exc-crumb-right">
-          <span className="mono exc-crumb-meta">
-            {savedAt ? `Saved ${formatTimestamp(savedAt)}` : 'Not yet saved'}
-          </span>
-          <span className="exc-crumb-div" />
-          {dirty && <span className="mono exc-crumb-hint">Unsaved changes</span>}
-          <button type="button" className="secondary" onClick={() => navigate(listUrl)}>
-            Cancel
-          </button>
-          {/* Save needs BOTH something to save and something to have changed.
+    <>
+      <PageHeader
+        title={crumb}
+        subtitle={
+          <>
+            <Link to={listUrl}>Alert Groups</Link> ·{' '}
+            <span>{savedAt ? `Saved ${formatTimestamp(savedAt)}` : 'Not yet saved'}</span>
+          </>
+        }
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            {dirty && <span className="mono exc-crumb-hint">Unsaved changes</span>}
+            <button type="button" className="secondary" onClick={() => navigate(listUrl)}>
+              Cancel
+            </button>
+            {/* Save needs BOTH something to save and something to have changed.
               A group with no name and no ASIN is nothing at all; an edit that
               changed nothing is a round trip that would bump the record and
               show a success message for no reason. The dirty check covers the name,
               the ASIN list and the alert settings alike. */}
-          {conflict ? (
-            <button type="button" onClick={() => void refreshAfterConflict()}>
-              Refresh
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void save(false)}
-              disabled={saving || loading || !canSave || !dirty}
-              title={
-                !canSave
-                  ? 'Add a group name or an ASIN first'
-                  : !dirty
-                    ? 'Nothing has changed yet'
-                    : undefined
-              }
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          )}
-        </div>
-      </div>
+            {conflict ? (
+              <button type="button" onClick={() => void refreshAfterConflict()}>
+                Refresh
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void save(false)}
+                disabled={saving || loading || !canSave || !dirty}
+                title={
+                  !canSave
+                    ? 'Add a group name or an ASIN first'
+                    : !dirty
+                      ? 'Nothing has changed yet'
+                      : undefined
+                }
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            )}
+          </>
+        }
+      />
+      <div className="exc-page exc-editor hb-legacy-body">
+        {bannerShown && <ConflictBanner entity="group" onReview={review} />}
+        {error && <div className="alert error">{error}</div>}
+        {clashing.length > 0 && (
+          <div className="alert warning">
+            <WarningIcon />
+            <span>
+              {clashing.length} ASIN{clashing.length === 1 ? '' : 's'} listed below{' '}
+              {clashing.length === 1 ? 'is' : 'are'} watched by another group. Saving moves{' '}
+              {clashing.length === 1 ? 'it' : 'them'} here, keeping{' '}
+              {clashing.length === 1 ? 'its' : 'their'} history.
+            </span>
+          </div>
+        )}
 
-      {bannerShown && <ConflictBanner entity="group" onReview={review} />}
-      {error && <div className="alert error">{error}</div>}
-      {clashing.length > 0 && (
-        <div className="alert warning">
-          <WarningIcon />
-          <span>
-            {clashing.length} ASIN{clashing.length === 1 ? '' : 's'} listed below{' '}
-            {clashing.length === 1 ? 'is' : 'are'} watched by another group. Saving moves{' '}
-            {clashing.length === 1 ? 'it' : 'them'} here, keeping{' '}
-            {clashing.length === 1 ? 'its' : 'their'} history.
-          </span>
-        </div>
-      )}
-
-      <div className="exc-editor-body">
-        <div className="exc-editor-left">
-          <section className="card exc-panel">
-            <div className="exc-panel-head">
-              <span className="exc-panel-title">Listing</span>
-              <div className="exc-panel-head-mid">
-                {/* Both switches wait for the group to arrive. Their useState
+        <div className="exc-editor-body">
+          <div className="exc-editor-left">
+            <section className="card exc-panel">
+              <div className="exc-panel-head">
+                <span className="exc-panel-title">Listing</span>
+                <div className="exc-panel-head-mid">
+                  {/* Both switches wait for the group to arrive. Their useState
                     defaults (active, GROUP) are only a starting point for a NEW
                     group; rendering them before the fetch resolves showed an
                     inactive group as "Active" for a frame, then visibly flipped.
                     A placeholder of the same size holds the row steady. */}
-                {loading ? (
-                  <span className="seg-placeholder" aria-hidden="true" />
-                ) : (
-                  <Segmented
-                    ariaLabel="Monitoring"
-                    // Green on Active, red on Inactive: the colour follows the
-                    // choice rather than the control.
-                    tone={active ? 'ok' : 'danger'}
-                    value={active ? 'active' : 'inactive'}
-                    onChange={(v) => setActive(v === 'active')}
-                    options={[
-                      { value: 'active', label: 'Active' },
-                      { value: 'inactive', label: 'Inactive' },
-                    ]}
-                  />
-                )}
+                  {loading ? (
+                    <span className="seg-placeholder" aria-hidden="true" />
+                  ) : (
+                    <Segmented
+                      ariaLabel="Monitoring"
+                      // Green on Active, red on Inactive: the colour follows the
+                      // choice rather than the control.
+                      tone={active ? 'ok' : 'danger'}
+                      value={active ? 'active' : 'inactive'}
+                      onChange={(v) => setActive(v === 'active')}
+                      options={[
+                        { value: 'active', label: 'Active' },
+                        { value: 'inactive', label: 'Inactive' },
+                      ]}
+                    />
+                  )}
+                </div>
+                <div className="exc-panel-head-right">
+                  {loading ? (
+                    <span className="seg-placeholder" aria-hidden="true" />
+                  ) : (
+                    <Segmented
+                      ariaLabel="Listing type"
+                      tone="ink"
+                      value={kind}
+                      onChange={setKind}
+                      options={[
+                        { value: 'INDIVIDUAL', label: 'Individual' },
+                        { value: 'GROUP', label: 'Group' },
+                      ]}
+                    />
+                  )}
+                </div>
               </div>
-              <div className="exc-panel-head-right">
-                {loading ? (
-                  <span className="seg-placeholder" aria-hidden="true" />
-                ) : (
-                  <Segmented
-                    ariaLabel="Listing type"
-                    tone="ink"
-                    value={kind}
-                    onChange={setKind}
-                    options={[
-                      { value: 'INDIVIDUAL', label: 'Individual' },
-                      { value: 'GROUP', label: 'Group' },
-                    ]}
-                  />
-                )}
+              <div className="exc-field">
+                <label className="exc-field-label" htmlFor="exc-name">
+                  {kind === 'GROUP' ? 'Group name' : 'ASIN title'}
+                </label>
+                <input
+                  id="exc-name"
+                  className="exc-input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={
+                    kind === 'GROUP'
+                      ? 'e.g. Nordic Vitality — Omega line'
+                      : 'Pulled from Amazon once the ASIN is added'
+                  }
+                />
+                <span className={`exc-field-help${nameError ? ' error' : ''}`}>
+                  {nameError ??
+                    (kind === 'GROUP'
+                      ? 'Required and must be unique across all groups.'
+                      : 'Leave blank and the Amazon title is used.')}
+                </span>
               </div>
-            </div>
-            <div className="exc-field">
-              <label className="exc-field-label" htmlFor="exc-name">
-                {kind === 'GROUP' ? 'Group name' : 'ASIN title'}
-              </label>
-              <input
-                id="exc-name"
-                className="exc-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={
-                  kind === 'GROUP'
-                    ? 'e.g. Nordic Vitality — Omega line'
-                    : 'Pulled from Amazon once the ASIN is added'
-                }
-              />
-              <span className={`exc-field-help${nameError ? ' error' : ''}`}>
-                {nameError ??
-                  (kind === 'GROUP'
-                    ? 'Required and must be unique across all groups.'
-                    : 'Leave blank and the Amazon title is used.')}
-              </span>
-            </div>
-          </section>
+            </section>
 
-          <section className="card exc-panel exc-asin-panel">
-            <div className="exc-panel-head exc-asin-head">
-              <span className="exc-panel-title">ASINs</span>
-              <span className="mono muted">
-                {rows.length} {kind === 'GROUP' ? 'in this group' : '(individual)'}
-              </span>
-              <div className="exc-asin-head-btns">
-                <button
-                  type="button"
-                  className="secondary btn-sm"
-                  onClick={() => setImporting(true)}
-                  disabled={kind === 'INDIVIDUAL'}
-                >
-                  Bulk import &amp; replace
-                </button>
-                <button
-                  type="button"
-                  className="secondary btn-sm"
-                  onClick={() => void onExportList()}
-                  disabled={isNew || exporting || rows.length === 0}
-                  title={isNew ? 'Save the group first' : undefined}
-                >
-                  {exporting ? 'Preparing…' : 'Export list'}
-                </button>
+            <section className="card exc-panel exc-asin-panel">
+              <div className="exc-panel-head exc-asin-head">
+                <span className="exc-panel-title">ASINs</span>
+                <span className="mono muted">
+                  {rows.length} {kind === 'GROUP' ? 'in this group' : '(individual)'}
+                </span>
+                <div className="exc-asin-head-btns">
+                  <button
+                    type="button"
+                    className="secondary btn-sm"
+                    onClick={() => setImporting(true)}
+                    disabled={kind === 'INDIVIDUAL'}
+                  >
+                    Bulk import &amp; replace
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary btn-sm"
+                    onClick={() => void onExportList()}
+                    disabled={isNew || exporting || rows.length === 0}
+                    title={isNew ? 'Save the group first' : undefined}
+                  >
+                    {exporting ? 'Preparing…' : 'Export list'}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="exc-add-row">
-              <input
-                className="exc-input mono exc-add-asin"
-                value={addAsin}
-                onChange={(e) => setAddAsin(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void addRow()}
-                placeholder={
-                  addLocked ? 'Remove the ASIN to choose another' : 'Add ASIN, e.g. B0C7QMV3RK'
-                }
-                aria-label="Add ASIN"
-                disabled={adding || addLocked}
-              />
-              <div className="exc-country" role="group" aria-label="Marketplace">
-                <button
-                  type="button"
-                  className={`exc-country-btn${addMarketplace === 'USA' ? ' active us' : ''}`}
-                  onClick={() => setAddMarketplace('USA')}
-                  disabled={addLocked}
-                >
-                  USA
-                </button>
-                <button
-                  type="button"
-                  className={`exc-country-btn${addMarketplace === 'Canada' ? ' active ca' : ''}`}
-                  onClick={() => setAddMarketplace('Canada')}
-                  disabled={addLocked}
-                >
-                  Canada
-                </button>
-              </div>
-              {/* Nothing typed, nothing to add. Pressing Add with an empty box
+              <div className="exc-add-row">
+                <input
+                  className="exc-input mono exc-add-asin"
+                  value={addAsin}
+                  onChange={(e) => setAddAsin(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && void addRow()}
+                  placeholder={
+                    addLocked ? 'Remove the ASIN to choose another' : 'Add ASIN, e.g. B0C7QMV3RK'
+                  }
+                  aria-label="Add ASIN"
+                  disabled={adding || addLocked}
+                />
+                <div className="exc-country" role="group" aria-label="Marketplace">
+                  <button
+                    type="button"
+                    className={`exc-country-btn${addMarketplace === 'USA' ? ' active us' : ''}`}
+                    onClick={() => setAddMarketplace('USA')}
+                    disabled={addLocked}
+                  >
+                    USA
+                  </button>
+                  <button
+                    type="button"
+                    className={`exc-country-btn${addMarketplace === 'Canada' ? ' active ca' : ''}`}
+                    onClick={() => setAddMarketplace('Canada')}
+                    disabled={addLocked}
+                  >
+                    Canada
+                  </button>
+                </div>
+                {/* Nothing typed, nothing to add. Pressing Add with an empty box
                   used to start a lookup that could only fail. */}
+                <button
+                  type="button"
+                  onClick={() => void addRow()}
+                  disabled={adding || addLocked || addAsin.trim() === ''}
+                >
+                  {adding ? 'Checking…' : 'Add'}
+                </button>
+              </div>
+
+              <div className="exc-asin-table">
+                <div className="exc-asin-thead">
+                  <span className="exc-asin-c-asin">ASIN</span>
+                  <span className="exc-asin-c-title">Title</span>
+                  <span className="exc-asin-c-plat">Platform</span>
+                  <span className="exc-asin-c-x" />
+                </div>
+                {loading ? (
+                  <div className="exc-asin-empty muted">Loading…</div>
+                ) : rows.length === 0 ? (
+                  <div className="exc-asin-empty muted">No ASINs yet — add one above.</div>
+                ) : (
+                  rows.map((r) => (
+                    <div className="exc-asin-trow" key={rowKey(r)}>
+                      <span className="exc-asin-c-asin mono">{r.asin}</span>
+                      <span className="exc-asin-c-title">
+                        {r.title ?? <span className="muted">No title yet</span>}
+                        {r.problem && <span className="exc-log-detail error"> {r.problem}</span>}
+                        {r.ownerName && (
+                          <span className="exc-log-detail"> Moving from “{r.ownerName}”</span>
+                        )}
+                      </span>
+                      <span className="exc-asin-c-plat">
+                        <Flag platform={r.marketplace} />
+                      </span>
+                      <button
+                        type="button"
+                        className="exc-asin-c-x exc-asin-remove"
+                        onClick={() => removeRow(rowKey(r))}
+                        aria-label={`Remove ${r.asin}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+
+          <section className="card exc-panel exc-settings">
+            <span className="exc-panel-title">Alert settings</span>
+            <p className="exc-settings-sub">Daily and Immediate both mean “on” in this phase.</p>
+            <div className="exc-settings-status">
+              <span className="mono exc-settings-count">
+                {onCount} of {EXCLUSIVES_ALERT_TYPES.length} on
+              </span>
               <button
                 type="button"
-                onClick={() => void addRow()}
-                disabled={adding || addLocked || addAsin.trim() === ''}
+                className="exc-quick accent"
+                onClick={() => setSettings(allMode('immediate'))}
               >
-                {adding ? 'Checking…' : 'Add'}
+                All immediate
+              </button>
+              <button
+                type="button"
+                className="exc-quick accent"
+                onClick={() => setSettings(allMode('daily'))}
+              >
+                All daily
+              </button>
+              <button
+                type="button"
+                className="exc-quick"
+                onClick={() => setSettings(allMode('off'))}
+              >
+                All off
               </button>
             </div>
 
-            <div className="exc-asin-table">
-              <div className="exc-asin-thead">
-                <span className="exc-asin-c-asin">ASIN</span>
-                <span className="exc-asin-c-title">Title</span>
-                <span className="exc-asin-c-plat">Platform</span>
-                <span className="exc-asin-c-x" />
-              </div>
-              {loading ? (
-                <div className="exc-asin-empty muted">Loading…</div>
-              ) : rows.length === 0 ? (
-                <div className="exc-asin-empty muted">No ASINs yet — add one above.</div>
-              ) : (
-                rows.map((r) => (
-                  <div className="exc-asin-trow" key={rowKey(r)}>
-                    <span className="exc-asin-c-asin mono">{r.asin}</span>
-                    <span className="exc-asin-c-title">
-                      {r.title ?? <span className="muted">No title yet</span>}
-                      {r.problem && <span className="exc-log-detail error"> {r.problem}</span>}
-                      {r.ownerName && (
-                        <span className="exc-log-detail"> Moving from “{r.ownerName}”</span>
-                      )}
-                    </span>
-                    <span className="exc-asin-c-plat">
-                      <Flag platform={r.marketplace} />
-                    </span>
-                    <button
-                      type="button"
-                      className="exc-asin-c-x exc-asin-remove"
-                      onClick={() => removeRow(rowKey(r))}
-                      aria-label={`Remove ${r.asin}`}
-                    >
-                      ×
-                    </button>
+            <div className="exc-settings-rows">
+              {EXCLUSIVES_ALERT_TYPES.map((t) => {
+                const mode = settings[t];
+                const dot = mode === 'off' ? 'var(--border-dashed)' : alertTone(t).dot;
+                return (
+                  <div className="exc-settings-row" key={t}>
+                    <span
+                      className="exc-settings-dot"
+                      style={{ background: dot }}
+                      aria-hidden="true"
+                    />
+                    <span className="exc-settings-name">{EXCLUSIVES_ALERT_TYPE_LABELS[t]}</span>
+                    <Segmented
+                      ariaLabel={EXCLUSIVES_ALERT_TYPE_LABELS[t]}
+                      size="sm"
+                      value={mode}
+                      options={MODE_OPTIONS}
+                      onChange={(v) => setSettings((prev) => ({ ...prev, [t]: v }))}
+                      tone={mode === 'off' ? 'neutral' : 'accent'}
+                    />
                   </div>
-                ))
-              )}
+                );
+              })}
             </div>
           </section>
         </div>
 
-        <section className="card exc-panel exc-settings">
-          <span className="exc-panel-title">Alert settings</span>
-          <p className="exc-settings-sub">Daily and Immediate both mean “on” in this phase.</p>
-          <div className="exc-settings-status">
-            <span className="mono exc-settings-count">
-              {onCount} of {EXCLUSIVES_ALERT_TYPES.length} on
-            </span>
-            <button
-              type="button"
-              className="exc-quick accent"
-              onClick={() => setSettings(allMode('immediate'))}
-            >
-              All immediate
-            </button>
-            <button
-              type="button"
-              className="exc-quick accent"
-              onClick={() => setSettings(allMode('daily'))}
-            >
-              All daily
-            </button>
-            <button type="button" className="exc-quick" onClick={() => setSettings(allMode('off'))}>
-              All off
-            </button>
-          </div>
+        {importing && (
+          <BulkImportModal
+            groupId={groupId}
+            current={rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace }))}
+            onCancel={() => setImporting(false)}
+            onImport={applyImport}
+          />
+        )}
 
-          <div className="exc-settings-rows">
-            {EXCLUSIVES_ALERT_TYPES.map((t) => {
-              const mode = settings[t];
-              const dot = mode === 'off' ? 'var(--border-dashed)' : alertTone(t).dot;
-              return (
-                <div className="exc-settings-row" key={t}>
-                  <span
-                    className="exc-settings-dot"
-                    style={{ background: dot }}
-                    aria-hidden="true"
-                  />
-                  <span className="exc-settings-name">{EXCLUSIVES_ALERT_TYPE_LABELS[t]}</span>
-                  <Segmented
-                    ariaLabel={EXCLUSIVES_ALERT_TYPE_LABELS[t]}
-                    size="sm"
-                    value={mode}
-                    options={MODE_OPTIONS}
-                    onChange={(v) => setSettings((prev) => ({ ...prev, [t]: v }))}
-                    tone={mode === 'off' ? 'neutral' : 'accent'}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        {taken && (
+          <AsinTakenModal
+            asin={taken.asin}
+            listing={taken.listing}
+            groupName={name}
+            onCancel={() => setTaken(null)}
+            onMove={() => {
+              insertRow(taken.asin, taken.listing, true);
+              setTaken(null);
+            }}
+          />
+        )}
+
+        {notice && (
+          <NoticeModal
+            title={notice.title}
+            message={notice.message}
+            autoCloseMs={notice.autoCloseMs}
+            onClose={() => {
+              const done = notice.onDone;
+              setNotice(null);
+              done?.();
+            }}
+          />
+        )}
+
+        <Toast toast={toast} onClose={clearToast} />
       </div>
-
-      {importing && (
-        <BulkImportModal
-          groupId={groupId}
-          current={rows.map((r) => ({ asin: r.asin, marketplace: r.marketplace }))}
-          onCancel={() => setImporting(false)}
-          onImport={applyImport}
-        />
-      )}
-
-      {taken && (
-        <AsinTakenModal
-          asin={taken.asin}
-          listing={taken.listing}
-          groupName={name}
-          onCancel={() => setTaken(null)}
-          onMove={() => {
-            insertRow(taken.asin, taken.listing, true);
-            setTaken(null);
-          }}
-        />
-      )}
-
-      {notice && (
-        <NoticeModal
-          title={notice.title}
-          message={notice.message}
-          autoCloseMs={notice.autoCloseMs}
-          onClose={() => {
-            const done = notice.onDone;
-            setNotice(null);
-            done?.();
-          }}
-        />
-      )}
-
-      <Toast toast={toast} onClose={clearToast} />
-    </div>
+    </>
   );
 }

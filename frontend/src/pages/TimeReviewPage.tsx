@@ -45,6 +45,7 @@ import {
   type PivotNode,
   type PivotView,
 } from '../lib/timePivot';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 /**
  * Time Review (Department Duties) — for supervisors. Who you can see follows the
@@ -519,325 +520,338 @@ export function TimeReviewPage() {
   const deptOptions = departments.filter((d) => d.duties.length > 0);
 
   return (
-    <div className="dd-page" style={{ maxWidth: 1600 }}>
-      <div className="dd-page-head">
-        <div>
-          <div className="dd-crumbs">Reports</div>
-          <h1>Time Review</h1>
-          <div className="dd-page-sub">
-            {peopleInfo?.isAdmin
-              ? 'Time logged across the organization'
-              : 'Time logged by the people who report to you'}
-          </div>
-        </div>
-        <span className="spacer" />
-        <button type="button" className="secondary btn-sm" onClick={exportCsv} disabled={!data}>
-          Export CSV
-        </button>
-        <button type="button" className="secondary btn-sm" onClick={() => setShowTasks((s) => !s)}>
-          {showTasks ? 'Hide' : 'Show'} related tasks
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="Time Review"
+        subtitle={
+          peopleInfo?.isAdmin
+            ? 'Time logged across the organization'
+            : 'Time logged by the people who report to you'
+        }
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            <button type="button" className="secondary btn-sm" onClick={exportCsv} disabled={!data}>
+              Export CSV
+            </button>
+            <button
+              type="button"
+              className="secondary btn-sm"
+              onClick={() => setShowTasks((s) => !s)}
+            >
+              {showTasks ? 'Hide' : 'Show'} related tasks
+            </button>
+          </>
+        }
+      />
+      <div className="dd-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
 
-      {error && <div className="alert error">{error}</div>}
-
-      <div className="dd-filters">
-        <span className="dd-fl">People</span>
-        <select
-          value={scope}
-          onChange={(e) => {
-            setScope(e.target.value as TimeReviewScope);
-            setSel('');
-          }}
-          aria-label="People"
-        >
-          {peopleInfo?.isAdmin && <option value="all">Everyone ({team.length + 1})</option>}
-          <option value="team">
-            My team — all levels ({peopleInfo?.isAdmin ? 'below me' : team.length})
-          </option>
-          <option value="direct">Direct reports only ({peopleInfo?.directIds.length ?? 0})</option>
-          <option value="withme">My team + me</option>
-          {peopleInfo && (
-            <optgroup label="One person">
-              {[peopleInfo.me, ...team].map((p) => (
-                <option key={p.id} value={`user:${p.id}`}>
-                  {personName(p)}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-        <span className="dd-fl" style={{ marginLeft: 6 }}>
-          Department
-        </span>
-        <select
-          value={deptId}
-          onChange={(e) => {
-            setDeptId(e.target.value);
-            setDutyId('');
-            setSel('');
-          }}
-          aria-label="Department"
-        >
-          <option value="">All</option>
-          {deptOptions.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-              {d.archived ? ' (archived)' : ''}
+        <div className="dd-filters">
+          <span className="dd-fl">People</span>
+          <select
+            value={scope}
+            onChange={(e) => {
+              setScope(e.target.value as TimeReviewScope);
+              setSel('');
+            }}
+            aria-label="People"
+          >
+            {peopleInfo?.isAdmin && <option value="all">Everyone ({team.length + 1})</option>}
+            <option value="team">
+              My team — all levels ({peopleInfo?.isAdmin ? 'below me' : team.length})
             </option>
-          ))}
-        </select>
-        <span className="dd-fl" style={{ marginLeft: 6 }}>
-          Duty
-        </span>
-        <select
-          value={dutyId}
-          onChange={(e) => {
-            setDutyId(e.target.value);
-            setSel('');
-          }}
-          aria-label="Duty"
-        >
-          <option value="">All</option>
-          {deptOptions
-            .filter((d) => !deptId || d.id === deptId)
-            .map((d) => (
-              <optgroup key={d.id} label={d.name}>
-                {d.duties.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                    {u.archived ? ' (archived)' : ''}
+            <option value="direct">
+              Direct reports only ({peopleInfo?.directIds.length ?? 0})
+            </option>
+            <option value="withme">My team + me</option>
+            {peopleInfo && (
+              <optgroup label="One person">
+                {[peopleInfo.me, ...team].map((p) => (
+                  <option key={p.id} value={`user:${p.id}`}>
+                    {personName(p)}
                   </option>
                 ))}
               </optgroup>
-            ))}
-        </select>
-        <span className="spacer" />
-        {effPeriod === 'week' && (
-          <label className="dd-check">
-            <input type="checkbox" checked={hideWe} onChange={(e) => setHideWe(e.target.checked)} />{' '}
-            Hide Sat &amp; Sun
-          </label>
-        )}
-      </div>
-
-      <div className="dd-toolbar">
-        <div className="seg" role="group" aria-label="View">
-          <button
-            type="button"
-            className={`seg-btn${isDay ? ' active' : ''}`}
-            aria-pressed={isDay}
-            onClick={() => {
-              setView('day');
+            )}
+          </select>
+          <span className="dd-fl" style={{ marginLeft: 6 }}>
+            Department
+          </span>
+          <select
+            value={deptId}
+            onChange={(e) => {
+              setDeptId(e.target.value);
+              setDutyId('');
               setSel('');
             }}
+            aria-label="Department"
           >
-            Day review
-          </button>
-          {(Object.keys(PIVOT_VIEWS) as PivotView[]).map((k) => (
+            <option value="">All</option>
+            {deptOptions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+                {d.archived ? ' (archived)' : ''}
+              </option>
+            ))}
+          </select>
+          <span className="dd-fl" style={{ marginLeft: 6 }}>
+            Duty
+          </span>
+          <select
+            value={dutyId}
+            onChange={(e) => {
+              setDutyId(e.target.value);
+              setSel('');
+            }}
+            aria-label="Duty"
+          >
+            <option value="">All</option>
+            {deptOptions
+              .filter((d) => !deptId || d.id === deptId)
+              .map((d) => (
+                <optgroup key={d.id} label={d.name}>
+                  {d.duties.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                      {u.archived ? ' (archived)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+          </select>
+          <span className="spacer" />
+          {effPeriod === 'week' && (
+            <label className="dd-check">
+              <input
+                type="checkbox"
+                checked={hideWe}
+                onChange={(e) => setHideWe(e.target.checked)}
+              />{' '}
+              Hide Sat &amp; Sun
+            </label>
+          )}
+        </div>
+
+        <div className="dd-toolbar">
+          <div className="seg" role="group" aria-label="View">
             <button
-              key={k}
               type="button"
-              className={`seg-btn${view === k ? ' active' : ''}`}
-              aria-pressed={view === k}
+              className={`seg-btn${isDay ? ' active' : ''}`}
+              aria-pressed={isDay}
               onClick={() => {
-                setView(k);
+                setView('day');
                 setSel('');
               }}
             >
-              {PIVOT_VIEWS[k].label}
+              Day review
             </button>
-          ))}
-        </div>
-        <div className="dd-divider" />
-        <div className="seg" role="group" aria-label="Period">
-          <button
-            type="button"
-            className={`seg-btn${effPeriod === 'week' ? ' active' : ''}`}
-            aria-pressed={effPeriod === 'week'}
-            onClick={() => setPeriod('week')}
-          >
-            Week
-          </button>
-          <button
-            type="button"
-            className={`seg-btn${effPeriod === 'month' ? ' active' : ''}`}
-            aria-pressed={effPeriod === 'month'}
-            disabled={isDay}
-            title={isDay ? 'Day review always shows one week' : undefined}
-            onClick={() => setPeriod('month')}
-          >
-            Month
-          </button>
-        </div>
-        <div className="dd-navgrp">
-          <button
-            type="button"
-            className="secondary btn-sm"
-            aria-label="Previous"
-            onClick={() =>
-              setAnchor((a) => (effPeriod === 'week' ? addDays(a, -7) : addMonths(a, -1)))
-            }
-          >
-            ‹
-          </button>
-          <button type="button" className="secondary btn-sm" onClick={() => setAnchor(today)}>
-            Today
-          </button>
-          <button
-            type="button"
-            className="secondary btn-sm"
-            aria-label="Next"
-            onClick={() =>
-              setAnchor((a) => (effPeriod === 'week' ? addDays(a, 7) : addMonths(a, 1)))
-            }
-          >
-            ›
-          </button>
-        </div>
-        <span className="dd-range-label">{rangeLabel}</span>
-        <span className="spacer" />
-        {!isDay && pivot && (
-          <>
+            {(Object.keys(PIVOT_VIEWS) as PivotView[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={`seg-btn${view === k ? ' active' : ''}`}
+                aria-pressed={view === k}
+                onClick={() => {
+                  setView(k);
+                  setSel('');
+                }}
+              >
+                {PIVOT_VIEWS[k].label}
+              </button>
+            ))}
+          </div>
+          <div className="dd-divider" />
+          <div className="seg" role="group" aria-label="Period">
+            <button
+              type="button"
+              className={`seg-btn${effPeriod === 'week' ? ' active' : ''}`}
+              aria-pressed={effPeriod === 'week'}
+              onClick={() => setPeriod('week')}
+            >
+              Week
+            </button>
+            <button
+              type="button"
+              className={`seg-btn${effPeriod === 'month' ? ' active' : ''}`}
+              aria-pressed={effPeriod === 'month'}
+              disabled={isDay}
+              title={isDay ? 'Day review always shows one week' : undefined}
+              onClick={() => setPeriod('month')}
+            >
+              Month
+            </button>
+          </div>
+          <div className="dd-navgrp">
             <button
               type="button"
               className="secondary btn-sm"
+              aria-label="Previous"
               onClick={() =>
-                setExpanded((e) => ({ ...e, [viewKey]: new Set(expandablePaths(pivot)) }))
+                setAnchor((a) => (effPeriod === 'week' ? addDays(a, -7) : addMonths(a, -1)))
               }
             >
-              Expand all
+              ‹
+            </button>
+            <button type="button" className="secondary btn-sm" onClick={() => setAnchor(today)}>
+              Today
             </button>
             <button
               type="button"
               className="secondary btn-sm"
-              onClick={() => setExpanded((e) => ({ ...e, [viewKey]: new Set() }))}
+              aria-label="Next"
+              onClick={() =>
+                setAnchor((a) => (effPeriod === 'week' ? addDays(a, 7) : addMonths(a, 1)))
+              }
             >
-              Collapse all
+              ›
             </button>
-          </>
-        )}
-      </div>
+          </div>
+          <span className="dd-range-label">{rangeLabel}</span>
+          <span className="spacer" />
+          {!isDay && pivot && (
+            <>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() =>
+                  setExpanded((e) => ({ ...e, [viewKey]: new Set(expandablePaths(pivot)) }))
+                }
+              >
+                Expand all
+              </button>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() => setExpanded((e) => ({ ...e, [viewKey]: new Set() }))}
+              >
+                Collapse all
+              </button>
+            </>
+          )}
+        </div>
 
-      <div className="dd-kpis">
-        <div className="dd-kpi acc">
-          <span className="dd-kpi-v mono">{totalMin ? formatHM(totalMin) : '0:00'}</span>
-          <span className="dd-kpi-l">Total logged</span>
+        <div className="dd-kpis">
+          <div className="dd-kpi acc">
+            <span className="dd-kpi-v mono">{totalMin ? formatHM(totalMin) : '0:00'}</span>
+            <span className="dd-kpi-l">Total logged</span>
+          </div>
+          <div className="dd-kpi">
+            <span className="dd-kpi-v">
+              {withTime} / {people.length}
+            </span>
+            <span className="dd-kpi-l">People with time</span>
+          </div>
+          <div className={`dd-kpi ${completed < expected ? 'warn' : 'ok'}`}>
+            <span className="dd-kpi-v">
+              {completed} / {expected}
+            </span>
+            <span className="dd-kpi-l">Past weekdays completed</span>
+          </div>
+          <div className="dd-kpi">
+            <span className="dd-kpi-v">{related.length}</span>
+            <span className="dd-kpi-l">Related tasks</span>
+          </div>
         </div>
-        <div className="dd-kpi">
-          <span className="dd-kpi-v">
-            {withTime} / {people.length}
-          </span>
-          <span className="dd-kpi-l">People with time</span>
-        </div>
-        <div className={`dd-kpi ${completed < expected ? 'warn' : 'ok'}`}>
-          <span className="dd-kpi-v">
-            {completed} / {expected}
-          </span>
-          <span className="dd-kpi-l">Past weekdays completed</span>
-        </div>
-        <div className="dd-kpi">
-          <span className="dd-kpi-v">{related.length}</span>
-          <span className="dd-kpi-l">Related tasks</span>
-        </div>
-      </div>
 
-      <div className={`dd-split${showTasks ? '' : ' closed'}`}>
-        <div>{table}</div>
-        {showTasks && (
-          <aside className="dd-tp" aria-label="Related tasks">
-            <div className="dd-tp-head">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <h3 style={{ fontSize: 15 }}>Related tasks</h3>
-                <span className="count-pill">{related.length}</span>
-              </div>
-              <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
-                Start–due range inside or across {rangeLabel}
-              </div>
-              {sel ? (
-                <div style={{ marginTop: 8 }}>
-                  <span className="dd-ctx-chip">
-                    {selLabel}
-                    <button
-                      type="button"
-                      className="dd-ctx-x"
-                      aria-label="Clear filter"
-                      onClick={() => setSel('')}
-                    >
-                      ×
-                    </button>
-                  </span>
+        <div className={`dd-split${showTasks ? '' : ' closed'}`}>
+          <div>{table}</div>
+          {showTasks && (
+            <aside className="dd-tp" aria-label="Related tasks">
+              <div className="dd-tp-head">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 style={{ fontSize: 15 }}>Related tasks</h3>
+                  <span className="count-pill">{related.length}</span>
                 </div>
-              ) : (
-                <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
-                  Click a row in the grid to narrow this list.
+                <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
+                  Start–due range inside or across {rangeLabel}
                 </div>
-              )}
-            </div>
-            <div className="dd-tp-list">
-              {related.length ? (
-                related.map((t) => {
-                  const inside =
-                    !!t.startAt &&
-                    !!t.dueAt &&
-                    t.startAt.slice(0, 10) >= range.from &&
-                    t.dueAt.slice(0, 10) <= range.to;
-                  const logged = records
-                    .filter((r) => r.p === t.assignee.id && r.u === t.duty.id)
-                    .reduce((s, r) => s + r.min, 0);
-                  return (
-                    <Link key={t.id} to={`/tasks/${t.id}`} className="dd-tp-item">
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                        <span className="dd-task-id">#{t.id}</span>
-                        <span style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</span>
-                      </div>
-                      <div className="dd-tp-meta">
-                        <StatusPill status={t.status} />
-                        <UserChip user={t.assignee} />
-                      </div>
-                      <div className="dd-tp-meta">
-                        <DutyTag duty={t.duty} compact />
-                      </div>
-                      <div className="dd-tp-meta">
-                        <span className="mono">
-                          {t.startAt ? formatDay(t.startAt.slice(0, 10)) : 'No start'} →{' '}
-                          {t.dueAt ? formatDay(t.dueAt.slice(0, 10)) : 'No due'}
-                        </span>
-                        <span className={`dd-tag ${inside ? 'info' : 'neutral'}`}>
-                          {inside ? 'Within period' : 'Spans period'}
-                        </span>
-                        <span className="spacer" />
-                        <span title="Time logged on this duty by the assignee in this period">
-                          <span className="mono" style={{ color: 'var(--ink)' }}>
-                            {formatHM(logged)}
-                          </span>{' '}
-                          logged
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })
-              ) : (
-                <div className="dd-empty">No related tasks.</div>
-              )}
-            </div>
-          </aside>
-        )}
-      </div>
+                {sel ? (
+                  <div style={{ marginTop: 8 }}>
+                    <span className="dd-ctx-chip">
+                      {selLabel}
+                      <button
+                        type="button"
+                        className="dd-ctx-x"
+                        aria-label="Clear filter"
+                        onClick={() => setSel('')}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+                    Click a row in the grid to narrow this list.
+                  </div>
+                )}
+              </div>
+              <div className="dd-tp-list">
+                {related.length ? (
+                  related.map((t) => {
+                    const inside =
+                      !!t.startAt &&
+                      !!t.dueAt &&
+                      t.startAt.slice(0, 10) >= range.from &&
+                      t.dueAt.slice(0, 10) <= range.to;
+                    const logged = records
+                      .filter((r) => r.p === t.assignee.id && r.u === t.duty.id)
+                      .reduce((s, r) => s + r.min, 0);
+                    return (
+                      <Link key={t.id} to={`/tasks/${t.id}`} className="dd-tp-item">
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                          <span className="dd-task-id">#{t.id}</span>
+                          <span style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</span>
+                        </div>
+                        <div className="dd-tp-meta">
+                          <StatusPill status={t.status} />
+                          <UserChip user={t.assignee} />
+                        </div>
+                        <div className="dd-tp-meta">
+                          <DutyTag duty={t.duty} compact />
+                        </div>
+                        <div className="dd-tp-meta">
+                          <span className="mono">
+                            {t.startAt ? formatDay(t.startAt.slice(0, 10)) : 'No start'} →{' '}
+                            {t.dueAt ? formatDay(t.dueAt.slice(0, 10)) : 'No due'}
+                          </span>
+                          <span className={`dd-tag ${inside ? 'info' : 'neutral'}`}>
+                            {inside ? 'Within period' : 'Spans period'}
+                          </span>
+                          <span className="spacer" />
+                          <span title="Time logged on this duty by the assignee in this period">
+                            <span className="mono" style={{ color: 'var(--ink)' }}>
+                              {formatHM(logged)}
+                            </span>{' '}
+                            logged
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })
+                ) : (
+                  <div className="dd-empty">No related tasks.</div>
+                )}
+              </div>
+            </aside>
+          )}
+        </div>
 
-      {openDay && (
-        <DayEditorModal
-          date={openDay.date}
-          readOnly
-          person={openDay.person}
-          duties={new Map([...dutyById].map(([id, d]) => [id, { ...d, description: null }]))}
-          heldDutyIds={[]}
-          onClose={() => setOpenDay(null)}
-          onNavigate={(date) => setOpenDay({ person: openDay.person, date })}
-        />
-      )}
-      <Toast toast={toast} onClose={clearToast} />
-    </div>
+        {openDay && (
+          <DayEditorModal
+            date={openDay.date}
+            readOnly
+            person={openDay.person}
+            duties={new Map([...dutyById].map(([id, d]) => [id, { ...d, description: null }]))}
+            heldDutyIds={[]}
+            onClose={() => setOpenDay(null)}
+            onNavigate={(date) => setOpenDay({ person: openDay.person, date })}
+          />
+        )}
+        <Toast toast={toast} onClose={clearToast} />
+      </div>
+    </>
   );
 }
 

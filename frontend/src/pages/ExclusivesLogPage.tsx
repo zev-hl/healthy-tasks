@@ -27,6 +27,7 @@ import { ExcPager } from '../components/exclusives/ExcPager';
 import { Flag } from '../components/exclusives/Flag';
 import { LoadingRow } from '../components/exclusives/LoadingRow';
 import { StatusDot } from '../components/exclusives/StatusDot';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 const COLUMNS = 4;
 
@@ -221,18 +222,22 @@ export function ExclusivesLogPage() {
   );
 
   return (
-    <div className="exc-page">
-      <header className="page-head exc-head exc-head-log">
-        <div>
-          <h1>
+    <>
+      <PageHeader
+        title={
+          <>
             <StatusDot />
-            Exclusives Alert Log
-          </h1>
-          <p className="muted mono">
-            {loading ? 'Loading…' : `${total} alert${total === 1 ? '' : 's'}`} · newest first
-          </p>
-        </div>
-        <div className="exc-actions">
+            Alert Log
+          </>
+        }
+        subtitle={
+          <>{loading ? 'Loading…' : `${total} alert${total === 1 ? '' : 's'}`} · newest first</>
+        }
+        search={false}
+        newTask={false}
+      />
+      <div className="exc-page hb-legacy-body">
+        <div className="exc-actions exc-log-toolbar">
           <div className="exc-filter-wrap">
             <button
               type="button"
@@ -448,100 +453,100 @@ export function ExclusivesLogPage() {
             )}
           </button>
         </div>
-      </header>
 
-      {error && <div className="alert error">{error}</div>}
+        {error && <div className="alert error">{error}</div>}
 
-      {groupIds.length > 0 && (
-        <div className="exc-sortline">
-          <button
-            type="button"
-            className="exc-clear"
-            onClick={() => {
-              setGroupIds([]);
-              setPage(1);
-            }}
-          >
-            Showing {chosenNames.map((n) => `“${n}”`).join(', ')} only — show all ✕
-          </button>
-        </div>
-      )}
+        {groupIds.length > 0 && (
+          <div className="exc-sortline">
+            <button
+              type="button"
+              className="exc-clear"
+              onClick={() => {
+                setGroupIds([]);
+                setPage(1);
+              }}
+            >
+              Showing {chosenNames.map((n) => `“${n}”`).join(', ')} only — show all ✕
+            </button>
+          </div>
+        )}
 
-      <section className="card exc-table-card" aria-label="Alert log">
-        <div className="exc-table-scroll">
-          <table className="results-table exc-table exc-log-table">
-            <thead>
-              <tr>
-                {/* ASIN and its group in one column: the group never varies
+        <section className="card exc-table-card" aria-label="Alert log">
+          <div className="exc-table-scroll">
+            <table className="results-table exc-table exc-log-table">
+              <thead>
+                <tr>
+                  {/* ASIN and its group in one column: the group never varies
                     per row the way a value does, and two narrow columns side by
                     side used width the title and detail need more. */}
-                <th className="exc-col-asin">ASIN / Group</th>
-                <th className="exc-col-name">ASIN title</th>
-                {/* Date/time lives under the badge rather than in a column of
+                  <th className="exc-col-asin">ASIN / Group</th>
+                  <th className="exc-col-name">ASIN title</th>
+                  {/* Date/time lives under the badge rather than in a column of
                     its own: both describe the same event, and splitting them
                     left two narrow columns where one does. */}
-                <th className="exc-col-when">Alert type</th>
-                <th className="exc-col-detail">Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && rows.length === 0 && <LoadingRow colSpan={COLUMNS} />}
-              {!loading && rows.length === 0 && (
-                <TableEmptyRow
-                  colSpan={COLUMNS}
-                  title={filtered ? 'No alerts match these filters' : 'No alerts yet'}
-                >
-                  {filtered
-                    ? 'Try a wider date range, or clear a filter.'
-                    : 'Alerts appear here once a check finds a change on a watched product.'}
-                </TableEmptyRow>
-              )}
-              {rows.map((row) => {
-                return (
-                  <tr key={row.id}>
-                    <td className="exc-col-asin">
-                      <span className="exc-asin-cell">
-                        <Flag platform={row.marketplace} />
-                        <span className="mono">{row.asin}</span>
-                      </span>
-                      <span className="exc-muted exc-log-group">{row.groupName}</span>
-                    </td>
-                    <td className="exc-col-name">
-                      <span className="exc-log-title">{row.title}</span>
-                    </td>
-                    <td className="exc-col-when">
-                      <AlertTypeBadge type={row.alertType} />
-                      <span className="exc-latest">{formatAgo(row.createdAt)}</span>
-                      <span className="mono exc-latest-abs">{absoluteShort(row.createdAt)}</span>
-                    </td>
-                    {/* What changed, in its own column. It used to sit under the
+                  <th className="exc-col-when">Alert type</th>
+                  <th className="exc-col-detail">Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && rows.length === 0 && <LoadingRow colSpan={COLUMNS} />}
+                {!loading && rows.length === 0 && (
+                  <TableEmptyRow
+                    colSpan={COLUMNS}
+                    title={filtered ? 'No alerts match these filters' : 'No alerts yet'}
+                  >
+                    {filtered
+                      ? 'Try a wider date range, or clear a filter.'
+                      : 'Alerts appear here once a check finds a change on a watched product.'}
+                  </TableEmptyRow>
+                )}
+                {rows.map((row) => {
+                  return (
+                    <tr key={row.id}>
+                      <td className="exc-col-asin">
+                        <span className="exc-asin-cell">
+                          <Flag platform={row.marketplace} />
+                          <span className="mono">{row.asin}</span>
+                        </span>
+                        <span className="exc-muted exc-log-group">{row.groupName}</span>
+                      </td>
+                      <td className="exc-col-name">
+                        <span className="exc-log-title">{row.title}</span>
+                      </td>
+                      <td className="exc-col-when">
+                        <AlertTypeBadge type={row.alertType} />
+                        <span className="exc-latest">{formatAgo(row.createdAt)}</span>
+                        <span className="mono exc-latest-abs">{absoluteShort(row.createdAt)}</span>
+                      </td>
+                      {/* What changed, in its own column. It used to sit under the
                         product title, where a long message pushed the title
                         around and made the rows uneven. */}
-                    <td className="exc-col-detail">
-                      <ClampedText className="exc-log-detail" text={row.message} lines={3} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <td className="exc-col-detail">
+                        <ClampedText className="exc-log-detail" text={row.message} lines={3} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-        <ExcPager
-          total={total}
-          page={page}
-          pageSize={pageSize}
-          onPage={setPage}
-          onPageSize={(n) => {
-            setPageSize(n);
-            setPage(1);
-          }}
-        />
-      </section>
+          <ExcPager
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPage={setPage}
+            onPageSize={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+          />
+        </section>
 
-      {openFilter !== null && (
-        <div className="exc-pop-backdrop" onClick={closePopovers} aria-hidden="true" />
-      )}
-    </div>
+        {openFilter !== null && (
+          <div className="exc-pop-backdrop" onClick={closePopovers} aria-hidden="true" />
+        )}
+      </div>
+    </>
   );
 }

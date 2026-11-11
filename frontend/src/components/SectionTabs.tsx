@@ -51,7 +51,15 @@ const SECTIONS: { paths: string[]; label: string; tabs: Tab[] }[] = [
 ];
 
 export function SectionTabs() {
-  const { user } = useAuth();
+  // Shared page chrome: a page rendered on its own (in a test) has no sign-in.
+  let user: ReturnType<typeof useAuth>['user'] | undefined;
+  try {
+    // Called on every render, in the same order; only its throw is caught.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    user = useAuth().user;
+  } catch {
+    user = undefined;
+  }
   const { pathname } = useLocation();
   const section = SECTIONS.find((s) => s.paths.includes(pathname));
   if (!section) return null;

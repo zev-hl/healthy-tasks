@@ -2964,3 +2964,288 @@ textarea.hb-title-input {
   field-sizing: content;
   min-height: 0;
 }
+
+/* Section tabs drawn inside the header band. */
+.hb-tabs-row .section-tabs {
+  padding: 0;
+  background: transparent;
+  border-bottom: 0;
+}
+.hb-tabs-row:empty {
+  display: none;
+}
+/* A header with no tab row keeps its bottom padding. */
+.hb-top.has-tabs:not(:has(.hb-tabs-row > *)) {
+  padding-bottom: 14px;
+}
+
+/* ===========================================================================
+   Older screens inside the Harbor layout: the header band replaced their own
+   titles; these rules bring the building blocks they still use (view
+   switches, buttons, cards, tables, notices) in line with the brief.
+   =========================================================================== */
+.hb-legacy-body {
+  padding: 20px 32px 40px !important;
+  margin: 0 !important;
+  max-width: 1760px !important;
+  width: 100%;
+}
+.hb-legacy-body.narrow,
+.hb-legacy-body.settings-page,
+.hb-legacy-body.profile-page {
+  max-width: 1200px !important;
+}
+@media (max-width: 819px) {
+  .hb-legacy-body {
+    padding: 16px 16px 32px !important;
+  }
+}
+
+/* Buttons: primary 40px/10px; secondary white with a hairline; small 32px. */
+button {
+  border-radius: 10px;
+  font-size: 14px;
+  padding: 9px 16px;
+}
+button.secondary {
+  border-color: var(--border);
+  color: var(--ink-3);
+  font-size: 13px;
+}
+button.secondary:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+button.ghost,
+button.tertiary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--ink-3);
+}
+button.ghost:hover,
+button.tertiary:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+button.btn-sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+.hb-top button:not(.hb-icon-btn):not(.hb-seg button):not(.hb-btn) {
+  height: 40px;
+  padding: 0 16px;
+}
+
+/* View switches (.seg): the brief's segmented control. */
+.seg {
+  gap: 2px;
+  padding: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--canvas-deep);
+  overflow: visible;
+}
+.seg-btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 0 !important;
+  border-radius: 8px;
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+.seg-btn:hover,
+button.seg-btn:hover {
+  background: transparent;
+  color: var(--ink);
+}
+.seg-btn.active,
+button.seg-btn.active,
+button.seg-btn.active:hover {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 27, 45, 0.12);
+}
+
+/* Tables: header #F4F7FB 42px, row lines a touch darker, soft hover. */
+table {
+  border-radius: 12px;
+  font-size: 14px;
+}
+th,
+td {
+  padding: 10px 12px;
+  border-bottom-color: var(--row-line);
+  font-size: 14px;
+}
+th {
+  height: 42px;
+  background: var(--surface-sunk);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  border-bottom-color: var(--border);
+}
+tbody tr:hover td {
+  background: #f8fafc;
+}
+
+/* Notices: tinted surface plus a 1px border, never a thick edge. */
+.alert {
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+.alert.error {
+  background: var(--danger-soft);
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+.alert.success {
+  background: var(--ok-soft);
+  border-color: var(--ok-line);
+  color: var(--ok-deep);
+}
+.alert.info {
+  background: var(--accent-tint);
+  border-color: #b7cdee;
+  color: var(--accent-deep);
+  word-break: normal;
+}
+
+/* Cards and badges. */
+.card {
+  border-radius: 12px;
+  padding: 18px;
+}
+.badge {
+  border-radius: 999px;
+  font-weight: 600;
+}
+.mono {
+  font-family: var(--font-sans);
+}
+
+/* Inputs and selects inside these pages: 40px, 10px radius. */
+.hb-legacy-body input:not([type='checkbox']):not([type='radio']),
+.hb-legacy-body select {
+  min-height: 38px;
+  border-radius: 10px;
+}
+
+/* Old in-page toolbars sit flush under the header band. */
+.hb-legacy-body > .tasks-toolbar:first-child,
+.hb-legacy-body > .dd-toolbar:first-child {
+  margin-top: 0;
+}
+.exc-log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.hb-top .exc-crumb-hint {
+  color: var(--warn-deep);
+  font-size: 13px;
+  font-weight: 600;
+}
+.hb-title h1 .exc-status-dot,
+.hb-title h1 > span:first-child {
+  margin-right: 8px;
+}
+
+/* Plain selects and date fields open the Harbor menu and calendar
+   (NativeEnhancer); they look like the brief's fields with a ▾. */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235A6B82' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+}
+input[type='date']::-webkit-calendar-picker-indicator {
+  display: none;
+}
+input[type='date'] {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A6B82' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+.hb-menu-group-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hb-menu-row.disabled {
+  color: var(--faint);
+  cursor: default;
+}
+/* Menus and calendars open above dialogs too. */
+.hb-pop {
+  z-index: 2100;
+}
+
+/* --- Signed-out screens (Sign in / Forgot / Reset) --------------------------- */
+.auth-page {
+  background: var(--canvas);
+}
+.auth-split {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-hover);
+  overflow: hidden;
+}
+.auth-aside {
+  background: var(--side);
+  color: #fff;
+}
+.auth-aside-brand {
+  gap: 10px;
+}
+.auth-aside-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.auth-hero {
+  font-family: var(--font-sans);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: #fff;
+}
+.auth-lede {
+  color: var(--side-text);
+  font-size: 15px;
+}
+.auth-main {
+  background: var(--surface);
+}
+.auth-title {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.auth-main input {
+  height: 40px;
+}
+.auth-submit,
+.auth-main button[type='submit'] {
+  height: 40px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.auth-foot {
+  color: var(--muted);
+}

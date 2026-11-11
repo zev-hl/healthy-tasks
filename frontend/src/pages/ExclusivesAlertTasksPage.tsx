@@ -21,6 +21,7 @@ import { userLabel } from '../components/ui/Avatar';
 import { holdsDuty, useDutyCatalog, type CatalogDuty } from '../lib/duties';
 import { useStaleWriteGuard } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 /** Every alert type's setting, by type. */
 type Setup = Record<ExclusivesAlertType, ExclusivesAlertTaskSettingDto>;
@@ -264,125 +265,125 @@ export function ExclusivesAlertTasksPage() {
   }
 
   return (
-    <div className="exc-page alert-tasks">
-      <header className="page-head exc-head">
-        <div>
-          <h1>Alert Task Setup</h1>
-          <p className="muted">
-            The template each alert type&apos;s tasks are made from, and who does them. The same for
-            every alert group.
-          </p>
-        </div>
-        <div className="exc-actions">
-          {dirty && <span className="mono exc-crumb-hint">Unsaved changes</span>}
-          <button
-            type="button"
-            className="secondary"
-            onClick={cancel}
-            disabled={!dirty || saving}
-            title={!dirty ? 'Nothing has changed yet' : undefined}
-          >
-            Cancel
-          </button>
-          {conflict ? (
-            <button type="button" onClick={() => void refreshAfterConflict()}>
-              Refresh
-            </button>
-          ) : (
+    <>
+      <PageHeader
+        title="Alert Task Setup"
+        subtitle="The template each alert type’s tasks are made from, and who does them. The same for every alert group."
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            {dirty && <span className="mono exc-crumb-hint">Unsaved changes</span>}
             <button
               type="button"
-              onClick={() => void save()}
-              disabled={saveBlocker !== undefined || saving}
-              title={saveBlocker}
+              className="secondary"
+              onClick={cancel}
+              disabled={!dirty || saving}
+              title={!dirty ? 'Nothing has changed yet' : undefined}
             >
-              {saving ? 'Saving…' : 'Save'}
+              Cancel
             </button>
-          )}
-        </div>
-      </header>
+            {conflict ? (
+              <button type="button" onClick={() => void refreshAfterConflict()}>
+                Refresh
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={saveBlocker !== undefined || saving}
+                title={saveBlocker}
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            )}
+          </>
+        }
+      />
+      <div className="exc-page alert-tasks hb-legacy-body">
+        {bannerShown && <ConflictBanner entity="alert task setup" onReview={review} />}
+        {error && <div className="alert error">{error}</div>}
+        {catalog.error && (
+          <div className="alert error">Could not load the duties, so they are not checked.</div>
+        )}
+        {notice && <div className="alert success">{notice}</div>}
+        {templates !== null && templates.length === 0 && (
+          <div className="alert info alert-tasks-note">
+            There are no templates yet. Make one on the <Link to="/admin/templates">Templates</Link>{' '}
+            page, then pick it here.
+          </div>
+        )}
 
-      {bannerShown && <ConflictBanner entity="alert task setup" onReview={review} />}
-      {error && <div className="alert error">{error}</div>}
-      {catalog.error && (
-        <div className="alert error">Could not load the duties, so they are not checked.</div>
-      )}
-      {notice && <div className="alert success">{notice}</div>}
-      {templates !== null && templates.length === 0 && (
-        <div className="alert info alert-tasks-note">
-          There are no templates yet. Make one on the <Link to="/admin/templates">Templates</Link>{' '}
-          page, then pick it here.
-        </div>
-      )}
-
-      <section className="card exc-table-card" aria-label="Alert types">
-        <div className="exc-table-scroll">
-          <table className="results-table exc-table alert-tasks-table">
-            <thead>
-              <tr>
-                <th>Alert Type</th>
-                <th>Template</th>
-                <th>Role Assignment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadError ? (
+        <section className="card exc-table-card" aria-label="Alert types">
+          <div className="exc-table-scroll">
+            <table className="results-table exc-table alert-tasks-table">
+              <thead>
                 <tr>
-                  <td className="empty-cell" colSpan={3}>
-                    <div className="empty-state compact alert-tasks-load-error">
-                      <span className="alert-tasks-warn">{loadError}</span>
-                      <button type="button" className="secondary btn-sm" onClick={tryAgain}>
-                        Try again
-                      </button>
-                    </div>
-                  </td>
+                  <th>Alert Type</th>
+                  <th>Template</th>
+                  <th>Role Assignment</th>
                 </tr>
-              ) : loading ? (
-                <LoadingRow colSpan={3} />
-              ) : (
-                EXCLUSIVES_ALERT_TYPES.map((type) => {
-                  const setting = draft?.[type] ?? emptySetting(type);
-                  const label = EXCLUSIVES_ALERT_TYPE_LABELS[type];
-                  return (
-                    <tr key={type}>
-                      <td className="alert-tasks-type">
-                        <AlertTypeBadge type={type} />
-                      </td>
-                      <td className="alert-tasks-template">
-                        <SearchSelect
-                          label={`Template for ${label}`}
-                          options={templateOptions}
-                          value={setting.templateId === null ? null : String(setting.templateId)}
-                          valueLabel="Template no longer exists"
-                          disabled={loading || saving}
-                          onChange={(v) => pickTemplate(type, v)}
-                        />
-                      </td>
-                      <td className="alert-tasks-roles">
-                        <RoleCell
-                          typeLabel={label}
-                          setting={setting}
-                          template={
-                            setting.templateId === null ? null : details[setting.templateId]
-                          }
-                          users={users}
-                          activeIds={activeIds}
-                          duties={catalog.duties}
-                          missingDuties={missingDuties}
-                          holds={(userId, dutyId) => holdsDuty(catalog.holdings, userId, dutyId)}
-                          dutiesLoading={catalog.loading}
-                          disabled={saving}
-                          onPick={(role, userId) => pickPerson(type, role, userId)}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+              </thead>
+              <tbody>
+                {loadError ? (
+                  <tr>
+                    <td className="empty-cell" colSpan={3}>
+                      <div className="empty-state compact alert-tasks-load-error">
+                        <span className="alert-tasks-warn">{loadError}</span>
+                        <button type="button" className="secondary btn-sm" onClick={tryAgain}>
+                          Try again
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : loading ? (
+                  <LoadingRow colSpan={3} />
+                ) : (
+                  EXCLUSIVES_ALERT_TYPES.map((type) => {
+                    const setting = draft?.[type] ?? emptySetting(type);
+                    const label = EXCLUSIVES_ALERT_TYPE_LABELS[type];
+                    return (
+                      <tr key={type}>
+                        <td className="alert-tasks-type">
+                          <AlertTypeBadge type={type} />
+                        </td>
+                        <td className="alert-tasks-template">
+                          <SearchSelect
+                            label={`Template for ${label}`}
+                            options={templateOptions}
+                            value={setting.templateId === null ? null : String(setting.templateId)}
+                            valueLabel="Template no longer exists"
+                            disabled={loading || saving}
+                            onChange={(v) => pickTemplate(type, v)}
+                          />
+                        </td>
+                        <td className="alert-tasks-roles">
+                          <RoleCell
+                            typeLabel={label}
+                            setting={setting}
+                            template={
+                              setting.templateId === null ? null : details[setting.templateId]
+                            }
+                            users={users}
+                            activeIds={activeIds}
+                            duties={catalog.duties}
+                            missingDuties={missingDuties}
+                            holds={(userId, dutyId) => holdsDuty(catalog.holdings, userId, dutyId)}
+                            dutiesLoading={catalog.loading}
+                            disabled={saving}
+                            onPick={(role, userId) => pickPerson(type, role, userId)}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </>
   );
 }
 

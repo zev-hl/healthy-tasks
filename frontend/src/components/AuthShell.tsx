@@ -2,8 +2,8 @@ import { type ReactNode } from 'react';
 
 /**
  * Two-panel shell for the signed-out screens (Sign in / Forgot / Reset),
- * matching design frame 1h: a solid teal left panel — brand + serif hero +
- * lede — beside the form on the right. Each page supplies the right-hand form
+ * in the Harbor look: a deep navy brand panel (the sidebar's colour) with the
+ * HL tile, a headline and a lede, beside the white form panel on the right. Each page supplies the right-hand form
  * content as children. The left panel collapses on narrow viewports (mobile is
  * out of scope for this design).
  */
@@ -13,7 +13,9 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <div className="auth-split">
         <aside className="auth-aside">
           <div className="auth-aside-brand">
-            <img className="auth-aside-mark" src="/hl-logo.png" alt="" aria-hidden="true" />
+            <span className="side-logo" aria-hidden="true">
+              HL
+            </span>
             <span className="auth-aside-name">HL Central</span>
           </div>
 

@@ -5,6 +5,8 @@ import {
   MATERIALIZE_LEAD_DAYS_MIN,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import { PageHeader } from '../components/harbor/PageHeader';
+import { QueueDashboardCard } from '../components/QueueDashboardCard';
 
 /**
  * Admin-only global settings. Currently the single materialization lead time
@@ -63,43 +65,54 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="container settings-page">
-      <header className="page-head">
-        <h1>Settings</h1>
-        <p className="muted">Global settings that apply to everyone in HL Central.</p>
-      </header>
+    <>
+      <PageHeader
+        title="App settings"
+        subtitle="Global settings that apply to everyone in HL Central."
+        search={false}
+        newTask={false}
+      />
+      <div className="container settings-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
 
-      {error && <div className="alert error">{error}</div>}
+        <section className="card settings-card">
+          <h2 className="settings-card-title">Recurring tasks</h2>
+          <div className="field">
+            <label htmlFor="materialize-lead">Materialize (days ahead)</label>
+            <input
+              id="materialize-lead"
+              type="number"
+              min={MATERIALIZE_LEAD_DAYS_MIN}
+              max={MATERIALIZE_LEAD_DAYS_MAX}
+              value={lead}
+              disabled={loading || saving}
+              onChange={(e) => {
+                setLead(e.target.value);
+                setSaved(false);
+              }}
+              style={{ width: 100 }}
+            />
+            <p className="muted settings-help">
+              Occurrences turn into real tasks this many days before they’re due; further-out ones
+              show as ghost previews.
+            </p>
+          </div>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn-sm"
+              onClick={() => void save()}
+              disabled={loading || saving}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            {saved && <span className="settings-saved">Saved.</span>}
+          </div>
+        </section>
 
-      <section className="card settings-card">
-        <h2 className="settings-card-title">Recurring tasks</h2>
-        <div className="field">
-          <label htmlFor="materialize-lead">Materialize (days ahead)</label>
-          <input
-            id="materialize-lead"
-            type="number"
-            min={MATERIALIZE_LEAD_DAYS_MIN}
-            max={MATERIALIZE_LEAD_DAYS_MAX}
-            value={lead}
-            disabled={loading || saving}
-            onChange={(e) => {
-              setLead(e.target.value);
-              setSaved(false);
-            }}
-            style={{ width: 100 }}
-          />
-          <p className="muted settings-help">
-            Occurrences turn into real tasks this many days before they’re due; further-out ones
-            show as ghost previews.
-          </p>
-        </div>
-        <div className="btn-row">
-          <button type="button" className="btn-sm" onClick={() => void save()} disabled={loading || saving}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          {saved && <span className="settings-saved">Saved.</span>}
-        </div>
-      </section>
-    </div>
+        {/* Admins only: the email queue dashboard (moved here from the profile page). */}
+        <QueueDashboardCard />
+      </div>
+    </>
   );
 }

@@ -269,6 +269,14 @@ backstop. Migrations are ordered/named by phase under
 `backend/prisma/migrations/`.
 
 ### Frontend
+Redesign branch: the look is "Harbor" (`docs/redesign-brief.md`,
+`docs/redesign-decisions.md`). Tokens are in `styles.css` `:root`, the shell
+and components in `harbor.css`, and the building blocks in
+`components/harbor/` (`PageHeader`, `Select`, `DatePicker`, `Popover`,
+`Toast`, `TimeBlock`). Never use a browser `<select>` popup or date picker in
+new code; `NativeEnhancer` (mounted in `Layout`) opens the Harbor menu and
+calendar for the older screens that still render them.
+
 Vite + React SPA, `react-router-dom` **data router** (`router.tsx`) with
 `React.lazy` code-splitting per route (keeps the heavy TipTap editor out of the
 first paint). Auth state in `auth/AuthContext.tsx`; the single fetch wrapper is

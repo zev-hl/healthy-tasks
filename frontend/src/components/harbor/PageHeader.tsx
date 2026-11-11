@@ -7,6 +7,7 @@ import { Popover } from './Popover';
 import { markRead, toFeed, whenLabel, type FeedItem } from './notificationFeed';
 import { Avatar } from '../ui/Avatar';
 import { cx } from './ui';
+import { SectionTabs } from '../SectionTabs';
 
 /**
  * The white band at the top of every page (§4): title and one-line subtitle on
@@ -25,6 +26,7 @@ export function PageHeader({
   onSearch,
   searchValue,
   onSearchChange,
+  searchLabel,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -38,14 +40,19 @@ export function PageHeader({
   onSearch?: (text: string) => void;
   /** Live search: the page owns the text (the Tasks list filters as you type). */
   searchValue?: string;
+  /** The search box's accessible name, when it should differ from the placeholder. */
+  searchLabel?: string;
   onSearchChange?: (text: string) => void;
 }) {
   const navigate = useNavigate();
   const [ownQ, setOwnQ] = useState('');
   const q = searchValue ?? ownQ;
   const setQ = onSearchChange ?? setOwnQ;
+  // Pages that share a sidebar item (Time, Goals, People, Settings) show
+  // their sibling pages as tabs in this band.
+  const shownTabs = tabs ?? <SectionTabs />;
   return (
-    <header className={cx('hb-top', !!tabs && 'has-tabs')}>
+    <header className={cx('hb-top', 'has-tabs')}>
       <div className="hb-top-row">
         <div className="hb-title">
           <h1>{title}</h1>
@@ -69,7 +76,7 @@ export function PageHeader({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={searchPlaceholder}
-              aria-label={searchPlaceholder}
+              aria-label={searchLabel ?? searchPlaceholder}
             />
           </form>
         )}
@@ -82,7 +89,7 @@ export function PageHeader({
         )}
         <NotificationBellMenu />
       </div>
-      {tabs && <div className="hb-tabs-row">{tabs}</div>}
+      {shownTabs && <div className="hb-tabs-row">{shownTabs}</div>}
     </header>
   );
 }

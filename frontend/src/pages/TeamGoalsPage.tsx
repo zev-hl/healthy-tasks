@@ -9,6 +9,7 @@ import { MultiSelect } from '../components/MultiSelect';
 import { GoalCard } from '../components/goals/GoalCard';
 import { GoalDetailModal } from '../components/goals/GoalDetailModal';
 import { GoalEditorModal } from '../components/goals/GoalEditorModal';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 const EMPTY: GoalTeamFilters = {};
 
@@ -103,15 +104,29 @@ export function TeamGoalsPage() {
   // Removable filter chips describing the active filters.
   const chips: { id: string; label: string; clear: () => void }[] = [];
   for (const id of filters.ownerIds ?? [])
-    chips.push({ id: `own-${id}`, label: `Employee · ${ownerName(id)}`, clear: () =>
-      patch({ ownerIds: (filters.ownerIds ?? []).filter((x) => x !== id) }) });
+    chips.push({
+      id: `own-${id}`,
+      label: `Employee · ${ownerName(id)}`,
+      clear: () => patch({ ownerIds: (filters.ownerIds ?? []).filter((x) => x !== id) }),
+    });
   for (const s of filters.statuses ?? [])
-    chips.push({ id: `st-${s}`, label: `Status · ${GOAL_STATUS_LABELS[s]}`, clear: () =>
-      patch({ statuses: (filters.statuses ?? []).filter((x) => x !== s) }) });
+    chips.push({
+      id: `st-${s}`,
+      label: `Status · ${GOAL_STATUS_LABELS[s]}`,
+      clear: () => patch({ statuses: (filters.statuses ?? []).filter((x) => x !== s) }),
+    });
   if (filters.deadlineFrom)
-    chips.push({ id: 'df', label: `From ${filters.deadlineFrom.slice(0, 10)}`, clear: () => patch({ deadlineFrom: null }) });
+    chips.push({
+      id: 'df',
+      label: `From ${filters.deadlineFrom.slice(0, 10)}`,
+      clear: () => patch({ deadlineFrom: null }),
+    });
   if (filters.deadlineTo)
-    chips.push({ id: 'dt', label: `To ${filters.deadlineTo.slice(0, 10)}`, clear: () => patch({ deadlineTo: null }) });
+    chips.push({
+      id: 'dt',
+      label: `To ${filters.deadlineTo.slice(0, 10)}`,
+      clear: () => patch({ deadlineTo: null }),
+    });
 
   const hasFilters = chips.length > 0;
   // Filter dropdown spans the whole downline; creating a goal is limited to direct reports.
@@ -119,141 +134,155 @@ export function TeamGoalsPage() {
   const createOwnerOptions = directReports.map((r) => ({ id: r.id, label: userLabel(r) }));
 
   return (
-    <div className="tasks-page goals-page">
-      <div className="tasks-toolbar">
-        <h1>Team Goals</h1>
-        <span className="tasks-total">{goals.length}</span>
-        <span className="spacer" />
-        <button
-          type="button"
-          className="secondary"
-          disabled={exporting || goals.length === 0}
-          onClick={() => void handleExport()}
-        >
-          {exporting ? 'Exporting…' : 'Export'}
-        </button>
-        {createOwnerOptions.length > 0 && (
-          <button type="button" onClick={() => setCreating(true)}>
-            + New goal
-          </button>
-        )}
-      </div>
-
-      <div className="tasks-chiprow">
-        <button
-          type="button"
-          className={`add-filter${showFilters ? ' open' : ''}`}
-          onClick={() => setShowFilters((v) => !v)}
-        >
-          + Filter
-        </button>
-        {chips.map((c) => (
-          <button key={c.id} type="button" className="filter-chip" onClick={c.clear}>
-            {c.label}
-            <span className="chip-x">×</span>
-          </button>
-        ))}
-        {hasFilters && (
-          <button type="button" className="link-button" onClick={() => setFilters(EMPTY)}>
-            Clear all
-          </button>
-        )}
-      </div>
-
-      {showFilters && (
-        <div className="card panel tasks-filter-panel">
-          <div className="tasks-filter-field">
-            <span className="u-label">Employee</span>
-            <FilterPopover label="Employee" active={(filters.ownerIds ?? []).length > 0}>
-              <MultiSelect
-                options={ownerOptions.map((o) => ({ value: o.id, label: o.label }))}
-                selected={filters.ownerIds ?? []}
-                onChange={(next) => patch({ ownerIds: next })}
-              />
-            </FilterPopover>
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Status</span>
-            <FilterPopover label="Status" active={(filters.statuses ?? []).length > 0}>
-              <MultiSelect
-                options={GOAL_STATUSES.map((s) => ({ value: s, label: GOAL_STATUS_LABELS[s] }))}
-                selected={filters.statuses ?? []}
-                onChange={(next) => patch({ statuses: next as GoalStatus[] })}
-              />
-            </FilterPopover>
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Deadline</span>
-            <FilterPopover
-              label="Deadline"
-              active={!!filters.deadlineFrom || !!filters.deadlineTo}
+    <>
+      <PageHeader
+        title="Team Goals"
+        subtitle={`${goals.length} ${goals.length === 1 ? 'goal' : 'goals'} of the people you supervise`}
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            <button
+              type="button"
+              className="secondary"
+              disabled={exporting || goals.length === 0}
+              onClick={() => void handleExport()}
             >
-              <div className="pop-range">
-                <label>
-                  From
-                  <input
-                    type="date"
-                    value={filters.deadlineFrom?.slice(0, 10) ?? ''}
-                    onChange={(e) =>
-                      patch({ deadlineFrom: e.target.value ? new Date(`${e.target.value}T00:00:00.000Z`).toISOString() : null })
-                    }
-                  />
-                </label>
-                <label>
-                  To
-                  <input
-                    type="date"
-                    value={filters.deadlineTo?.slice(0, 10) ?? ''}
-                    onChange={(e) =>
-                      patch({ deadlineTo: e.target.value ? new Date(`${e.target.value}T23:59:59.999Z`).toISOString() : null })
-                    }
-                  />
-                </label>
-              </div>
-            </FilterPopover>
-          </div>
-        </div>
-      )}
-
-      {error && <div className="alert error">{error}</div>}
-
-      {loading ? (
-        <div className="muted" style={{ padding: '1rem' }}>
-          Loading…
-        </div>
-      ) : goals.length === 0 ? (
-        <EmptyState title="No team goals">
-          {hasFilters
-            ? 'No goals match the current filters.'
-            : 'Goals for your direct reports will appear here once they are created.'}
-        </EmptyState>
-      ) : (
-        <div className="goal-grid">
-          {goals.map((g) => (
-            <GoalCard key={g.id} goal={g} showOwner onOpen={() => setOpen(g)} />
+              {exporting ? 'Exporting…' : 'Export'}
+            </button>
+            {createOwnerOptions.length > 0 && (
+              <button type="button" onClick={() => setCreating(true)}>
+                + New goal
+              </button>
+            )}
+          </>
+        }
+      />
+      <div className="tasks-page goals-page hb-legacy-body">
+        <div className="tasks-chiprow">
+          <button
+            type="button"
+            className={`add-filter${showFilters ? ' open' : ''}`}
+            onClick={() => setShowFilters((v) => !v)}
+          >
+            + Filter
+          </button>
+          {chips.map((c) => (
+            <button key={c.id} type="button" className="filter-chip" onClick={c.clear}>
+              {c.label}
+              <span className="chip-x">×</span>
+            </button>
           ))}
+          {hasFilters && (
+            <button type="button" className="link-button" onClick={() => setFilters(EMPTY)}>
+              Clear all
+            </button>
+          )}
         </div>
-      )}
 
-      {creating && (
-        <GoalEditorModal
-          ownerOptions={createOwnerOptions}
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            setCreating(false);
-            void load();
-          }}
-        />
-      )}
+        {showFilters && (
+          <div className="card panel tasks-filter-panel">
+            <div className="tasks-filter-field">
+              <span className="u-label">Employee</span>
+              <FilterPopover label="Employee" active={(filters.ownerIds ?? []).length > 0}>
+                <MultiSelect
+                  options={ownerOptions.map((o) => ({ value: o.id, label: o.label }))}
+                  selected={filters.ownerIds ?? []}
+                  onChange={(next) => patch({ ownerIds: next })}
+                />
+              </FilterPopover>
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Status</span>
+              <FilterPopover label="Status" active={(filters.statuses ?? []).length > 0}>
+                <MultiSelect
+                  options={GOAL_STATUSES.map((s) => ({ value: s, label: GOAL_STATUS_LABELS[s] }))}
+                  selected={filters.statuses ?? []}
+                  onChange={(next) => patch({ statuses: next as GoalStatus[] })}
+                />
+              </FilterPopover>
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Deadline</span>
+              <FilterPopover
+                label="Deadline"
+                active={!!filters.deadlineFrom || !!filters.deadlineTo}
+              >
+                <div className="pop-range">
+                  <label>
+                    From
+                    <input
+                      type="date"
+                      value={filters.deadlineFrom?.slice(0, 10) ?? ''}
+                      onChange={(e) =>
+                        patch({
+                          deadlineFrom: e.target.value
+                            ? new Date(`${e.target.value}T00:00:00.000Z`).toISOString()
+                            : null,
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    To
+                    <input
+                      type="date"
+                      value={filters.deadlineTo?.slice(0, 10) ?? ''}
+                      onChange={(e) =>
+                        patch({
+                          deadlineTo: e.target.value
+                            ? new Date(`${e.target.value}T23:59:59.999Z`).toISOString()
+                            : null,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+              </FilterPopover>
+            </div>
+          </div>
+        )}
 
-      {open && (
-        <GoalDetailModal
-          goal={open}
-          supervisorView
-          onClose={() => setOpen(null)}
-          onChanged={() => void load()}
-        />
-      )}
-    </div>
+        {error && <div className="alert error">{error}</div>}
+
+        {loading ? (
+          <div className="muted" style={{ padding: '1rem' }}>
+            Loading…
+          </div>
+        ) : goals.length === 0 ? (
+          <EmptyState title="No team goals">
+            {hasFilters
+              ? 'No goals match the current filters.'
+              : 'Goals for your direct reports will appear here once they are created.'}
+          </EmptyState>
+        ) : (
+          <div className="goal-grid">
+            {goals.map((g) => (
+              <GoalCard key={g.id} goal={g} showOwner onOpen={() => setOpen(g)} />
+            ))}
+          </div>
+        )}
+
+        {creating && (
+          <GoalEditorModal
+            ownerOptions={createOwnerOptions}
+            onClose={() => setCreating(false)}
+            onSaved={() => {
+              setCreating(false);
+              void load();
+            }}
+          />
+        )}
+
+        {open && (
+          <GoalDetailModal
+            goal={open}
+            supervisorView
+            onClose={() => setOpen(null)}
+            onChanged={() => void load()}
+          />
+        )}
+      </div>
+    </>
   );
 }

@@ -18,9 +18,9 @@ import { NotificationProvider, useNotifications } from '../notifications/Notific
 import { CommandPalette } from './CommandPalette';
 import { Avatar, userLabel } from './ui/Avatar';
 import { AppLauncher, appForPath, type AppKey } from './AppLauncher';
-import { SectionTabs } from './SectionTabs';
 import { ToastProvider } from './harbor/Toast';
 import { TimerPill } from './harbor/TimeBlock';
+import { NativeEnhancer } from './harbor/NativeEnhancer';
 
 interface NavEntry {
   to: string;
@@ -192,11 +192,11 @@ export function Layout() {
           <Sidebar />
           <main className="app-main">
             <SchedulerBanner />
-            <SectionTabs />
             <Outlet />
           </main>
         </div>
         {cmdkOpen && <CommandPalette onClose={() => setCmdkOpen(false)} />}
+        <NativeEnhancer />
       </ToastProvider>
     </NotificationProvider>
   );

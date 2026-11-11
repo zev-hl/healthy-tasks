@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Toast, useToast } from '../components/exclusives/Toast';
 import { Swatch } from '../components/duties/DutyTag';
 import { CaretIcon, SearchIcon } from '../components/duties/icons';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 /**
  * Departments & Duties (Admin). Every duty belongs to exactly one department and
@@ -294,180 +295,292 @@ export function DepartmentsPage() {
   const err = inlineErr ? <span className="dd-inline-err">{inlineErr}</span> : null;
 
   return (
-    <div className="dd-page narrow">
-      <div className="dd-page-head">
-        <div>
-          <div className="dd-crumbs">Manage</div>
-          <h1>Departments &amp; Duties</h1>
-          <div className="dd-page-sub">
+    <>
+      <PageHeader
+        title="Departments & duties"
+        subtitle={
+          <>
             {plural(activeDepts.length, 'department', 'departments')} ·{' '}
             {plural(activeDuties.length, 'duty', 'duties')}
-          </div>
-        </div>
-        <span className="spacer" />
-        <button
-          type="button"
-          onClick={() => {
-            setInlineErr(null);
-            begin({
-              kind: 'newDept',
-              name: '',
-              color:
-                DEPARTMENT_COLORS[depts.length % DEPARTMENT_COLORS.length] ?? DEPARTMENT_COLORS[0],
-            });
-          }}
-        >
-          + New department
-        </button>
-      </div>
-
-      {error && <div className="alert error">{error}</div>}
-
-      <div className="dd-toolbar">
-        <div className="dd-search">
-          <SearchIcon />
-          <input
-            placeholder="Search departments or duties…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            aria-label="Search departments or duties"
-          />
-        </div>
-        <div className="seg" role="group" aria-label="Status">
-          {(
-            [
-              ['active', 'Active'],
-              ['archived', 'Archived'],
-              ['all', 'All'],
-            ] as const
-          ).map(([k, l]) => (
+          </>
+        }
+        search={false}
+        newTask={false}
+        actions={
+          <>
             <button
-              key={k}
               type="button"
-              className={`seg-btn${status === k ? ' active' : ''}`}
-              aria-pressed={status === k}
-              onClick={() => setStatus(k)}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        <select
-          value={show}
-          onChange={(e) => setShow(e.target.value as ShowFilter)}
-          aria-label="Show"
-        >
-          <option value="all">All duties</option>
-          <option value="nopeople">Duties with no one assigned</option>
-          <option value="tasks">Duties with open tasks</option>
-        </select>
-        <span className="spacer" />
-        <button
-          type="button"
-          className="secondary btn-sm"
-          onClick={() => persistExpanded(new Set(depts.map((d) => d.id)))}
-        >
-          Expand all
-        </button>
-        <button
-          type="button"
-          className="secondary btn-sm"
-          onClick={() => {
-            persistExpanded(new Set());
-            if (editing?.kind === 'addDuty') setEditing(null);
-          }}
-        >
-          Collapse all
-        </button>
-      </div>
-
-      <div className="dd-tree dept-tree">
-        <div className="dd-tree-head">
-          <span style={{ width: 22 }} />
-          <span>Department / Duty</span>
-          <span className="spacer" />
-          <span className="dd-col-people">People</span>
-          <span className="dd-col-open">Open tasks</span>
-          <span className="dd-col-actions" />
-        </div>
-
-        {editing?.kind === 'newDept' && (
-          <div className="dd-row adding">
-            <span className="dd-caret-sp" />
-            <ColorPicker
-              value={editing.color}
-              onChange={(color) => setEditing({ ...editing, color })}
-            />
-            <input
-              autoFocus
-              style={{ width: 260 }}
-              placeholder="Department name"
-              value={editing.name}
-              onChange={(e) => {
+              onClick={() => {
                 setInlineErr(null);
-                setEditing({ ...editing, name: e.target.value });
+                begin({
+                  kind: 'newDept',
+                  name: '',
+                  color:
+                    DEPARTMENT_COLORS[depts.length % DEPARTMENT_COLORS.length] ??
+                    DEPARTMENT_COLORS[0],
+                });
               }}
-              aria-label="Department name"
-              {...keyHandlers}
-            />
-            <button
-              type="button"
-              className="btn-sm"
-              disabled={busy || !changed}
-              title={unchangedTitle}
-              onClick={() => void saveEditing()}
             >
-              Create department
+              + New department
             </button>
-            <button type="button" className="secondary btn-sm" onClick={cancelEditing}>
-              Cancel
-            </button>
-            {err}
-          </div>
-        )}
+          </>
+        }
+      />
+      <div className="dd-page narrow hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
 
-        {loading ? (
-          <div className="dd-empty">Loading…</div>
-        ) : rows.length === 0 && editing?.kind !== 'newDept' ? (
-          <div className="dd-empty">
-            {depts.length === 0
-              ? 'No departments yet. Create the first one to start adding duties.'
-              : query
-                ? `No departments or duties match “${q}”.`
-                : 'Nothing matches these filters.'}
+        <div className="dd-toolbar">
+          <div className="dd-search">
+            <SearchIcon />
+            <input
+              placeholder="Search departments or duties…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              aria-label="Search departments or duties"
+            />
           </div>
-        ) : (
-          rows.map(({ dept: d, duties, open, matchedDept }) => {
-            const nAct = d.duties.filter((u) => !u.archived).length;
-            const editingThis = editing?.kind === 'dept' && editing.id === d.id;
-            const adding = editing?.kind === 'addDuty' && editing.deptId === d.id ? editing : null;
-            return (
-              <Fragment key={d.id}>
-                <div className={`dd-row dept${d.archived ? ' archived' : ''}`}>
-                  <button
-                    type="button"
-                    className={`dd-caret${open ? ' open' : ''}`}
-                    onClick={() => toggle(d.id)}
-                    aria-expanded={open}
-                    aria-label={`${open ? 'Collapse' : 'Expand'} ${d.name}`}
-                  >
-                    <CaretIcon />
-                  </button>
-                  {editingThis ? (
-                    <>
-                      <ColorPicker
-                        value={editing.color}
-                        onChange={(color) => setEditing({ ...editing, color })}
-                      />
+          <div className="seg" role="group" aria-label="Status">
+            {(
+              [
+                ['active', 'Active'],
+                ['archived', 'Archived'],
+                ['all', 'All'],
+              ] as const
+            ).map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                className={`seg-btn${status === k ? ' active' : ''}`}
+                aria-pressed={status === k}
+                onClick={() => setStatus(k)}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <select
+            value={show}
+            onChange={(e) => setShow(e.target.value as ShowFilter)}
+            aria-label="Show"
+          >
+            <option value="all">All duties</option>
+            <option value="nopeople">Duties with no one assigned</option>
+            <option value="tasks">Duties with open tasks</option>
+          </select>
+          <span className="spacer" />
+          <button
+            type="button"
+            className="secondary btn-sm"
+            onClick={() => persistExpanded(new Set(depts.map((d) => d.id)))}
+          >
+            Expand all
+          </button>
+          <button
+            type="button"
+            className="secondary btn-sm"
+            onClick={() => {
+              persistExpanded(new Set());
+              if (editing?.kind === 'addDuty') setEditing(null);
+            }}
+          >
+            Collapse all
+          </button>
+        </div>
+
+        <div className="dd-tree dept-tree">
+          <div className="dd-tree-head">
+            <span style={{ width: 22 }} />
+            <span>Department / Duty</span>
+            <span className="spacer" />
+            <span className="dd-col-people">People</span>
+            <span className="dd-col-open">Open tasks</span>
+            <span className="dd-col-actions" />
+          </div>
+
+          {editing?.kind === 'newDept' && (
+            <div className="dd-row adding">
+              <span className="dd-caret-sp" />
+              <ColorPicker
+                value={editing.color}
+                onChange={(color) => setEditing({ ...editing, color })}
+              />
+              <input
+                autoFocus
+                style={{ width: 260 }}
+                placeholder="Department name"
+                value={editing.name}
+                onChange={(e) => {
+                  setInlineErr(null);
+                  setEditing({ ...editing, name: e.target.value });
+                }}
+                aria-label="Department name"
+                {...keyHandlers}
+              />
+              <button
+                type="button"
+                className="btn-sm"
+                disabled={busy || !changed}
+                title={unchangedTitle}
+                onClick={() => void saveEditing()}
+              >
+                Create department
+              </button>
+              <button type="button" className="secondary btn-sm" onClick={cancelEditing}>
+                Cancel
+              </button>
+              {err}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="dd-empty">Loading…</div>
+          ) : rows.length === 0 && editing?.kind !== 'newDept' ? (
+            <div className="dd-empty">
+              {depts.length === 0
+                ? 'No departments yet. Create the first one to start adding duties.'
+                : query
+                  ? `No departments or duties match “${q}”.`
+                  : 'Nothing matches these filters.'}
+            </div>
+          ) : (
+            rows.map(({ dept: d, duties, open, matchedDept }) => {
+              const nAct = d.duties.filter((u) => !u.archived).length;
+              const editingThis = editing?.kind === 'dept' && editing.id === d.id;
+              const adding =
+                editing?.kind === 'addDuty' && editing.deptId === d.id ? editing : null;
+              return (
+                <Fragment key={d.id}>
+                  <div className={`dd-row dept${d.archived ? ' archived' : ''}`}>
+                    <button
+                      type="button"
+                      className={`dd-caret${open ? ' open' : ''}`}
+                      onClick={() => toggle(d.id)}
+                      aria-expanded={open}
+                      aria-label={`${open ? 'Collapse' : 'Expand'} ${d.name}`}
+                    >
+                      <CaretIcon />
+                    </button>
+                    {editingThis ? (
+                      <>
+                        <ColorPicker
+                          value={editing.color}
+                          onChange={(color) => setEditing({ ...editing, color })}
+                        />
+                        <input
+                          autoFocus
+                          style={{ width: 240 }}
+                          value={editing.name}
+                          onChange={(e) => {
+                            setInlineErr(null);
+                            setEditing({ ...editing, name: e.target.value });
+                          }}
+                          aria-label="Department name"
+                          {...keyHandlers}
+                        />
+                        <button
+                          type="button"
+                          className="btn-sm"
+                          disabled={busy || !changed}
+                          title={unchangedTitle}
+                          onClick={() => void saveEditing()}
+                        >
+                          Save
+                        </button>
+                        <button type="button" className="secondary btn-sm" onClick={cancelEditing}>
+                          Cancel
+                        </button>
+                        {err}
+                      </>
+                    ) : (
+                      <>
+                        <Swatch color={d.color} />
+                        <span className="dd-name">{highlight(d.name, query)}</span>
+                      </>
+                    )}
+                    <span className="count-pill" title="Active duties">
+                      {query && !matchedDept ? `${duties.length} of ${nAct}` : nAct}{' '}
+                      {nAct === 1 ? 'duty' : 'duties'}
+                    </span>
+                    {!d.archived && !editingThis && (
+                      <button
+                        type="button"
+                        className="dd-add-duty"
+                        onClick={() => startAddDuty(d.id)}
+                        title={`Add a duty to ${d.name}`}
+                      >
+                        + Duty
+                      </button>
+                    )}
+                    {d.archived && <span className="dd-tag muted-tag">Archived</span>}
+                    <span className="spacer" />
+                    <span className="dd-meta">{plural(d.peopleCount, 'person', 'people')}</span>
+                    {/* Keeps the people count under the People column (duty rows add Open tasks here). */}
+                    <span className="dd-col-open" aria-hidden="true" />
+                    <span className="dd-actions">
+                      {d.archived ? (
+                        <button
+                          type="button"
+                          className="dd-icon-btn"
+                          onClick={() =>
+                            void run(
+                              () => api.restoreDepartment(d.id),
+                              `Restored ${d.name}. Restore its duties one by one.`,
+                            )
+                          }
+                        >
+                          Restore
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="dd-icon-btn"
+                            onClick={() => {
+                              setInlineErr(null);
+                              begin({ kind: 'dept', id: d.id, name: d.name, color: d.color });
+                            }}
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            className="dd-icon-btn danger-t"
+                            onClick={() =>
+                              setConfirm(
+                                d.duties.length > 0
+                                  ? { kind: 'archiveDept', dept: d }
+                                  : { kind: 'deleteDept', dept: d },
+                              )
+                            }
+                          >
+                            {d.duties.length > 0 ? 'Archive' : 'Delete'}
+                          </button>
+                        </>
+                      )}
+                    </span>
+                  </div>
+
+                  {open && adding && (
+                    <div className="dd-row duty adding">
+                      <span className="dd-bullet" style={{ background: 'var(--accent)' }} />
                       <input
                         autoFocus
-                        style={{ width: 240 }}
-                        value={editing.name}
+                        style={{ width: 230 }}
+                        placeholder="New duty name"
+                        value={adding.name}
                         onChange={(e) => {
                           setInlineErr(null);
-                          setEditing({ ...editing, name: e.target.value });
+                          setEditing({ ...adding, name: e.target.value });
                         }}
-                        aria-label="Department name"
+                        aria-label="New duty name"
+                        {...keyHandlers}
+                      />
+                      <input
+                        style={{ width: 260 }}
+                        placeholder="Description (optional)"
+                        value={adding.desc}
+                        onChange={(e) => setEditing({ ...adding, desc: e.target.value })}
+                        aria-label="Description"
                         {...keyHandlers}
                       />
                       <button
@@ -477,295 +590,194 @@ export function DepartmentsPage() {
                         title={unchangedTitle}
                         onClick={() => void saveEditing()}
                       >
-                        Save
+                        Add duty
                       </button>
                       <button type="button" className="secondary btn-sm" onClick={cancelEditing}>
                         Cancel
                       </button>
                       {err}
-                    </>
-                  ) : (
-                    <>
-                      <Swatch color={d.color} />
-                      <span className="dd-name">{highlight(d.name, query)}</span>
-                    </>
+                    </div>
                   )}
-                  <span className="count-pill" title="Active duties">
-                    {query && !matchedDept ? `${duties.length} of ${nAct}` : nAct}{' '}
-                    {nAct === 1 ? 'duty' : 'duties'}
-                  </span>
-                  {!d.archived && !editingThis && (
-                    <button
-                      type="button"
-                      className="dd-add-duty"
-                      onClick={() => startAddDuty(d.id)}
-                      title={`Add a duty to ${d.name}`}
-                    >
-                      + Duty
-                    </button>
-                  )}
-                  {d.archived && <span className="dd-tag muted-tag">Archived</span>}
-                  <span className="spacer" />
-                  <span className="dd-meta">{plural(d.peopleCount, 'person', 'people')}</span>
-                  {/* Keeps the people count under the People column (duty rows add Open tasks here). */}
-                  <span className="dd-col-open" aria-hidden="true" />
-                  <span className="dd-actions">
-                    {d.archived ? (
-                      <button
-                        type="button"
-                        className="dd-icon-btn"
-                        onClick={() =>
-                          void run(
-                            () => api.restoreDepartment(d.id),
-                            `Restored ${d.name}. Restore its duties one by one.`,
-                          )
-                        }
-                      >
-                        Restore
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="dd-icon-btn"
-                          onClick={() => {
-                            setInlineErr(null);
-                            begin({ kind: 'dept', id: d.id, name: d.name, color: d.color });
-                          }}
-                        >
-                          Rename
-                        </button>
-                        <button
-                          type="button"
-                          className="dd-icon-btn danger-t"
-                          onClick={() =>
-                            setConfirm(
-                              d.duties.length > 0
-                                ? { kind: 'archiveDept', dept: d }
-                                : { kind: 'deleteDept', dept: d },
-                            )
-                          }
-                        >
-                          {d.duties.length > 0 ? 'Archive' : 'Delete'}
-                        </button>
-                      </>
-                    )}
-                  </span>
-                </div>
 
-                {open && adding && (
-                  <div className="dd-row duty adding">
-                    <span className="dd-bullet" style={{ background: 'var(--accent)' }} />
-                    <input
-                      autoFocus
-                      style={{ width: 230 }}
-                      placeholder="New duty name"
-                      value={adding.name}
-                      onChange={(e) => {
-                        setInlineErr(null);
-                        setEditing({ ...adding, name: e.target.value });
-                      }}
-                      aria-label="New duty name"
-                      {...keyHandlers}
-                    />
-                    <input
-                      style={{ width: 260 }}
-                      placeholder="Description (optional)"
-                      value={adding.desc}
-                      onChange={(e) => setEditing({ ...adding, desc: e.target.value })}
-                      aria-label="Description"
-                      {...keyHandlers}
-                    />
-                    <button
-                      type="button"
-                      className="btn-sm"
-                      disabled={busy || !changed}
-                      title={unchangedTitle}
-                      onClick={() => void saveEditing()}
-                    >
-                      Add duty
-                    </button>
-                    <button type="button" className="secondary btn-sm" onClick={cancelEditing}>
-                      Cancel
-                    </button>
-                    {err}
-                  </div>
-                )}
-
-                {open && duties.length === 0 && !adding && (
-                  <div className="dd-row duty">
-                    <span className="muted" style={{ fontSize: 12.5 }}>
-                      No duties yet —{' '}
-                      {d.archived ? (
-                        'restore the department to add some'
-                      ) : (
-                        <button
-                          type="button"
-                          className="dd-link"
-                          onClick={() => startAddDuty(d.id)}
-                        >
-                          add the first one
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                )}
-
-                {open &&
-                  duties.map((u) => {
-                    const editingDuty =
-                      editing?.kind === 'duty' && editing.id === u.id ? editing : null;
-                    return (
-                      <div key={u.id} className={`dd-row duty${u.archived ? ' archived' : ''}`}>
-                        <span className="dd-bullet" style={{ background: d.color }} />
-                        {editingDuty ? (
-                          <>
-                            <input
-                              autoFocus
-                              style={{ width: 240 }}
-                              value={editingDuty.name}
-                              onChange={(e) => {
-                                setInlineErr(null);
-                                setEditing({ ...editingDuty, name: e.target.value });
-                              }}
-                              aria-label="Duty name"
-                              {...keyHandlers}
-                            />
-                            <input
-                              style={{ width: 240 }}
-                              placeholder="Description"
-                              value={editingDuty.desc}
-                              onChange={(e) => setEditing({ ...editingDuty, desc: e.target.value })}
-                              aria-label="Description"
-                              {...keyHandlers}
-                            />
-                            <button
-                              type="button"
-                              className="btn-sm"
-                              disabled={busy || !changed}
-                              title={unchangedTitle}
-                              onClick={() => void saveEditing()}
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary btn-sm"
-                              onClick={cancelEditing}
-                            >
-                              Cancel
-                            </button>
-                            {err}
-                          </>
+                  {open && duties.length === 0 && !adding && (
+                    <div className="dd-row duty">
+                      <span className="muted" style={{ fontSize: 12.5 }}>
+                        No duties yet —{' '}
+                        {d.archived ? (
+                          'restore the department to add some'
                         ) : (
-                          <>
-                            <span className="dd-name">{highlight(u.name, query)}</span>
-                            <span className="dd-desc">{highlight(u.description ?? '', query)}</span>
-                          </>
-                        )}
-                        {u.archived && <span className="dd-tag muted-tag">Archived</span>}
-                        <span className="spacer" />
-                        {u.peopleCount > 0 ? (
-                          <Link
-                            className="dd-meta"
-                            to={`/admin/organization?view=duty&duty=${u.id}`}
-                            title="See who holds this duty"
+                          <button
+                            type="button"
+                            className="dd-link"
+                            onClick={() => startAddDuty(d.id)}
                           >
-                            {plural(u.peopleCount, 'person', 'people')}
-                          </Link>
-                        ) : (
-                          <span className="dd-tag warn" title="Nobody holds this duty yet">
-                            No one assigned
-                          </span>
+                            add the first one
+                          </button>
                         )}
-                        <span className="dd-meta dd-col-open">
-                          {plural(u.openTaskCount, 'open task', 'open tasks')}
-                        </span>
-                        <span className="dd-actions">
-                          {u.archived ? (
-                            <button
-                              type="button"
-                              className="dd-icon-btn"
-                              disabled={d.archived}
-                              title={d.archived ? 'Restore the department first' : undefined}
-                              onClick={() =>
-                                void run(() => api.restoreDuty(u.id), `Restored ${u.name}`)
-                              }
-                            >
-                              Restore
-                            </button>
+                      </span>
+                    </div>
+                  )}
+
+                  {open &&
+                    duties.map((u) => {
+                      const editingDuty =
+                        editing?.kind === 'duty' && editing.id === u.id ? editing : null;
+                      return (
+                        <div key={u.id} className={`dd-row duty${u.archived ? ' archived' : ''}`}>
+                          <span className="dd-bullet" style={{ background: d.color }} />
+                          {editingDuty ? (
+                            <>
+                              <input
+                                autoFocus
+                                style={{ width: 240 }}
+                                value={editingDuty.name}
+                                onChange={(e) => {
+                                  setInlineErr(null);
+                                  setEditing({ ...editingDuty, name: e.target.value });
+                                }}
+                                aria-label="Duty name"
+                                {...keyHandlers}
+                              />
+                              <input
+                                style={{ width: 240 }}
+                                placeholder="Description"
+                                value={editingDuty.desc}
+                                onChange={(e) =>
+                                  setEditing({ ...editingDuty, desc: e.target.value })
+                                }
+                                aria-label="Description"
+                                {...keyHandlers}
+                              />
+                              <button
+                                type="button"
+                                className="btn-sm"
+                                disabled={busy || !changed}
+                                title={unchangedTitle}
+                                onClick={() => void saveEditing()}
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary btn-sm"
+                                onClick={cancelEditing}
+                              >
+                                Cancel
+                              </button>
+                              {err}
+                            </>
                           ) : (
                             <>
+                              <span className="dd-name">{highlight(u.name, query)}</span>
+                              <span className="dd-desc">
+                                {highlight(u.description ?? '', query)}
+                              </span>
+                            </>
+                          )}
+                          {u.archived && <span className="dd-tag muted-tag">Archived</span>}
+                          <span className="spacer" />
+                          {u.peopleCount > 0 ? (
+                            <Link
+                              className="dd-meta"
+                              to={`/admin/organization?view=duty&duty=${u.id}`}
+                              title="See who holds this duty"
+                            >
+                              {plural(u.peopleCount, 'person', 'people')}
+                            </Link>
+                          ) : (
+                            <span className="dd-tag warn" title="Nobody holds this duty yet">
+                              No one assigned
+                            </span>
+                          )}
+                          <span className="dd-meta dd-col-open">
+                            {plural(u.openTaskCount, 'open task', 'open tasks')}
+                          </span>
+                          <span className="dd-actions">
+                            {u.archived ? (
                               <button
                                 type="button"
                                 className="dd-icon-btn"
-                                onClick={() => {
-                                  setInlineErr(null);
-                                  begin({
-                                    kind: 'duty',
-                                    id: u.id,
-                                    deptId: d.id,
-                                    name: u.name,
-                                    desc: u.description ?? '',
-                                  });
-                                }}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="dd-icon-btn danger-t"
-                                title={
-                                  u.inUse
-                                    ? 'In use — archiving hides it from pickers but keeps history'
-                                    : 'Never used — can be deleted'
-                                }
+                                disabled={d.archived}
+                                title={d.archived ? 'Restore the department first' : undefined}
                                 onClick={() =>
-                                  u.inUse
-                                    ? void run(
-                                        () => api.archiveDuty(u.id),
-                                        `Archived ${u.name}. It’s hidden from pickers but kept in history.`,
-                                      )
-                                    : setConfirm({ kind: 'deleteDuty', duty: u })
+                                  void run(() => api.restoreDuty(u.id), `Restored ${u.name}`)
                                 }
                               >
-                                {u.inUse ? 'Archive' : 'Delete'}
+                                Restore
                               </button>
-                            </>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </Fragment>
-            );
-          })
-        )}
-      </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="dd-icon-btn"
+                                  onClick={() => {
+                                    setInlineErr(null);
+                                    begin({
+                                      kind: 'duty',
+                                      id: u.id,
+                                      deptId: d.id,
+                                      name: u.name,
+                                      desc: u.description ?? '',
+                                    });
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="dd-icon-btn danger-t"
+                                  title={
+                                    u.inUse
+                                      ? 'In use — archiving hides it from pickers but keeps history'
+                                      : 'Never used — can be deleted'
+                                  }
+                                  onClick={() =>
+                                    u.inUse
+                                      ? void run(
+                                          () => api.archiveDuty(u.id),
+                                          `Archived ${u.name}. It’s hidden from pickers but kept in history.`,
+                                        )
+                                      : setConfirm({ kind: 'deleteDuty', duty: u })
+                                  }
+                                >
+                                  {u.inUse ? 'Archive' : 'Delete'}
+                                </button>
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </Fragment>
+              );
+            })
+          )}
+        </div>
 
-      {confirm && (
-        <ConfirmDialog
-          title={
-            confirm.kind === 'archiveDept'
-              ? `Archive ${confirm.dept.name}?`
-              : confirm.kind === 'deleteDept'
-                ? `Delete ${confirm.dept.name}?`
-                : `Delete ${confirm.duty.name}?`
-          }
-          message={
-            confirm.kind === 'archiveDept'
-              ? 'The department and all its duties disappear from pickers. They stay in history, reports and on existing tasks, and can be restored later.'
-              : 'It has never been used, so it will be removed for good.'
-          }
-          confirmLabel={confirm.kind === 'archiveDept' ? 'Archive' : 'Delete'}
-          tone={confirm.kind === 'archiveDept' ? 'warn' : 'danger'}
-          busy={busy}
-          onConfirm={() => void doConfirm()}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
-      <Toast toast={toast} onClose={clearToast} />
-    </div>
+        {confirm && (
+          <ConfirmDialog
+            title={
+              confirm.kind === 'archiveDept'
+                ? `Archive ${confirm.dept.name}?`
+                : confirm.kind === 'deleteDept'
+                  ? `Delete ${confirm.dept.name}?`
+                  : `Delete ${confirm.duty.name}?`
+            }
+            message={
+              confirm.kind === 'archiveDept'
+                ? 'The department and all its duties disappear from pickers. They stay in history, reports and on existing tasks, and can be restored later.'
+                : 'It has never been used, so it will be removed for good.'
+            }
+            confirmLabel={confirm.kind === 'archiveDept' ? 'Archive' : 'Delete'}
+            tone={confirm.kind === 'archiveDept' ? 'warn' : 'danger'}
+            busy={busy}
+            onConfirm={() => void doConfirm()}
+            onCancel={() => setConfirm(null)}
+          />
+        )}
+        <Toast toast={toast} onClose={clearToast} />
+      </div>
+    </>
   );
 }
 

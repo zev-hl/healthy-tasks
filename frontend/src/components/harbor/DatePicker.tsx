@@ -82,62 +82,12 @@ export function DatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const [focus, setFocus] = useState<Date>(value ? fromYmd(value) : today);
-  const [month, setMonth] = useState<Date>(new Date(focus.getFullYear(), focus.getMonth(), 1));
-
-  useEffect(() => {
-    if (!open) return;
-    const f = value ? fromYmd(value) : today;
-    setFocus(f);
-    setMonth(new Date(f.getFullYear(), f.getMonth(), 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    gridRef.current?.querySelector<HTMLButtonElement>(`[data-day="${toYmd(focus)}"]`)?.focus();
-  }, [open, focus, month]);
+  const shown = renderValue ? renderValue(value) : value ? formatShortDay(value) : placeholder;
 
   function close(refocus = true) {
     setOpen(false);
     if (refocus) btnRef.current?.focus();
   }
-  function pick(d: Date | null) {
-    close();
-    onChange(d ? toYmd(d) : null);
-  }
-  function moveFocus(d: Date) {
-    setFocus(d);
-    if (d.getMonth() !== month.getMonth() || d.getFullYear() !== month.getFullYear()) {
-      setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    }
-  }
-
-  function onGridKey(e: React.KeyboardEvent) {
-    const steps: Record<string, number> = {
-      ArrowLeft: -1,
-      ArrowRight: 1,
-      ArrowUp: -7,
-      ArrowDown: 7,
-    };
-    if (e.key in steps) moveFocus(addDays(focus, steps[e.key]!));
-    else if (e.key === 'PageUp' || e.key === 'PageDown') {
-      const d = new Date(focus);
-      d.setMonth(d.getMonth() + (e.key === 'PageUp' ? -1 : 1));
-      moveFocus(d);
-    } else return;
-    e.preventDefault();
-  }
-
-  // Six weeks starting on the Sunday on or before the 1st.
-  const start = addDays(month, -month.getDay());
-  const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
-  const selected = value ?? '';
-  const monthName = month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const shown = renderValue ? renderValue(value) : value ? formatShortDay(value) : placeholder;
 
   return (
     <>
@@ -163,86 +113,16 @@ export function DatePicker({
           <ChevronDown className="hb-select-caret" size={14} strokeWidth={2.4} aria-hidden="true" />
         )}
       </button>
-      <Popover
+      <CalendarPopover
         anchorRef={btnRef}
         open={open}
-        onClose={(why) => close(why === 'escape')}
-        minWidth={292}
-        matchWidth={false}
-        className="hb-cal"
+        value={value}
         label={label}
+        allowClear={allowClear}
+        overdueNote={overdueNote}
+        onClose={(why) => close(why === 'escape' || why === 'pick')}
+        onPick={(v) => onChange(v)}
       >
-        <div className="hb-cal-head">
-          <button
-            type="button"
-            className="hb-cal-nav"
-            aria-label="Previous month"
-            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </button>
-          <span className="hb-cal-month" aria-live="polite">
-            {monthName}
-          </span>
-          <button
-            type="button"
-            className="hb-cal-nav"
-            aria-label="Next month"
-            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="hb-cal-grid" role="grid" ref={gridRef} onKeyDown={onGridKey}>
-          {WEEKDAYS.map((w, i) => (
-            <span key={i} className="hb-cal-wd" aria-hidden="true">
-              {w}
-            </span>
-          ))}
-          {days.map((d) => {
-            const ymd = toYmd(d);
-            const inMonth = d.getMonth() === month.getMonth();
-            const isToday = ymd === toYmd(today);
-            const weekend = d.getDay() === 0 || d.getDay() === 6;
-            return (
-              <button
-                key={ymd}
-                type="button"
-                data-day={ymd}
-                tabIndex={ymd === toYmd(focus) ? 0 : -1}
-                className={cx(
-                  'hb-cal-day',
-                  !inMonth && 'out',
-                  d < today && 'past',
-                  weekend && 'weekend',
-                  isToday && 'today',
-                  ymd === selected && 'selected',
-                )}
-                aria-pressed={ymd === selected}
-                aria-label={d.toLocaleDateString(undefined, {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                })}
-                onClick={() => pick(d)}
-              >
-                {d.getDate()}
-              </button>
-            );
-          })}
-        </div>
-        <div className="hb-cal-quick">
-          {quickPicks(today).map((q) => (
-            <button key={q.label} type="button" onClick={() => pick(q.day)}>
-              {q.label}
-            </button>
-          ))}
-          {allowClear && value && (
-            <button type="button" className="clear" onClick={() => pick(null)}>
-              Clear
-            </button>
-          )}
-        </div>
         {onTimeChange && value && (
           <label className="hb-cal-time">
             <span>Time</span>
@@ -259,8 +139,172 @@ export function DatePicker({
             )}
           </label>
         )}
-        {overdueNote && <p className="hb-cal-note">{overdueNote}</p>}
-      </Popover>
+      </CalendarPopover>
     </>
+  );
+}
+
+/**
+ * The calendar itself, in a popover under `anchorRef`: today has an accent
+ * ring, the chosen day is filled, past days are muted, quick picks below.
+ * Arrows move by day/week, PageUp/PageDown by month, Enter picks, Esc closes.
+ * Used by DatePicker and by the page-wide date-field enhancer.
+ */
+export function CalendarPopover({
+  anchorRef,
+  open,
+  value,
+  label,
+  onPick,
+  onClose,
+  allowClear = true,
+  overdueNote,
+  children,
+}: {
+  anchorRef: React.RefObject<HTMLElement>;
+  open: boolean;
+  value: Ymd | null;
+  label: string;
+  onPick: (v: Ymd | null) => void;
+  onClose: (why: 'escape' | 'outside' | 'tab' | 'pick') => void;
+  allowClear?: boolean;
+  overdueNote?: string;
+  children?: ReactNode;
+}) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [focus, setFocus] = useState<Date>(value ? fromYmd(value) : today);
+  const [month, setMonth] = useState<Date>(new Date(focus.getFullYear(), focus.getMonth(), 1));
+
+  useEffect(() => {
+    if (!open) return;
+    const f = value ? fromYmd(value) : today;
+    setFocus(f);
+    setMonth(new Date(f.getFullYear(), f.getMonth(), 1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    gridRef.current?.querySelector<HTMLButtonElement>(`[data-day="${toYmd(focus)}"]`)?.focus();
+  }, [open, focus, month]);
+
+  function pick(d: Date | null) {
+    onClose('pick');
+    onPick(d ? toYmd(d) : null);
+  }
+  function moveFocus(d: Date) {
+    setFocus(d);
+    if (d.getMonth() !== month.getMonth() || d.getFullYear() !== month.getFullYear()) {
+      setMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+  }
+  function onGridKey(e: React.KeyboardEvent) {
+    const steps: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -7,
+      ArrowDown: 7,
+    };
+    if (e.key in steps) moveFocus(addDays(focus, steps[e.key]!));
+    else if (e.key === 'PageUp' || e.key === 'PageDown') {
+      const d = new Date(focus);
+      d.setMonth(d.getMonth() + (e.key === 'PageUp' ? -1 : 1));
+      moveFocus(d);
+    } else return;
+    e.preventDefault();
+  }
+
+  // Six weeks starting on the Sunday on or before the 1st.
+  const start = addDays(month, -month.getDay());
+  const days = Array.from({ length: 42 }, (_, i) => addDays(start, i));
+  const selected = value ?? '';
+  const monthName = month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  return (
+    <Popover
+      anchorRef={anchorRef}
+      open={open}
+      onClose={onClose}
+      minWidth={292}
+      matchWidth={false}
+      className="hb-cal"
+      label={label}
+    >
+      <div className="hb-cal-head">
+        <button
+          type="button"
+          className="hb-cal-nav"
+          aria-label="Previous month"
+          onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+        >
+          <ChevronLeft size={18} aria-hidden="true" />
+        </button>
+        <span className="hb-cal-month" aria-live="polite">
+          {monthName}
+        </span>
+        <button
+          type="button"
+          className="hb-cal-nav"
+          aria-label="Next month"
+          onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+        >
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="hb-cal-grid" role="grid" ref={gridRef} onKeyDown={onGridKey}>
+        {WEEKDAYS.map((w, i) => (
+          <span key={i} className="hb-cal-wd" aria-hidden="true">
+            {w}
+          </span>
+        ))}
+        {days.map((d) => {
+          const ymd = toYmd(d);
+          const inMonth = d.getMonth() === month.getMonth();
+          const isToday = ymd === toYmd(today);
+          const weekend = d.getDay() === 0 || d.getDay() === 6;
+          return (
+            <button
+              key={ymd}
+              type="button"
+              data-day={ymd}
+              tabIndex={ymd === toYmd(focus) ? 0 : -1}
+              className={cx(
+                'hb-cal-day',
+                !inMonth && 'out',
+                d < today && 'past',
+                weekend && 'weekend',
+                isToday && 'today',
+                ymd === selected && 'selected',
+              )}
+              aria-pressed={ymd === selected}
+              aria-label={d.toLocaleDateString(undefined, {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })}
+              onClick={() => pick(d)}
+            >
+              {d.getDate()}
+            </button>
+          );
+        })}
+      </div>
+      <div className="hb-cal-quick">
+        {quickPicks(today).map((q) => (
+          <button key={q.label} type="button" onClick={() => pick(q.day)}>
+            {q.label}
+          </button>
+        ))}
+        {allowClear && value && (
+          <button type="button" className="clear" onClick={() => pick(null)}>
+            Clear
+          </button>
+        )}
+      </div>
+      {children}
+      {overdueNote && <p className="hb-cal-note">{overdueNote}</p>}
+    </Popover>
   );
 }

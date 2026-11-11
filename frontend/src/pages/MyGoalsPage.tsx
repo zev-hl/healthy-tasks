@@ -6,6 +6,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { GoalCard } from '../components/goals/GoalCard';
 import { GoalDetailModal } from '../components/goals/GoalDetailModal';
 import { GoalEditorModal } from '../components/goals/GoalEditorModal';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 /** The order lifecycle groups appear in on the My Goals screen. */
 const STATUS_ORDER: GoalStatus[] = [...GOAL_STATUSES];
@@ -48,67 +49,74 @@ export function MyGoalsPage() {
   const open = goals.find((g) => g.id === openId) ?? null;
 
   return (
-    <div className="tasks-page goals-page">
-      <div className="tasks-toolbar">
-        <h1>My Goals</h1>
-        <span className="tasks-total">{goals.length}</span>
-        <span className="spacer" />
-        <button
-          type="button"
-          className="secondary"
-          disabled={exporting || goals.length === 0}
-          onClick={() => void handleExport()}
-        >
-          {exporting ? 'Exporting…' : 'Export'}
-        </button>
-        <button type="button" onClick={() => setCreating(true)}>
-          + New goal
-        </button>
+    <>
+      <PageHeader
+        title="My Goals"
+        subtitle={`${goals.length} ${goals.length === 1 ? 'goal' : 'goals'}`}
+        search={false}
+        newTask={false}
+        actions={
+          <>
+            <button
+              type="button"
+              className="secondary"
+              disabled={exporting || goals.length === 0}
+              onClick={() => void handleExport()}
+            >
+              {exporting ? 'Exporting…' : 'Export'}
+            </button>
+            <button type="button" onClick={() => setCreating(true)}>
+              + New goal
+            </button>
+          </>
+        }
+      />
+      <div className="tasks-page goals-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
+
+        {loading ? (
+          <div className="muted" style={{ padding: '1rem' }}>
+            Loading…
+          </div>
+        ) : goals.length === 0 ? (
+          <EmptyState title="No goals yet">
+            Set a SMART goal for yourself — your supervisor will approve it before it becomes
+            active.
+          </EmptyState>
+        ) : (
+          STATUS_ORDER.filter((s) => goals.some((g) => g.status === s)).map((status) => (
+            <section key={status} className="goal-group">
+              <h2 className="goal-group-title">{GOAL_STATUS_LABELS[status]}</h2>
+              <div className="goal-grid">
+                {goals
+                  .filter((g) => g.status === status)
+                  .map((g) => (
+                    <GoalCard key={g.id} goal={g} onOpen={() => setOpenId(g.id)} />
+                  ))}
+              </div>
+            </section>
+          ))
+        )}
+
+        {creating && (
+          <GoalEditorModal
+            onClose={() => setCreating(false)}
+            onSaved={() => {
+              setCreating(false);
+              void load();
+            }}
+          />
+        )}
+
+        {open && (
+          <GoalDetailModal
+            goal={open}
+            supervisorView={false}
+            onClose={() => setOpenId(null)}
+            onChanged={() => void load()}
+          />
+        )}
       </div>
-
-      {error && <div className="alert error">{error}</div>}
-
-      {loading ? (
-        <div className="muted" style={{ padding: '1rem' }}>
-          Loading…
-        </div>
-      ) : goals.length === 0 ? (
-        <EmptyState title="No goals yet">
-          Set a SMART goal for yourself — your supervisor will approve it before it becomes active.
-        </EmptyState>
-      ) : (
-        STATUS_ORDER.filter((s) => goals.some((g) => g.status === s)).map((status) => (
-          <section key={status} className="goal-group">
-            <h2 className="goal-group-title">{GOAL_STATUS_LABELS[status]}</h2>
-            <div className="goal-grid">
-              {goals
-                .filter((g) => g.status === status)
-                .map((g) => (
-                  <GoalCard key={g.id} goal={g} onOpen={() => setOpenId(g.id)} />
-                ))}
-            </div>
-          </section>
-        ))
-      )}
-
-      {creating && (
-        <GoalEditorModal
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            setCreating(false);
-            void load();
-          }}
-        />
-      )}
-
-      {open && (
-        <GoalDetailModal
-          goal={open}
-          supervisorView={false}
-          onClose={() => setOpenId(null)}
-          onChanged={() => void load()}
-        />
-      )}
-    </div>
+    </>
   );
 }

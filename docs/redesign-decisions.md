@@ -93,3 +93,10 @@ stated fallback.
 7. **Department-wide visibility:** "My team" means my departments, but access control may hide some colleagues' tasks from a supervisor who isn't above them. If so, decide whether the dashboard should see them. (To verify.)
 8. **Cross-task activity feed:** "My activity" and the team activity feed for a period. History is stored per task; there may be no endpoint that lists it across tasks. (To verify.)
 9. **Overloaded rule:** if it comes back, the rule and any settings for it.
+
+## How the older screens were brought in
+
+- **Header band:** Time, Goals, People, Settings, Profile, Templates and Exclusive Alerts use the header band (`PageHeader`), with their sibling pages as tabs inside it.
+- **Style layer:** a shared layer in `harbor.css` restyles the older pieces they still use: view switches, buttons, tables, notices and cards.
+- **Dropdowns and dates:** `NativeEnhancer` opens the Harbor menu and calendar for every remaining browser dropdown and date field, so none of the browser's own popups appear. The page code is unchanged.
+- **Removed pages:** the Notifications and Due Date Performance pages now redirect to the Dashboard. The Queue dashboard card moved from Profile to Settings.

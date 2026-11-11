@@ -23,6 +23,7 @@ import { Avatar, UserChip, userLabel } from '../components/ui/Avatar';
 import { TableEmptyRow } from '../components/ui/EmptyState';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
+import { PageHeader } from '../components/harbor/PageHeader';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const DEFAULT_SORT: UserSort[] = [{ field: 'lastName', dir: 'asc' }];
@@ -262,336 +263,345 @@ export function UsersPage() {
   }
 
   return (
-    <div className="users-page">
-      <div className="tasks-toolbar">
-        <h1>Users</h1>
-        <span className="mono tasks-total">
-          {counts ? `${counts.active} active · ${counts.inactive} inactive` : loading ? '…' : total}
-        </span>
-        <input
-          className="tasks-search"
-          value={filters.query ?? ''}
-          onChange={(e) => patchFilters({ query: e.target.value })}
-          placeholder="Search name or email…"
-          aria-label="Search users"
-        />
-        <div className="spacer" />
-        <button className="secondary" onClick={openMerge}>
-          Merge users
-        </button>
-        <button onClick={() => setShowCreate(true)}>Add user</button>
-      </div>
-
-      {error && <div className="alert error">{error}</div>}
-      {notice && <div className="alert success">{notice}</div>}
-      {resetLink && (
-        <div className="alert info">
-          <strong>Reset link:</strong> {resetLink}
-        </div>
-      )}
-
-      {/* Chip row: active filters + "+ Filter" + sort caption */}
-      <div className="tasks-chiprow">
-        {chips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            className="filter-chip"
-            onClick={() => patchFilters(c.clear)}
-          >
-            {c.label}
-            <span className="chip-x" aria-hidden="true">
-              ×
-            </span>
-          </button>
-        ))}
-        <button
-          type="button"
-          className={`add-filter${showFilters ? ' open' : ''}`}
-          onClick={() => setShowFilters((v) => !v)}
-        >
-          + Filter
-        </button>
-        {filtersActive && (
-          <button
-            type="button"
-            className="link-button"
-            onClick={() => {
-              setFilters({});
-              setPage(1);
-            }}
-          >
-            Clear all
-          </button>
+    <>
+      <PageHeader
+        title="Users"
+        subtitle={
+          counts
+            ? `${counts.active} active · ${counts.inactive} inactive`
+            : loading
+              ? '…'
+              : `${total}`
+        }
+        searchPlaceholder="Search name or email…"
+        searchValue={filters.query ?? ''}
+        onSearchChange={(t) => patchFilters({ query: t })}
+        onSearch={() => undefined}
+        newTask={false}
+        actions={
+          <>
+            <button className="secondary" onClick={openMerge}>
+              Merge users
+            </button>
+            <button onClick={() => setShowCreate(true)}>Add user</button>
+          </>
+        }
+      />
+      <div className="users-page hb-legacy-body">
+        {error && <div className="alert error">{error}</div>}
+        {notice && <div className="alert success">{notice}</div>}
+        {resetLink && (
+          <div className="alert info">
+            <strong>Reset link:</strong> {resetLink}
+          </div>
         )}
-        <div className="spacer" />
-        {sortSummary && <span className="mono tasks-sort">Sorted by {sortSummary}</span>}
-      </div>
 
-      {showFilters && (
-        <div className="card panel tasks-filter-panel">
-          <div className="tasks-filter-field">
-            <span className="u-label">Role</span>
-            <FilterPopover label="Role" active={(filters.roles?.length ?? 0) > 0}>
-              <MultiSelect
-                options={ROLES.map((r) => ({ value: r, label: r }))}
-                selected={filters.roles ?? []}
-                onChange={(v) => patchFilters({ roles: v as Role[] })}
-              />
-            </FilterPopover>
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Status</span>
-            <FilterPopover label="Status" active={!!filters.status && filters.status !== 'all'}>
-              <div className="pop-radios">
-                {(['all', 'active', 'inactive'] as UserStatusFilter[]).map((s) => (
-                  <label key={s}>
-                    <input
-                      type="radio"
-                      name="user-status-filter"
-                      checked={(filters.status ?? 'all') === s}
-                      onChange={() => patchFilters({ status: s })}
-                    />
-                    {s === 'all' ? 'All' : s === 'active' ? 'Active' : 'Deactivated'}
-                  </label>
-                ))}
-              </div>
-            </FilterPopover>
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Supervisor</span>
-            <FilterPopover label="Supervisor" active={(filters.supervisorIds?.length ?? 0) > 0}>
-              <MultiSelect
-                options={(options?.supervisors ?? []).map((s) => ({ value: s.id, label: s.email }))}
-                selected={filters.supervisorIds ?? []}
-                onChange={(v) => patchFilters({ supervisorIds: v })}
-              />
-            </FilterPopover>
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Title</span>
-            {checklistFilter('Title', 'title', options?.title ?? [])}
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">First name</span>
-            {checklistFilter('First name', 'firstName', options?.firstName ?? [])}
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Last name</span>
-            {checklistFilter('Last name', 'lastName', options?.lastName ?? [])}
-          </div>
-          <div className="tasks-filter-field">
-            <span className="u-label">Email</span>
-            {checklistFilter('Email', 'email', options?.email ?? [])}
-          </div>
+        {/* Chip row: active filters + "+ Filter" + sort caption */}
+        <div className="tasks-chiprow">
+          {chips.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className="filter-chip"
+              onClick={() => patchFilters(c.clear)}
+            >
+              {c.label}
+              <span className="chip-x" aria-hidden="true">
+                ×
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`add-filter${showFilters ? ' open' : ''}`}
+            onClick={() => setShowFilters((v) => !v)}
+          >
+            + Filter
+          </button>
+          {filtersActive && (
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setFilters({});
+                setPage(1);
+              }}
+            >
+              Clear all
+            </button>
+          )}
+          <div className="spacer" />
+          {sortSummary && <span className="mono tasks-sort">Sorted by {sortSummary}</span>}
         </div>
-      )}
 
-      <div className="table-scroll">
-        <table className="users-table">
-          <thead>
-            <tr>
-              <SortHeader
-                label="Person"
-                multi={sort.length > 1}
-                state={sortState(sort, 'lastName')}
-                onSort={(a) => onSort('lastName', a)}
-              />
-              <SortHeader
-                label="Role"
-                multi={sort.length > 1}
-                state={sortState(sort, 'role')}
-                onSort={(a) => onSort('role', a)}
-              />
-              <SortHeader
-                label="Title"
-                multi={sort.length > 1}
-                state={sortState(sort, 'title')}
-                onSort={(a) => onSort('title', a)}
-              />
-              <SortHeader
-                label="Supervisor"
-                multi={sort.length > 1}
-                state={sortState(sort, 'supervisor')}
-                onSort={(a) => onSort('supervisor', a)}
-              />
-              <SortHeader
-                label="Status"
-                multi={sort.length > 1}
-                state={sortState(sort, 'status')}
-                onSort={(a) => onSort('status', a)}
-              />
-              <th className="col-user-actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((u) => {
-              const merged = u.mergedIntoId !== null;
-              const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
-              return (
-                <tr key={u.id}>
-                  <td>{personCell(u, merged)}</td>
-                  <td>
-                    <span className={`badge role-${u.role}`}>{u.role}</span>
-                  </td>
-                  <td>{u.title ?? <span className="muted">—</span>}</td>
-                  <td>
-                    {supervisor ? (
-                      <UserChip user={supervisor} />
-                    ) : u.supervisorId ? (
-                      <span className="muted">{usersById.get(u.supervisorId)?.email ?? '—'}</span>
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                  <td>
-                    {merged ? (
-                      <span
-                        className="badge inactive"
-                        title={`Merged into ${usersById.get(u.mergedIntoId!)?.email ?? 'another account'}`}
-                      >
-                        Merged
-                      </span>
-                    ) : (
-                      <span className={`badge ${u.isActive ? 'active' : 'inactive'}`}>
-                        {u.isActive ? 'Active' : 'Deactivated'}
-                      </span>
-                    )}
-                  </td>
-                  <td className="col-user-actions">
-                    {merged ? (
-                      <span className="muted" style={{ fontSize: '0.78rem' }}>
-                        → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
-                      </span>
-                    ) : (
-                      <div className="user-actions">
-                        <button
-                          className="icon-btn"
-                          title={`Edit ${u.email}`}
-                          aria-label={`Edit ${u.email}`}
-                          onClick={() => setEditing(u)}
+        {showFilters && (
+          <div className="card panel tasks-filter-panel">
+            <div className="tasks-filter-field">
+              <span className="u-label">Role</span>
+              <FilterPopover label="Role" active={(filters.roles?.length ?? 0) > 0}>
+                <MultiSelect
+                  options={ROLES.map((r) => ({ value: r, label: r }))}
+                  selected={filters.roles ?? []}
+                  onChange={(v) => patchFilters({ roles: v as Role[] })}
+                />
+              </FilterPopover>
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Status</span>
+              <FilterPopover label="Status" active={!!filters.status && filters.status !== 'all'}>
+                <div className="pop-radios">
+                  {(['all', 'active', 'inactive'] as UserStatusFilter[]).map((s) => (
+                    <label key={s}>
+                      <input
+                        type="radio"
+                        name="user-status-filter"
+                        checked={(filters.status ?? 'all') === s}
+                        onChange={() => patchFilters({ status: s })}
+                      />
+                      {s === 'all' ? 'All' : s === 'active' ? 'Active' : 'Deactivated'}
+                    </label>
+                  ))}
+                </div>
+              </FilterPopover>
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Supervisor</span>
+              <FilterPopover label="Supervisor" active={(filters.supervisorIds?.length ?? 0) > 0}>
+                <MultiSelect
+                  options={(options?.supervisors ?? []).map((s) => ({
+                    value: s.id,
+                    label: s.email,
+                  }))}
+                  selected={filters.supervisorIds ?? []}
+                  onChange={(v) => patchFilters({ supervisorIds: v })}
+                />
+              </FilterPopover>
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Title</span>
+              {checklistFilter('Title', 'title', options?.title ?? [])}
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">First name</span>
+              {checklistFilter('First name', 'firstName', options?.firstName ?? [])}
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Last name</span>
+              {checklistFilter('Last name', 'lastName', options?.lastName ?? [])}
+            </div>
+            <div className="tasks-filter-field">
+              <span className="u-label">Email</span>
+              {checklistFilter('Email', 'email', options?.email ?? [])}
+            </div>
+          </div>
+        )}
+
+        <div className="table-scroll">
+          <table className="users-table">
+            <thead>
+              <tr>
+                <SortHeader
+                  label="Person"
+                  multi={sort.length > 1}
+                  state={sortState(sort, 'lastName')}
+                  onSort={(a) => onSort('lastName', a)}
+                />
+                <SortHeader
+                  label="Role"
+                  multi={sort.length > 1}
+                  state={sortState(sort, 'role')}
+                  onSort={(a) => onSort('role', a)}
+                />
+                <SortHeader
+                  label="Title"
+                  multi={sort.length > 1}
+                  state={sortState(sort, 'title')}
+                  onSort={(a) => onSort('title', a)}
+                />
+                <SortHeader
+                  label="Supervisor"
+                  multi={sort.length > 1}
+                  state={sortState(sort, 'supervisor')}
+                  onSort={(a) => onSort('supervisor', a)}
+                />
+                <SortHeader
+                  label="Status"
+                  multi={sort.length > 1}
+                  state={sortState(sort, 'status')}
+                  onSort={(a) => onSort('status', a)}
+                />
+                <th className="col-user-actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((u) => {
+                const merged = u.mergedIntoId !== null;
+                const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
+                return (
+                  <tr key={u.id}>
+                    <td>{personCell(u, merged)}</td>
+                    <td>
+                      <span className={`badge role-${u.role}`}>{u.role}</span>
+                    </td>
+                    <td>{u.title ?? <span className="muted">—</span>}</td>
+                    <td>
+                      {supervisor ? (
+                        <UserChip user={supervisor} />
+                      ) : u.supervisorId ? (
+                        <span className="muted">{usersById.get(u.supervisorId)?.email ?? '—'}</span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {merged ? (
+                        <span
+                          className="badge inactive"
+                          title={`Merged into ${usersById.get(u.mergedIntoId!)?.email ?? 'another account'}`}
                         >
-                          <PencilIcon />
-                        </button>
-                        {/* A company account has no password, so a reset link
+                          Merged
+                        </span>
+                      ) : (
+                        <span className={`badge ${u.isActive ? 'active' : 'inactive'}`}>
+                          {u.isActive ? 'Active' : 'Deactivated'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="col-user-actions">
+                      {merged ? (
+                        <span className="muted" style={{ fontSize: '0.78rem' }}>
+                          → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
+                        </span>
+                      ) : (
+                        <div className="user-actions">
+                          <button
+                            className="icon-btn"
+                            title={`Edit ${u.email}`}
+                            aria-label={`Edit ${u.email}`}
+                            onClick={() => setEditing(u)}
+                          >
+                            <PencilIcon />
+                          </button>
+                          {/* A company account has no password, so a reset link
                             would lead nowhere. The server refuses it too; this
                             just stops an admin reaching for a dead button. */}
-                        {u.signInMethod === 'password' && (
-                          <button
-                            className="secondary btn-sm"
-                            onClick={() => handleReset(u)}
-                            title="Send this user a link to set a password"
-                          >
-                            Reset password
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-            {!loading && rows.length === 0 && (
-              <TableEmptyRow colSpan={6} title="No users match">
-                Try adjusting your filters, or add a new user.
-              </TableEmptyRow>
-            )}
-          </tbody>
-        </table>
-      </div>
+                          {u.signInMethod === 'password' && (
+                            <button
+                              className="secondary btn-sm"
+                              onClick={() => handleReset(u)}
+                              title="Send this user a link to set a password"
+                            >
+                              Reset password
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!loading && rows.length === 0 && (
+                <TableEmptyRow colSpan={6} title="No users match">
+                  Try adjusting your filters, or add a new user.
+                </TableEmptyRow>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      <div className="pager">
-        <span className="mono muted">
-          {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
-        </span>
-        <div className="spacer" />
-        <label className="mono">
-          Rows{' '}
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
+        <div className="pager">
+          <span className="mono muted">
+            {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
+          </span>
+          <div className="spacer" />
+          <label className="mono">
+            Rows{' '}
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="secondary btn-sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
           >
-            {PAGE_SIZE_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          className="secondary btn-sm"
-          disabled={page <= 1}
-          onClick={() => setPage((p) => p - 1)}
-        >
-          ← Prev
-        </button>
-        <span className="mono">
-          Page {page} of {totalPages}
-        </span>
-        <button
-          className="secondary btn-sm"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Next →
-        </button>
+            ← Prev
+          </button>
+          <span className="mono">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            className="secondary btn-sm"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next →
+          </button>
+        </div>
+
+        {editing && (
+          <UserEditModal
+            user={editing}
+            supervisors={supervisors}
+            onClose={() => setEditing(null)}
+            onSaved={(message, link) => {
+              setEditing(null);
+              setNotice(message);
+              // A set-password link when the new address needs one; otherwise
+              // clear any link left from an earlier reset.
+              setResetLink(link ?? null);
+              void load();
+              loadSupervisors();
+              loadOptions();
+              loadCounts();
+            }}
+          />
+        )}
+
+        {showCreate && (
+          <UserFormModal
+            onClose={() => setShowCreate(false)}
+            onCreated={(signInMethod) => {
+              setShowCreate(false);
+              setNotice(
+                signInMethod === 'google'
+                  ? 'User created. They were sent a welcome message and sign in with Google — ' +
+                      'there is no password to hand over.'
+                  : 'User created. A welcome email with a link to set their password is on its way.',
+              );
+              void load();
+              loadSupervisors();
+              loadOptions();
+              loadCounts();
+            }}
+          />
+        )}
+
+        {showMerge && (
+          <MergeUsersModal
+            users={mergeAll}
+            onClose={() => setShowMerge(false)}
+            onMerged={(message) => {
+              setShowMerge(false);
+              setNotice(message);
+              void load();
+              loadSupervisors();
+              loadOptions();
+              loadCounts();
+            }}
+          />
+        )}
       </div>
-
-      {editing && (
-        <UserEditModal
-          user={editing}
-          supervisors={supervisors}
-          onClose={() => setEditing(null)}
-          onSaved={(message, link) => {
-            setEditing(null);
-            setNotice(message);
-            // A set-password link when the new address needs one; otherwise
-            // clear any link left from an earlier reset.
-            setResetLink(link ?? null);
-            void load();
-            loadSupervisors();
-            loadOptions();
-            loadCounts();
-          }}
-        />
-      )}
-
-      {showCreate && (
-        <UserFormModal
-          onClose={() => setShowCreate(false)}
-          onCreated={(signInMethod) => {
-            setShowCreate(false);
-            setNotice(
-              signInMethod === 'google'
-                ? 'User created. They were sent a welcome message and sign in with Google — ' +
-                    'there is no password to hand over.'
-                : 'User created. A welcome email with a link to set their password is on its way.',
-            );
-            void load();
-            loadSupervisors();
-            loadOptions();
-            loadCounts();
-          }}
-        />
-      )}
-
-      {showMerge && (
-        <MergeUsersModal
-          users={mergeAll}
-          onClose={() => setShowMerge(false)}
-          onMerged={(message) => {
-            setShowMerge(false);
-            setNotice(message);
-            void load();
-            loadSupervisors();
-            loadOptions();
-            loadCounts();
-          }}
-        />
-      )}
-    </div>
+    </>
   );
 }
