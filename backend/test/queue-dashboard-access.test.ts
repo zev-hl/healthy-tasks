@@ -20,6 +20,8 @@ let hashPassword: (plaintext: string) => Promise<string>;
 
 const SECRET = 'queue-dashboard-test-secret';
 const WEBSITE = 'http://localhost:5173';
+// A second website on the same API (CORS_ORIGIN lists both), e.g. a preview.
+const SECOND_WEBSITE = 'https://preview.test.local';
 const PASSWORD = 'TestPass123!';
 const BOARD_USER = 'hl-team';
 const BOARD_PASSWORD = 'a-long-random-password-1234';
@@ -31,7 +33,7 @@ before(async () => {
   process.env.JWT_SECRET = SECRET;
   process.env.JWT_EXPIRES_IN = '15m';
   process.env.FRONTEND_URL = WEBSITE;
-  process.env.CORS_ORIGIN = WEBSITE;
+  process.env.CORS_ORIGIN = `${WEBSITE}, ${SECOND_WEBSITE}`;
   process.env.EMAIL_PROVIDER = 'console';
   process.env.EMAIL_DELIVERY = 'direct';
   delete process.env.REDIS_URL;
@@ -151,6 +153,13 @@ describe('the dashboard’s button', () => {
       assert.equal(page.headers['www-authenticate'], undefined);
       assert.equal(page.headers['cache-control'], 'no-store');
     }
+    assert.equal((await board(passFrom(res))).text, 'board');
+  });
+
+  it('lets an Admin in from any website CORS_ORIGIN lists', async () => {
+    await seedUser('ada@test.local', 'Admin');
+    const res = await enter(await login('ada@test.local'), SECOND_WEBSITE);
+    assert.equal(res.status, 303);
     assert.equal((await board(passFrom(res))).text, 'board');
   });
 

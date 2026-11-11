@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { isAllowedOrigin } from '../utils/cors-origins.js';
 import { signDashboardPass, verifyAccessToken, verifyDashboardPass } from '../utils/jwt.js';
 import { requireBasicAuth } from './basic-auth.js';
 
@@ -45,14 +46,14 @@ async function hasPass(token: unknown): Promise<boolean> {
 /**
  * `POST <path>/enter`, from the website's "Open queue dashboard" button: a form
  * carrying the Admin's HL Central sign-in. An active Admin's, from the website
- * itself, gets a pass in a cookie for the dashboard only, kept until the
- * browser is closed (and 12 hours at most, inside the pass). Either way the tab
- * goes on to the dashboard, which asks for its user name and password when
- * there is no pass.
+ * itself (any origin in CORS_ORIGIN), gets a pass in a cookie for the dashboard
+ * only, kept until the browser is closed (and 12 hours at most, inside the
+ * pass). Either way the tab goes on to the dashboard, which asks for its user
+ * name and password when there is no pass.
  */
 export function enterQueueDashboard(path: string) {
   return asyncHandler(async (req: Request, res: Response) => {
-    const fromWebsite = req.header('origin') === env.corsOrigin;
+    const fromWebsite = isAllowedOrigin(req.header('origin'), env.corsOrigins);
     const admin = fromWebsite ? await adminFromSignIn(req.body?.token) : null;
     if (admin) {
       res.cookie(DASHBOARD_COOKIE, signDashboardPass({ sub: admin.id, tv: admin.tv }), {
