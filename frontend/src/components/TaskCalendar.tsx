@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TASK_STATUS_LABELS, type GhostOccurrenceDto, type TaskRowDto } from '@healthy-tasks/shared';
+import { ChevronLeft, ChevronRight, Eye, GitFork, Repeat } from 'lucide-react';
+import {
+  TASK_STATUS_LABELS,
+  type GhostOccurrenceDto,
+  type TaskRowDto,
+} from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { statusPill } from './ui/indicators';
+import { Avatar, userLabel } from './ui/Avatar';
+import { STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
 
 export type CalendarScale = 'month' | 'week' | 'day';
 export type CalendarMode = 'range' | 'marker';
@@ -19,35 +25,11 @@ interface Props {
   onChanged?: () => void;
 }
 
-/** A dashed ghost chip for a future recurring occurrence; click to materialize. */
-function CalGhostChip({
-  ghost,
-  busy,
-  onClick,
-}: {
-  ghost: GhostOccurrenceDto;
-  busy: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className="cal-chip ghost"
-      title={`Upcoming occurrence #${ghost.seq} of “${ghost.name}” — click to create it now`}
-      onClick={onClick}
-      disabled={busy}
-    >
-      <span className="cal-chip-name">{busy ? '…' : `↻ ${ghost.name}`}</span>
-    </button>
-  );
-}
-
 const DAY_MS = 86_400_000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Display labels for the display-mode toggle. Stored values stay 'range'/'marker'
-// (persisted prefs + hydration depend on them); only the "Marker" label reads "Due"
-// — it plots a single point on the Due Date.
-const CALENDAR_MODE_LABELS: Record<CalendarMode, string> = { range: 'Range', marker: 'Due' };
+const LANE_H = 24;
+const NUM_H = 32;
+const MONTH_LANES = 3;
 
 function dateOnly(iso: string): Date {
   const d = new Date(iso);
@@ -65,77 +47,23 @@ function addDays(d: Date, n: number): Date {
 function sameDay(a: Date, b: Date): boolean {
   return startOfDay(a).getTime() === startOfDay(b).getTime();
 }
-function inRange(day: Date, start: Date, end: Date): boolean {
-  const t = startOfDay(day).getTime();
-  return t >= startOfDay(start).getTime() && t <= startOfDay(end).getTime();
+const dayDiff = (a: Date, b: Date) =>
+  Math.round((startOfDay(a).getTime() - startOfDay(b).getTime()) / DAY_MS);
+/** "3:30 PM" when the date carries a time of day; nothing at midnight. */
+function timeOf(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (d.getHours() === 0 && d.getMinutes() === 0) return '';
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
-/** Compact "Aug 5, 1:00 PM" for the day-view chip's start/due line. */
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
+    weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
-}
-
-function CalTaskChip({
-  task,
-  isStart,
-  isEnd,
-  single,
-  mode,
-  detailed,
-  onOpen,
-}: {
-  task: TaskRowDto;
-  isStart: boolean;
-  isEnd: boolean;
-  single: boolean;
-  mode: CalendarMode;
-  /** Day view: larger chip that also shows the Start/Due dates & times. */
-  detailed?: boolean;
-  onOpen: (id: number) => void;
-}) {
-  const posClass =
-    mode === 'marker' || single
-      ? ' single'
-      : isStart
-        ? ' range-start'
-        : isEnd
-          ? ' range-end'
-          : ' range-mid';
-  const pill = statusPill(task.status);
-  const readOnly = task.mentionOnly || task.treeOnly;
-  const treeCue = task.treeOnly && !task.mentionOnly;
-  const readOnlyReason = treeCue ? 'via parent/child tree position' : "you're mentioned";
-  return (
-    <button
-      type="button"
-      className={`cal-chip${posClass}${readOnly ? ' mention-only' : ''}${detailed ? ' detailed' : ''}`}
-      style={{ background: pill.bg, color: pill.fg }}
-      title={
-        readOnly
-          ? `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]} (read-only — ${readOnlyReason})`
-          : `#${task.id} ${task.name} · ${TASK_STATUS_LABELS[task.status]}`
-      }
-      onClick={() => onOpen(task.id)}
-    >
-      {mode === 'marker' && <span className="cal-chip-dot" style={{ background: pill.dot }} />}
-      <span className="cal-chip-name">
-        {mode === 'range' && !single && !isStart ? '▸ ' : ''}
-        {readOnly ? (treeCue ? '🌳 ' : '👁 ') : ''}
-        {task.name}
-      </span>
-      {detailed && (task.startAt || task.dueAt) && (
-        <span className="cal-chip-meta">
-          {task.startAt ? `Start ${fmtDateTime(task.startAt)}` : ''}
-          {task.startAt && task.dueAt ? ' · ' : ''}
-          {task.dueAt ? `Due ${fmtDateTime(task.dueAt)}` : ''}
-        </span>
-      )}
-    </button>
-  );
 }
 
 /** The [start,end] date span a task occupies for the current mode, or null if it can't be plotted. */
@@ -149,6 +77,52 @@ function taskSpan(task: TaskRowDto, mode: CalendarMode): { start: Date; end: Dat
   return null;
 }
 
+type Item =
+  | { kind: 'task'; key: string; task: TaskRowDto; start: Date; end: Date }
+  | { kind: 'ghost'; key: string; ghost: GhostOccurrenceDto; start: Date; end: Date };
+
+interface Placed {
+  item: Item;
+  lane: number;
+  from: number; // column in the week, 0..6
+  to: number;
+  clipStart: boolean; // continues from the previous week
+  clipEnd: boolean; // continues into the next week
+}
+
+/** Lay one week's items into lanes, longest and earliest first (as Google Calendar does). */
+function layoutWeek(weekStart: Date, items: Item[]): Placed[] {
+  const weekEnd = addDays(weekStart, 6);
+  const inWeek = items
+    .filter((it) => it.end >= weekStart && it.start <= weekEnd)
+    .map((it) => ({
+      item: it,
+      from: Math.max(0, dayDiff(it.start, weekStart)),
+      to: Math.min(6, dayDiff(it.end, weekStart)),
+      clipStart: it.start < weekStart,
+      clipEnd: it.end > weekEnd,
+    }))
+    .sort((a, b) => a.from - b.from || b.to - b.from - (a.to - a.from));
+  const laneEnds: number[] = [];
+  return inWeek.map((p) => {
+    let lane = laneEnds.findIndex((end) => end < p.from);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(p.to);
+    } else laneEnds[lane] = p.to;
+    return { ...p, lane };
+  });
+}
+
+/**
+ * Calendar view, Harbor redesign after Google Calendar: one clean grid, today
+ * as a blue circle, and a task that spans days drawn as one continuous bar
+ * across them (each task keeps its own lane through the week). A one-day task
+ * is a dot, its time if it has one, and its name. Month view shows three
+ * lanes a day and "+N more", which opens the Day view, as does a day's number.
+ * "Range" plots Start→Due, "Due" only the due day. Dashed items are upcoming
+ * repeats: click one to create it now.
+ */
 export function TaskCalendar({
   rows,
   loading,
@@ -180,57 +154,45 @@ export function TaskCalendar({
     }
   }
 
-  // The contiguous list of days shown for the current scale.
-  const days = useMemo(() => {
-    if (scale === 'day') return [startOfDay(anchor)];
-    if (scale === 'week') {
-      const start = addDays(anchor, -anchor.getDay());
-      return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  // Everything that can be plotted, as items with a day span.
+  const items = useMemo<Item[]>(() => {
+    const out: Item[] = [];
+    for (const task of rows) {
+      const span = taskSpan(task, mode);
+      if (span) out.push({ kind: 'task', key: `t${task.id}`, task, ...span });
     }
-    // month: 6 weeks starting on the Sunday on/before the 1st.
+    // A ghost shows on the start day of its span (marker → the due day).
+    for (const ghost of ghosts) {
+      const span = taskSpan({ startAt: ghost.startAt, dueAt: ghost.dueAt } as TaskRowDto, mode);
+      if (span)
+        out.push({
+          kind: 'ghost',
+          key: `g${ghost.sourceType}:${ghost.sourceId}:${ghost.seq}`,
+          ghost,
+          start: span.start,
+          end: span.start,
+        });
+    }
+    return out;
+  }, [rows, ghosts, mode]);
+
+  // The weeks shown: one for Week view, six for Month view.
+  const weeks = useMemo(() => {
+    if (scale === 'week') return [addDays(anchor, -anchor.getDay())];
     const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
     const gridStart = addDays(first, -first.getDay());
-    return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+    return Array.from({ length: 6 }, (_, i) => addDays(gridStart, i * 7));
   }, [anchor, scale]);
-
-  const plottable = useMemo(
-    () => rows.map((task) => ({ task, span: taskSpan(task, mode) })).filter((x) => x.span),
-    [rows, mode],
-  );
-
-  // Ghosts reuse taskSpan (it only reads startAt/dueAt) so range/marker match.
-  const plottableGhosts = useMemo(
-    () =>
-      ghosts
-        .map((ghost) => ({
-          ghost,
-          span: taskSpan({ startAt: ghost.startAt, dueAt: ghost.dueAt } as TaskRowDto, mode),
-        }))
-        .filter((x) => x.span),
-    [ghosts, mode],
-  );
-
-  function tasksOn(day: Date) {
-    return plottable
-      .filter((x) => inRange(day, x.span!.start, x.span!.end))
-      .map((x) => {
-        const isStart = sameDay(day, x.span!.start);
-        const isEnd = sameDay(day, x.span!.end);
-        return { task: x.task, isStart, isEnd, single: isStart && isEnd };
-      });
-  }
-
-  // A ghost shows on the start day of its span (marker → the due day) to avoid
-  // over-filling multi-day ranges with repeated ghost chips.
-  function ghostsOn(day: Date) {
-    return plottableGhosts.filter((x) => sameDay(day, x.span!.start)).map((x) => x.ghost);
-  }
 
   function shiftPeriod(dir: -1 | 1) {
     if (scale === 'day') setAnchor((a) => addDays(a, dir));
     else if (scale === 'week') setAnchor((a) => addDays(a, dir * 7));
     else setAnchor((a) => new Date(a.getFullYear(), a.getMonth() + dir, 1));
   }
+  const openDay = (day: Date) => {
+    setAnchor(startOfDay(day));
+    onScaleChange('day');
+  };
 
   const label = useMemo(() => {
     if (scale === 'day')
@@ -249,167 +211,289 @@ export function TaskCalendar({
     return anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   }, [anchor, scale]);
 
-  const isMonth = scale === 'month';
   const today = startOfDay(new Date());
+  const isMonth = scale === 'month';
   const openTask = (id: number) => navigate(`/tasks/${id}`);
+  const isLate = (t: TaskRowDto) =>
+    !!t.dueAt && dateOnly(t.dueAt) < today && t.status !== 'Completed' && t.status !== 'Canceled';
+
+  /** One item drawn in a week: a bar for a span, a dot-and-name for a single day. */
+  function renderPlaced(p: Placed, top: number) {
+    const left = `calc(${(p.from / 7) * 100}% + 4px)`;
+    const width = `calc(${((p.to - p.from + 1) / 7) * 100}% - 8px)`;
+    if (p.item.kind === 'ghost') {
+      const g = p.item.ghost;
+      const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
+      return (
+        <button
+          key={p.item.key}
+          type="button"
+          className="hb-cal-ev is-ghost"
+          style={{ top, left, width }}
+          title={`Upcoming occurrence #${g.seq} of “${g.name}” — click to create it now`}
+          onClick={() => void materializeGhost(g)}
+          disabled={materializing === key}
+        >
+          <Repeat size={11} aria-hidden="true" />
+          <span className="hb-cal-ev-name">{materializing === key ? '…' : g.name}</span>
+        </button>
+      );
+    }
+    const t = p.item.task;
+    const span = p.from !== p.to || p.clipStart || p.clipEnd;
+    const readOnly = t.mentionOnly || t.treeOnly;
+    const treeCue = t.treeOnly && !t.mentionOnly;
+    const time = timeOf(mode === 'marker' ? t.dueAt : (t.dueAt ?? t.startAt));
+    return (
+      <button
+        key={p.item.key}
+        type="button"
+        className={cx(
+          'hb-cal-ev',
+          span ? `is-span st-${t.status}` : 'is-dot',
+          p.clipStart && 'clip-start',
+          p.clipEnd && 'clip-end',
+          isLate(t) && 'is-late',
+          readOnly && 'is-readonly',
+        )}
+        style={{ top, left, width }}
+        title={`#${t.id} ${t.name} · ${TASK_STATUS_LABELS[t.status]}${
+          readOnly
+            ? ` (read-only — ${treeCue ? 'via parent/child tree position' : "you're mentioned"})`
+            : ''
+        }`}
+        onClick={() => openTask(t.id)}
+      >
+        {!span && <i style={{ background: STATUS_DOT[t.status] }} aria-hidden="true" />}
+        {readOnly &&
+          (treeCue ? (
+            <GitFork size={11} aria-hidden="true" />
+          ) : (
+            <Eye size={11} aria-hidden="true" />
+          ))}
+        {!span && time && <span className="hb-cal-ev-time">{time}</span>}
+        <span className="hb-cal-ev-name">{t.name}</span>
+      </button>
+    );
+  }
 
   return (
-    <div className="calendar-wrap">
-      <div className="calendar-toolbar">
-        <div className="seg" role="group" aria-label="Calendar display mode">
-          {(['range', 'marker'] as CalendarMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`seg-btn${mode === m ? ' active' : ''}`}
-              aria-pressed={mode === m}
-              onClick={() => onModeChange(m)}
-            >
-              {CALENDAR_MODE_LABELS[m]}
-            </button>
-          ))}
-        </div>
-        <div className="seg" role="group" aria-label="Calendar scale">
-          {(['month', 'week', 'day'] as CalendarScale[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`seg-btn${scale === s ? ' active' : ''}`}
-              aria-pressed={scale === s}
-              onClick={() => onScaleChange(s)}
-            >
-              {s[0]!.toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
-        <div className="calendar-nav">
+    <div className="hb-cal-wrap">
+      <div className="hb-cal-bar">
+        <button
+          type="button"
+          className="hb-btn hb-btn-secondary hb-btn-sm"
+          onClick={() => setAnchor(startOfDay(new Date()))}
+        >
+          Today
+        </button>
+        <span className="hb-cal-nav">
           <button
             type="button"
-            className="secondary btn-sm"
+            className="hb-icon-btn hb-icon-btn-sm"
             onClick={() => shiftPeriod(-1)}
             aria-label="Previous"
           >
-            ←
+            <ChevronLeft size={18} aria-hidden="true" />
           </button>
           <button
             type="button"
-            className="secondary btn-sm"
-            onClick={() => setAnchor(startOfDay(new Date()))}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            className="secondary btn-sm"
+            className="hb-icon-btn hb-icon-btn-sm"
             onClick={() => shiftPeriod(1)}
             aria-label="Next"
           >
-            →
+            <ChevronRight size={18} aria-hidden="true" />
           </button>
-        </div>
-        <span className="calendar-label">{label}</span>
-        <div className="spacer" />
-        {loading && <span className="mono muted">Loading…</span>}
+        </span>
+        <h2 className="hb-cal-label">{label}</h2>
+        {loading && <span className="hb-small">Loading…</span>}
+        <span className="hb-grow" />
+        <Segmented
+          small
+          label="Calendar display mode"
+          value={mode}
+          options={[
+            { value: 'range', label: 'Start → Due' },
+            { value: 'marker', label: 'Due only' },
+          ]}
+          onChange={onModeChange}
+        />
+        <Segmented
+          small
+          label="Calendar scale"
+          value={scale}
+          options={[
+            { value: 'month', label: 'Month' },
+            { value: 'week', label: 'Week' },
+            { value: 'day', label: 'Day' },
+          ]}
+          onChange={onScaleChange}
+        />
       </div>
 
-      {ghostError && <div className="alert error">{ghostError}</div>}
+      {ghostError && (
+        <div className="hb-alert" role="alert">
+          {ghostError}
+        </div>
+      )}
 
       {scale === 'day' ? (
-        <div className="calendar-day-view">
-          {(() => {
-            const items = tasksOn(anchor);
-            const gitems = ghostsOn(anchor);
-            if (items.length === 0 && gitems.length === 0)
-              return <div className="calendar-empty">Nothing scheduled this day.</div>;
+        <DayList
+          day={anchor}
+          items={items.filter((it) => it.start <= anchor && it.end >= anchor)}
+          isLate={isLate}
+          materializing={materializing}
+          onGhost={(g) => void materializeGhost(g)}
+          onOpen={openTask}
+        />
+      ) : (
+        <div className={cx('hb-cal', isMonth ? 'is-month' : 'is-week')}>
+          <div className="hb-cal-head">
+            {weeks[0] &&
+              Array.from({ length: 7 }, (_, i) => addDays(weeks[0]!, i)).map((d, i) => (
+                <span key={i} className={cx(!isMonth && sameDay(d, today) && 'is-today')}>
+                  {WEEKDAYS[i]}
+                  {!isMonth && <b>{d.getDate()}</b>}
+                </span>
+              ))}
+          </div>
+          {weeks.map((ws) => {
+            const placed = layoutWeek(ws, items);
+            const lanes = placed.reduce((m, p) => Math.max(m, p.lane + 1), 0);
+            const shownLanes = isMonth ? Math.min(lanes, MONTH_LANES) : lanes;
+            // What doesn't fit in Month view, counted per day.
+            const hidden = Array.from(
+              { length: 7 },
+              (_, d) =>
+                placed.filter((p) => p.lane >= shownLanes && p.from <= d && p.to >= d).length,
+            );
+            const height = isMonth
+              ? NUM_H + MONTH_LANES * LANE_H + 22
+              : Math.max(360, NUM_H + lanes * LANE_H + 24);
             return (
-              <>
-                {items.map(({ task, isStart, isEnd, single }) => (
-                  <CalTaskChip
-                    key={task.id}
-                    task={task}
-                    isStart={isStart}
-                    isEnd={isEnd}
-                    single={single}
-                    mode={mode}
-                    detailed
-                    onOpen={openTask}
-                  />
-                ))}
-                {gitems.map((g) => {
-                  const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
+              <div key={ws.toISOString()} className="hb-cal-week" style={{ height }}>
+                {Array.from({ length: 7 }, (_, d) => {
+                  const day = addDays(ws, d);
+                  const outside = isMonth && day.getMonth() !== anchor.getMonth();
+                  const isToday = sameDay(day, today);
                   return (
-                    <CalGhostChip
-                      key={`ghost-${key}`}
-                      ghost={g}
-                      busy={materializing === key}
-                      onClick={() => void materializeGhost(g)}
-                    />
+                    <div
+                      key={d}
+                      className={cx(
+                        'hb-cal-cell',
+                        outside && 'is-outside',
+                        (d === 0 || d === 6) && 'is-weekend',
+                      )}
+                    >
+                      {isMonth && (
+                        <button
+                          type="button"
+                          className={cx('hb-cal-num', isToday && 'is-today')}
+                          title="Open this day"
+                          aria-label={`Open ${day.toDateString()}`}
+                          onClick={() => openDay(day)}
+                        >
+                          {day.getDate() === 1
+                            ? day.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                            : day.getDate()}
+                        </button>
+                      )}
+                      {hidden[d]! > 0 && (
+                        <button type="button" className="hb-cal-more" onClick={() => openDay(day)}>
+                          {hidden[d]} more
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
-              </>
-            );
-          })()}
-        </div>
-      ) : (
-        <div className={`calendar-grid${isMonth ? ' month' : ' week'}`}>
-          {WEEKDAYS.map((w) => (
-            <div key={w} className="calendar-weekday mono">
-              {w}
-            </div>
-          ))}
-          {days.map((day) => {
-            const items = tasksOn(day);
-            const cap = isMonth ? 3 : 20;
-            const extra = items.length - cap;
-            const outside = isMonth && day.getMonth() !== anchor.getMonth();
-            const isToday = sameDay(day, today);
-            return (
-              <div
-                key={day.toISOString()}
-                className={`calendar-cell${outside ? ' outside' : ''}${isToday ? ' is-today' : ''}`}
-              >
-                <button
-                  type="button"
-                  className="calendar-daynum mono"
-                  title="Open this day's Day view"
-                  onClick={() => {
-                    setAnchor(startOfDay(day));
-                    onScaleChange('day');
-                  }}
-                >
-                  {day.getDate()}
-                  {isToday ? ' · Today' : ''}
-                </button>
-                <div className="calendar-cell-tasks">
-                  {items.slice(0, cap).map(({ task, isStart, isEnd, single }) => (
-                    <CalTaskChip
-                      key={task.id}
-                      task={task}
-                      isStart={isStart}
-                      isEnd={isEnd}
-                      single={single}
-                      mode={mode}
-                      onOpen={openTask}
-                    />
-                  ))}
-                  {extra > 0 && <span className="calendar-more mono">+{extra} more</span>}
-                  {ghostsOn(day).map((g) => {
-                    const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
-                    return (
-                      <CalGhostChip
-                        key={`ghost-${key}`}
-                        ghost={g}
-                        busy={materializing === key}
-                        onClick={() => void materializeGhost(g)}
+                {/* Today's column in Week view */}
+                {!isMonth &&
+                  Array.from({ length: 7 }, (_, d) =>
+                    sameDay(addDays(ws, d), today) ? (
+                      <span
+                        key="today"
+                        className="hb-cal-todaycol"
+                        style={{ left: `${(d / 7) * 100}%`, width: `${100 / 7}%` }}
                       />
-                    );
-                  })}
-                </div>
+                    ) : null,
+                  )}
+                {placed
+                  .filter((p) => p.lane < shownLanes)
+                  .map((p) => renderPlaced(p, (isMonth ? NUM_H : 10) + p.lane * LANE_H))}
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Day view: the day's tasks as rows — what, when, who and where it stands. */
+function DayList({
+  day,
+  items,
+  isLate,
+  materializing,
+  onGhost,
+  onOpen,
+}: {
+  day: Date;
+  items: Item[];
+  isLate: (t: TaskRowDto) => boolean;
+  materializing: string | null;
+  onGhost: (g: GhostOccurrenceDto) => void;
+  onOpen: (id: number) => void;
+}) {
+  if (items.length === 0)
+    return <div className="hb-cal-dayempty">Nothing scheduled on this day.</div>;
+  return (
+    <div className="hb-cal-day">
+      {items.map((it) => {
+        if (it.kind === 'ghost') {
+          const g = it.ghost;
+          const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
+          return (
+            <button
+              key={it.key}
+              type="button"
+              className="hb-cal-dayrow is-ghost"
+              disabled={materializing === key}
+              onClick={() => onGhost(g)}
+              title="Upcoming repeat — click to create it now"
+            >
+              <Repeat size={15} aria-hidden="true" />
+              <span className="hb-stack">
+                <b>{materializing === key ? 'Creating…' : g.name}</b>
+                <span className="hb-sub">Upcoming repeat · click to create it now</span>
+              </span>
+            </button>
+          );
+        }
+        const t = it.task;
+        const multi = !sameDay(it.start, it.end);
+        return (
+          <button key={it.key} type="button" className="hb-cal-dayrow" onClick={() => onOpen(t.id)}>
+            <i style={{ background: STATUS_DOT[t.status] }} aria-hidden="true" />
+            <span className="hb-stack">
+              <b>{t.name}</b>
+              <span className={cx('hb-sub', isLate(t) && 'late')}>
+                #{t.id}
+                {t.startAt ? ` · Start ${fmtDateTime(t.startAt)}` : ''}
+                {t.dueAt ? ` · Due ${fmtDateTime(t.dueAt)}` : ''}
+                {multi && !sameDay(it.end, day) ? ' · continues' : ''}
+              </span>
+            </span>
+            {t.assignee && (
+              <span className="hb-user-mini">
+                <Avatar user={t.assignee} size="xs" decorative />
+                {userLabel(t.assignee)}
+              </span>
+            )}
+            <StatusPill status={t.status} />
+          </button>
+        );
+      })}
     </div>
   );
 }
