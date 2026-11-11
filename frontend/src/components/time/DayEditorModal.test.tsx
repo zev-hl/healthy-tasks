@@ -196,6 +196,101 @@ describe('DayEditorModal', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
+  describe('copy time from another day', () => {
+    // The open day is Mon 2026-09-21. Sat the 19th has Packing + a duty since
+    // given up; Fri the 18th has Receiving.
+    const SAT = day({
+      date: '2026-09-19',
+      entries: [
+        { dutyId: 'pack', minutes: 120 },
+        { dutyId: 'gone', minutes: 30 },
+      ],
+      note: 'Saturday note',
+    });
+    const FRI = day({ date: '2026-09-18', entries: [{ dutyId: 'recv', minutes: 300 }] });
+    const OPEN = day({ entries: [{ dutyId: 'recv', minutes: 60 }] });
+
+    function serve(today: TimeDayDto = day()) {
+      listDays.mockImplementation(async (from: string, to: string) =>
+        [today, SAT, FRI].filter((d) => d.date >= from && d.date <= to),
+      );
+    }
+    const copyFrom = () => screen.getByLabelText('Copy time from') as HTMLInputElement;
+    const copy = () => fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+
+    it('starts on the last earlier day with time, and fills the editor without saving', async () => {
+      serve();
+      open();
+      await waitFor(() => expect(copyFrom().value).toBe('2026-09-19'));
+      copy();
+
+      expect(
+        await screen.findByText(/Copied 2:00 from Saturday, September 19/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Skipped Label printing: no longer one of your duties/),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('Packing hours')).toHaveValue(2);
+      expect(screen.queryByText(/No longer assigned/)).not.toBeInTheDocument();
+      expect(saveDay).not.toHaveBeenCalled();
+      // The note is not copied.
+      expect(screen.getByLabelText('Note (optional)')).toHaveValue('');
+
+      saveDay.mockResolvedValue(day({ entries: [{ dutyId: 'pack', minutes: 120 }] }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save day' }));
+      await waitFor(() => expect(saveDay).toHaveBeenCalledTimes(1));
+      expect(saveDay.mock.calls[0]![1]).toMatchObject({
+        entries: [{ dutyId: 'pack', minutes: 120 }],
+      });
+    });
+
+    it('asks before replacing time already entered, and keeps it if the person says no', async () => {
+      serve(OPEN);
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      open();
+      await waitFor(() => expect(copyFrom().value).toBe('2026-09-19'));
+      fireEvent.change(copyFrom(), { target: { value: '2026-09-18' } });
+      copy();
+
+      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+      expect(confirm.mock.calls[0]![0]).toMatch(/Replace the 1:00 entered here/);
+      expect(screen.getByLabelText('Receiving hours')).toHaveValue(1);
+
+      confirm.mockReturnValue(true);
+      copy();
+      await screen.findByText(/Copied 5:00 from Friday, September 18/);
+      expect(screen.getByLabelText('Receiving hours')).toHaveValue(5);
+      confirm.mockRestore();
+    });
+
+    it('says so when the chosen day has nothing logged', async () => {
+      serve();
+      open();
+      await waitFor(() => expect(copyFrom().value).toBe('2026-09-19'));
+      fireEvent.change(copyFrom(), { target: { value: '2026-09-15' } });
+      copy();
+      expect(
+        await screen.findByText('Nothing is logged on Tuesday, September 15.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save day' })).toBeDisabled();
+    });
+
+    it('can’t copy a day onto itself', async () => {
+      serve();
+      open();
+      await waitFor(() => expect(copyFrom().value).toBe('2026-09-19'));
+      fireEvent.change(copyFrom(), { target: { value: '2026-09-21' } });
+      expect(screen.getByRole('button', { name: 'Copy' })).toBeDisabled();
+    });
+
+    it('is not offered on a completed day or someone else’s day', async () => {
+      serve(day({ entries: [{ dutyId: 'pack', minutes: 60 }], completed: true }));
+      open();
+      await screen.findByText('Completed days are locked. Reopen the day to change it.');
+      expect(screen.queryByLabelText('Copy time from')).not.toBeInTheDocument();
+    });
+  });
+
   describe('leaving the page with unsaved time', () => {
     // Stands in for the sidebar (or any in-app link outside the editor).
     function openWithSidebar() {
