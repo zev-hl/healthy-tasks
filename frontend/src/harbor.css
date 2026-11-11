@@ -5337,68 +5337,6 @@ textarea.hb-tpl-input {
   opacity: 1;
 }
 
-/* Departments: a card per department, a row per duty */
-.hb-dcard-sw {
-  width: 28px;
-  height: 28px;
-  flex: none;
-  border-radius: 8px;
-  opacity: 0.9;
-}
-.hb-dcard .hb-card-head h3 {
-  flex: 1;
-}
-.hb-drow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-  padding: 8px 18px;
-}
-.hb-drow + .hb-drow {
-  border-top: 1px solid var(--row-line, var(--border));
-}
-.hb-drow.hb-flash {
-  background: #f5f9fe;
-}
-.hb-drow > .hb-stack {
-  flex: 1;
-  min-width: 0;
-}
-.hb-drow-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ink);
-}
-.hb-stackav {
-  display: flex;
-  align-items: center;
-  padding-left: 6px;
-}
-.hb-stackav-btn {
-  margin-left: -6px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  box-shadow: 0 0 0 2px var(--surface);
-  cursor: pointer;
-  transition: transform 0.12s ease;
-}
-.hb-stackav-btn:hover {
-  transform: translateY(-2px);
-  z-index: 1;
-}
-.hb-stackav-btn.is-sel {
-  box-shadow: 0 0 0 2px var(--accent);
-  z-index: 1;
-}
-.hb-stackav-more {
-  margin-left: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
 @media (max-width: 719px) {
   .hb-attn-col + .hb-attn-col {
     border-left: 0;
@@ -5406,9 +5344,6 @@ textarea.hb-tpl-input {
   }
   .hb-org-tip {
     display: none;
-  }
-  .hb-drow {
-    flex-wrap: wrap;
   }
 }
 .hb-attn-ok .hb-empty {

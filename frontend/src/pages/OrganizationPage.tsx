@@ -1,14 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  AlertTriangle,
-  Building2,
-  ChevronRight,
-  GripVertical,
-  Network,
-  UserRoundX,
-  Users,
-} from 'lucide-react';
+import { AlertTriangle, ChevronRight, GripVertical, Network, UserRoundX } from 'lucide-react';
 import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
   isSupervisorRole,
@@ -39,22 +31,17 @@ import {
 
 /**
  * Organization (Department Duties), Harbor redesign after the Dashboard's
- * My team view (brief §6.1). Two views of the same data, switched in the
- * header, each with a red count of what needs attention:
- *
- * - People: what needs your attention first (no duties, no supervisor, duties
- *   no one holds, each with its fix), then the reporting lines as sections of
- *   people cards ("Reports to Maria Lopez"). Drag a card onto a supervisor's
- *   card or section to move it; click a card for the person panel.
- * - Departments: a card per department, each duty with the avatars of who
- *   holds it and a "Give to…" picker.
+ * My team view (brief §6.1): the structure of the company. What needs your
+ * attention comes first (no duties, no supervisor, duties no one holds, each
+ * with its fix), then the reporting lines as sections of people cards
+ * ("Reports to Maria Lopez"). Drag a card onto a supervisor's card or section
+ * to move it; click a card for the person panel (supervisor, reports, duties).
+ * Departments and their duties are managed in Settings › Departments & duties.
  *
  * Changes are STAGED and saved together with the one Save bar, because one
  * wrong drop moves a whole team and task access (Phase 13) follows the
  * hierarchy. Admins manage everyone; a Manager manages the people below them.
  */
-
-type View = 'people' | 'departments';
 
 interface Draft {
   sup: Record<string, string | null>;
@@ -67,10 +54,6 @@ const ROLE_TONE: Record<string, Tone> = { Admin: 'blue', Manager: 'review', Memb
 const pname = (p: OrgPersonDto) => `${p.firstName} ${p.lastName}`.trim() || p.email;
 const byP = (a: OrgPersonDto, b: OrgPersonDto) => pname(a).localeCompare(pname(b));
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
-
-/** Old links (?view=lines|person|dept|duty) land on the matching new view. */
-const viewFrom = (v: string | null): View =>
-  v === 'dept' || v === 'duty' || v === 'departments' ? 'departments' : 'people';
 
 function draftFrom(org: OrgDto): Draft {
   return {
@@ -113,7 +96,6 @@ export function OrganizationPage() {
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
   const [draft, setDraft] = useState<Draft>({ sup: {}, duties: {} });
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>(viewFrom(params.get('view')));
   const [q, setQ] = useState('');
   const [deptFilter, setDeptFilter] = useState(ALL);
   const [roleFilter, setRoleFilter] = useState(ALL);
@@ -122,7 +104,6 @@ export function OrganizationPage() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [flashDuty, setFlashDuty] = useState<string | null>(params.get('duty'));
   const { showToast } = useShowToast();
   const panelRef = useRef<HTMLElement>(null);
 
@@ -156,15 +137,6 @@ export function OrganizationPage() {
     () => departments.filter((d) => !d.archived).sort(byName),
     [departments],
   );
-
-  // A deep link to a duty (from Departments & duties) scrolls to it and flashes it.
-  useEffect(() => {
-    if (!flashDuty || !departments.length) return;
-    const el = document.getElementById(`duty-${flashDuty}`);
-    el?.scrollIntoView({ block: 'center' });
-    const t = window.setTimeout(() => setFlashDuty(null), 1600);
-    return () => window.clearTimeout(t);
-  }, [flashDuty, departments.length]);
 
   // --- Dirty state -----------------------------------------------------------
   const dirty = useMemo(() => {
@@ -635,100 +607,6 @@ export function OrganizationPage() {
     </>
   );
 
-  const deptCards = activeDepts
-    .filter((d) => deptFilter === ALL || d.id === deptFilter)
-    .map((d) => {
-      const dm = !!query && d.name.toLowerCase().includes(query);
-      const duties = d.duties
-        .filter((u) => !u.archived)
-        .sort(byName)
-        .map((u) => ({
-          duty: u,
-          holders: people
-            .filter((p) => draft.duties[p.id]?.has(u.id))
-            .filter((p) => roleFilter === ALL || p.role === roleFilter)
-            .sort(byP),
-        }))
-        .filter(
-          ({ duty, holders }) =>
-            !query ||
-            dm ||
-            duty.name.toLowerCase().includes(query) ||
-            holders.some((p) => pname(p).toLowerCase().includes(query)),
-        );
-      if (query && !dm && duties.length === 0) return null;
-      const inDept = new Set(duties.flatMap((x) => x.holders.map((p) => p.id))).size;
-      const gaps = duties.filter((x) => x.holders.length === 0).length;
-      return (
-        <Card key={d.id} className="hb-dcard">
-          <div className="hb-card-head">
-            <span className="hb-dcard-sw" style={{ background: d.color }} aria-hidden="true" />
-            <h3>{d.name}</h3>
-            {gaps > 0 && <Pill tone="amber">{gaps} not held</Pill>}
-            <span className="hb-small">
-              {inDept} {inDept === 1 ? 'person' : 'people'}
-            </span>
-          </div>
-          {duties.length === 0 ? (
-            <Empty>No duties in this department yet.</Empty>
-          ) : (
-            duties.map(({ duty, holders }) => {
-              const give = giveOptions(duty.id);
-              return (
-                <div
-                  key={duty.id}
-                  id={`duty-${duty.id}`}
-                  className={cx('hb-drow', flashDuty === duty.id && 'hb-flash')}
-                >
-                  <span className="hb-stack">
-                    <span className="hb-drow-name">{duty.name}</span>
-                    <span className="hb-sub">
-                      {holders.length
-                        ? holders.length === 1
-                          ? pname(holders[0]!)
-                          : `${holders.length} people`
-                        : 'No one holds this'}
-                    </span>
-                  </span>
-                  <span className="hb-stackav">
-                    {holders.slice(0, 5).map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={cx('hb-stackav-btn', selId === p.id && 'is-sel')}
-                        title={pname(p)}
-                        aria-label={`Open ${pname(p)}`}
-                        onClick={() => openPerson(p.id)}
-                      >
-                        <Avatar user={p} px={28} decorative />
-                      </button>
-                    ))}
-                    {holders.length > 5 && (
-                      <span className="hb-stackav-more">+{holders.length - 5}</span>
-                    )}
-                    {holders.length === 0 && <Pill tone="amber">Not held</Pill>}
-                  </span>
-                  {give.length > 0 && (
-                    <Select
-                      variant="plain"
-                      className="hb-give"
-                      label={`Give ${duty.name} to`}
-                      value={null}
-                      placeholder="Give to…"
-                      searchPlaceholder="Search people…"
-                      options={give}
-                      onChange={(pid) => giveDuty(pid, duty.id)}
-                    />
-                  )}
-                </div>
-              );
-            })
-          )}
-        </Card>
-      );
-    })
-    .filter(Boolean);
-
   return (
     <>
       <PageHeader
@@ -739,26 +617,6 @@ export function OrganizationPage() {
             {activeDepts.length === 1 ? 'department' : 'departments'}
             {org?.scope === 'team' && ' · you and your team'}
           </>
-        }
-        switcher={
-          <div className="hb-seg" role="group" aria-label="View">
-            <button
-              type="button"
-              aria-pressed={view === 'people'}
-              onClick={() => setView('people')}
-            >
-              <Users size={15} aria-hidden="true" /> People
-              {peopleFlags > 0 && <CountBadge n={peopleFlags} red />}
-            </button>
-            <button
-              type="button"
-              aria-pressed={view === 'departments'}
-              onClick={() => setView('departments')}
-            >
-              <Building2 size={15} aria-hidden="true" /> Departments
-              {unheld.length > 0 && <CountBadge n={unheld.length} red />}
-            </button>
-          </div>
         }
         searchPlaceholder="Search people, titles, duties"
         searchLabel="Search"
@@ -776,9 +634,7 @@ export function OrganizationPage() {
 
         <div className="hb-toolbar">
           <span className="hb-count-label">
-            {view === 'people'
-              ? `${filtered ? `${shownCount} of ` : ''}${people.length} ${people.length === 1 ? 'person' : 'people'}`
-              : `${activeDepts.length} ${activeDepts.length === 1 ? 'department' : 'departments'}`}
+            {`${filtered ? `${shownCount} of ` : ''}${people.length} ${people.length === 1 ? 'person' : 'people'}`}
           </span>
           <Select
             variant="chip"
@@ -809,11 +665,9 @@ export function OrganizationPage() {
             </Btn>
           )}
           <span className="hb-grow" />
-          {view === 'people' && (
-            <span className="hb-small hb-org-tip">
-              <GripVertical size={14} aria-hidden="true" /> Drag a card onto a supervisor to move it
-            </span>
-          )}
+          <span className="hb-small hb-org-tip">
+            <GripVertical size={14} aria-hidden="true" /> Drag a card onto a supervisor to move it
+          </span>
         </div>
 
         <div className="hb-cols hb-org-cols">
@@ -825,13 +679,7 @@ export function OrganizationPage() {
             ) : (
               <>
                 {attention}
-                {view === 'people' ? (
-                  peopleView
-                ) : deptCards.length ? (
-                  <div className="hb-grid2">{deptCards}</div>
-                ) : (
-                  <Empty>{query ? `Nothing matches “${q}”.` : 'No departments yet.'}</Empty>
-                )}
+                {peopleView}
               </>
             )}
           </div>
