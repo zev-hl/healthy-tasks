@@ -1,6 +1,19 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ListChecks,
+  PanelRightClose,
+  PanelRightOpen,
+  X,
+} from 'lucide-react';
+import {
+  formatDuration,
   formatHM,
   type DutyRef,
   type TaskUserRef,
@@ -9,11 +22,7 @@ import {
   type TimeReviewScope,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import { Avatar, UserChip } from '../components/ui/Avatar';
-import { StatusPill } from '../components/ui/indicators';
-import { Toast, useToast } from '../components/exclusives/Toast';
-import { DutyTag, Swatch } from '../components/duties/DutyTag';
-import { CaretIcon } from '../components/duties/icons';
+import { Avatar } from '../components/ui/Avatar';
 import { DayEditorModal } from '../components/time/DayEditorModal';
 import { useDutyCatalog } from '../lib/duties';
 import {
@@ -45,23 +54,50 @@ import {
   type PivotNode,
   type PivotView,
 } from '../lib/timePivot';
-import { PageHeader } from '../components/harbor/PageHeader';
+import { PageBody, PageHeader } from '../components/harbor/PageHeader';
+import { Select, type SelectOption } from '../components/harbor/Select';
+import { useToast as useHbToast } from '../components/harbor/Toast';
+import {
+  Btn,
+  Card,
+  CardHead,
+  Empty,
+  Pill,
+  Segmented,
+  StatusPill,
+  Tile,
+  cx,
+} from '../components/harbor/ui';
 
 /**
- * Time Review (Department Duties) — for supervisors. Who you can see follows the
- * Phase 13 hierarchy: Managers see the people below them, Admins everyone.
- * "Day review" is one row per person and one column per day (time + whether the
- * day is completed); the three roll-ups pivot the same time by person,
- * department and duty, by week (a column per day) or month (a column per
- * Sun–Sat week, cut at the month's edges). Related tasks on the right are tasks
- * with a duty, assigned to people in scope, whose start–due range falls inside
- * or across the period; click a grid row to narrow them.
+ * Time Review (Department Duties) — for supervisors, Harbor redesign. Who you
+ * can see follows the Phase 13 hierarchy: Managers see the people below them,
+ * Admins everyone. "Day review" is a timesheet of people by day (time, and
+ * whether each day is completed); the three roll-ups pivot the same time by
+ * person, department and duty, by week (a column per day) or month (a column
+ * per Sun–Sat week, cut at the month's edges). The side panel shows who has
+ * days left to complete, and the related tasks: tasks with a duty, assigned to
+ * people in scope, whose start–due range falls inside or across the period.
+ * Click a row to narrow them.
  */
 
 type View = 'day' | PivotView;
 type Period = 'week' | 'month';
 
+const DAY_MINUTES = 8 * 60;
 const personName = (p: TaskUserRef) => `${p.firstName} ${p.lastName}`.trim() || p.email;
+
+/** A small shim so the logic below keeps its `showToast(message, tone)` calls. */
+function useShowToast() {
+  const toast = useHbToast();
+  return {
+    showToast: (message: string, tone: 'success' | 'error' | 'info' = 'info') =>
+      toast({
+        message,
+        tone: tone === 'success' ? 'success' : tone === 'error' ? 'error' : 'dark',
+      }),
+  };
+}
 
 export function TimeReviewPage() {
   const today = todayISO();
@@ -80,7 +116,7 @@ export function TimeReviewPage() {
   const [data, setData] = useState<TimeReviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openDay, setOpenDay] = useState<{ person: TaskUserRef; date: string } | null>(null);
-  const { toast, showToast, clearToast } = useToast();
+  const { showToast } = useShowToast();
   const prefsLoaded = useRef(false);
 
   useEffect(() => {
@@ -298,26 +334,101 @@ export function TimeReviewPage() {
     showToast('Exported the current grid as CSV (hours)', 'success');
   }
 
-  // --- Render: grid --------------------------------------------------------------------
-  let table: JSX.Element;
+  // --- Who still has days to complete ---------------------------------------------
+  const behind = people
+    .map((p) => {
+      const late = pastWd.filter((d) => !dayMap.get(`${p.id}|${d}`)?.completed);
+      return {
+        person: p,
+        late,
+        empty: late.filter((d) => !dayMap.get(`${p.id}|${d}`)?.minutes).length,
+      };
+    })
+    .filter((b) => b.late.length > 0)
+    .sort((a, b) => b.late.length - a.late.length);
+  const notCompleted = expected - completed;
+
+  const team = peopleInfo?.team ?? [];
+  const deptOptions = departments.filter((d) => d.duties.length > 0);
+
+  const scopeOptions: SelectOption<string>[] = [
+    ...(peopleInfo?.isAdmin
+      ? [{ value: 'all', label: 'Everyone', hint: String(team.length + 1) }]
+      : []),
+    {
+      value: 'team',
+      label: 'My team, all levels',
+      hint: peopleInfo?.isAdmin ? 'below me' : String(team.length),
+    },
+    {
+      value: 'direct',
+      label: 'Direct reports only',
+      hint: String(peopleInfo?.directIds.length ?? 0),
+    },
+    { value: 'withme', label: 'My team and me' },
+    ...(peopleInfo
+      ? [peopleInfo.me, ...team].map((p) => ({
+          value: `user:${p.id}`,
+          label: personName(p),
+          lead: <Avatar user={p} px={24} decorative />,
+        }))
+      : []),
+  ];
+  const deptChoices: SelectOption<string>[] = [
+    { value: '', label: 'All' },
+    ...deptOptions.map((d) => ({
+      value: d.id,
+      label: d.name,
+      dot: d.color,
+      hint: d.archived ? 'archived' : undefined,
+    })),
+  ];
+  const dutyChoices: SelectOption<string>[] = [
+    { value: '', label: 'All' },
+    ...deptOptions
+      .filter((d) => !deptId || d.id === deptId)
+      .flatMap((d) =>
+        d.duties.map((u) => ({
+          value: u.id,
+          label: deptId ? u.name : `${d.name} › ${u.name}`,
+          dot: d.color,
+          hint: u.archived ? 'archived' : undefined,
+        })),
+      ),
+  ];
+
+  const step = (n: number) =>
+    setAnchor((a) => (effPeriod === 'week' ? addDays(a, 7 * n) : addMonths(a, n)));
+
+  // --- Render: the grid ------------------------------------------------------------------
+  let grid: JSX.Element;
   if (isDay) {
-    table = people.length ? (
-      <div className="dd-tbl-wrap">
-        <table className="dd-tbl">
+    grid = people.length ? (
+      <div className="hb-table-wrap">
+        <table className="hb-sheet hb-review-sheet">
           <thead>
             <tr>
-              <th>Person</th>
+              <th className="hb-sheet-duty">Person</th>
               {cols.map((c) => (
                 <th
                   key={c.key}
-                  className={`num${c.today ? ' today-col' : ''}`}
-                  style={{ textAlign: 'center' }}
+                  className={cx(
+                    'hb-sheet-day',
+                    c.today && 'today',
+                    c.key > today && 'future',
+                    isWeekend(c.key) && 'weekend',
+                  )}
                 >
-                  {c.label}
-                  <span className="sub">{c.sub}</span>
+                  <span className="hb-sheet-dayhead static">
+                    <span className="dow">
+                      {c.label}
+                      {c.today && <span className="hb-today-tag">Today</span>}
+                    </span>
+                    <span className="num">{c.sub}</span>
+                  </span>
                 </th>
               ))}
-              <th className="num tot">Week</th>
+              <th className="hb-sheet-total">Week</th>
             </tr>
           </thead>
           <tbody>
@@ -328,104 +439,124 @@ export function TimeReviewPage() {
               );
               const path = `p:${p.id}`;
               return (
-                <tr key={p.id} className={`l0${sel === path ? ' sel' : ''}`}>
-                  <td className="dd-pv-label">
-                    <div>
-                      <button
-                        type="button"
-                        className="dd-pv-name btn-plain"
-                        onClick={() => setSel(sel === path ? '' : path)}
-                      >
-                        <Avatar user={p} size="xs" decorative />
-                        {personName(p)}
-                      </button>
-                      {p.title && <span className="dd-ptitle">{p.title}</span>}
-                    </div>
-                  </td>
+                <tr key={p.id} className={cx(sel === path && 'sel')}>
+                  <th className="hb-sheet-duty" scope="row">
+                    <button
+                      type="button"
+                      className="hb-person-btn"
+                      title="Show this person’s related tasks"
+                      onClick={() => {
+                        setSel(sel === path ? '' : path);
+                        setShowTasks(true);
+                      }}
+                    >
+                      <Avatar user={p} px={28} decorative />
+                      <span className="hb-stack">
+                        <span className="hb-name">{personName(p)}</span>
+                        {p.title && <span className="hb-small">{p.title}</span>}
+                      </span>
+                    </button>
+                  </th>
                   {cols.map((c) => {
                     const d = c.key;
                     const day = dayMap.get(`${p.id}|${d}`);
                     const m = day?.minutes ?? 0;
                     const fut = d > today;
-                    const st = fut ? (
-                      <span className="dd-st none">&nbsp;</span>
-                    ) : day?.completed ? (
-                      <span className="dd-st ok">✓ Completed</span>
-                    ) : d === today ? (
-                      <span className="dd-st none">Today</span>
-                    ) : m || !isWeekend(d) ? (
-                      m ? (
-                        <span className="dd-st late">Not completed</span>
-                      ) : (
-                        <span className="dd-st miss">Nothing logged</span>
-                      )
-                    ) : (
-                      <span className="dd-st none">—</span>
-                    );
+                    const state = fut
+                      ? 'future'
+                      : day?.completed
+                        ? 'done'
+                        : d === today
+                          ? 'today'
+                          : m
+                            ? 'late'
+                            : isWeekend(d)
+                              ? 'weekend'
+                              : 'missing';
+                    const words = {
+                      future: '',
+                      done: 'completed',
+                      today: 'today',
+                      late: 'not completed',
+                      weekend: '',
+                      missing: 'nothing logged, not completed',
+                    }[state];
                     return (
                       <td
                         key={d}
-                        className="dd-dr-cell"
-                        onClick={fut ? undefined : () => setOpenDay({ person: p, date: d })}
-                        title={fut ? undefined : `Open ${p.firstName || personName(p)}’s day`}
+                        className={cx(
+                          'hb-sheet-cell',
+                          d === today && 'today',
+                          fut && 'future',
+                          isWeekend(d) && 'weekend',
+                        )}
                       >
-                        <span className="mono">{fut ? '' : formatHM(m)}</span>
-                        {st}
+                        {fut ? null : (
+                          <button
+                            type="button"
+                            className={cx('hb-rcell', state)}
+                            aria-label={`${personName(p)}, ${formatDay(d)}: ${m ? formatDuration(m) : 'no time'}${words ? `, ${words}` : ''}. Open the day`}
+                            onClick={() => setOpenDay({ person: p, date: d })}
+                          >
+                            <span className="t">{m ? formatHM(m) : '—'}</span>
+                            {state === 'done' && (
+                              <Check size={13} className="ok" aria-hidden="true" />
+                            )}
+                            {(state === 'late' || state === 'missing') && (
+                              <span className="dot" aria-hidden="true" />
+                            )}
+                          </button>
+                        )}
                       </td>
                     );
                   })}
-                  <td className="num tot">{formatHM(wk)}</td>
+                  <td className="hb-sheet-total">{wk ? formatHM(wk) : '—'}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
-            <tr>
-              <td>Total</td>
+            <tr className="hb-sheet-sum">
+              <th>Total</th>
               {cols.map((c) => (
-                <td key={c.key} className="num">
+                <td key={c.key} className={cx(c.today && 'today', c.key > today && 'future')}>
                   {formatHM(
                     people.reduce((s, p) => s + (dayMap.get(`${p.id}|${c.key}`)?.minutes ?? 0), 0),
                   )}
                 </td>
               ))}
-              <td className="num">
-                {formatHM(
-                  people.reduce(
-                    (s, p) =>
-                      s +
-                      daysInRange(range.from, range.to).reduce(
-                        (x, d) => x + (dayMap.get(`${p.id}|${d}`)?.minutes ?? 0),
-                        0,
-                      ),
-                    0,
-                  ),
-                )}
-              </td>
+              <td className="hb-sheet-total">{formatHM(totalMin)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
     ) : (
-      <div className="dd-tbl-wrap dd-empty">Nobody in this selection.</div>
+      <Empty>{data ? 'Nobody in this selection.' : 'Loading…'}</Empty>
     );
   } else if (pivot && records.length) {
     const rows = flattenPivot(pivot, labelOf, exp);
-    table = (
-      <div className="dd-tbl-wrap">
-        <table className="dd-tbl">
+    grid = (
+      <div className="hb-table-wrap">
+        <table className="hb-sheet hb-review-sheet">
           <thead>
             <tr>
-              <th>{PIVOT_VIEWS[view as PivotView].label}</th>
+              <th className="hb-sheet-duty">{PIVOT_VIEWS[view as PivotView].label}</th>
               {cols.map((c) => (
-                <th key={c.key} className={`num${c.today ? ' today-col' : ''}`}>
-                  {c.label}
-                  <span className="sub">{c.sub}</span>
+                <th key={c.key} className={cx('hb-sheet-day', c.today && 'today')}>
+                  <span className="hb-sheet-dayhead static">
+                    <span className="dow">
+                      {c.label}
+                      {c.today && effPeriod === 'week' && (
+                        <span className="hb-today-tag">Today</span>
+                      )}
+                    </span>
+                    <span className="num">{c.sub}</span>
+                  </span>
                 </th>
               ))}
-              <th className="num tot">
+              <th className="hb-sheet-total">
                 Total
-                {effPeriod === 'week' && hideWe && <span className="sub">incl. weekend</span>}
+                {effPeriod === 'week' && hideWe && <span className="hb-small"> incl. weekend</span>}
               </th>
             </tr>
           </thead>
@@ -434,15 +565,15 @@ export function TimeReviewPage() {
               const has = n.children.size > 0;
               const open = has && exp.has(n.path);
               return (
-                <tr key={n.path} className={`l${level}${sel === n.path ? ' sel' : ''}`}>
-                  <td className="dd-pv-label">
-                    <div style={{ paddingLeft: level * 24 }}>
+                <tr key={n.path} className={cx(`lvl${level}`, sel === n.path && 'sel')}>
+                  <th className="hb-sheet-duty" scope="row">
+                    <span className="hb-pv" style={{ paddingLeft: level * 22 }}>
                       {has ? (
                         <button
                           type="button"
-                          className={`dd-caret${open ? ' open' : ''}`}
+                          className={cx('hb-caret', open && 'open')}
                           aria-expanded={open}
-                          aria-label={open ? 'Collapse' : 'Expand'}
+                          aria-label={open ? `Collapse ${labelOf(n)}` : `Expand ${labelOf(n)}`}
                           onClick={() => {
                             const next = new Set(exp);
                             if (next.has(n.path)) next.delete(n.path);
@@ -450,14 +581,14 @@ export function TimeReviewPage() {
                             setExpanded((e) => ({ ...e, [viewKey]: next }));
                           }}
                         >
-                          <CaretIcon />
+                          <ChevronDown size={15} aria-hidden="true" />
                         </button>
                       ) : (
-                        <span className="dd-caret-sp" />
+                        <span className="hb-caret-sp" />
                       )}
                       <button
                         type="button"
-                        className="dd-pv-name btn-plain"
+                        className="hb-person-btn"
                         title="Show related tasks"
                         onClick={() => {
                           setSel(sel === n.path ? '' : n.path);
@@ -477,318 +608,350 @@ export function TimeReviewPage() {
                           }
                         />
                       </button>
-                    </div>
-                  </td>
+                    </span>
+                  </th>
                   {cols.map((c) => {
                     const v = n.cells[c.key] ?? 0;
                     return (
-                      <td key={c.key} className={`num${v ? '' : ' zero'}`}>
+                      <td
+                        key={c.key}
+                        className={cx('hb-pv-cell', c.today && 'today', !v && 'zero')}
+                      >
                         {formatHM(v)}
                       </td>
                     );
                   })}
-                  <td className="num tot">{formatHM(n.total)}</td>
+                  <td className="hb-sheet-total">{formatHM(n.total)}</td>
                 </tr>
               );
             })}
           </tbody>
           <tfoot>
-            <tr>
-              <td>
+            <tr className="hb-sheet-sum">
+              <th>
                 Total · {withTime} {withTime === 1 ? 'person' : 'people'}
-              </td>
+              </th>
               {cols.map((c) => (
-                <td key={c.key} className="num">
+                <td key={c.key} className={cx(c.today && 'today')}>
                   {formatHM(pivot.cells[c.key] ?? 0)}
                 </td>
               ))}
-              <td className="num">{formatHM(pivot.total)}</td>
+              <td className="hb-sheet-total">{formatHM(pivot.total)}</td>
             </tr>
           </tfoot>
         </table>
       </div>
     );
   } else {
-    table = (
-      <div className="dd-tbl-wrap dd-empty">
-        {data ? 'No time logged for this selection.' : 'Loading…'}
-      </div>
-    );
+    grid = <Empty>{data ? 'No time logged for this selection.' : 'Loading…'}</Empty>;
   }
 
-  const team = peopleInfo?.team ?? [];
-  const deptOptions = departments.filter((d) => d.duties.length > 0);
+  const viewOptions: { value: View; label: string }[] = [
+    { value: 'day', label: 'Day review' },
+        { value: 'pdd', label: 'By person' },
+    { value: 'dpd', label: 'By department' },
+    { value: 'ddp', label: 'By duty' },
+  ];
 
   return (
     <>
       <PageHeader
         title="Time Review"
-        subtitle={
+        subtitle={`${rangeLabel} · ${
           peopleInfo?.isAdmin
-            ? 'Time logged across the organization'
-            : 'Time logged by the people who report to you'
-        }
+            ? 'time logged across the organization'
+            : 'time logged by the people who report to you'
+        }`}
         search={false}
         newTask={false}
+        switcher={
+          <Segmented
+            label="View"
+            value={view}
+            onChange={(v) => {
+              setView(v);
+              setSel('');
+            }}
+            options={viewOptions}
+          />
+        }
         actions={
           <>
-            <button type="button" className="secondary btn-sm" onClick={exportCsv} disabled={!data}>
-              Export CSV
-            </button>
-            <button
-              type="button"
-              className="secondary btn-sm"
+            <Btn className="hb-btn-tall" onClick={exportCsv} disabled={!data}>
+              <Download size={16} aria-hidden="true" /> Export CSV
+            </Btn>
+            <Btn
+              className="hb-btn-tall"
+              aria-pressed={showTasks}
               onClick={() => setShowTasks((s) => !s)}
+              title={
+                showTasks ? 'Hide the side panel' : 'Show who needs attention and the related tasks'
+              }
             >
-              {showTasks ? 'Hide' : 'Show'} related tasks
-            </button>
+              {showTasks ? (
+                <PanelRightClose size={16} aria-hidden="true" />
+              ) : (
+                <PanelRightOpen size={16} aria-hidden="true" />
+              )}
+              {showTasks ? 'Hide panel' : 'Show panel'}
+            </Btn>
           </>
         }
       />
-      <div className="dd-page hb-legacy-body">
-        {error && <div className="alert error">{error}</div>}
+      <PageBody>
+        {error && (
+          <div className="hb-alert" role="alert">
+            {error}
+          </div>
+        )}
 
-        <div className="dd-filters">
-          <span className="dd-fl">People</span>
-          <select
+        <div className="hb-filterbar">
+          <Select
+            variant="chip"
+            label="People"
             value={scope}
-            onChange={(e) => {
-              setScope(e.target.value as TimeReviewScope);
+            options={scopeOptions}
+            active={scope !== 'team'}
+            searchPlaceholder="Search people…"
+            onChange={(v) => {
+              setScope(v as TimeReviewScope);
               setSel('');
             }}
-            aria-label="People"
-          >
-            {peopleInfo?.isAdmin && <option value="all">Everyone ({team.length + 1})</option>}
-            <option value="team">
-              My team — all levels ({peopleInfo?.isAdmin ? 'below me' : team.length})
-            </option>
-            <option value="direct">
-              Direct reports only ({peopleInfo?.directIds.length ?? 0})
-            </option>
-            <option value="withme">My team + me</option>
-            {peopleInfo && (
-              <optgroup label="One person">
-                {[peopleInfo.me, ...team].map((p) => (
-                  <option key={p.id} value={`user:${p.id}`}>
-                    {personName(p)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-          <span className="dd-fl" style={{ marginLeft: 6 }}>
-            Department
-          </span>
-          <select
+          />
+          <Select
+            variant="chip"
+            label="Department"
             value={deptId}
-            onChange={(e) => {
-              setDeptId(e.target.value);
+            options={deptChoices}
+            active={!!deptId}
+            onChange={(v) => {
+              setDeptId(v);
               setDutyId('');
               setSel('');
             }}
-            aria-label="Department"
-          >
-            <option value="">All</option>
-            {deptOptions.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-                {d.archived ? ' (archived)' : ''}
-              </option>
-            ))}
-          </select>
-          <span className="dd-fl" style={{ marginLeft: 6 }}>
-            Duty
-          </span>
-          <select
+          />
+          <Select
+            variant="chip"
+            label="Duty"
             value={dutyId}
-            onChange={(e) => {
-              setDutyId(e.target.value);
+            options={dutyChoices}
+            active={!!dutyId}
+            searchPlaceholder="Search duties…"
+            onChange={(v) => {
+              setDutyId(v);
               setSel('');
             }}
-            aria-label="Duty"
-          >
-            <option value="">All</option>
-            {deptOptions
-              .filter((d) => !deptId || d.id === deptId)
-              .map((d) => (
-                <optgroup key={d.id} label={d.name}>
-                  {d.duties.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                      {u.archived ? ' (archived)' : ''}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-          </select>
-          <span className="spacer" />
-          {effPeriod === 'week' && (
-            <label className="dd-check">
-              <input
-                type="checkbox"
-                checked={hideWe}
-                onChange={(e) => setHideWe(e.target.checked)}
-              />{' '}
-              Hide Sat &amp; Sun
-            </label>
-          )}
-        </div>
-
-        <div className="dd-toolbar">
-          <div className="seg" role="group" aria-label="View">
-            <button
-              type="button"
-              className={`seg-btn${isDay ? ' active' : ''}`}
-              aria-pressed={isDay}
+          />
+          {(scope !== 'team' || deptId || dutyId) && (
+            <Btn
+              kind="link"
               onClick={() => {
-                setView('day');
+                setScope(
+                  peopleInfo?.isAdmin && team.length > 0 && peopleInfo.directIds.length === 0
+                    ? 'all'
+                    : 'team',
+                );
+                setDeptId('');
+                setDutyId('');
                 setSel('');
               }}
             >
-              Day review
-            </button>
-            {(Object.keys(PIVOT_VIEWS) as PivotView[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={`seg-btn${view === k ? ' active' : ''}`}
-                aria-pressed={view === k}
-                onClick={() => {
-                  setView(k);
-                  setSel('');
-                }}
-              >
-                {PIVOT_VIEWS[k].label}
-              </button>
-            ))}
-          </div>
-          <div className="dd-divider" />
-          <div className="seg" role="group" aria-label="Period">
+              Clear
+            </Btn>
+          )}
+        </div>
+
+        <div className="hb-periodline">
+          <span className="hb-stepper">
             <button
               type="button"
-              className={`seg-btn${effPeriod === 'week' ? ' active' : ''}`}
-              aria-pressed={effPeriod === 'week'}
-              onClick={() => setPeriod('week')}
+              aria-label={effPeriod === 'week' ? 'Previous week' : 'Previous month'}
+              onClick={() => step(-1)}
             >
-              Week
+              <ChevronLeft size={16} aria-hidden="true" />
             </button>
-            <button
-              type="button"
-              className={`seg-btn${effPeriod === 'month' ? ' active' : ''}`}
-              aria-pressed={effPeriod === 'month'}
-              disabled={isDay}
-              title={isDay ? 'Day review always shows one week' : undefined}
-              onClick={() => setPeriod('month')}
-            >
-              Month
-            </button>
-          </div>
-          <div className="dd-navgrp">
-            <button
-              type="button"
-              className="secondary btn-sm"
-              aria-label="Previous"
-              onClick={() =>
-                setAnchor((a) => (effPeriod === 'week' ? addDays(a, -7) : addMonths(a, -1)))
-              }
-            >
-              ‹
-            </button>
-            <button type="button" className="secondary btn-sm" onClick={() => setAnchor(today)}>
+            <button type="button" className="hb-stepper-today" onClick={() => setAnchor(today)}>
               Today
             </button>
             <button
               type="button"
-              className="secondary btn-sm"
-              aria-label="Next"
-              onClick={() =>
-                setAnchor((a) => (effPeriod === 'week' ? addDays(a, 7) : addMonths(a, 1)))
-              }
+              aria-label={effPeriod === 'week' ? 'Next week' : 'Next month'}
+              onClick={() => step(1)}
             >
-              ›
+              <ChevronRight size={16} aria-hidden="true" />
             </button>
-          </div>
-          <span className="dd-range-label">{rangeLabel}</span>
-          <span className="spacer" />
+          </span>
+          <h2>{rangeLabel}</h2>
+          {!isDay && (
+            <Segmented
+              small
+              label="Period"
+              value={effPeriod}
+              onChange={setPeriod}
+              options={[
+                { value: 'week', label: 'Week' },
+                { value: 'month', label: 'Month' },
+              ]}
+            />
+          )}
+          <span className="hb-grow" />
           {!isDay && pivot && (
             <>
-              <button
-                type="button"
-                className="secondary btn-sm"
+              <Btn
+                kind="link"
                 onClick={() =>
                   setExpanded((e) => ({ ...e, [viewKey]: new Set(expandablePaths(pivot)) }))
                 }
               >
                 Expand all
-              </button>
-              <button
-                type="button"
-                className="secondary btn-sm"
-                onClick={() => setExpanded((e) => ({ ...e, [viewKey]: new Set() }))}
-              >
+              </Btn>
+              <Btn kind="link" onClick={() => setExpanded((e) => ({ ...e, [viewKey]: new Set() }))}>
                 Collapse all
-              </button>
+              </Btn>
             </>
+          )}
+          {effPeriod === 'week' && (
+            <label className="hb-switch">
+              <input
+                type="checkbox"
+                checked={hideWe}
+                onChange={(e) => setHideWe(e.target.checked)}
+              />
+              <span className="hb-switch-track" aria-hidden="true" />
+              Hide Sat &amp; Sun
+            </label>
           )}
         </div>
 
-        <div className="dd-kpis">
-          <div className="dd-kpi acc">
-            <span className="dd-kpi-v mono">{totalMin ? formatHM(totalMin) : '0:00'}</span>
-            <span className="dd-kpi-l">Total logged</span>
-          </div>
-          <div className="dd-kpi">
-            <span className="dd-kpi-v">
-              {withTime} / {people.length}
-            </span>
-            <span className="dd-kpi-l">People with time</span>
-          </div>
-          <div className={`dd-kpi ${completed < expected ? 'warn' : 'ok'}`}>
-            <span className="dd-kpi-v">
-              {completed} / {expected}
-            </span>
-            <span className="dd-kpi-l">Past weekdays completed</span>
-          </div>
-          <div className="dd-kpi">
-            <span className="dd-kpi-v">{related.length}</span>
-            <span className="dd-kpi-l">Related tasks</span>
-          </div>
+        <div className="hb-tiles">
+          <Tile
+            label="Total logged"
+            value={totalMin ? formatHM(totalMin) : '0:00'}
+            hint={`of ${formatDuration(expected * DAY_MINUTES)} expected (8h a weekday)`}
+            tone="blue"
+          />
+          <Tile
+            label="People with time"
+            value={`${withTime} / ${people.length}`}
+            hint="Logged anything this period"
+            tone={people.length && withTime < people.length ? 'amber' : undefined}
+          />
+          <Tile
+            label="Weekdays completed"
+            value={`${completed} / ${expected}`}
+            hint="Past weekdays, everyone"
+            tone={completed < expected ? 'amber' : 'green'}
+          />
+          <Tile
+            label="Days not completed"
+            value={notCompleted}
+            hint={
+              behind.length
+                ? `${behind.length} ${behind.length === 1 ? 'person' : 'people'} behind`
+                : 'All caught up'
+            }
+            tone={notCompleted ? 'red' : 'green'}
+            onClick={() => {
+              setView('day');
+              setShowTasks(true);
+            }}
+          />
+          <Tile
+            label="Related tasks"
+            value={related.length}
+            hint={sel ? 'For the selected row' : 'In this period'}
+          />
         </div>
 
-        <div className={`dd-split${showTasks ? '' : ' closed'}`}>
-          <div>{table}</div>
+        <div className={cx('hb-cols', !showTasks && 'single')}>
+          <div className="hb-col">
+            <Card className="hb-sheet-card">{grid}</Card>
+            {isDay && people.length > 0 && (
+              <div className="hb-month-legend hb-legend-plain">
+                <span>
+                  <Check size={13} className="hb-mday-ok" aria-hidden="true" /> Completed
+                </span>
+                <span>
+                  <span className="hb-mday-late" aria-hidden="true" /> Past day not completed
+                </span>
+                <span>Click a day to see it (read-only)</span>
+              </div>
+            )}
+          </div>
+
           {showTasks && (
-            <aside className="dd-tp" aria-label="Related tasks">
-              <div className="dd-tp-head">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <h3 style={{ fontSize: 15 }}>Related tasks</h3>
-                  <span className="count-pill">{related.length}</span>
-                </div>
-                <div className="muted" style={{ fontSize: 11.5, marginTop: 3 }}>
-                  Start–due range inside or across {rangeLabel}
-                </div>
-                {sel ? (
-                  <div style={{ marginTop: 8 }}>
-                    <span className="dd-ctx-chip">
+            <aside className="hb-col">
+              <Card>
+                <CardHead
+                  icon={<AlertTriangle size={16} />}
+                  tone={behind.length ? 'red' : 'green'}
+                  title="Needs attention"
+                  right={
+                    <span className={cx('hb-big', behind.length > 0 && 'hb-late')}>
+                      {behind.length}
+                    </span>
+                  }
+                />
+                {behind.length === 0 ? (
+                  <Empty good>Everyone has completed their past weekdays.</Empty>
+                ) : (
+                  behind.slice(0, 8).map((b) => {
+                    const path = `p:${b.person.id}`;
+                    return (
+                      <button
+                        key={b.person.id}
+                        type="button"
+                        className={cx('hb-row', 'hb-row-btn', 'hov', sel === path && 'is-sel')}
+                        onClick={() => {
+                          setView('day');
+                          setSel(sel === path ? '' : path);
+                        }}
+                      >
+                        <Avatar user={b.person} px={30} decorative />
+                        <span className="hb-stack">
+                          <span className="hb-name">{personName(b.person)}</span>
+                          <span className="hb-sub late">
+                            {b.empty > 0
+                              ? `${b.empty} with nothing logged`
+                              : 'Time logged, not completed'}
+                          </span>
+                        </span>
+                        <Pill tone="red">
+                          {b.late.length} {b.late.length === 1 ? 'day' : 'days'}
+                        </Pill>
+                      </button>
+                    );
+                  })
+                )}
+              </Card>
+
+              <Card>
+                <CardHead
+                  icon={<ListChecks size={16} />}
+                  title="Related tasks"
+                  right={<span className="hb-small">{related.length}</span>}
+                />
+                <div className="hb-rel-head">
+                  {sel ? (
+                    <span className="hb-chip-on">
                       {selLabel}
                       <button
                         type="button"
-                        className="dd-ctx-x"
-                        aria-label="Clear filter"
+                        aria-label="Show related tasks for everyone"
                         onClick={() => setSel('')}
                       >
-                        ×
+                        <X size={13} aria-hidden="true" />
                       </button>
                     </span>
-                  </div>
+                  ) : (
+                    <span className="hb-small">
+                      Start–due range inside or across {rangeLabel}. Click a row to narrow.
+                    </span>
+                  )}
+                </div>
+                {related.length === 0 ? (
+                  <Empty>No related tasks.</Empty>
                 ) : (
-                  <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
-                    Click a row in the grid to narrow this list.
-                  </div>
-                )}
-              </div>
-              <div className="dd-tp-list">
-                {related.length ? (
                   related.map((t) => {
                     const inside =
                       !!t.startAt &&
@@ -799,41 +962,33 @@ export function TimeReviewPage() {
                       .filter((r) => r.p === t.assignee.id && r.u === t.duty.id)
                       .reduce((s, r) => s + r.min, 0);
                     return (
-                      <Link key={t.id} to={`/tasks/${t.id}`} className="dd-tp-item">
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-                          <span className="dd-task-id">#{t.id}</span>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>{t.name}</span>
-                        </div>
-                        <div className="dd-tp-meta">
-                          <StatusPill status={t.status} />
-                          <UserChip user={t.assignee} />
-                        </div>
-                        <div className="dd-tp-meta">
-                          <DutyTag duty={t.duty} compact />
-                        </div>
-                        <div className="dd-tp-meta">
-                          <span className="mono">
+                      <Link key={t.id} to={`/tasks/${t.id}`} className="hb-row hb-rel-row">
+                        <span className="hb-stack">
+                          <span className="hb-name">{t.name}</span>
+                          <span className="hb-sub">
+                            #{t.id} · {personName(t.assignee)} · {t.duty.departmentName} ›{' '}
+                            {t.duty.name}
+                          </span>
+                          <span className="hb-small">
                             {t.startAt ? formatDay(t.startAt.slice(0, 10)) : 'No start'} →{' '}
-                            {t.dueAt ? formatDay(t.dueAt.slice(0, 10)) : 'No due'}
+                            {t.dueAt ? formatDay(t.dueAt.slice(0, 10)) : 'No due'} ·{' '}
+                            {inside ? 'within the period' : 'spans the period'}
                           </span>
-                          <span className={`dd-tag ${inside ? 'info' : 'neutral'}`}>
-                            {inside ? 'Within period' : 'Spans period'}
+                        </span>
+                        <span className="hb-right">
+                          <StatusPill status={t.status} />
+                          <span
+                            className="hb-small"
+                            title="Time the assignee logged on this duty in this period"
+                          >
+                            {logged ? `${formatHM(logged)} logged` : 'none logged'}
                           </span>
-                          <span className="spacer" />
-                          <span title="Time logged on this duty by the assignee in this period">
-                            <span className="mono" style={{ color: 'var(--ink)' }}>
-                              {formatHM(logged)}
-                            </span>{' '}
-                            logged
-                          </span>
-                        </div>
+                        </span>
                       </Link>
                     );
                   })
-                ) : (
-                  <div className="dd-empty">No related tasks.</div>
                 )}
-              </div>
+              </Card>
             </aside>
           )}
         </div>
@@ -849,8 +1004,7 @@ export function TimeReviewPage() {
             onNavigate={(date) => setOpenDay({ person: openDay.person, date })}
           />
         )}
-        <Toast toast={toast} onClose={clearToast} />
-      </div>
+      </PageBody>
     </>
   );
 }
@@ -869,23 +1023,23 @@ function PivotLabel({
   if (node.dim === 'p' && person) {
     return (
       <>
-        <Avatar user={person} size="xs" decorative />
-        {label}
-      </>
-    );
-  }
-  if (node.dim === 'd') {
-    return (
-      <>
-        {color && <Swatch color={color} />}
-        {label}
+        <Avatar user={person} px={24} decorative />
+        <span className="hb-name">{label}</span>
       </>
     );
   }
   return (
     <>
-      <span className="dd-bullet" style={{ background: color }} />
-      {label}
+      <span
+        className="hb-dot"
+        style={{
+          background: color,
+          width: node.dim === 'd' ? 10 : 8,
+          height: node.dim === 'd' ? 10 : 8,
+        }}
+        aria-hidden="true"
+      />
+      <span className={node.dim === 'd' ? 'hb-name' : undefined}>{label}</span>
     </>
   );
 }
