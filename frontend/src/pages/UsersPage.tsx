@@ -1,4 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  GitMerge,
+  KeyRound,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
 import type {
   Role,
   UserCountsDto,
@@ -7,36 +19,35 @@ import type {
   UserSearchFilters,
   UserSort,
   UserSortField,
-  UserStatusFilter,
 } from '@healthy-tasks/shared';
 import { DEFAULT_PAGE_SIZE, ROLES } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { UserFormModal } from '../components/UserFormModal';
 import { UserEditModal } from '../components/UserEditModal';
-import { PencilIcon } from '../components/ui/PencilIcon';
 import { MergeUsersModal } from '../components/MergeUsersModal';
-import { SortHeader } from '../components/SortHeader';
-import { MultiSelect } from '../components/MultiSelect';
-import { FilterPopover } from '../components/FilterPopover';
-import { Avatar, UserChip, userLabel } from '../components/ui/Avatar';
-import { TableEmptyRow } from '../components/ui/EmptyState';
+import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
-import { PageHeader } from '../components/harbor/PageHeader';
+import { PageBody, PageHeader } from '../components/harbor/PageHeader';
+import { Select, type SelectOption } from '../components/harbor/Select';
+import { Popover } from '../components/harbor/Popover';
+import { useToast } from '../components/harbor/Toast';
+import { Btn, Card, Pill, cx, type Tone } from '../components/harbor/ui';
+
+/**
+ * Users (Admins), Harbor redesign: the people list as the Tasks list shows
+ * tasks. Filter chips (Role, Status, Supervisor, Title, and "+ Filter" for
+ * first/last name and email) over a full-width table; click a column to sort,
+ * Shift-click to add a second sort. Each row edits the person, and password
+ * accounts get a reset link. Filters, sort and paging are remembered per user.
+ */
+
+const ALL = '__all';
+const ROLE_TONE: Record<Role, Tone> = { Admin: 'blue', Manager: 'review', Member: 'grey' };
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const DEFAULT_SORT: UserSort[] = [{ field: 'lastName', dir: 'asc' }];
-
-const SORT_LABELS: Record<UserSortField, string> = {
-  email: 'email',
-  firstName: 'first name',
-  lastName: 'name',
-  role: 'role',
-  title: 'title',
-  supervisor: 'supervisor',
-  status: 'status',
-};
 
 interface PersistedUsersState {
   filters: UserSearchFilters;
@@ -61,11 +72,13 @@ export function UsersPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const toast = useToast();
+  const setNotice = (message: string) => toast({ message, tone: 'success' });
   const [resetLink, setResetLink] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const moreRef = useRef<HTMLButtonElement>(null);
   const [editing, setEditing] = useState<UserDto | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -155,7 +168,7 @@ export function UsersPage() {
   async function handleReset(user: UserDto) {
     try {
       const res = await api.adminResetPassword(user.id);
-      setNotice(`Reset link generated for ${user.email} (also emailed / logged to the console).`);
+      setNotice(`Reset link made for ${user.email}. It was also emailed to them.`);
       setResetLink(res.resetLink ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to generate reset link');
@@ -181,86 +194,89 @@ export function UsersPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  // Active-filter chips (removable), mirroring the Tasks screen.
-  const chips: { id: string; label: string; clear: Partial<UserSearchFilters> }[] = [];
-  if (filters.roles?.length)
-    chips.push({ id: 'roles', label: `Role · ${filters.roles.length}`, clear: { roles: [] } });
-  if (filters.status && filters.status !== 'all')
-    chips.push({
-      id: 'status',
-      label: `Status · ${filters.status === 'active' ? 'Active' : 'Deactivated'}`,
-      clear: { status: 'all' },
-    });
-  if (filters.supervisorIds?.length)
-    chips.push({
-      id: 'supervisor',
-      label: `Supervisor · ${filters.supervisorIds.length}`,
-      clear: { supervisorIds: [] },
-    });
-  if (filters.title?.length)
-    chips.push({ id: 'title', label: `Title · ${filters.title.length}`, clear: { title: [] } });
-  if (filters.firstName?.length)
-    chips.push({
-      id: 'firstName',
-      label: `First name · ${filters.firstName.length}`,
-      clear: { firstName: [] },
-    });
-  if (filters.lastName?.length)
-    chips.push({
-      id: 'lastName',
-      label: `Last name · ${filters.lastName.length}`,
-      clear: { lastName: [] },
-    });
-  if (filters.email?.length)
-    chips.push({ id: 'email', label: `Email · ${filters.email.length}`, clear: { email: [] } });
-  const filtersActive = chips.length > 0;
+  // --- Filter chips (as on Tasks) --------------------------------------------
+  type ListKey = 'roles' | 'supervisorIds' | 'title' | 'firstName' | 'lastName' | 'email';
+  const one = (key: ListKey) => {
+    const v = filters[key] as string[] | undefined;
+    return v?.length === 1 ? v[0]! : ALL;
+  };
+  const pick = (key: ListKey) => (v: string) => patchFilters({ [key]: v === ALL ? [] : [v] });
+  const many = (key: ListKey) => ((filters[key] as string[] | undefined)?.length ?? 0) > 1;
 
-  const sortSummary = sort.length
-    ? `${SORT_LABELS[sort[0]!.field]} ${sort[0]!.dir === 'asc' ? '↑' : '↓'}${sort.length > 1 ? ` +${sort.length - 1}` : ''}`
-    : null;
+  const roleOptions: SelectOption<string>[] = [
+    { value: ALL, label: 'Any role' },
+    ...ROLES.map((r) => ({ value: r, label: r })),
+  ];
+  const statusOptions: SelectOption<string>[] = [
+    { value: 'all', label: 'Everyone' },
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Deactivated' },
+  ];
+  const supervisorOptions: SelectOption<string>[] = [
+    { value: ALL, label: 'Anyone' },
+    ...(options?.supervisors ?? [])
+      .map((s) => ({
+        value: s.id,
+        label: userLabel(s),
+        lead: <Avatar user={s} size="xs" decorative />,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  ];
+  const listOptions = (values: string[], any: string): SelectOption<string>[] => [
+    { value: ALL, label: any },
+    ...values.map((v) => ({ value: v, label: v })),
+  ];
+
+  // Name and email filters live behind "+ Filter"; each one in use is a chip.
+  const MORE: { key: 'firstName' | 'lastName' | 'email'; label: string }[] = [
+    { key: 'firstName', label: 'First name' },
+    { key: 'lastName', label: 'Last name' },
+    { key: 'email', label: 'Email' },
+  ];
+  const moreChips = MORE.filter((m) => (filters[m.key]?.length ?? 0) > 0);
+  const filtersActive =
+    !!filters.query ||
+    (!!filters.status && filters.status !== 'all') ||
+    (['roles', 'supervisorIds', 'title', 'firstName', 'lastName', 'email'] as ListKey[]).some(
+      (k) => ((filters[k] as string[] | undefined)?.length ?? 0) > 0,
+    );
 
   const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const lastRow = Math.min(total, page * pageSize);
 
-  // Distinct-value checklist filter for a text-like column.
-  const checklistFilter = (
-    label: string,
-    key: 'email' | 'firstName' | 'lastName' | 'title',
-    values: string[],
-  ) => (
-    <FilterPopover label={label} active={(filters[key]?.length ?? 0) > 0}>
-      <MultiSelect
-        options={values.map((v) => ({ value: v, label: v }))}
-        selected={filters[key] ?? []}
-        onChange={(v) => patchFilters({ [key]: v })}
-      />
-    </FilterPopover>
-  );
-
-  function personCell(u: UserDto, merged: boolean) {
-    const hasName = !!(u.firstName || u.lastName);
+  const th = (field: UserSortField, label: string) => {
+    const st = sortState(sort, field);
     return (
-      <div className={`user-person${!u.isActive ? ' is-inactive' : ''}`}>
-        <Avatar user={u} px={32} decorative />
-        <div className="user-person-txt">
-          <span className="user-person-name">
-            {hasName ? (
-              userLabel(u)
-            ) : merged ? (
-              <span className="muted">—</span>
+      <th aria-sort={st ? (st.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
+        <button
+          type="button"
+          className={cx('hb-th', st && 'on')}
+          title="Click to sort; Shift-click to add a second sort"
+          onClick={(e) => onSort(field, e.shiftKey)}
+        >
+          {label}
+          {st &&
+            (st.dir === 'asc' ? (
+              <ArrowUp size={13} aria-hidden="true" />
             ) : (
-              <button type="button" className="incomplete-link" onClick={() => setEditing(u)}>
-                + Add name
-              </button>
-            )}
-            {me?.id === u.id && <span className="chip-you">You</span>}
-            {!u.isActive && !merged && <span className="chip-inactive">Inactive</span>}
-          </span>
-          <span className="user-person-email mono">{u.email}</span>
-        </div>
-      </div>
+              <ArrowDown size={13} aria-hidden="true" />
+            ))}
+          {st && sort.length > 1 && <sup>{st.index + 1}</sup>}
+        </button>
+      </th>
     );
-  }
+  };
+
+  const statusPill = (u: UserDto) =>
+    u.mergedIntoId !== null ? (
+      <span title={`Merged into ${usersById.get(u.mergedIntoId)?.email ?? 'another account'}`}>
+        <Pill tone="grey">Merged</Pill>
+      </span>
+    ) : u.isActive ? (
+      <Pill tone="green">Active</Pill>
+    ) : (
+      <Pill tone="grey">Deactivated</Pill>
+    );
 
   return (
     <>
@@ -268,286 +284,347 @@ export function UsersPage() {
         title="Users"
         subtitle={
           counts
-            ? `${counts.active} active · ${counts.inactive} inactive`
+            ? `${counts.active} active · ${counts.inactive} deactivated`
             : loading
-              ? '…'
-              : `${total}`
+              ? 'Loading…'
+              : `${total} people`
         }
-        searchPlaceholder="Search name or email…"
+        searchPlaceholder="Search name or email"
+        searchLabel="Search users"
         searchValue={filters.query ?? ''}
         onSearchChange={(t) => patchFilters({ query: t })}
         onSearch={() => undefined}
         newTask={false}
         actions={
           <>
-            <button className="secondary" onClick={openMerge}>
-              Merge users
-            </button>
-            <button onClick={() => setShowCreate(true)}>Add user</button>
+            <Btn onClick={() => void openMerge()}>
+              <GitMerge size={16} aria-hidden="true" /> Merge users
+            </Btn>
+            <Btn kind="primary" onClick={() => setShowCreate(true)}>
+              <Plus size={16} aria-hidden="true" /> Add user
+            </Btn>
           </>
         }
       />
-      <div className="users-page hb-legacy-body">
-        {error && <div className="alert error">{error}</div>}
-        {notice && <div className="alert success">{notice}</div>}
+      <PageBody>
+        {error && (
+          <div className="hb-alert" role="alert">
+            {error}
+          </div>
+        )}
         {resetLink && (
-          <div className="alert info">
-            <strong>Reset link:</strong> {resetLink}
+          <div className="hb-reset-link" role="status">
+            <KeyRound size={16} aria-hidden="true" />
+            <span className="hb-reset-text">
+              <strong>Reset link</strong>
+              <code>{resetLink}</code>
+            </span>
+            <Btn
+              className="hb-btn-sm"
+              onClick={() => {
+                void navigator.clipboard
+                  ?.writeText(resetLink)
+                  .then(() => toast({ message: 'Link copied', tone: 'success' }))
+                  .catch(() => {});
+              }}
+            >
+              <Copy size={14} aria-hidden="true" /> Copy
+            </Btn>
+            <button
+              type="button"
+              className="hb-icon-btn hb-icon-btn-sm"
+              aria-label="Hide the reset link"
+              onClick={() => setResetLink(null)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
           </div>
         )}
 
-        {/* Chip row: active filters + "+ Filter" + sort caption */}
-        <div className="tasks-chiprow">
-          {chips.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className="filter-chip"
-              onClick={() => patchFilters(c.clear)}
-            >
-              {c.label}
-              <span className="chip-x" aria-hidden="true">
-                ×
-              </span>
-            </button>
+        <div className="hb-toolbar">
+          <span className="hb-count-label">
+            {loading ? 'Loading…' : `${total} ${total === 1 ? 'person' : 'people'}`}
+          </span>
+          {many('roles') ? (
+            <span className="hb-chip-on">
+              Role · {filters.roles!.length}
+              <button
+                type="button"
+                aria-label="Remove filter: Role"
+                onClick={() => patchFilters({ roles: [] })}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ) : (
+            <Select
+              variant="chip"
+              label="Role"
+              value={one('roles')}
+              options={roleOptions}
+              active={one('roles') !== ALL}
+              onChange={(v) => patchFilters({ roles: v === ALL ? [] : [v as Role] })}
+            />
+          )}
+          <Select
+            variant="chip"
+            label="Status"
+            value={filters.status ?? 'all'}
+            options={statusOptions}
+            active={!!filters.status && filters.status !== 'all'}
+            onChange={(v) => patchFilters({ status: v as UserSearchFilters['status'] })}
+          />
+          {many('supervisorIds') ? (
+            <span className="hb-chip-on">
+              Supervisor · {filters.supervisorIds!.length}
+              <button
+                type="button"
+                aria-label="Remove filter: Supervisor"
+                onClick={() => patchFilters({ supervisorIds: [] })}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ) : (
+            <Select
+              variant="chip"
+              label="Supervisor"
+              value={one('supervisorIds')}
+              options={supervisorOptions}
+              active={one('supervisorIds') !== ALL}
+              searchPlaceholder="Search people…"
+              onChange={pick('supervisorIds')}
+            />
+          )}
+          {many('title') ? (
+            <span className="hb-chip-on">
+              Title · {filters.title!.length}
+              <button
+                type="button"
+                aria-label="Remove filter: Title"
+                onClick={() => patchFilters({ title: [] })}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          ) : (
+            <Select
+              variant="chip"
+              label="Title"
+              value={one('title')}
+              options={listOptions(options?.title ?? [], 'Any title')}
+              active={one('title') !== ALL}
+              searchPlaceholder="Search titles…"
+              onChange={pick('title')}
+            />
+          )}
+          {moreChips.map((m) => (
+            <span key={m.key} className="hb-chip-on">
+              {m.label}:{' '}
+              {filters[m.key]!.length === 1
+                ? filters[m.key]![0]
+                : `${filters[m.key]!.length} chosen`}
+              <button
+                type="button"
+                aria-label={`Remove filter: ${m.label}`}
+                onClick={() => patchFilters({ [m.key]: [] })}
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
           ))}
           <button
+            ref={moreRef}
             type="button"
-            className={`add-filter${showFilters ? ' open' : ''}`}
-            onClick={() => setShowFilters((v) => !v)}
+            className="hb-select hb-select-chip hb-add-filter"
+            aria-expanded={showFilters}
+            aria-haspopup="dialog"
+            onClick={() => setShowFilters((o) => !o)}
           >
-            + Filter
+            <Plus size={14} aria-hidden="true" /> Filter
           </button>
+          <Popover
+            anchorRef={moreRef}
+            open={showFilters}
+            onClose={() => setShowFilters(false)}
+            minWidth={320}
+            matchWidth={false}
+            className="hb-filters-pop"
+            label="More filters"
+            closeOnTab={false}
+          >
+            <div className="hb-fp-grid">
+              {MORE.map((m) => (
+                <Fragment key={m.key}>
+                  <span className="hb-label">{m.label}</span>
+                  <Select
+                    label={m.label}
+                    value={one(m.key)}
+                    options={listOptions(options?.[m.key] ?? [], 'Any')}
+                    searchPlaceholder="Search…"
+                    onChange={pick(m.key)}
+                  />
+                </Fragment>
+              ))}
+            </div>
+          </Popover>
           {filtersActive && (
-            <button
-              type="button"
-              className="link-button"
+            <Btn
+              kind="link"
               onClick={() => {
                 setFilters({});
                 setPage(1);
               }}
             >
-              Clear all
-            </button>
+              Clear
+            </Btn>
           )}
-          <div className="spacer" />
-          {sortSummary && <span className="mono tasks-sort">Sorted by {sortSummary}</span>}
         </div>
 
-        {showFilters && (
-          <div className="card panel tasks-filter-panel">
-            <div className="tasks-filter-field">
-              <span className="u-label">Role</span>
-              <FilterPopover label="Role" active={(filters.roles?.length ?? 0) > 0}>
-                <MultiSelect
-                  options={ROLES.map((r) => ({ value: r, label: r }))}
-                  selected={filters.roles ?? []}
-                  onChange={(v) => patchFilters({ roles: v as Role[] })}
-                />
-              </FilterPopover>
-            </div>
-            <div className="tasks-filter-field">
-              <span className="u-label">Status</span>
-              <FilterPopover label="Status" active={!!filters.status && filters.status !== 'all'}>
-                <div className="pop-radios">
-                  {(['all', 'active', 'inactive'] as UserStatusFilter[]).map((s) => (
-                    <label key={s}>
-                      <input
-                        type="radio"
-                        name="user-status-filter"
-                        checked={(filters.status ?? 'all') === s}
-                        onChange={() => patchFilters({ status: s })}
-                      />
-                      {s === 'all' ? 'All' : s === 'active' ? 'Active' : 'Deactivated'}
-                    </label>
-                  ))}
-                </div>
-              </FilterPopover>
-            </div>
-            <div className="tasks-filter-field">
-              <span className="u-label">Supervisor</span>
-              <FilterPopover label="Supervisor" active={(filters.supervisorIds?.length ?? 0) > 0}>
-                <MultiSelect
-                  options={(options?.supervisors ?? []).map((s) => ({
-                    value: s.id,
-                    label: s.email,
-                  }))}
-                  selected={filters.supervisorIds ?? []}
-                  onChange={(v) => patchFilters({ supervisorIds: v })}
-                />
-              </FilterPopover>
-            </div>
-            <div className="tasks-filter-field">
-              <span className="u-label">Title</span>
-              {checklistFilter('Title', 'title', options?.title ?? [])}
-            </div>
-            <div className="tasks-filter-field">
-              <span className="u-label">First name</span>
-              {checklistFilter('First name', 'firstName', options?.firstName ?? [])}
-            </div>
-            <div className="tasks-filter-field">
-              <span className="u-label">Last name</span>
-              {checklistFilter('Last name', 'lastName', options?.lastName ?? [])}
-            </div>
-            <div className="tasks-filter-field">
-              <span className="u-label">Email</span>
-              {checklistFilter('Email', 'email', options?.email ?? [])}
-            </div>
-          </div>
-        )}
-
-        <div className="table-scroll">
-          <table className="users-table">
-            <thead>
-              <tr>
-                <SortHeader
-                  label="Person"
-                  multi={sort.length > 1}
-                  state={sortState(sort, 'lastName')}
-                  onSort={(a) => onSort('lastName', a)}
-                />
-                <SortHeader
-                  label="Role"
-                  multi={sort.length > 1}
-                  state={sortState(sort, 'role')}
-                  onSort={(a) => onSort('role', a)}
-                />
-                <SortHeader
-                  label="Title"
-                  multi={sort.length > 1}
-                  state={sortState(sort, 'title')}
-                  onSort={(a) => onSort('title', a)}
-                />
-                <SortHeader
-                  label="Supervisor"
-                  multi={sort.length > 1}
-                  state={sortState(sort, 'supervisor')}
-                  onSort={(a) => onSort('supervisor', a)}
-                />
-                <SortHeader
-                  label="Status"
-                  multi={sort.length > 1}
-                  state={sortState(sort, 'status')}
-                  onSort={(a) => onSort('status', a)}
-                />
-                <th className="col-user-actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((u) => {
-                const merged = u.mergedIntoId !== null;
-                const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
-                return (
-                  <tr key={u.id}>
-                    <td>{personCell(u, merged)}</td>
-                    <td>
-                      <span className={`badge role-${u.role}`}>{u.role}</span>
-                    </td>
-                    <td>{u.title ?? <span className="muted">—</span>}</td>
-                    <td>
-                      {supervisor ? (
-                        <UserChip user={supervisor} />
-                      ) : u.supervisorId ? (
-                        <span className="muted">{usersById.get(u.supervisorId)?.email ?? '—'}</span>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {merged ? (
-                        <span
-                          className="badge inactive"
-                          title={`Merged into ${usersById.get(u.mergedIntoId!)?.email ?? 'another account'}`}
-                        >
-                          Merged
-                        </span>
-                      ) : (
-                        <span className={`badge ${u.isActive ? 'active' : 'inactive'}`}>
-                          {u.isActive ? 'Active' : 'Deactivated'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="col-user-actions">
-                      {merged ? (
-                        <span className="muted" style={{ fontSize: '0.78rem' }}>
-                          → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
-                        </span>
-                      ) : (
-                        <div className="user-actions">
-                          <button
-                            className="icon-btn"
-                            title={`Edit ${u.email}`}
-                            aria-label={`Edit ${u.email}`}
-                            onClick={() => setEditing(u)}
-                          >
-                            <PencilIcon />
-                          </button>
-                          {/* A company account has no password, so a reset link
-                            would lead nowhere. The server refuses it too; this
-                            just stops an admin reaching for a dead button. */}
-                          {u.signInMethod === 'password' && (
-                            <button
-                              className="secondary btn-sm"
-                              onClick={() => handleReset(u)}
-                              title="Send this user a link to set a password"
-                            >
-                              Reset password
-                            </button>
-                          )}
+        <Card className="hb-table-card">
+          <div className="hb-table-wrap">
+            <table className="hb-table hb-users-table">
+              <thead>
+                <tr>
+                  {th('lastName', 'Person')}
+                  {th('role', 'Role')}
+                  {th('title', 'Title')}
+                  {th('supervisor', 'Supervisor')}
+                  {th('status', 'Status')}
+                  <th className="hb-users-act">
+                    <span className="hb-sr">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((u) => {
+                  const merged = u.mergedIntoId !== null;
+                  const supervisor = u.supervisorId ? usersById.get(u.supervisorId) : null;
+                  const hasName = !!(u.firstName || u.lastName);
+                  return (
+                    <tr key={u.id} className={cx(!u.isActive && 'is-off')}>
+                      <td>
+                        <div className="hb-user">
+                          <Avatar user={u} px={32} decorative />
+                          <div className="hb-stack">
+                            <span className="hb-name">
+                              {hasName ? (
+                                userLabel(u)
+                              ) : merged ? (
+                                <span className="hb-small">—</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="hb-tpl-crumb"
+                                  onClick={() => setEditing(u)}
+                                >
+                                  + Add name
+                                </button>
+                              )}
+                              {me?.id === u.id && <span className="hb-you">You</span>}
+                            </span>
+                            <span className="hb-sub">{u.email}</span>
+                          </div>
                         </div>
-                      )}
+                      </td>
+                      <td>
+                        <Pill tone={ROLE_TONE[u.role]}>{u.role}</Pill>
+                      </td>
+                      <td>{u.title ?? <span className="hb-small">—</span>}</td>
+                      <td>
+                        {supervisor ? (
+                          <span className="hb-user-mini">
+                            <Avatar user={supervisor} size="xs" decorative />
+                            {userLabel(supervisor)}
+                          </span>
+                        ) : (
+                          <span className="hb-small">—</span>
+                        )}
+                      </td>
+                      <td>{statusPill(u)}</td>
+                      <td className="hb-users-act">
+                        {merged ? (
+                          <span className="hb-small">
+                            → {usersById.get(u.mergedIntoId!)?.email ?? 'merged'}
+                          </span>
+                        ) : (
+                          <span className="hb-users-btns">
+                            {/* A company account has no password, so a reset link
+                              would lead nowhere. The server refuses it too; this
+                              just stops an admin reaching for a dead button. */}
+                            {u.signInMethod === 'password' && (
+                              <Btn
+                                kind="ghost"
+                                className="hb-btn-sm"
+                                onClick={() => void handleReset(u)}
+                                title="Send this user a link to set a password"
+                              >
+                                <KeyRound size={14} aria-hidden="true" /> Reset password
+                              </Btn>
+                            )}
+                            <button
+                              type="button"
+                              className="hb-icon-btn hb-icon-btn-sm"
+                              title={`Edit ${u.email}`}
+                              aria-label={`Edit ${u.email}`}
+                              onClick={() => setEditing(u)}
+                            >
+                              <Pencil size={15} aria-hidden="true" />
+                            </button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!loading && rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="hb-table-empty">
+                      No users match. Try other filters, or add a new user.
                     </td>
                   </tr>
-                );
-              })}
-              {!loading && rows.length === 0 && (
-                <TableEmptyRow colSpan={6} title="No users match">
-                  Try adjusting your filters, or add a new user.
-                </TableEmptyRow>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pager">
-          <span className="mono muted">
-            {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
-          </span>
-          <div className="spacer" />
-          <label className="mono">
-            Rows{' '}
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="hb-pager">
+            <span className="hb-small">
+              {loading ? 'Loading…' : `${firstRow}–${lastRow} of ${total}`}
+            </span>
+            <span className="hb-grow" />
+            <Select
+              variant="chip"
+              label="Rows"
+              value={String(pageSize)}
+              options={PAGE_SIZE_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))}
+              onChange={(v) => {
+                setPageSize(Number(v));
                 setPage(1);
               }}
+            />
+            <span className="hb-small">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="hb-icon-btn hb-icon-btn-sm"
+              aria-label="Previous page"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
             >
-              {PAGE_SIZE_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            className="secondary btn-sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            ← Prev
-          </button>
-          <span className="mono">
-            Page {page} of {totalPages}
-          </span>
-          <button
-            className="secondary btn-sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next →
-          </button>
-        </div>
+              <ChevronLeft size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="hb-icon-btn hb-icon-btn-sm"
+              aria-label="Next page"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </Card>
 
         {editing && (
           <UserEditModal
@@ -601,7 +678,7 @@ export function UsersPage() {
             }}
           />
         )}
-      </div>
+      </PageBody>
     </>
   );
 }

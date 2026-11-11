@@ -17,14 +17,49 @@ import {
   type OrgPersonDto,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
+import {
+  AlertTriangle,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  GitBranch,
+  GripVertical,
+  Network,
+} from 'lucide-react';
 import { Avatar } from '../components/ui/Avatar';
-import { Toast, useToast } from '../components/exclusives/Toast';
 import { Swatch } from '../components/duties/DutyTag';
-import { CaretIcon, SearchIcon } from '../components/duties/icons';
 import { highlight } from './DepartmentsPage';
 import { isStaleWriteError } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
-import { PageHeader } from '../components/harbor/PageHeader';
+import { PageBody, PageHeader } from '../components/harbor/PageHeader';
+import { SectionTabs } from '../components/SectionTabs';
+import { Select, type SelectOption } from '../components/harbor/Select';
+import { useToast as useHbToast } from '../components/harbor/Toast';
+import {
+  Btn,
+  Card,
+  CardHead,
+  Empty,
+  Pill,
+  Segmented,
+  cx,
+  type Tone,
+} from '../components/harbor/ui';
+
+/** A small shim so the logic below keeps its `showToast(message, tone)` calls. */
+function useShowToast() {
+  const toast = useHbToast();
+  return {
+    showToast: (message: string, tone: 'success' | 'error' | 'info' = 'info', undo?: () => void) =>
+      toast({
+        message,
+        undo,
+        tone: tone === 'success' ? 'success' : tone === 'error' ? 'error' : 'dark',
+      }),
+  };
+}
+
+const ROLE_TONE: Record<string, Tone> = { Admin: 'blue', Manager: 'review', Member: 'grey' };
 
 /**
  * Organization (Department Duties): who reports to whom, and which duties each
@@ -91,7 +126,7 @@ export function OrganizationPage() {
   const [pdOpen, setPdOpen] = useState<Map<string, boolean>>(new Map());
   const [dragId, setDragId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { toast, showToast, clearToast } = useToast();
+  const { showToast } = useShowToast();
   const deepLinked = useRef(false);
 
   async function load() {
@@ -160,19 +195,17 @@ export function OrganizationPage() {
   const pRow = (p: OrgPersonDto, extra: ReactNode = null) => (
     <>
       <Avatar user={p} size="xs" decorative />
-      <button type="button" className="dd-pname btn-plain" onClick={() => setSelId(p.id)}>
+      <button type="button" className="hb-org-name" onClick={() => setSelId(p.id)}>
         {highlight(pname(p), query)}
       </button>
-      {p.title && <span className="dd-ptitle">{p.title}</span>}
+      {p.title && <span className="hb-org-title">{p.title}</span>}
       {extra}
     </>
   );
   const dRow = (d: DepartmentDto, extra: ReactNode = null) => (
     <>
       <Swatch color={d.color} />
-      <span className="dd-name" style={{ fontWeight: 650 }}>
-        {highlight(d.name, query)}
-      </span>
+      <span className="hb-org-label is-dept">{highlight(d.name, query)}</span>
       {extra}
     </>
   );
@@ -180,8 +213,8 @@ export function OrganizationPage() {
     const u = dutyIndex.get(uId)!;
     return (
       <>
-        <span className="dd-bullet" style={{ background: deptById.get(u.deptId)?.color }} />
-        <span className="dd-name">{highlight(u.name, query)}</span>
+        <span className="hb-org-bullet" style={{ background: deptById.get(u.deptId)?.color }} />
+        <span className="hb-org-label">{highlight(u.name, query)}</span>
         {extra}
       </>
     );
@@ -215,20 +248,20 @@ export function OrganizationPage() {
             p,
             <>
               {(draft.sup[p.id] ?? null) !== p.supervisorId && (
-                <span className="dd-chg mv">moved</span>
+                <span className="hb-org-chg mv">Moved</span>
               )}
-              <span className="spacer" />
-              {kids.length > 0 && <span className="count-pill">{kids.length} direct</span>}
-              <span className="dd-chips">
+              <span className="hb-grow" />
+              {kids.length > 0 && <span className="hb-count">{kids.length} direct</span>}
+              <span className="hb-org-chips">
                 {ds.slice(0, 3).map((d) => (
-                  <span key={d.id} className="dd-chip">
+                  <span key={d.id} className="hb-org-chip">
                     <Swatch color={d.color} size={7} />
                     {d.name}
                   </span>
                 ))}
-                {ds.length > 3 && <span className="dd-chip">+{ds.length - 3}</span>}
+                {ds.length > 3 && <span className="hb-org-chip">+{ds.length - 3}</span>}
                 {activeDutiesOf(p.id).length === 0 && (
-                  <span className="dd-tag warn">No duties</span>
+                  <span className="hb-org-warn">No duties</span>
                 )}
               </span>
             </>,
@@ -271,11 +304,11 @@ export function OrganizationPage() {
             html: dRow(
               d,
               <>
-                <span className="count-pill">
+                <span className="hb-count">
                   {ppl.length} {ppl.length === 1 ? 'person' : 'people'}
                 </span>
                 {unstaffed > 0 && (
-                  <span className="dd-tag warn">
+                  <span className="hb-org-warn">
                     {unstaffed} {unstaffed === 1 ? 'duty' : 'duties'} unassigned
                   </span>
                 )}
@@ -292,8 +325,8 @@ export function OrganizationPage() {
                 html: pRow(
                   p,
                   <>
-                    <span className="spacer" />
-                    <span className="count-pill">
+                    <span className="hb-grow" />
+                    <span className="hb-count">
                       {us.length} {us.length === 1 ? 'duty' : 'duties'}
                     </span>
                   </>,
@@ -331,14 +364,14 @@ export function OrganizationPage() {
             html: pRow(
               p,
               <>
-                <span className="spacer" />
+                <span className="hb-grow" />
                 {ds.length ? (
-                  <span className="count-pill">
+                  <span className="hb-count">
                     {ds.length} {ds.length === 1 ? 'dept' : 'depts'} · {n}{' '}
                     {n === 1 ? 'duty' : 'duties'}
                   </span>
                 ) : (
-                  <span className="dd-tag warn">No duties</span>
+                  <span className="hb-org-warn">No duties</span>
                 )}
               </>,
             ),
@@ -348,7 +381,7 @@ export function OrganizationPage() {
                 .sort((a, b) => dutyIndex.get(a)!.name.localeCompare(dutyIndex.get(b)!.name));
               return {
                 key: `P${p.id}${d.id}`,
-                html: dRow(d, <span className="count-pill">{us.length}</span>),
+                html: dRow(d, <span className="hb-count">{us.length}</span>),
                 kids: us.map((u) => ({ key: `P${p.id}${u}`, html: uRow(u), kids: [] })),
               };
             }),
@@ -373,13 +406,13 @@ export function OrganizationPage() {
               html: uRow(
                 u.id,
                 <>
-                  <span className="spacer" />
+                  <span className="hb-grow" />
                   {ppl.length ? (
-                    <span className="count-pill">
+                    <span className="hb-count">
                       {ppl.length} {ppl.length === 1 ? 'person' : 'people'}
                     </span>
                   ) : (
-                    <span className="dd-tag warn">No one assigned</span>
+                    <span className="hb-org-warn">No one assigned</span>
                   )}
                 </>,
               ),
@@ -398,7 +431,7 @@ export function OrganizationPage() {
           key: `UD${d.id}`,
           html: dRow(
             d,
-            <span className="count-pill">{d.duties.filter((u) => !u.archived).length} duties</span>,
+            <span className="hb-count">{d.duties.filter((u) => !u.archived).length} duties</span>,
           ),
           kids: us,
         } as TreeNode;
@@ -532,6 +565,7 @@ export function OrganizationPage() {
         })
         .filter((c) => c.add.length + c.remove.length > 0);
       const next = await api.saveOrg({ supervisorChanges, dutyChanges });
+      setError(null);
       setOrg(next);
       setDraft(draftFrom(next));
       const parts = [
@@ -546,7 +580,7 @@ export function OrganizationPage() {
           'error',
         );
         await load();
-      } else showToast(err instanceof ApiError ? err.message : 'Failed to save changes', 'error');
+      } else setError(err instanceof ApiError ? err.message : 'Failed to save changes');
     } finally {
       setSaving(false);
     }
@@ -563,8 +597,13 @@ export function OrganizationPage() {
       return (
         <Fragment key={n.key}>
           <div
-            className={`dd-row dd-org-row${n.sel ? ' sel' : ''}${isDropTarget ? (dropTarget!.ok ? ' drop-ok' : ' drop-bad') : ''}${dragId && dragId === n.pid ? ' dragging' : ''}`}
-            style={{ paddingLeft: 14 + lvl * 26 }}
+            className={cx(
+              'hb-org-row',
+              n.sel && 'is-sel',
+              isDropTarget && (dropTarget!.ok ? 'drop-ok' : 'drop-bad'),
+              dragId && dragId === n.pid && 'is-dragging',
+            )}
+            style={{ paddingLeft: 12 + lvl * 24 }}
             draggable={view === 'lines' && n.drag ? true : undefined}
             onDragStart={
               view === 'lines' && n.drag
@@ -584,7 +623,7 @@ export function OrganizationPage() {
             {has ? (
               <button
                 type="button"
-                className={`dd-caret${open ? ' open' : ''}`}
+                className={cx('hb-org-caret', open && 'is-open')}
                 onClick={() =>
                   setExpanded((e) => {
                     const next = new Set(e ?? []);
@@ -596,16 +635,19 @@ export function OrganizationPage() {
                 aria-expanded={open}
                 aria-label={open ? 'Collapse' : 'Expand'}
               >
-                <CaretIcon />
+                <ChevronRight size={16} aria-hidden="true" />
               </button>
             ) : (
-              <span className="dd-caret-sp" />
+              <span className="hb-org-caret is-blank" aria-hidden="true" />
             )}
-            {view === 'lines' && n.drag && (
-              <span className="dd-grip" title="Drag onto a new supervisor" aria-hidden="true">
-                ⋮⋮
-              </span>
-            )}
+            {view === 'lines' &&
+              (n.drag ? (
+                <span className="hb-org-grip" title="Drag onto a new supervisor" aria-hidden="true">
+                  <GripVertical size={15} />
+                </span>
+              ) : (
+                <span className="hb-org-grip is-blank" aria-hidden="true" />
+              ))}
             {n.html}
           </div>
           {open && renderNodes(n.kids, lvl + 1)}
@@ -622,14 +664,24 @@ export function OrganizationPage() {
   const HINT: Record<View, string> = {
     lines:
       org?.scope === 'all'
-        ? 'Supervisor › Subordinates. Drag a person (⋮⋮) onto their new supervisor, or into the box at the bottom to give them no supervisor.'
-        : 'Supervisor › Subordinates. Drag a person (⋮⋮) onto their new supervisor within your team.',
+        ? 'Supervisor › Subordinates. Drag a person by the handle onto their new supervisor, or into the box at the bottom to give them no supervisor.'
+        : 'Supervisor › Subordinates. Drag a person by the handle onto their new supervisor within your team.',
     dept: 'Department › Person › the duties that person holds in that department',
     person: 'Person › Department › Duties',
     duty: 'Department › Duty › People who hold it',
   };
 
   const sel = selId ? P.get(selId) : null;
+  const deptOptions: SelectOption<string>[] = [
+    { value: '', label: 'All departments' },
+    ...activeDepts.map((d) => ({ value: d.id, label: d.name, dot: d.color })),
+  ];
+  const changeText = [
+    dirty.sup ? `${dirty.sup} supervisor ${dirty.sup === 1 ? 'change' : 'changes'}` : '',
+    dirty.dut ? `${dirty.dut} duty ${dirty.dut === 1 ? 'change' : 'changes'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <>
@@ -643,158 +695,155 @@ export function OrganizationPage() {
               : ' · you and your team'}
           </>
         }
-        search={false}
+        searchPlaceholder="Search people, departments, duties"
+        searchLabel="Search"
+        searchValue={q}
+        onSearchChange={setQ}
+        onSearch={() => undefined}
         newTask={false}
+        tabs={
+          <>
+            <SectionTabs />
+            <span className="hb-grow" />
+            <Segmented
+              small
+              label="View"
+              value={view}
+              options={VIEWS.map(([value, label]) => ({ value, label }))}
+              onChange={(k) => {
+                setView(k);
+                setExpanded(null);
+              }}
+            />
+          </>
+        }
       />
-      <div className="dd-page hb-legacy-body">
-        {error && <div className="alert error">{error}</div>}
-
-        <div className="dd-toolbar">
-          <div className="seg" role="group" aria-label="View">
-            {VIEWS.map(([k, l]) => (
-              <button
-                key={k}
-                type="button"
-                className={`seg-btn${view === k ? ' active' : ''}`}
-                aria-pressed={view === k}
-                onClick={() => {
-                  setView(k);
-                  setExpanded(null);
-                }}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="dd-search org-search">
-            <SearchIcon />
-            <input
-              placeholder="Search people, departments, duties…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              aria-label="Search"
-            />
-          </div>
-          {view !== 'lines' && (
-            <select
-              value={deptFilter}
-              onChange={(e) => setDeptFilter(e.target.value)}
-              aria-label="Department"
-            >
-              <option value="">All departments</option>
-              {activeDepts.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <span className="spacer" />
-          <button
-            type="button"
-            className="secondary btn-sm"
-            onClick={() => setExpanded(new Set(allKeys(nodes)))}
-          >
-            Expand all
-          </button>
-          <button type="button" className="secondary btn-sm" onClick={() => setExpanded(new Set())}>
-            Collapse all
-          </button>
-        </div>
-
-        <div className="dd-org-grid">
-          <div className="dd-tree">
-            <div className="dd-tree-head">
-              <span>{HINT[view]}</span>
-            </div>
-            {!org ? (
-              <div className="dd-empty">Loading…</div>
-            ) : nodes.length ? (
-              renderNodes(nodes, 0)
-            ) : (
-              <div className="dd-empty">
-                {query ? `Nothing matches “${q}”.` : 'Nothing to show yet.'}
-              </div>
-            )}
-            {view === 'lines' && org?.scope === 'all' && (
-              <div
-                className={`dd-dropzone${dropTarget?.id === '__root' && dropTarget.ok ? ' drop-ok' : ''}`}
-                {...dropHandlers('__root')}
-              >
-                Drop here to remove the supervisor (top level)
-              </div>
-            )}
-          </div>
-
-          {sel ? (
-            <PersonPanel
-              person={sel}
-              people={people}
-              draft={draft}
-              activeDepts={activeDepts}
-              pdOpen={pdOpen}
-              scope={org?.scope ?? 'team'}
-              onToggleDept={(key, open) => setPdOpen((m) => new Map(m).set(key, !open))}
-              onSelect={setSelId}
-              onSupervisor={(sup) => {
-                setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }));
-                revealUnder(sup);
-              }}
-              onDuties={(next) =>
-                setDraft((d) => ({ ...d, duties: { ...d.duties, [sel.id]: next } }))
-              }
-            />
-          ) : (
-            <div className="dd-panel" style={{ padding: 18 }}>
-              <span className="muted">Select a person.</span>
-            </div>
-          )}
-        </div>
-
-        {dirty.any && (
-          <div className="dd-savebar" role="status">
-            <span className="dot" />
-            <b>Unsaved changes</b>
-            <span className="muted">
-              {[
-                dirty.sup
-                  ? `${dirty.sup} supervisor ${dirty.sup === 1 ? 'change' : 'changes'}`
-                  : '',
-                dirty.dut ? `${dirty.dut} duty ${dirty.dut === 1 ? 'change' : 'changes'}` : '',
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            </span>
-            <span className="spacer" />
-            <button
-              type="button"
-              className="secondary btn-sm"
-              disabled={saving}
-              onClick={() => {
-                if (org) setDraft(draftFrom(org));
-                showToast('Changes discarded', 'info');
-              }}
-            >
-              Discard
-            </button>
-            {saveBlockedBy && (
-              <span className="dd-savebar-block">
-                Can’t save: a duty Alert Task Setup needs is being removed
-              </span>
-            )}
-            <button
-              type="button"
-              className="btn-sm"
-              disabled={saving || saveBlockedBy !== undefined}
-              title={saveBlockedBy}
-              onClick={() => void save()}
-            >
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
+      <PageBody className={cx(dirty.any && 'hb-has-savebar')}>
+        {error && (
+          <div className="hb-alert" role="alert">
+            {error}
           </div>
         )}
-        <Toast toast={toast} onClose={clearToast} />
-      </div>
+
+        <div className="hb-cols hb-org-cols">
+          <div className="hb-col">
+            <Card className="hb-org-tree">
+              <CardHead
+                icon={view === 'lines' ? <Network size={16} /> : <GitBranch size={16} />}
+                title={VIEWS.find(([k]) => k === view)![1]}
+                right={
+                  <span className="hb-org-tools">
+                    {view !== 'lines' && (
+                      <Select
+                        variant="chip"
+                        label="Department"
+                        value={deptFilter}
+                        options={deptOptions}
+                        active={deptFilter !== ''}
+                        onChange={setDeptFilter}
+                      />
+                    )}
+                    <Btn
+                      kind="ghost"
+                      className="hb-btn-sm"
+                      onClick={() => setExpanded(new Set(allKeys(nodes)))}
+                    >
+                      <ChevronsUpDown size={15} aria-hidden="true" /> Expand all
+                    </Btn>
+                    <Btn kind="ghost" className="hb-btn-sm" onClick={() => setExpanded(new Set())}>
+                      <ChevronsDownUp size={15} aria-hidden="true" /> Collapse all
+                    </Btn>
+                  </span>
+                }
+              />
+              <p className="hb-org-hint">{HINT[view]}</p>
+              <div className="hb-org-rows">
+                {!org ? (
+                  <Empty>Loading…</Empty>
+                ) : nodes.length ? (
+                  renderNodes(nodes, 0)
+                ) : (
+                  <Empty>{query ? `Nothing matches “${q}”.` : 'Nothing to show yet.'}</Empty>
+                )}
+              </div>
+              {view === 'lines' && org?.scope === 'all' && (
+                <div
+                  className={cx(
+                    'hb-org-dropzone',
+                    dropTarget?.id === '__root' && dropTarget.ok && 'drop-ok',
+                  )}
+                  {...dropHandlers('__root')}
+                >
+                  Drop here to remove the supervisor (top level)
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <aside className="hb-col hb-org-side">
+            {sel ? (
+              <PersonPanel
+                person={sel}
+                people={people}
+                draft={draft}
+                activeDepts={activeDepts}
+                pdOpen={pdOpen}
+                scope={org?.scope ?? 'team'}
+                onToggleDept={(key, open) => setPdOpen((m) => new Map(m).set(key, !open))}
+                onSelect={setSelId}
+                onSupervisor={(sup) => {
+                  setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }));
+                  revealUnder(sup);
+                }}
+                onDuties={(next) =>
+                  setDraft((d) => ({ ...d, duties: { ...d.duties, [sel.id]: next } }))
+                }
+              />
+            ) : (
+              <Card>
+                <Empty>Select a person to see their supervisor and duties.</Empty>
+              </Card>
+            )}
+          </aside>
+        </div>
+      </PageBody>
+
+      {/* The one Save bar: changes are staged and saved together. */}
+      {dirty.any && (
+        <div className="hb-savebar" role="region" aria-label="Unsaved changes">
+          <span className="hb-savebar-dot" aria-hidden="true" />
+          <strong>Unsaved changes</strong>
+          <span className="hb-savebar-what">{changeText}</span>
+          {saveBlockedBy && (
+            <span className="hb-savebar-err">
+              Can’t save: a duty Alert Task Setup needs is being removed
+            </span>
+          )}
+          <span className="hb-grow" />
+          <button
+            type="button"
+            className="hb-savebar-discard"
+            disabled={saving}
+            onClick={() => {
+              if (!org) return;
+              const before = draft;
+              setDraft(draftFrom(org));
+              showToast('Changes discarded', 'info', () => setDraft(before));
+            }}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="hb-savebar-save"
+            disabled={saving || saveBlockedBy !== undefined}
+            title={saveBlockedBy}
+            onClick={() => void save()}
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -843,178 +892,196 @@ function PersonPanel({
     onDuties(next);
   }
 
+  const supSelectOptions: SelectOption<string>[] = [
+    ...(scope === 'all' || !sup ? [{ value: '', label: 'None (top level)' }] : []),
+    ...(supOutside ? [{ value: sup!, label: '(outside your team)' }] : []),
+    ...supOptions.map((x) => ({
+      value: x.id,
+      label: pname(x),
+      hint: x.title ?? undefined,
+      lead: <Avatar user={x} size="xs" decorative />,
+    })),
+  ];
+
   return (
-    <aside className="dd-panel" aria-label="Person details">
-      <div className="dd-pp-head">
-        <Avatar user={p} size="lg" decorative />
-        <div>
-          <div className="dd-pp-name">{pname(p)}</div>
-          <div className="muted" style={{ fontSize: 12.5 }}>
-            {[p.title, p.role].filter(Boolean).join(' · ')}
+    <Card className="hb-org-person">
+      <section aria-label="Person details">
+        <div className="hb-org-pp-head">
+          <Avatar user={p} px={44} decorative />
+          <div className="hb-stack">
+            <span className="hb-org-pp-name">{pname(p)}</span>
+            <span className="hb-org-pp-meta">
+              <Pill tone={ROLE_TONE[p.role] ?? 'grey'}>{p.role}</Pill>
+              {p.title && <span className="hb-sub">{p.title}</span>}
+            </span>
           </div>
         </div>
-      </div>
 
-      <div className="dd-pp-sec">
-        <div className="field" style={{ margin: 0 }}>
-          <label htmlFor="pp-sup">
-            Supervisor {sup !== p.supervisorId && <span className="dd-chg mv">changed</span>}
-          </label>
-          <select
-            id="pp-sup"
+        <div className="hb-org-sec">
+          <span className="hb-org-sec-title">
+            Supervisor {sup !== p.supervisorId && <span className="hb-org-chg mv">Changed</span>}
+          </span>
+          <Select
+            label="Supervisor"
             value={sup ?? ''}
             disabled={!p.canChangeSupervisor}
-            onChange={(e) => onSupervisor(e.target.value || null)}
-          >
-            {(scope === 'all' || !sup) && <option value="">— None (top level) —</option>}
-            {supOutside && <option value={sup!}>(outside your team)</option>}
-            {supOptions.map((x) => (
-              <option key={x.id} value={x.id}>
-                {pname(x)}
-                {x.title ? ` — ${x.title}` : ''}
-              </option>
-            ))}
-          </select>
-          <div className="muted" style={{ fontSize: 11.5, marginTop: 4 }}>
+            options={supSelectOptions}
+            searchPlaceholder="Search people…"
+            onChange={(v) => onSupervisor(v || null)}
+          />
+          <span className="hb-org-note">
             {p.canChangeSupervisor
               ? `Only Managers and Admins can supervise. ${p.firstName || 'This person'} and their ${below.size} subordinate(s) aren’t offered, to prevent loops.`
               : 'You can’t change this person’s supervisor.'}
-          </div>
-        </div>
-      </div>
-
-      <div className="dd-pp-sec">
-        <div className="dd-pp-title">
-          <span className="u-label">Direct reports</span>
-          <span className="count-pill">{reports.length}</span>
-        </div>
-        {reports.length ? (
-          <div className="dd-chips">
-            {reports.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                className="dd-chip btn-plain"
-                onClick={() => onSelect(r.id)}
-              >
-                <Avatar user={r} px={18} decorative /> {pname(r)}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <span className="muted" style={{ fontSize: 12.5 }}>
-            None
-          </span>
-        )}
-      </div>
-
-      <div className="dd-pp-sec">
-        <div className="dd-pp-title">
-          <span className="u-label">Departments &amp; duties</span>
-          <span className="count-pill accent">
-            {nActive} {nActive === 1 ? 'duty' : 'duties'}
           </span>
         </div>
-        {!p.canEditDuties && (
-          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-            Only an Admin or someone above {p.firstName || 'this person'} can change these.
-          </div>
-        )}
-        {depts.length === 0 && <div className="muted">No departments with duties yet.</div>}
-        {depts.map((d) => {
-          const us = d.duties.filter((u) => !u.archived).sort(byName);
-          const n = us.filter((u) => mine.has(u.id)).length;
-          const key = `${p.id}:${d.id}`;
-          // Open by default when they held a duty here as SAVED — not the unsaved
-          // draft, or ticking/unticking a box would open/collapse the section
-          // under the cursor. Once clicked, the stored state wins.
-          const open = pdOpen.get(key) ?? us.some((u) => had.has(u.id));
-          return (
-            <div key={d.id} className="dd-pd-dept">
-              <div className="dd-pd-head">
-                <TriCheckbox
-                  checked={n === us.length}
-                  indeterminate={n > 0 && n < us.length}
-                  disabled={!p.canEditDuties}
-                  label={`All ${d.name} duties`}
-                  onChange={(on) => {
-                    const next = new Set(mine);
-                    for (const u of us) {
-                      if (on) next.add(u.id);
-                      else next.delete(u.id);
-                    }
-                    onDuties(next);
-                  }}
-                />
-                <Swatch color={d.color} />
+
+        <div className="hb-org-sec">
+          <span className="hb-org-sec-title">
+            Direct reports <span className="hb-count">{reports.length}</span>
+          </span>
+          {reports.length ? (
+            <div className="hb-org-reports">
+              {reports.map((r) => (
                 <button
+                  key={r.id}
                   type="button"
-                  className="dd-pd-name btn-plain"
-                  onClick={() => onToggleDept(key, open)}
+                  className="hb-org-report"
+                  onClick={() => onSelect(r.id)}
                 >
-                  {d.name}
+                  <Avatar user={r} px={20} decorative /> {pname(r)}
                 </button>
-                <span className="count-pill">
-                  {n} / {us.length}
-                </span>
-                <button
-                  type="button"
-                  className={`dd-caret${open ? ' open' : ''}`}
-                  onClick={() => onToggleDept(key, open)}
-                  aria-label={`${open ? 'Collapse' : 'Expand'} ${d.name}`}
-                  aria-expanded={open}
-                >
-                  <CaretIcon />
-                </button>
-              </div>
-              {open &&
-                us.map((u) => {
-                  const has = mine.has(u.id);
-                  const was = had.has(u.id);
-                  const open = p.openTaskCountByDuty[u.id] ?? 0;
-                  return (
-                    <Fragment key={u.id}>
-                      <div className="dd-pd-duty">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={has}
-                            disabled={!p.canEditDuties}
-                            onChange={(e) => setDuty(u.id, e.target.checked)}
-                          />{' '}
-                          {u.name}
-                        </label>
-                        {has && !was && <span className="dd-chg add">added</span>}
-                        {!has && was && <span className="dd-chg rem">removed</span>}
-                      </div>
-                      {!has && open > 0 && (
-                        <div className="dd-pd-warn">
-                          ⚠ {open} open {open === 1 ? 'task' : 'tasks'} assigned to{' '}
-                          {p.firstName || 'this person'} use
-                          {open === 1 ? 's' : ''} this duty. {open === 1 ? 'It' : 'They'} will be
-                          flagged.
-                        </div>
-                      )}
-                      {!has &&
-                        was &&
-                        picksNeeding(p, u.id).map((k) => {
-                          const type = EXCLUSIVES_ALERT_TYPE_LABELS[k.alertType];
-                          return (
-                            <div key={`${k.alertType}:${k.role}`} className="dd-pd-warn is-block">
-                              ⚠ Alert Task Setup would show a warning on {pname(p)} as {k.role} for{' '}
-                              {type}. Set that role to “Leave unassigned” there first
-                              {scope === 'all' ? '' : ' (an Admin has to)'}, then remove the duty.
-                            </div>
-                          );
-                        })}
-                    </Fragment>
-                  );
-                })}
+              ))}
             </div>
-          );
-        })}
-      </div>
-    </aside>
+          ) : (
+            <span className="hb-small">None</span>
+          )}
+        </div>
+
+        <div className="hb-org-sec">
+          <span className="hb-org-sec-title">
+            Departments &amp; duties{' '}
+            <span className="hb-count is-accent">
+              {nActive} {nActive === 1 ? 'duty' : 'duties'}
+            </span>
+          </span>
+          {!p.canEditDuties && (
+            <span className="hb-org-note">
+              Only an Admin or someone above {p.firstName || 'this person'} can change these.
+            </span>
+          )}
+          {depts.length === 0 && <span className="hb-small">No departments with duties yet.</span>}
+          <div className="hb-org-depts">
+            {depts.map((d) => {
+              const us = d.duties.filter((u) => !u.archived).sort(byName);
+              const n = us.filter((u) => mine.has(u.id)).length;
+              const key = `${p.id}:${d.id}`;
+              // Open by default when they held a duty here as SAVED — not the unsaved
+              // draft, or ticking/unticking a box would open/collapse the section
+              // under the cursor. Once clicked, the stored state wins.
+              const open = pdOpen.get(key) ?? us.some((u) => had.has(u.id));
+              return (
+                <div key={d.id} className={cx('hb-org-dept', open && 'is-open')}>
+                  <div className="hb-org-dept-head">
+                    <TriCheckbox
+                      checked={n === us.length}
+                      indeterminate={n > 0 && n < us.length}
+                      disabled={!p.canEditDuties}
+                      label={`All ${d.name} duties`}
+                      onChange={(on) => {
+                        const next = new Set(mine);
+                        for (const u of us) {
+                          if (on) next.add(u.id);
+                          else next.delete(u.id);
+                        }
+                        onDuties(next);
+                      }}
+                    />
+                    <Swatch color={d.color} />
+                    <button
+                      type="button"
+                      className="hb-org-dept-name"
+                      onClick={() => onToggleDept(key, open)}
+                    >
+                      {d.name}
+                    </button>
+                    <span className="hb-count">
+                      {n} / {us.length}
+                    </span>
+                    <button
+                      type="button"
+                      className={cx('hb-org-caret', open && 'is-open')}
+                      onClick={() => onToggleDept(key, open)}
+                      aria-label={`${open ? 'Collapse' : 'Expand'} ${d.name}`}
+                      aria-expanded={open}
+                    >
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                  {open && (
+                    <div className="hb-org-duties">
+                      {us.map((u) => {
+                        const has = mine.has(u.id);
+                        const was = had.has(u.id);
+                        const openTasks = p.openTaskCountByDuty[u.id] ?? 0;
+                        return (
+                          <Fragment key={u.id}>
+                            <div className="hb-org-duty">
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={has}
+                                  disabled={!p.canEditDuties}
+                                  onChange={(e) => setDuty(u.id, e.target.checked)}
+                                />{' '}
+                                {u.name}
+                              </label>
+                              {has && !was && <span className="hb-org-chg add">Added</span>}
+                              {!has && was && <span className="hb-org-chg rem">Removed</span>}
+                            </div>
+                            {!has && openTasks > 0 && (
+                              <div className="hb-org-dwarn">
+                                <AlertTriangle size={14} aria-hidden="true" />
+                                <span>
+                                  {openTasks} open {openTasks === 1 ? 'task' : 'tasks'} assigned to{' '}
+                                  {p.firstName || 'this person'} use
+                                  {openTasks === 1 ? 's' : ''} this duty.{' '}
+                                  {openTasks === 1 ? 'It' : 'They'} will be flagged.
+                                </span>
+                              </div>
+                            )}
+                            {!has &&
+                              was &&
+                              picksNeeding(p, u.id).map((k) => {
+                                const type = EXCLUSIVES_ALERT_TYPE_LABELS[k.alertType];
+                                return (
+                                  <div
+                                    key={`${k.alertType}:${k.role}`}
+                                    className="hb-org-dwarn is-block"
+                                  >
+                                    <AlertTriangle size={14} aria-hidden="true" />
+                                    <span>
+                                      Alert Task Setup would show a warning on {pname(p)} as{' '}
+                                      {k.role} for {type}. Set that role to “Leave unassigned” there
+                                      first
+                                      {scope === 'all' ? '' : ' (an Admin has to)'}, then remove the
+                                      duty.
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </Fragment>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    </Card>
   );
 }
 
