@@ -129,6 +129,7 @@ export function TasksPage() {
   const [nest, setNest] = useState(false);
   const [includeReadOnly, setIncludeReadOnly] = useState(true);
   const [calScale, setCalScale] = useState<CalendarScale>('month');
+  const [calSlot, setCalSlot] = useState<HTMLSpanElement | null>(null);
   const [text, setText] = useState('');
   const debouncedText = useDebouncedValue(text, 300);
   const [page, setPage] = useState(1);
@@ -725,26 +726,34 @@ export function TasksPage() {
               </Btn>
             ))}
           <span className="hb-grow" />
-          <Select
-            variant="chip"
-            label="Sort"
-            value={state.sortField}
-            options={SORT_OPTIONS}
-            onChange={(f) => patch({ sortField: f, sortDir: 'asc' })}
-          />
-          <button
-            type="button"
-            className="hb-icon-btn hb-icon-btn-sm"
-            onClick={() => patch({ sortDir: state.sortDir === 'asc' ? 'desc' : 'asc' })}
-            aria-label={`Sort direction: ${dirLabel(state.sortField, state.sortDir)}. Click to reverse.`}
-            title={dirLabel(state.sortField, state.sortDir)}
-          >
-            {state.sortDir === 'asc' ? (
-              <ArrowUpNarrowWide size={17} aria-hidden="true" />
-            ) : (
-              <ArrowDownWideNarrow size={17} aria-hidden="true" />
-            )}
-          </button>
+          {view === 'calendar' ? (
+            // The calendar puts its Today / ‹ › / month / scale controls here
+            // (sorting means nothing on a calendar, which places tasks by date).
+            <span ref={setCalSlot} className="hb-tcal-slot" />
+          ) : (
+            <>
+              <Select
+                variant="chip"
+                label="Sort"
+                value={state.sortField}
+                options={SORT_OPTIONS}
+                onChange={(f) => patch({ sortField: f, sortDir: 'asc' })}
+              />
+              <button
+                type="button"
+                className="hb-icon-btn hb-icon-btn-sm"
+                onClick={() => patch({ sortDir: state.sortDir === 'asc' ? 'desc' : 'asc' })}
+                aria-label={`Sort direction: ${dirLabel(state.sortField, state.sortDir)}. Click to reverse.`}
+                title={dirLabel(state.sortField, state.sortDir)}
+              >
+                {state.sortDir === 'asc' ? (
+                  <ArrowUpNarrowWide size={17} aria-hidden="true" />
+                ) : (
+                  <ArrowDownWideNarrow size={17} aria-hidden="true" />
+                )}
+              </button>
+            </>
+          )}
           <MoreMenu
             columns={columns}
             onColumns={setColumns}
@@ -844,6 +853,7 @@ export function TasksPage() {
               loading={loading}
               scale={calScale}
               onScaleChange={setCalScale}
+              toolbarSlot={calSlot}
               ghosts={ghosts}
               onChanged={() => {
                 void runQuery();

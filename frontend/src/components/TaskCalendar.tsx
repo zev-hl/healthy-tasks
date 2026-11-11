@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Eye, GitFork, Repeat } from 'lucide-react';
 import {
@@ -20,6 +21,8 @@ interface Props {
   /** Phase 11: computed future occurrences, shown as dashed ghost chips. */
   ghosts?: GhostOccurrenceDto[];
   onChanged?: () => void;
+  /** Where the page wants the calendar's controls (its filter row); inline when absent. */
+  toolbarSlot?: HTMLElement | null;
 }
 
 const DAY_MS = 86_400_000;
@@ -28,7 +31,7 @@ const LANE_H = 24;
 const NUM_H = 32;
 const HEAD_H = 34; // the weekday row
 const MORE_H = 22; // room for "N more" at the foot of a day
-const MIN_WEEK_H = 84;
+const MIN_WEEK_H = 60;
 
 function dateOnly(iso: string): Date {
   const d = new Date(iso);
@@ -126,6 +129,7 @@ export function TaskCalendar({
   onScaleChange,
   ghosts = [],
   onChanged,
+  toolbarSlot,
 }: Props) {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
@@ -152,7 +156,7 @@ export function TaskCalendar({
       window.clearTimeout(late);
       window.removeEventListener('resize', measure);
     };
-  }, [scale, loading, ghostError, rows.length, ghosts.length]);
+  }, [scale, loading, ghostError, rows.length, ghosts.length, toolbarSlot]);
 
   async function materializeGhost(g: GhostOccurrenceDto) {
     const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;
@@ -224,8 +228,12 @@ export function TaskCalendar({
       const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
       return `${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(undefined, { ...opts, year: 'numeric' })}`;
     }
-    return anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  }, [anchor, scale]);
+    // In the filter row space is tight: "Nov 2026".
+    return anchor.toLocaleDateString(undefined, {
+      month: toolbarSlot ? 'short' : 'long',
+      year: 'numeric',
+    });
+  }, [anchor, scale, toolbarSlot]);
 
   const today = startOfDay(new Date());
   const isMonth = scale === 'month';
@@ -285,49 +293,58 @@ export function TaskCalendar({
     );
   }
 
-  return (
-    <div className="hb-tcal-wrap">
-      <div className="hb-tcal-bar">
+  // Today, ‹ ›, the period and the scale: in the page's filter row when it
+  // offers a place (toolbarSlot), above the grid otherwise.
+  const controls = (
+    <>
+      <button
+        type="button"
+        className="hb-btn hb-btn-secondary hb-btn-sm"
+        onClick={() => setAnchor(startOfDay(new Date()))}
+      >
+        Today
+      </button>
+      <span className="hb-tcal-nav">
         <button
           type="button"
-          className="hb-btn hb-btn-secondary hb-btn-sm"
-          onClick={() => setAnchor(startOfDay(new Date()))}
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={() => shiftPeriod(-1)}
+          aria-label="Previous"
         >
-          Today
+          <ChevronLeft size={18} aria-hidden="true" />
         </button>
-        <span className="hb-tcal-nav">
-          <button
-            type="button"
-            className="hb-icon-btn hb-icon-btn-sm"
-            onClick={() => shiftPeriod(-1)}
-            aria-label="Previous"
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="hb-icon-btn hb-icon-btn-sm"
-            onClick={() => shiftPeriod(1)}
-            aria-label="Next"
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
-        </span>
-        <h2 className="hb-tcal-label">{label}</h2>
-        {loading && <span className="hb-small">Loading…</span>}
-        <span className="hb-grow" />
-        <Segmented
-          small
-          label="Calendar scale"
-          value={scale}
-          options={[
-            { value: 'month', label: 'Month' },
-            { value: 'week', label: 'Week' },
-            { value: 'day', label: 'Day' },
-          ]}
-          onChange={onScaleChange}
-        />
-      </div>
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={() => shiftPeriod(1)}
+          aria-label="Next"
+        >
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      </span>
+      <h2 className="hb-tcal-label">{label}</h2>
+      {loading && <span className="hb-small">Loading…</span>}
+      <Segmented
+        small
+        label="Calendar scale"
+        value={scale}
+        options={[
+          { value: 'month', label: 'Month' },
+          { value: 'week', label: 'Week' },
+          { value: 'day', label: 'Day' },
+        ]}
+        onChange={onScaleChange}
+      />
+    </>
+  );
+
+  return (
+    <div className="hb-tcal-wrap">
+      {toolbarSlot ? (
+        createPortal(controls, toolbarSlot)
+      ) : (
+        <div className="hb-tcal-bar">{controls}</div>
+      )}
 
       {ghostError && (
         <div className="hb-alert" role="alert">

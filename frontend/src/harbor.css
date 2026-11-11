@@ -7092,3 +7092,18 @@ textarea.hb-tpl-input {
 .hb-tcal {
   padding: 0;
 }
+/* The calendar's controls, sitting in the Tasks filter row */
+.hb-tcal-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.hb-tcal-slot .hb-tcal-nav {
+  gap: 0;
+}
+.hb-tcal-slot .hb-tcal-label {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-right: 4px;
+}
