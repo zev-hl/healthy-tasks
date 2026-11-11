@@ -53,12 +53,7 @@ function renderWithSidebar(ui: ReactElement) {
 
 let confirm: ReturnType<typeof vi.fn>;
 
-const backdrop = () => document.querySelector('.modal-backdrop') as HTMLElement;
-const clickBackdrop = () => {
-  fireEvent.mouseDown(backdrop());
-  fireEvent.click(backdrop());
-};
-// Goals open in the side panel (no pop-up): its × button is the way out.
+// Goals and users open in a side panel (no pop-up): its × button is the way out.
 const clickClose = () => fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 const clickCancel = () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 beforeEach(() => {
