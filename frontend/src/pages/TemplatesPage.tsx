@@ -63,14 +63,13 @@ import {
   Pill,
   PriorityMark,
   Segmented,
-  Tile,
   cx,
   type Tone,
 } from '../components/harbor/ui';
 
 /**
- * Templates, Harbor redesign. The list is a card of templates with filter
- * tiles and a side panel (how templates work, the repeating schedules). The
+ * Templates, Harbor redesign. The list is a searchable card of templates
+ * with a side panel (how templates work, the repeating schedules). The
  * editor follows the task page: the template's details and its task tree on
  * the left, how it repeats and what it makes on the right, and one Save bar.
  * Each task in the tree is a row (drag handle, name, its settings as chips)
@@ -254,8 +253,6 @@ function offsetsLabel(start: number | null, due: number | null): string | null {
   return null;
 }
 
-type ListFilter = 'all' | 'repeating' | 'once' | 'paused';
-
 // --- Page ------------------------------------------------------------------
 
 export function TemplatesPage() {
@@ -267,7 +264,6 @@ export function TemplatesPage() {
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [instantiating, setInstantiating] = useState<TemplateDto | null>(null);
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
-  const [filter, setFilter] = useState<ListFilter>('all');
   const [q, setQ] = useState('');
 
   const load = () => {
@@ -332,37 +328,17 @@ export function TemplatesPage() {
     }
   }
 
-  const counts = useMemo(
-    () => ({
-      all: list.length,
-      repeating: list.filter((t) => t.recurrenceType !== 'None').length,
-      once: list.filter((t) => t.recurrenceType === 'None').length,
-      paused: list.filter((t) => t.recurrenceType !== 'None' && !t.isActive).length,
-      made: list.reduce((s, t) => s + t.occurrenceCount, 0),
-    }),
-    [list],
-  );
+  const made = list.reduce((sum, t) => sum + t.occurrenceCount, 0);
   const shown = useMemo(() => {
     const text = q.trim().toLowerCase();
-    return list
-      .filter((t) =>
-        filter === 'repeating'
-          ? t.recurrenceType !== 'None'
-          : filter === 'once'
-            ? t.recurrenceType === 'None'
-            : filter === 'paused'
-              ? t.recurrenceType !== 'None' && !t.isActive
-              : true,
-      )
-      .filter(
-        (t) =>
-          !text ||
-          t.name.toLowerCase().includes(text) ||
-          (t.description ?? '').toLowerCase().includes(text),
-      );
-  }, [list, filter, q]);
+    return list.filter(
+      (t) =>
+        !text ||
+        t.name.toLowerCase().includes(text) ||
+        (t.description ?? '').toLowerCase().includes(text),
+    );
+  }, [list, q]);
   const repeating = list.filter((t) => t.recurrenceType !== 'None');
-  const toggle = (f: ListFilter) => setFilter((cur) => (cur === f ? 'all' : f));
 
   if (editor) {
     return (
@@ -410,56 +386,19 @@ export function TemplatesPage() {
           </div>
         )}
 
-        <div className="hb-tiles">
-          <Tile
-            label="All templates"
-            value={counts.all}
-            hint="Every template"
-            pressed={filter === 'all' ? undefined : false}
-            onClick={() => setFilter('all')}
-          />
-          <Tile
-            label="Repeating"
-            value={counts.repeating}
-            tone="blue"
-            hint="Make tasks on a schedule"
-            pressed={filter === 'repeating'}
-            onClick={() => toggle('repeating')}
-          />
-          <Tile
-            label="One-off"
-            value={counts.once}
-            hint="Used when you need them"
-            pressed={filter === 'once'}
-            onClick={() => toggle('once')}
-          />
-          <Tile
-            label="Paused"
-            value={counts.paused}
-            tone={counts.paused ? 'amber' : undefined}
-            hint="Repeats switched off"
-            pressed={filter === 'paused'}
-            onClick={() => toggle('paused')}
-          />
-        </div>
-
         <div className="hb-cols">
           <div className="hb-col">
             <Card className="hb-tpl-list">
               <CardHead
                 icon={<FileStack size={16} aria-hidden="true" />}
-                title={
-                  filter === 'all'
-                    ? 'Templates'
-                    : filter === 'repeating'
-                      ? 'Repeating templates'
-                      : filter === 'once'
-                        ? 'One-off templates'
-                        : 'Paused templates'
-                }
+                title="Templates"
                 right={
                   <span className="hb-small">
-                    {loading ? 'Loading…' : `${shown.length} of ${list.length}`}
+                    {loading
+                      ? 'Loading…'
+                      : q.trim()
+                        ? `${shown.length} of ${list.length}`
+                        : plural(list.length, 'template')}
                   </span>
                 }
               />
@@ -477,7 +416,7 @@ export function TemplatesPage() {
                   </Btn>
                 </div>
               ) : shown.length === 0 ? (
-                <Empty>No templates match{q.trim() ? ` “${q.trim()}”` : ' this filter'}.</Empty>
+                <Empty>No templates match{q.trim() ? ` “${q.trim()}”` : ''}.</Empty>
               ) : (
                 <div role="list">
                   {shown.map((t) => (
@@ -559,8 +498,8 @@ export function TemplatesPage() {
                 icon={<Repeat size={16} aria-hidden="true" />}
                 title="Repeating schedules"
                 right={
-                  counts.made > 0 ? (
-                    <span className="hb-small">Used {plural(counts.made, 'time')} in all</span>
+                  made > 0 ? (
+                    <span className="hb-small">Used {plural(made, 'time')} in all</span>
                   ) : undefined
                 }
               />
