@@ -90,6 +90,50 @@ beforeEach(() => {
   m(api.listDepartments).mockResolvedValue(DEPARTMENTS);
 });
 
+describe('OrganizationPage — which person the panel opens on', () => {
+  // Abe sorts first and is editable but holds nothing; Ana holds Buy Box Recovery.
+  const abe = ana({
+    id: 'u-abe',
+    firstName: 'Abe',
+    lastName: 'Adams',
+    dutyIds: [],
+    alertTaskPicks: [],
+  });
+  const panelName = () =>
+    screen.getByRole('complementary', { name: 'Person details' }).querySelector('.dd-pp-name')
+      ?.textContent;
+
+  async function open(url: string, people: OrgPersonDto[]) {
+    m(api.getOrg).mockResolvedValue({ people, scope: 'all' });
+    renderWithDataRouter(<OrganizationPage />, {
+      path: '/admin/organization',
+      initialEntries: [url],
+    });
+    await settle();
+  }
+
+  it('a duty link opens on someone who holds that duty', async () => {
+    await open('/admin/organization?view=duty&duty=d-bbr', [abe, ana()]);
+    expect(panelName()).toBe('Ana Khan');
+  });
+
+  it('a duty no one holds opens on nobody', async () => {
+    await open('/admin/organization?view=duty&duty=d-pm', [abe, ana({ dutyIds: ['d-bbr'] })]);
+    expect(screen.queryByRole('complementary', { name: 'Person details' })).toBeNull();
+    expect(screen.getByText('Select a person.')).toBeInTheDocument();
+  });
+
+  it('a person named in the link still wins', async () => {
+    await open('/admin/organization?view=duty&duty=d-bbr&person=u-abe', [abe, ana()]);
+    expect(panelName()).toBe('Abe Adams');
+  });
+
+  it('without a link, opens on the first person the viewer can edit', async () => {
+    await open('/admin/organization', [ana({ canEditDuties: false }), abe]);
+    expect(panelName()).toBe('Abe Adams');
+  });
+});
+
 describe('OrganizationPage — duties Alert Task Setup needs', () => {
   it('warns under a needed duty as soon as it is unticked, and keeps Save off', async () => {
     await renderPage({ people: [ana()], scope: 'all' });
