@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HL Central Insights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1F7;--surface:#FFFFFF;--text:#0F1B2D;--text-2:#3F4F66;--muted:#5A6B82;
+  --line:#D7DEE8;--row:#D3DAE5;--track:#E6EBF2;--head:#F4F7FB;
+  --accent:#1F5FBF;--accent-dk:#174A96;--accent-soft:#DCE8F8;
+  --side:#14264A;--side-text:#C9D4E8;--side-muted:#B9C6DE;--side-line:rgba(255,255,255,.12);
+  --red:#B42318;--red-soft:#FCE8E6;--red-line:#E5B4B4;
+  --amber:#7A4D00;--amber-soft:#FFF0CC;--amber-line:#EAD2A2;--amber-bar:#B86E00;
+  --green:#1B6B2E;--green-soft:#E3F3E6;
+  --ok-fill:#3F9A57; /* on time: validated against --red for CVD (ΔE 10.9) */
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:14px/1.45 'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;text-align:left}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* shell */
+.shell{display:flex;min-height:100vh;background:linear-gradient(to right,var(--side) 220px,var(--bg) 220px)}
+.side{flex:0 0 220px;position:sticky;top:0;height:100vh;background:var(--side);display:flex;flex-direction:column;gap:2px;padding:16px 12px;color:var(--side-text)}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 6px 18px;color:#fff}
+.logo{width:36px;height:36px;border-radius:10px;background:#fff;color:var(--side);display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.brand b{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.nav{display:flex;align-items:center;gap:12px;height:40px;padding:0 12px;border-radius:999px;font-size:14px;font-weight:500;color:var(--side-text);text-decoration:none}
+.nav:hover{background:rgba(255,255,255,.12);color:#fff}
+.nav[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff;font-weight:600;box-shadow:inset 3px 0 0 #7FB0FF}
+.nav .new{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:999px;background:#7FB0FF;color:var(--side)}
+.spacer{flex:1}
+.acct{display:flex;align-items:center;gap:10px;padding:14px 8px 6px;border-top:1px solid var(--side-line);margin-top:8px;color:#fff}
+.acct .av{width:32px;height:32px}
+.acct span{display:flex;flex-direction:column;font-size:14px;font-weight:600}
+.acct small{font-size:12px;font-weight:400;color:var(--side-muted)}
+
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;padding:14px 32px;background:var(--surface);border-bottom:1px solid var(--line)}
+.title{display:flex;flex-direction:column;gap:2px;margin-right:8px}
+.title h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.title span{font-size:13px;color:var(--muted)}
+.segc{display:flex;gap:2px;padding:3px;border-radius:10px;background:var(--track)}
+.segc button{height:34px;padding:0 14px;border:0;border-radius:8px;background:transparent;font-size:13px;font-weight:500;color:var(--text-2);cursor:pointer;white-space:nowrap}
+.segc button[aria-pressed="true"]{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(15,27,45,.12)}
+.chipsel{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:14px;font-weight:500;cursor:pointer;color:var(--text);white-space:nowrap}
+.chipsel .k{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.chipsel svg{color:var(--muted)}
+.grow{flex:1}
+.btn2{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-size:13px;font-weight:600;color:var(--text-2);cursor:pointer}
+.iconbtn{position:relative;width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;color:var(--text-2)}
+.iconbtn .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:50%;background:#D92D20;border:2px solid #fff}
+
+.content{padding:20px 32px 40px;display:flex;flex-direction:column;gap:20px;max-width:1760px;width:100%}
+.periodline{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px}
+.periodline h2{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}
+.periodline span{font-size:13px;color:var(--muted)}
+
+/* KPI tiles */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{display:flex;flex-direction:column;gap:4px;padding:14px 16px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);cursor:pointer;transition:border-color .12s ease,box-shadow .12s ease;min-width:0}
+.kpi:hover{border-color:#B9C4D4;box-shadow:0 4px 14px rgba(15,27,45,.06)}
+.kpi:hover .kpi-drill{color:var(--accent-dk)}
+.kpi-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;font-weight:600;color:var(--text-2)}
+.kpi-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;min-height:36px}
+.kpi-value{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15;white-space:nowrap}
+.kpi-value small{font-size:15px;font-weight:600;color:var(--text-2);letter-spacing:0;margin-left:2px}
+.spark{width:96px;height:30px;flex:none;margin-bottom:3px}
+.kpi-delta{display:flex;align-items:center;gap:4px;font-size:12px;flex-wrap:wrap}
+.kpi-delta b{font-weight:700}
+.kpi-delta span{color:var(--muted);margin-left:2px}
+.kpi-delta.good{color:var(--green)}
+.kpi-delta.bad{color:var(--red)}
+.kpi-delta.flat{color:var(--text-2)}
+.kpi-delta sup{color:var(--muted);font-size:11px}
+.kpi-sub{font-size:12px;color:var(--text-2)}
+.kpi-drill{display:flex;align-items:center;gap:4px;margin-top:6px;padding-top:8px;border-top:1px solid var(--track);font-size:12px;font-weight:600;color:var(--muted)}
+.kpi-job{border-style:dashed;border-color:#B9C4D4;background:#FAFBFD}
+.kpi-job .kpi-value,.kpi-job .kpi-delta{opacity:.55}
+.jobtag{font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:1px 7px;border-radius:999px;background:var(--track);color:var(--text-2)}
+
+/* cards */
+.grid2{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:16px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;min-width:0}
+.chead{display:flex;align-items:center;gap:10px;padding:14px 18px 10px;flex-wrap:wrap}
+.tileic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none}
+.tileic.blue{background:var(--accent-soft);color:var(--accent-dk)}
+.tileic.red{background:var(--red-soft);color:var(--red)}
+.tileic.grey{background:var(--track);color:var(--text-2)}
+.tileic.green{background:var(--green-soft);color:var(--green)}
+.chead h3{margin:0;font-size:15px;font-weight:600}
+.chead .hint{font-size:12px;color:var(--muted)}
+.chead .right{margin-left:auto;font-size:13px;font-weight:600;color:var(--accent-dk);text-decoration:none}
+.cbody{padding:4px 18px 16px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--text-2);padding:0 18px 4px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* throughput columns */
+.plot{position:relative;height:220px;margin:12px 0 26px 28px}
+.gl{position:absolute;left:0;right:0;border-top:1px solid #E6EBF2}
+.gl span{position:absolute;left:-28px;top:-8px;width:22px;text-align:right;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.gl:first-child{border-top-color:#B9C4D4}
+.cols{position:absolute;inset:0;display:flex;align-items:flex-end;gap:6px;padding:0 4px}
+.col{position:relative;flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;outline-offset:4px}
+.stack{width:min(100%,28px);display:flex;flex-direction:column;gap:2px}
+.stack i{display:block;min-height:2px}
+.seg-ok{background:var(--ok-fill);border-radius:0 0 0 0}
+.seg-late{background:var(--red);border-radius:4px 4px 0 0}
+.partial .seg-ok{background:repeating-linear-gradient(135deg,var(--ok-fill) 0 4px,#8CC69B 4px 7px)}
+.partial .seg-late{background:repeating-linear-gradient(135deg,var(--red) 0 4px,#E39A92 4px 7px)}
+.xl{position:absolute;bottom:-22px;font-size:11px;color:var(--muted);white-space:nowrap}
+.tip{display:none;position:absolute;bottom:calc(100% - 40px);left:50%;transform:translateX(-50%);background:var(--text);color:#fff;font-size:12px;padding:8px 10px;border-radius:8px;white-space:nowrap;z-index:3;flex-direction:column;box-shadow:0 12px 32px rgba(15,27,45,.28)}
+.col:hover .tip,.col:focus .tip{display:flex}
+.col:hover .stack{filter:brightness(1.08)}
+.annot{position:absolute;right:0;top:4px;font-size:12px;color:var(--text-2);background:rgba(255,255,255,.9);padding:2px 0 2px 8px}
+.annot b{color:var(--text)}
+
+/* horizontal bars */
+.hrow,.prow{display:flex;align-items:center;gap:12px;width:100%;border:0;background:transparent;cursor:pointer;border-radius:8px}
+.hrow{padding:7px 8px;margin:0 -8px;width:calc(100% + 16px)}
+.hrow:hover,.prow:hover{background:#F6F8FB}
+.hl{width:96px;flex:none;font-size:13px;color:var(--text-2)}
+.hbar,.mbar,.pbar{position:relative;flex:1;height:10px;border-radius:5px;background:var(--track);min-width:40px}
+.hbar i,.mbar i,.pbar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}
+.red{background:var(--red)}.blue{background:var(--accent)}.amber{background:var(--amber-bar)}
+.hv{width:24px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.subhead{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;margin:14px 0 6px}
+.owners{display:flex;flex-wrap:wrap;gap:6px}
+.owner{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px 0 3px;border-radius:999px;border:1px solid var(--line);font-size:13px;background:var(--surface);cursor:pointer}
+.owner b{color:var(--red);font-weight:700}
+.av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:700;color:var(--text);flex:none}
+
+/* table */
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:820px}
+th{background:var(--head);height:40px;padding:0 12px;font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--muted);text-align:left;white-space:nowrap;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+th.num,td.num{text-align:right}
+td{padding:11px 12px;border-bottom:1px solid var(--row);font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#F8FAFC}
+tbody tr:last-child td{border-bottom:0}
+tfoot td{border-top:1px solid var(--line);border-bottom:0;font-weight:600;background:#FAFBFD}
+.dept{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.dept i{width:10px;height:10px;border-radius:50%}
+.cell-bar{display:flex;align-items:center;gap:8px;min-width:150px}
+.cell-bar .mbar{height:8px}
+.cell-bar b{font-weight:600;min-width:34px;text-align:right}
+.muted{color:var(--muted)}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px}
+.pill.red{background:var(--red-soft);color:var(--red)}
+.pill.amber{background:var(--amber-soft);color:var(--amber)}
+.pill.grey{background:var(--track);color:var(--text-2)}
+.ok{font-size:12px;color:var(--green);font-weight:500}
+
+/* people hours */
+.prow{padding:8px 8px;margin:0 -8px;width:calc(100% + 16px)}
+.prow+.prow{border-top:1px solid var(--track)}
+.prow .av{width:28px;height:28px;font-size:11px}
+.pn{display:flex;flex-direction:column;width:120px;flex:none;line-height:1.25}
+.pn b{font-weight:600;font-size:14px}
+.pn span{font-size:12px;color:var(--muted)}
+.pbar{height:10px}
+.pbar em{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--text);border-radius:1px}
+.pv{width:82px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
+.pv b{font-weight:700}
+.pv span{color:var(--muted);margin-left:3px}
+.pflag{width:156px;flex:none;text-align:right}
+
+/* goals + coverage */
+.stagebar{display:flex;gap:2px;height:28px;margin:6px 0 10px}
+.stagebar i{display:flex;align-items:center;padding-left:8px;font-size:12px;font-weight:700;font-style:normal;border-radius:4px;min-width:0}
+.stagelegend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--text-2)}
+.stagelegend span{display:inline-flex;align-items:center;gap:6px}
+.stagelegend i{width:10px;height:10px;border-radius:3px}
+.reslist{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+.res{border:1px solid var(--line);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column}
+.res b{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.res span{font-size:12px;color:var(--text-2)}
+.flagline{display:flex;align-items:center;gap:8px;margin-top:12px;padding:9px 12px;border-radius:10px;background:var(--amber-soft);border:1px solid var(--amber-line);color:var(--amber);font-size:13px}
+.flagline b{font-weight:700}
+.side-stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.duty{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--row);font-size:14px}
+.duty:first-of-type{border-top:0}
+.duty .crumb{color:var(--muted)}
+.duty .pill{margin-left:auto}
+.note{font-size:12px;color:var(--muted);margin-top:8px}
+.foot{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 18px}
+
+/* responsive */
+@media (max-width:1180px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:819px){
+  .shell{flex-direction:column;background:var(--bg)}
+  .side{position:sticky;top:0;z-index:5;flex:none;height:auto;flex-direction:row;align-items:center;padding:8px;gap:2px;overflow-x:auto}
+  .brand{padding:0 4px 0 0}.brand b,.nav span,.nav .new,.spacer,.acct span{display:none}
+  .nav{width:38px;padding:0;justify-content:center;flex:none}
+  .nav[aria-current="page"]{box-shadow:inset 0 -3px 0 #7FB0FF}
+  .acct{margin:0 0 0 auto;padding:0;border-top:0}
+  .top{padding:12px 16px}
+  .top .grow,.iconbtn,.btn2{display:none}
+  .title{width:100%}
+  .segc{flex:1 1 100%}.segc button{flex:1;padding:0 8px}
+  .chipsel{flex:1 1 100%}
+  .content{padding:16px 16px 32px;gap:16px}
+  .kpis{gap:10px}
+  .kpi{padding:12px}
+  .kpi-row{flex-direction:column;align-items:flex-start;gap:2px}
+  .spark{width:100%;height:24px}
+  .kpi-value{font-size:24px}
+  .plot{height:180px}
+  .col.odd .xl{display:none}
+  .cols{gap:3px}
+  .annot{display:none}
+  .reslist{grid-template-columns:repeat(2,1fr)}
+  .prow{flex-wrap:wrap;row-gap:4px}
+  .pn{width:auto;flex:1}
+  .pbar{order:5;flex:1 1 100%;margin-left:40px}
+  .pflag{order:6;flex:1 1 100%;margin-left:40px;text-align:left}
+  .pv{width:auto}
+  .chead .right{margin-left:0;width:100%}
+}
+</style></head>
+<body>
+<div class="shell">
+  <nav class="side" aria-label="Main">
+    <a class="brand"><span class="logo">HL</span><b>HL Central</b></a>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Dashboard</span></a>
+    <a class="nav" href="#" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><span>Insights</span><em class="new" style="font-style:normal">New</em></a>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg><span>Tasks</span></a>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Time</span></a>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>Goals</span></a>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>People</span></a>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg><span>Settings</span></a>
+    <div class="spacer"></div>
+    <a class="nav" href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="5" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="19" cy="5" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="19" r="1"/><circle cx="12" cy="19" r="1"/><circle cx="19" cy="19" r="1"/></svg><span>All apps</span></a>
+    <div class="acct"><span class="av" style="background:#FFE0C7;color:#7A3A00">ZH</span><span>Zev H.<small>Manager</small></span></div>
+  </nav>
+  <main>
+    <header class="top">
+      <div class="title"><h1>Insights</h1><span>Team KPIs for everyone in your departments · 7 people</span></div>
+      <div class="segc" role="group" aria-label="Period">
+        <button type="button" aria-pressed="false">This week</button>
+        <button type="button" aria-pressed="true">This month</button>
+        <button type="button" aria-pressed="false">This quarter</button>
+      </div>
+      <button class="chipsel" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg><span class="k">Department</span>All departments <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <div class="grow"></div>
+      <button class="btn2" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>Export</button>
+      <span class="iconbtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="dot"></span></span>
+    </header>
+
+    <div class="content">
+      <div class="periodline"><h2>November so far · Nov 1 – 11</h2><span>Compared with the same days last month (Oct 1 – 11). Click any number to see what's behind it.</span></div>
+
+      <section class="kpis" aria-label="Key numbers"><button class="kpi" type="button" aria-label="On-time completion: 86%. See the 9 finished late">
+    <span class="kpi-label">On-time completion</span>
+    <span class="kpi-row"><span class="kpi-value">86<small>%</small></span><svg class="spark" viewBox="0 0 120 32" aria-hidden="true"><path d="M3.0 18.9 L13.4 7.3 L23.7 29.0 L34.1 14.6 L44.5 8.8 L54.8 13.1 L65.2 18.9 L75.5 7.3 L85.9 16.0 L96.3 5.9 L106.6 10.2 L117.0 3.0" fill="none" stroke="#9AA7B8" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="117" cy="3" r="3" fill="#1F5FBF" stroke="#fff" stroke-width="1.5"/></svg></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg><b>+5 pts</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">55 of 64 done by their due date</span>
+    <span class="kpi-drill">See the 9 finished late <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi" type="button" aria-label="Tasks completed: 64. Open completed tasks">
+    <span class="kpi-label">Tasks completed</span>
+    <span class="kpi-row"><span class="kpi-value">64<small></small></span><svg class="spark" viewBox="0 0 120 32" aria-hidden="true"><path d="M3.0 29.0 L14.4 24.7 L25.8 29.0 L37.2 16.0 L48.6 29.0 L60.0 11.7 L71.4 29.0 L82.8 20.3 L94.2 20.3 L105.6 11.7 L117.0 3.0" fill="none" stroke="#9AA7B8" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="117" cy="3" r="3" fill="#1F5FBF" stroke="#fff" stroke-width="1.5"/></svg></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg><b>+12%</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">57 in the same days of October</span>
+    <span class="kpi-drill">Open completed tasks <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi" type="button" aria-label="Median cycle time: 3.2 days. Slowest tasks first">
+    <span class="kpi-label">Median cycle time</span>
+    <span class="kpi-row"><span class="kpi-value">3.2<small> days</small></span><svg class="spark" viewBox="0 0 120 32" aria-hidden="true"><path d="M3.0 6.5 L13.4 11.7 L23.7 3.0 L34.1 15.1 L44.5 13.4 L54.8 16.9 L65.2 9.9 L75.5 18.6 L85.9 15.1 L96.3 22.1 L106.6 25.5 L117.0 29.0" fill="none" stroke="#9AA7B8" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="117" cy="29" r="3" fill="#1F5FBF" stroke="#fff" stroke-width="1.5"/></svg></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg><b>−0.7 days</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">Created → Completed, 64 tasks</span>
+    <span class="kpi-drill">Slowest tasks first <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi" type="button" aria-label="Overdue now: 11. Open overdue tasks">
+    <span class="kpi-label">Overdue now</span>
+    <span class="kpi-row"><span class="kpi-value">11<small></small></span></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg><b>−3</b><span>since Nov 1 <sup title="Needs a backend job">†</sup></span></span>
+    <span class="kpi-sub">11% of 96 open · oldest 34 days</span>
+    <span class="kpi-drill">Open overdue tasks <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi" type="button" aria-label="Hours logged: 90%. Time › Review">
+    <span class="kpi-label">Hours logged</span>
+    <span class="kpi-row"><span class="kpi-value">90<small>%</small></span><svg class="spark" viewBox="0 0 120 32" aria-hidden="true"><path d="M3.0 14.1 L13.4 6.7 L23.7 25.3 L34.1 3.0 L44.5 17.9 L54.8 10.4 L65.2 29.0 L75.5 21.6 L85.9 14.1 L96.3 6.7 L106.6 3.0 L117.0 10.4" fill="none" stroke="#9AA7B8" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="117" cy="10.428571428571427" r="3" fill="#1F5FBF" stroke="#fff" stroke-width="1.5"/></svg></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg><b>+4 pts</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">401h of 448h expected (8h × weekday)</span>
+    <span class="kpi-drill">Time › Review <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi" type="button" aria-label="Timesheets submitted: 88%. See the missing days">
+    <span class="kpi-label">Timesheets submitted</span>
+    <span class="kpi-row"><span class="kpi-value">88<small>%</small></span><svg class="spark" viewBox="0 0 120 32" aria-hidden="true"><path d="M3.0 5.9 L13.4 11.7 L23.7 17.4 L34.1 3.0 L44.5 8.8 L54.8 14.6 L65.2 11.7 L75.5 8.8 L85.9 17.4 L96.3 14.6 L106.6 20.3 L117.0 29.0" fill="none" stroke="#9AA7B8" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/><circle cx="117" cy="29" r="3" fill="#1F5FBF" stroke="#fff" stroke-width="1.5"/></svg></span>
+    <span class="kpi-delta bad"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg><b>−4 pts</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">7 of 56 person-days not marked complete</span>
+    <span class="kpi-drill">See the missing days <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi" type="button" aria-label="Goals met or exceeded: 4 of 5. Goals › Team goals">
+    <span class="kpi-label">Goals met or exceeded</span>
+    <span class="kpi-row"><span class="kpi-value">4<small> of 5</small></span></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg><b>+30 pts</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">80% of goals resolved this month</span>
+    <span class="kpi-drill">Goals › Team goals <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button><button class="kpi kpi-job" type="button" aria-label="Review turnaround: 1.6 days. Tasks waiting longest">
+    <span class="kpi-label">Review turnaround<span class="jobtag">Needs backend job</span></span>
+    <span class="kpi-row"><span class="kpi-value">1.6<small> days</small></span></span>
+    <span class="kpi-delta good"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg><b>−0.3 days</b><span>vs Oct 1 – 11</span></span>
+    <span class="kpi-sub">Median, sent to review → reviewed</span>
+    <span class="kpi-drill">Tasks waiting longest <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></span>
+  </button></section>
+
+      <div class="grid2">
+        <section class="card">
+          <div class="chead"><span class="tileic blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h3v-5H7z"/><path d="M12 16h3V7h-3z"/><path d="M17 16h3v-8h-3z"/></svg></span><h3>Completed per week</h3><span class="hint">Last 12 weeks · Sun–Sat</span><a class="right" href="#">Open completed tasks</a></div>
+          <div class="legend"><span><i style="background:var(--ok-fill)"></i>On time</span><span><i style="background:var(--red)"></i>Late</span><span><i style="background:repeating-linear-gradient(135deg,#9AA7B8 0 3px,#D7DEE8 3px 5px)"></i>Week so far</span></div>
+          <div class="cbody">
+            <div class="plot"><div class="gl" style="bottom:0%"><span>0</span></div><div class="gl" style="bottom:20%"><span>5</span></div><div class="gl" style="bottom:40%"><span>10</span></div><div class="gl" style="bottom:60%"><span>15</span></div><div class="gl" style="bottom:80%"><span>20</span></div><div class="gl" style="bottom:100%"><span>25</span></div><div class="annot"><b>Week of Nov 1:</b> 18 on time · 3 late</div><div class="cols"><div class="col" tabindex="0">
+      <div class="stack" style="height:60%">
+        <i class="seg-late" style="flex:3"></i><i class="seg-ok" style="flex:12"></i>
+      </div>
+      <span class="tip"><b>Week of Aug 23</b>12 on time · 3 late · 80% on time</span>
+      <span class="xl">Aug 23</span>
+    </div><div class="col odd" tabindex="0">
+      <div class="stack" style="height:64%">
+        <i class="seg-late" style="flex:2"></i><i class="seg-ok" style="flex:14"></i>
+      </div>
+      <span class="tip"><b>Week of Aug 30</b>14 on time · 2 late · 88% on time</span>
+      <span class="xl">Aug 30</span>
+    </div><div class="col" tabindex="0">
+      <div class="stack" style="height:60%">
+        <i class="seg-late" style="flex:4"></i><i class="seg-ok" style="flex:11"></i>
+      </div>
+      <span class="tip"><b>Week of Sep 6</b>11 on time · 4 late · 73% on time</span>
+      <span class="xl">Sep 6</span>
+    </div><div class="col odd" tabindex="0">
+      <div class="stack" style="height:72%">
+        <i class="seg-late" style="flex:3"></i><i class="seg-ok" style="flex:15"></i>
+      </div>
+      <span class="tip"><b>Week of Sep 13</b>15 on time · 3 late · 83% on time</span>
+      <span class="xl">Sep 13</span>
+    </div><div class="col" tabindex="0">
+      <div class="stack" style="height:60%">
+        <i class="seg-late" style="flex:2"></i><i class="seg-ok" style="flex:13"></i>
+      </div>
+      <span class="tip"><b>Week of Sep 20</b>13 on time · 2 late · 87% on time</span>
+      <span class="xl">Sep 20</span>
+    </div><div class="col odd" tabindex="0">
+      <div class="stack" style="height:76%">
+        <i class="seg-late" style="flex:3"></i><i class="seg-ok" style="flex:16"></i>
+      </div>
+      <span class="tip"><b>Week of Sep 27</b>16 on time · 3 late · 84% on time</span>
+      <span class="xl">Sep 27</span>
+    </div><div class="col" tabindex="0">
+      <div class="stack" style="height:60%">
+        <i class="seg-late" style="flex:3"></i><i class="seg-ok" style="flex:12"></i>
+      </div>
+      <span class="tip"><b>Week of Oct 4</b>12 on time · 3 late · 80% on time</span>
+      <span class="xl">Oct 4</span>
+    </div><div class="col odd" tabindex="0">
+      <div class="stack" style="height:68%">
+        <i class="seg-late" style="flex:2"></i><i class="seg-ok" style="flex:15"></i>
+      </div>
+      <span class="tip"><b>Week of Oct 11</b>15 on time · 2 late · 88% on time</span>
+      <span class="xl">Oct 11</span>
+    </div><div class="col" tabindex="0">
+      <div class="stack" style="height:68%">
+        <i class="seg-late" style="flex:3"></i><i class="seg-ok" style="flex:14"></i>
+      </div>
+      <span class="tip"><b>Week of Oct 18</b>14 on time · 3 late · 82% on time</span>
+      <span class="xl">Oct 18</span>
+    </div><div class="col odd" tabindex="0">
+      <div class="stack" style="height:76%">
+        <i class="seg-late" style="flex:2"></i><i class="seg-ok" style="flex:17"></i>
+      </div>
+      <span class="tip"><b>Week of Oct 25</b>17 on time · 2 late · 89% on time</span>
+      <span class="xl">Oct 25</span>
+    </div><div class="col" tabindex="0">
+      <div class="stack" style="height:84%">
+        <i class="seg-late" style="flex:3"></i><i class="seg-ok" style="flex:18"></i>
+      </div>
+      <span class="tip"><b>Week of Nov 1</b>18 on time · 3 late · 86% on time</span>
+      <span class="xl">Nov 1</span>
+    </div><div class="col partial odd" tabindex="0">
+      <div class="stack" style="height:44%">
+        <i class="seg-late" style="flex:1"></i><i class="seg-ok" style="flex:10"></i>
+      </div>
+      <span class="tip"><b>Week of Nov 8 (so far)</b>10 on time · 1 late · 91% on time</span>
+      <span class="xl">Nov 8</span>
+    </div></div></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="chead"><span class="tileic red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M5 3 2 6"/><path d="m22 6-3-3"/></svg></span><h3>Overdue, by how late</h3><span class="hint">11 open tasks</span></div>
+          <div class="cbody">
+            <button class="hrow" type="button"><span class="hl">1–3 days</span><span class="hbar"><i style="width:100%" class="red"></i></span><span class="hv">4</span></button><button class="hrow" type="button"><span class="hl">4–7 days</span><span class="hbar"><i style="width:75%" class="red"></i></span><span class="hv">3</span></button><button class="hrow" type="button"><span class="hl">8–14 days</span><span class="hbar"><i style="width:50%" class="red"></i></span><span class="hv">2</span></button><button class="hrow" type="button"><span class="hl">15–30 days</span><span class="hbar"><i style="width:25%" class="red"></i></span><span class="hv">1</span></button><button class="hrow" type="button"><span class="hl">Over 30 days</span><span class="hbar"><i style="width:25%" class="red"></i></span><span class="hv">1</span></button>
+            <div class="subhead">Who holds them</div>
+            <div class="owners"><button class="owner" type="button"><span class="av" style="background:#FFE0C7">PS</span>Priya S. <b>4</b></button><button class="owner" type="button"><span class="av" style="background:#E8E2F8">AP</span>Ava P. <b>3</b></button><button class="owner" type="button"><span class="av" style="background:#D4E3F7">MT</span>Marco T. <b>2</b></button><button class="owner" type="button"><span class="av" style="background:#D8F0DF">LM</span>Lea M. <b>1</b></button><button class="owner" type="button"><span class="av" style="background:#FFF0CC">SW</span>Sam W. <b>1</b></button></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="chead"><span class="tileic grey"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg></span><h3>By department</h3><span class="hint">Click a row to scope the whole page to it</span></div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Department</th><th class="num">People</th><th>Open tasks</th><th class="num">Overdue</th><th class="num">Done</th><th class="num">On time</th><th class="num">Cycle time</th><th>Hours logged / expected</th><th class="num">Timesheets</th></tr></thead>
+          <tbody><tr tabindex="0">
+  <td><span class="dept"><i style="background:#0f7b6c"></i>Operations</span></td>
+  <td class="num">3</td>
+  <td><span class="cell-bar"><span class="mbar"><i class="blue" style="width:100%"></i></span><b>44</b></span></td>
+  <td class="num"><span class="pill red">6</span></td>
+  <td class="num">29</td>
+  <td class="num">83%</td>
+  <td class="num">3.6 d</td>
+  <td><span class="cell-bar"><span class="mbar"><i class="blue" style="width:89.58333333333334%"></i></span><b>172h</b><span class="muted">/ 192h</span></span></td>
+  <td class="num">20 / 24</td>
+</tr><tr tabindex="0">
+  <td><span class="dept"><i style="background:#7857c8"></i>Finance</span></td>
+  <td class="num">2</td>
+  <td><span class="cell-bar"><span class="mbar"><i class="blue" style="width:61.36363636363637%"></i></span><b>27</b></span></td>
+  <td class="num"><span class="">2</span></td>
+  <td class="num">19</td>
+  <td class="num">95%</td>
+  <td class="num">2.4 d</td>
+  <td><span class="cell-bar"><span class="mbar"><i class="blue" style="width:92.1875%"></i></span><b>118h</b><span class="muted">/ 128h</span></span></td>
+  <td class="num">15 / 16</td>
+</tr><tr tabindex="0">
+  <td><span class="dept"><i style="background:#b8720a"></i>Purchasing</span></td>
+  <td class="num">2</td>
+  <td><span class="cell-bar"><span class="mbar"><i class="blue" style="width:56.81818181818182%"></i></span><b>25</b></span></td>
+  <td class="num"><span class="">3</span></td>
+  <td class="num">16</td>
+  <td class="num">81%</td>
+  <td class="num">3.5 d</td>
+  <td><span class="cell-bar"><span class="mbar"><i class="blue" style="width:86.71875%"></i></span><b>111h</b><span class="muted">/ 128h</span></span></td>
+  <td class="num">14 / 16</td>
+</tr></tbody>
+          <tfoot><tr><td>All departments</td><td class="num">7</td><td><span class="cell-bar"><span style="flex:1"></span><b>96</b></span></td><td class="num">11</td><td class="num">64</td><td class="num">86%</td><td class="num">3.2 d</td><td><span class="cell-bar"><span style="flex:1"></span><b>401h</b><span class="muted">/ 448h</span></span></td><td class="num">49 / 56</td></tr></tfoot>
+        </table></div>
+      </section>
+
+      <div class="grid2">
+        <section class="card">
+          <div class="chead"><span class="tileic blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span><h3>Hours logged by person</h3><span class="hint">8 weekdays · 64h expected each</span><a class="right" href="#">Open Time › Review</a></div>
+          <div class="legend"><span><i style="background:var(--accent)"></i>Logged</span><span><i style="background:var(--amber-bar)"></i>Under 75% of expected</span><span><i style="background:var(--text);width:2px;height:12px;border-radius:1px"></i>Expected</span></div>
+          <div class="cbody"><button class="prow" type="button">
+    <span class="av" style="background:#D4E3F7">DR</span>
+    <span class="pn"><b>Dana R.</b><span>Operations</span></span>
+    <span class="pbar"><i class="blue" style="width:91.66666666666666%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>66h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="ok">All submitted</span></span>
+  </button><button class="prow" type="button">
+    <span class="av" style="background:#D4E3F7">MT</span>
+    <span class="pn"><b>Marco T.</b><span>Operations</span></span>
+    <span class="pbar"><i class="blue" style="width:84.72222222222221%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>61h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="ok">All submitted</span></span>
+  </button><button class="prow" type="button">
+    <span class="av" style="background:#FFE0C7">PS</span>
+    <span class="pn"><b>Priya S.</b><span>Operations</span></span>
+    <span class="pbar"><i class="amber" style="width:62.5%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>45h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="pill amber">3 days not submitted</span></span>
+  </button><button class="prow" type="button">
+    <span class="av" style="background:#D8F0DF">KO</span>
+    <span class="pn"><b>Ken O.</b><span>Finance</span></span>
+    <span class="pbar"><i class="blue" style="width:86.11111111111111%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>62h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="ok">All submitted</span></span>
+  </button><button class="prow" type="button">
+    <span class="av" style="background:#D8F0DF">LM</span>
+    <span class="pn"><b>Lea M.</b><span>Finance</span></span>
+    <span class="pbar"><i class="blue" style="width:77.77777777777779%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>56h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="pill grey">1 day not submitted</span></span>
+  </button><button class="prow" type="button">
+    <span class="av" style="background:#FFF0CC">SW</span>
+    <span class="pn"><b>Sam W.</b><span>Purchasing</span></span>
+    <span class="pbar"><i class="blue" style="width:81.94444444444444%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>59h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="pill grey">1 day not submitted</span></span>
+  </button><button class="prow" type="button">
+    <span class="av" style="background:#E8E2F8">AP</span>
+    <span class="pn"><b>Ava P.</b><span>Purchasing</span></span>
+    <span class="pbar"><i class="blue" style="width:72.22222222222221%"></i><em style="left:88.88888888888889%"></em></span>
+    <span class="pv"><b>52h</b><span>/ 64h</span></span>
+    <span class="pflag"><span class="pill grey">2 days not submitted</span></span>
+  </button></div>
+        </section>
+
+        <div class="side-stack">
+          <section class="card">
+            <div class="chead"><span class="tileic blue"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span><h3>Goals</h3><span class="hint">16 goals · active + resolved this month</span></div>
+            <div class="cbody">
+              <div class="stagebar" role="img" aria-label="Draft 2, Pending approval 1, Active 6, Under review 2, Resolved 5"><i style="flex:2;background:#86b6ef;color:#0F1B2D" title="Draft: 2">2</i><i style="flex:1;background:#5598e7;color:#0F1B2D" title="Pending approval: 1">1</i><i style="flex:6;background:#2a78d6;color:#fff" title="Active: 6">6</i><i style="flex:2;background:#1c5cab;color:#fff" title="Under review: 2">2</i><i style="flex:5;background:#104281;color:#fff" title="Resolved: 5">5</i></div>
+              <div class="stagelegend"><span><i style="background:#86b6ef"></i>Draft</span><span><i style="background:#5598e7"></i>Pending approval</span><span><i style="background:#2a78d6"></i>Active</span><span><i style="background:#1c5cab"></i>Under review</span><span><i style="background:#104281"></i>Resolved</span></div>
+              <div class="subhead">Resolved this month</div>
+              <div class="reslist">
+                <div class="res"><b>1</b><span>Exceeded</span></div>
+                <div class="res"><b>3</b><span>Met</span></div>
+                <div class="res"><b>1</b><span>Partially met</span></div>
+                <div class="res"><b>0</b><span>Missed</span></div>
+              </div>
+              <div class="flagline"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22"/><path d="M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"/></svg><span><b>2 active goals</b> are past their deadline and not yet sent to review</span></div>
+            </div>
+          </section>
+          <section class="card">
+            <div class="chead"><span class="tileic red"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a6 6 0 0 0-12 0"/><circle cx="12" cy="11" r="4"/><path d="m2 2 20 20"/></svg></span><h3>Duties nobody holds</h3><span class="hint">3 of 41</span><a class="right" href="#">People › Organization</a></div>
+            <div class="cbody">
+              <div class="duty"><span><span class="crumb">Operations ›</span> Night receiving</span><span class="pill grey">2 open tasks</span></div>
+              <div class="duty"><span><span class="crumb">Finance ›</span> Payroll audit</span><span class="pill grey">0 open</span></div>
+              <div class="duty"><span><span class="crumb">Purchasing ›</span> Vendor returns</span><span class="pill red">4 open tasks</span></div>
+              <div class="note">5 more duties are held by one person only.</div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="foot"><span>† Needs a backend job: a daily overdue snapshot (for “since Nov 1”) and review timestamps across tasks (for Review turnaround).</span><span>Expected hours = 8h × weekdays; holidays and leave are not known to HL Central.</span></div>
+    </div>
+  </main>
+</div>
+</body></html>
