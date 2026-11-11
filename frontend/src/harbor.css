@@ -3249,3 +3249,538 @@ input[type='date'] {
 .auth-foot {
   color: var(--muted);
 }
+
+/* --- My Time (redesign) ------------------------------------------------------ */
+.hb-stepper .hb-stepper-today {
+  width: auto;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.hb-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+}
+.hb-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.hb-switch-track {
+  position: relative;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: #c9d0da;
+  transition: background 0.15s ease;
+  flex: none;
+}
+.hb-switch-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 27, 45, 0.2);
+  transition: transform 0.15s ease;
+}
+.hb-switch input:checked + .hb-switch-track {
+  background: var(--accent);
+}
+.hb-switch input:checked + .hb-switch-track::after {
+  transform: translateX(16px);
+}
+.hb-switch input:focus-visible + .hb-switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The timesheet */
+.hb-sheet-card:hover {
+  border-color: var(--border);
+  box-shadow: none;
+}
+.hb-sheet {
+  width: 100%;
+  min-width: 760px;
+  border: 0;
+  border-radius: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.hb-sheet th,
+.hb-sheet td {
+  padding: 0;
+  border-bottom: 1px solid var(--row-line);
+  height: auto;
+  text-align: center;
+  vertical-align: middle;
+}
+.hb-sheet thead th {
+  background: var(--surface-sunk);
+  border-bottom: 1px solid var(--border);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.hb-sheet .hb-sheet-duty {
+  width: 30%;
+  text-align: left;
+  padding: 10px 14px 10px 18px;
+  font-weight: 400;
+  background: var(--surface);
+}
+.hb-sheet thead .hb-sheet-duty {
+  background: var(--surface-sunk);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.hb-sheet-duty .hb-name {
+  display: block;
+  font-size: 14px;
+}
+.hb-sheet-duty .hb-small {
+  display: block;
+  color: var(--warn-deep);
+}
+.hb-sheet-total {
+  width: 84px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface-sunk);
+}
+.hb-sheet thead .hb-sheet-total {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hb-sheet-dayhead {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+}
+.hb-sheet-dayhead:hover:not(:disabled) {
+  background: var(--canvas);
+  color: var(--ink);
+}
+.hb-sheet-dayhead:disabled {
+  cursor: default;
+  opacity: 1;
+}
+.hb-sheet-dayhead .dow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.hb-sheet-dayhead .num {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.hb-today-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.hb-sheet .today {
+  background: var(--accent-tint);
+}
+.hb-sheet thead .today {
+  background: #e3edfb;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.hb-sheet .future {
+  background: repeating-linear-gradient(135deg, #f6f8fb 0 8px, #f1f4f8 8px 16px);
+  color: var(--faint);
+}
+.hb-sheet .weekend:not(.today):not(.future) {
+  background: #fafbfd;
+}
+.hb-sheet-dept th {
+  padding: 8px 18px 6px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--surface);
+  border-bottom: 0;
+}
+.hb-sheet-dept th .hb-dot {
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+.hb-cell {
+  display: grid;
+  place-items: center;
+  width: calc(100% - 8px);
+  height: 36px;
+  margin: 4px;
+  padding: 0;
+  border: 1px dashed transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--faint);
+  font-size: 14px;
+  font-weight: 600;
+}
+button.hb-cell:hover {
+  border-color: var(--border-dashed);
+  background: var(--surface);
+  color: var(--accent-deep);
+}
+.hb-cell.has {
+  color: var(--ink);
+  background: rgba(220, 232, 248, 0.55);
+}
+button.hb-cell.has:hover {
+  background: var(--accent-soft);
+}
+.hb-cell.editing {
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--surface);
+}
+.hb-cell.static {
+  font-weight: 500;
+}
+.hb-cell.static.has {
+  background: transparent;
+}
+.hb-sheet tfoot th {
+  text-align: left;
+  padding: 10px 14px 10px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: var(--surface-sunk);
+}
+.hb-sheet-sum td {
+  padding: 8px 8px 6px;
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--surface-sunk);
+}
+.hb-sheet-sum td .hb-bar {
+  margin-top: 6px;
+  height: 5px;
+}
+.hb-sheet-status td {
+  padding: 8px 4px;
+  border-bottom: 0;
+}
+.hb-daybtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.hb-daybtn:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+.hb-daybtn.done {
+  border-color: var(--ok-line);
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.hb-daybtn.done:hover {
+  background: var(--ok-soft);
+  color: var(--ok-deep);
+}
+.hb-daybtn.late {
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.hb-daybtn.late:hover {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+}
+.hb-sheet-note {
+  margin: 0;
+  padding: 10px 18px;
+  border-top: 1px solid var(--row-line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* The in-cell editor */
+.hb-cell-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px;
+}
+.hb-cell-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.hb-cell-hm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hb-cell-hm label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.hb-cell-hm input {
+  width: 64px;
+  height: 40px;
+  padding: 0 8px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 600;
+}
+.hb-cell-total {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.hb-cell-quick {
+  display: flex;
+  gap: 6px;
+}
+.hb-pop .hb-cell-quick button {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+.hb-pop .hb-cell-quick button:hover {
+  background: var(--canvas);
+}
+.hb-pop .hb-cell-quick button.clear {
+  margin-left: auto;
+  border-color: transparent;
+  color: var(--danger);
+}
+.hb-cell-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Side panel */
+.hb-duty-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+}
+.hb-duty-row + .hb-duty-row {
+  border-top: 1px solid var(--row-line);
+}
+.hb-duty-name {
+  width: 150px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hb-duty-name .hb-sub {
+  font-size: 12px;
+}
+.hb-duty-min {
+  width: 48px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 14px;
+}
+button.hb-linklike {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink);
+}
+button.hb-linklike:hover {
+  background: transparent;
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+/* The month */
+.hb-month-card:hover {
+  border-color: var(--border);
+  box-shadow: none;
+}
+.hb-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+}
+.hb-month.five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.hb-month-dow {
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.hb-mday {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-height: 88px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  font-weight: 400;
+}
+.hb-mday:hover:not(:disabled) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border-dashed);
+  box-shadow: var(--shadow-hover);
+}
+.hb-mday.out {
+  opacity: 0.45;
+}
+.hb-mday.today {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.hb-mday.future {
+  background: repeating-linear-gradient(135deg, #f6f8fb 0 8px, #f1f4f8 8px 16px);
+  cursor: default;
+  opacity: 1;
+}
+.hb-mday.late {
+  border-color: var(--danger-line);
+}
+.hb-mday.done {
+  border-color: var(--ok-line);
+}
+.hb-mday-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hb-mday-num {
+  font-size: 14px;
+  font-weight: 600;
+}
+.hb-mday-total {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.hb-mday .hb-bar {
+  height: 5px;
+  flex: none;
+}
+.hb-mday-ok {
+  color: var(--ok);
+  vertical-align: -2px;
+}
+.hb-mday-late {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.hb-month-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--row-line);
+  font-size: 13px;
+  color: var(--muted);
+}
+.hb-month-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 819px) {
+  .hb-month {
+    gap: 4px;
+    padding: 8px;
+  }
+  .hb-mday {
+    min-height: 64px;
+    padding: 6px;
+  }
+  .hb-mday-total {
+    font-size: 14px;
+  }
+}
+.hb-sheet tbody th.hb-sheet-duty {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+  font-size: 14px;
+  background: var(--surface);
+}
+.hb-sheet-status td {
+  padding: 8px 2px;
+}
+.hb-daybtn {
+  padding: 0 8px;
+}
