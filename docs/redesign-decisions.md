@@ -107,6 +107,9 @@ These replace what the brief says. Don't "fix" them back.
   bar, a 28px logo tile and a compact account row. Templates sits indented under Tasks.
 - **Tasks filter row:** no task count unless filters or search narrow the list ("N match") or a
   saved view is open; the count is already on the view tab.
+- **"+ Filter" on Tasks stays:** it adds the filters the brief doesn't cover (tags, dates,
+  attributes and so on) next to the chips. It is not the banned "Filter button that hides
+  filters": the main chips are always visible.
 - **Calendar view:** every task shows on one day only (its due date, else its start date); no
   multi-day bars. The month fits the window without scrolling. Its controls sit in the filter
   row, where Sort is hidden.
