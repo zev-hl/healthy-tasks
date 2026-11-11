@@ -5659,69 +5659,6 @@ tr.just-completed > td {
   color: var(--review-deep);
   font-weight: 600;
 }
-.reviewer-list {
-  margin-top: 0.75rem;
-  max-height: 44vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.reviewer-option {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: 0.4rem 0.55rem;
-  cursor: pointer;
-  color: var(--text);
-  transition: background var(--dur-fast) var(--ease);
-}
-.reviewer-option:hover {
-  background: var(--surface-3);
-}
-.reviewer-option.selected {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-.reviewer-name {
-  font-size: 0.86rem;
-  font-weight: 550;
-}
-.reviewer-email {
-  margin-left: auto;
-  font-size: 0.72rem;
-}
-/* Consequence preview: what confirming the review will do, in plain language. */
-.reviewer-preview {
-  margin-top: 0.75rem;
-  background: var(--canvas);
-  border-radius: 9px;
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.reviewer-preview-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--ink-3);
-}
-.reviewer-preview-row .muted {
-  color: var(--muted-2);
-}
-.reviewer-preview-row .strong-ok {
-  color: var(--accent-deep);
-  font-weight: 600;
-}
-
 /* --- Kanban --------------------------------------------------------------- */
 /* Six fixed columns in status order, filling the width as an equal grid — a
    display of the same data, never grouped/reordered or horizontally scrolled.

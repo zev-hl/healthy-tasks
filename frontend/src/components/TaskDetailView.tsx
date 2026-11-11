@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   REMINDER_BLOCK_LABELS,
@@ -22,7 +22,7 @@ import { RichTextEditor } from './RichTextEditor';
 import { AttachmentSection } from './AttachmentSection';
 import { Comments } from './Comments';
 import { TaskRefLink } from './TaskRefLink';
-import { TaskPickerModal } from './TaskPickerModal';
+import { TaskLinkPicker } from './TaskLinkPicker';
 import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
@@ -81,11 +81,17 @@ import { ExpandIcon } from './ui/ExpandIcon';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
 
-const PICKER_TITLES: Record<PickerKind, string> = {
-  parent: 'Set parent task',
-  child: 'Add an existing task as a sub-task',
-  blocks: 'Add a task this one blocks',
-  blockedBy: 'Add a task this one is blocked by',
+const PICKER_TEXT: Record<PickerKind, { title: string; hint: string }> = {
+  parent: {
+    title: 'Set the parent task',
+    hint: 'This task becomes a sub-task of the one you pick.',
+  },
+  child: { title: 'Link an existing sub-task', hint: 'The task you pick moves under this one.' },
+  blockedBy: {
+    title: 'Blocked by',
+    hint: 'This task waits until the one you pick is done.',
+  },
+  blocks: { title: 'Blocks', hint: 'The task you pick waits until this one is done.' },
 };
 
 interface Props {
@@ -112,6 +118,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [picker, setPicker] = useState<PickerKind | null>(null);
+  // The button the link picker opened from: the popover sits under it.
+  const pickerAnchor = useRef<HTMLElement | null>(null);
+  function openPicker(kind: PickerKind, el: HTMLElement) {
+    pickerAnchor.current = el;
+    // Room below for the results: bring a button near the bottom up to the middle.
+    if (el.getBoundingClientRect().bottom > window.innerHeight * 0.55) {
+      el.scrollIntoView({ block: 'center' });
+    }
+    setPicker(kind);
+  }
   const [confirmDelete, setConfirmDelete] = useState(false);
   // HLAI-118: the attributes pop-up behind the pencil.
   const [editingAttrs, setEditingAttrs] = useState(false);
@@ -627,6 +643,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   useUnsavedChangesWarning(fieldsDirty || descUnsaved || commentsDirty || newSubDirty);
 
   const availableTags = allTags.filter((t) => !task.tags.includes(t));
+  // Tasks already linked each way: the link picker shows them as taken.
+  const linkedIds = useMemo<Record<PickerKind, ReadonlySet<number>>>(
+    () => ({
+      parent: new Set(task.parent ? [task.parent.id] : []),
+      child: new Set(task.children.map((c) => c.id)),
+      blockedBy: new Set(task.isBlockedBy.map((t) => t.id)),
+      blocks: new Set(task.blocks.map((t) => t.id)),
+    }),
+    [task.parent, task.children, task.isBlockedBy, task.blocks],
+  );
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
   // Review workflow: while in Review, Status + Assignee are locked; the two exits
   // (Reviewed / Recall) carry their own permissions.
@@ -1421,7 +1447,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     <Btn onClick={() => setNewSubOpen(true)}>
                       <Plus size={14} aria-hidden="true" /> New
                     </Btn>
-                    <Btn onClick={() => setPicker('child')}>Link existing</Btn>
+                    <Btn onClick={(e) => openPicker('child', e.currentTarget)}>Link existing</Btn>
                   </>
                 )}
               </div>
@@ -1484,7 +1510,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   <div className="hb-link-head">
                     <span className="hb-label">{g.label}</span>
                     {canEdit && g.add && (
-                      <Btn kind="link" onClick={() => setPicker(g.key as PickerKind)}>
+                      <Btn
+                        kind="link"
+                        onClick={(e) => openPicker(g.key as PickerKind, e.currentTarget)}
+                      >
                         + Link
                       </Btn>
                     )}
@@ -1649,9 +1678,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       )}
 
       {picker && (
-        <TaskPickerModal
-          title={PICKER_TITLES[picker]}
+        <TaskLinkPicker
+          anchorRef={pickerAnchor}
+          title={PICKER_TEXT[picker].title}
+          hint={PICKER_TEXT[picker].hint}
           excludeId={task.id}
+          linkedIds={linkedIds[picker]}
           onPick={handlePick}
           onClose={() => setPicker(null)}
         />
