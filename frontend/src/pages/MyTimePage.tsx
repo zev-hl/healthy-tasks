@@ -16,7 +16,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { DayEditorModal } from '../components/time/DayEditorModal';
+import { DayPanel } from '../components/time/DayPanel';
 import { useDutyCatalog, type CatalogDuty } from '../lib/duties';
 import { isStaleWriteError } from '../lib/useStaleWriteGuard';
 import {
@@ -87,6 +87,13 @@ export function MyTimePage() {
   const [days, setDays] = useState<Map<string, TimeDayDto>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [openDate, setOpenDate] = useState<string | null>(null);
+  // The day opens in the side panel; on narrow screens that sits below the
+  // timesheet, so bring it into view.
+  const dayRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (openDate && window.matchMedia?.('(max-width: 1359px)').matches)
+      dayRef.current?.scrollIntoView({ block: 'start' });
+  }, [openDate]);
   const [editing, setEditing] = useState<{ date: string; dutyId: string } | null>(null);
   const cellRef = useRef<HTMLElement | null>(null);
   const needsRef = useRef<HTMLDivElement>(null);
@@ -497,89 +504,117 @@ export function MyTimePage() {
                 today={today}
                 days={days}
                 minutesOf={minutesOf}
+                openDate={openDate}
                 onOpen={setOpenDate}
               />
             )}
           </div>
 
-          <aside className="hb-col">
-            <TimeTrackerCard period="today" />
-
-            <div ref={needsRef}>
-              <Card>
-                <CardHead
-                  icon={<CalendarCheck2 size={16} />}
-                  tone={needsCompleting.length ? 'red' : 'green'}
-                  title="Needs completing"
-                  right={
-                    <span className={cx('hb-big', needsCompleting.length > 0 && 'hb-late')}>
-                      {needsCompleting.length}
-                    </span>
+          <aside className="hb-col hb-gside" ref={dayRef}>
+            {openDate && user ? (
+              <DayPanel
+                date={openDate}
+                readOnly={false}
+                person={null}
+                duties={duties}
+                heldDutyIds={myDutyIds}
+                onClose={() => setOpenDate(null)}
+                onNavigate={setOpenDate}
+                onChanged={(d, how) => {
+                  setDays((m) => new Map(m).set(d.date, d));
+                  const when = `${DOW_LONG[dayOfWeek(d.date)]}, ${formatDay(d.date)}`;
+                  if (how === 'reopened') {
+                    toast({ message: `${when} reopened — you can edit it now` });
+                  } else {
+                    const t = d.entries.reduce((s, e) => s + e.minutes, 0);
+                    toast({
+                      message: `Saved ${formatDuration(t)} for ${when}${d.completed ? ' · completed' : ''}`,
+                      tone: 'success',
+                    });
                   }
-                />
-                {needsCompleting.length === 0 ? (
-                  <Empty good>Every past day in this period is completed.</Empty>
-                ) : (
-                  needsCompleting.map((d) => (
-                    <div key={d} className="hb-row">
-                      <div className="hb-stack">
-                        <button
-                          type="button"
-                          className="hb-linklike hb-name"
-                          onClick={() => setOpenDate(d)}
-                        >
-                          {DOW_LONG[dayOfWeek(d)]}, {formatDay(d)}
-                        </button>
-                        <span className={cx('hb-sub', !minutesOf(d) && 'late')}>
-                          {minutesOf(d)
-                            ? `${formatDuration(minutesOf(d))} logged`
-                            : 'Nothing logged'}
-                        </span>
-                      </div>
-                      <Btn kind="ok" onClick={() => void setCompleted(d, true)}>
-                        <Check size={15} aria-hidden="true" /> Complete
-                      </Btn>
-                    </div>
-                  ))
-                )}
-              </Card>
-            </div>
-
-            <Card>
-              <CardHead
-                icon={<Layers size={16} />}
-                title="Your duties"
-                right={<span className="hb-small">{rangeLabel}</span>}
+                }}
               />
-              {rows.length === 0 ? (
-                <Empty>{catalogLoading ? 'Loading…' : 'None yet'}</Empty>
-              ) : (
-                (() => {
-                  const perDuty = rows.flatMap((g) =>
-                    g.duties.map((duty) => ({
-                      duty,
-                      minutes: periodDays.reduce((s, d) => s + cellMinutes(d, duty.id), 0),
-                    })),
-                  );
-                  const max = Math.max(...perDuty.map((p) => p.minutes), 1);
-                  return perDuty.map(({ duty, minutes }) => (
-                    <div key={duty.id} className="hb-duty-row">
-                      <span
-                        className="hb-dot"
-                        style={{ background: duty.color }}
-                        aria-hidden="true"
-                      />
-                      <span className="hb-duty-name">
-                        <span className="hb-sub">{duty.departmentName}</span>
-                        <span className="hb-name">{duty.name}</span>
-                      </span>
-                      <Bar value={minutes} max={max} />
-                      <span className="hb-duty-min">{minutes ? formatHM(minutes) : '—'}</span>
-                    </div>
-                  ));
-                })()
-              )}
-            </Card>
+            ) : (
+              <>
+                <TimeTrackerCard period="today" />
+
+                <div ref={needsRef}>
+                  <Card>
+                    <CardHead
+                      icon={<CalendarCheck2 size={16} />}
+                      tone={needsCompleting.length ? 'red' : 'green'}
+                      title="Needs completing"
+                      right={
+                        <span className={cx('hb-big', needsCompleting.length > 0 && 'hb-late')}>
+                          {needsCompleting.length}
+                        </span>
+                      }
+                    />
+                    {needsCompleting.length === 0 ? (
+                      <Empty good>Every past day in this period is completed.</Empty>
+                    ) : (
+                      needsCompleting.map((d) => (
+                        <div key={d} className="hb-row">
+                          <div className="hb-stack">
+                            <button
+                              type="button"
+                              className="hb-linklike hb-name"
+                              onClick={() => setOpenDate(d)}
+                            >
+                              {DOW_LONG[dayOfWeek(d)]}, {formatDay(d)}
+                            </button>
+                            <span className={cx('hb-sub', !minutesOf(d) && 'late')}>
+                              {minutesOf(d)
+                                ? `${formatDuration(minutesOf(d))} logged`
+                                : 'Nothing logged'}
+                            </span>
+                          </div>
+                          <Btn kind="ok" onClick={() => void setCompleted(d, true)}>
+                            <Check size={15} aria-hidden="true" /> Complete
+                          </Btn>
+                        </div>
+                      ))
+                    )}
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHead
+                    icon={<Layers size={16} />}
+                    title="Your duties"
+                    right={<span className="hb-small">{rangeLabel}</span>}
+                  />
+                  {rows.length === 0 ? (
+                    <Empty>{catalogLoading ? 'Loading…' : 'None yet'}</Empty>
+                  ) : (
+                    (() => {
+                      const perDuty = rows.flatMap((g) =>
+                        g.duties.map((duty) => ({
+                          duty,
+                          minutes: periodDays.reduce((s, d) => s + cellMinutes(d, duty.id), 0),
+                        })),
+                      );
+                      const max = Math.max(...perDuty.map((p) => p.minutes), 1);
+                      return perDuty.map(({ duty, minutes }) => (
+                        <div key={duty.id} className="hb-duty-row">
+                          <span
+                            className="hb-dot"
+                            style={{ background: duty.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="hb-duty-name">
+                            <span className="hb-sub">{duty.departmentName}</span>
+                            <span className="hb-name">{duty.name}</span>
+                          </span>
+                          <Bar value={minutes} max={max} />
+                          <span className="hb-duty-min">{minutes ? formatHM(minutes) : '—'}</span>
+                        </div>
+                      ));
+                    })()
+                  )}
+                </Card>
+              </>
+            )}
           </aside>
         </div>
 
@@ -590,31 +625,6 @@ export function MyTimePage() {
             minutes={cellMinutes(editing.date, editing.dutyId)}
             onClose={() => setEditing(null)}
             onSave={(m) => void saveCell(editing.date, editing.dutyId, m)}
-          />
-        )}
-
-        {openDate && user && (
-          <DayEditorModal
-            date={openDate}
-            readOnly={false}
-            person={null}
-            duties={duties}
-            heldDutyIds={myDutyIds}
-            onClose={() => setOpenDate(null)}
-            onNavigate={setOpenDate}
-            onChanged={(d, how) => {
-              setDays((m) => new Map(m).set(d.date, d));
-              const when = `${DOW_LONG[dayOfWeek(d.date)]}, ${formatDay(d.date)}`;
-              if (how === 'reopened') {
-                toast({ message: `${when} reopened — you can edit it now` });
-              } else {
-                const t = d.entries.reduce((s, e) => s + e.minutes, 0);
-                toast({
-                  message: `Saved ${formatDuration(t)} for ${when}${d.completed ? ' · completed' : ''}`,
-                  tone: 'success',
-                });
-              }
-            }}
           />
         )}
       </PageBody>
@@ -747,8 +757,11 @@ function MonthGrid({
   today,
   days,
   minutesOf,
+  openDate,
   onOpen,
 }: {
+  /** The day open in the side panel, outlined. */
+  openDate: string | null;
   anchor: string;
   range: { from: string; to: string };
   hideWe: boolean;
@@ -782,6 +795,7 @@ function MonthGrid({
                 (d < ms || d > me) && 'out',
                 d === today && 'today',
                 fut && 'future',
+                d === openDate && 'is-open',
                 st,
               )}
               disabled={fut}

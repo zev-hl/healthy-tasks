@@ -23,7 +23,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { Avatar } from '../components/ui/Avatar';
-import { DayEditorModal } from '../components/time/DayEditorModal';
+import { DayPanel } from '../components/time/DayPanel';
 import { useDutyCatalog } from '../lib/duties';
 import {
   DOW_SHORT,
@@ -116,6 +116,12 @@ export function TimeReviewPage() {
   const [data, setData] = useState<TimeReviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openDay, setOpenDay] = useState<{ person: TaskUserRef; date: string } | null>(null);
+  // The day opens in the side panel; on narrow screens bring it into view.
+  const dayRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (openDay && window.matchMedia?.('(max-width: 1359px)').matches)
+      dayRef.current?.scrollIntoView({ block: 'start' });
+  }, [openDay]);
   const { showToast } = useShowToast();
   const prefsLoaded = useRef(false);
 
@@ -494,7 +500,11 @@ export function TimeReviewPage() {
                         {fut ? null : (
                           <button
                             type="button"
-                            className={cx('hb-rcell', state)}
+                            className={cx(
+                              'hb-rcell',
+                              state,
+                              openDay?.date === d && openDay.person.id === p.id && 'is-open',
+                            )}
                             aria-label={`${personName(p)}, ${formatDay(d)}: ${m ? formatDuration(m) : 'no time'}${words ? `, ${words}` : ''}. Open the day`}
                             onClick={() => setOpenDay({ person: p, date: d })}
                           >
@@ -648,7 +658,7 @@ export function TimeReviewPage() {
 
   const viewOptions: { value: View; label: string }[] = [
     { value: 'day', label: 'Day review' },
-        { value: 'pdd', label: 'By person' },
+    { value: 'pdd', label: 'By person' },
     { value: 'dpd', label: 'By department' },
     { value: 'ddp', label: 'By duty' },
   ];
@@ -863,7 +873,7 @@ export function TimeReviewPage() {
           />
         </div>
 
-        <div className={cx('hb-cols', !showTasks && 'single')}>
+        <div className={cx('hb-cols', !showTasks && !openDay && 'single')}>
           <div className="hb-col">
             <Card className="hb-sheet-card">{grid}</Card>
             {isDay && people.length > 0 && (
@@ -879,131 +889,135 @@ export function TimeReviewPage() {
             )}
           </div>
 
-          {showTasks && (
-            <aside className="hb-col">
-              <Card>
-                <CardHead
-                  icon={<AlertTriangle size={16} />}
-                  tone={behind.length ? 'red' : 'green'}
-                  title="Needs attention"
-                  right={
-                    <span className={cx('hb-big', behind.length > 0 && 'hb-late')}>
-                      {behind.length}
-                    </span>
+          {(showTasks || openDay) && (
+            <aside className="hb-col hb-gside" ref={dayRef}>
+              {openDay ? (
+                <DayPanel
+                  date={openDay.date}
+                  readOnly
+                  person={openDay.person}
+                  duties={
+                    new Map([...dutyById].map(([id, d]) => [id, { ...d, description: null }]))
                   }
+                  heldDutyIds={[]}
+                  onClose={() => setOpenDay(null)}
+                  onNavigate={(date) => setOpenDay({ person: openDay.person, date })}
                 />
-                {behind.length === 0 ? (
-                  <Empty good>Everyone has completed their past weekdays.</Empty>
-                ) : (
-                  behind.slice(0, 8).map((b) => {
-                    const path = `p:${b.person.id}`;
-                    return (
-                      <button
-                        key={b.person.id}
-                        type="button"
-                        className={cx('hb-row', 'hb-row-btn', 'hov', sel === path && 'is-sel')}
-                        onClick={() => {
-                          setView('day');
-                          setSel(sel === path ? '' : path);
-                        }}
-                      >
-                        <Avatar user={b.person} px={30} decorative />
-                        <span className="hb-stack">
-                          <span className="hb-name">{personName(b.person)}</span>
-                          <span className="hb-sub late">
-                            {b.empty > 0
-                              ? `${b.empty} with nothing logged`
-                              : 'Time logged, not completed'}
-                          </span>
+              ) : (
+                <>
+                  <Card>
+                    <CardHead
+                      icon={<AlertTriangle size={16} />}
+                      tone={behind.length ? 'red' : 'green'}
+                      title="Needs attention"
+                      right={
+                        <span className={cx('hb-big', behind.length > 0 && 'hb-late')}>
+                          {behind.length}
                         </span>
-                        <Pill tone="red">
-                          {b.late.length} {b.late.length === 1 ? 'day' : 'days'}
-                        </Pill>
-                      </button>
-                    );
-                  })
-                )}
-              </Card>
-
-              <Card>
-                <CardHead
-                  icon={<ListChecks size={16} />}
-                  title="Related tasks"
-                  right={<span className="hb-small">{related.length}</span>}
-                />
-                <div className="hb-rel-head">
-                  {sel ? (
-                    <span className="hb-chip-on">
-                      {selLabel}
-                      <button
-                        type="button"
-                        aria-label="Show related tasks for everyone"
-                        onClick={() => setSel('')}
-                      >
-                        <X size={13} aria-hidden="true" />
-                      </button>
-                    </span>
-                  ) : (
-                    <span className="hb-small">
-                      Start–due range inside or across {rangeLabel}. Click a row to narrow.
-                    </span>
-                  )}
-                </div>
-                {related.length === 0 ? (
-                  <Empty>No related tasks.</Empty>
-                ) : (
-                  related.map((t) => {
-                    const inside =
-                      !!t.startAt &&
-                      !!t.dueAt &&
-                      t.startAt.slice(0, 10) >= range.from &&
-                      t.dueAt.slice(0, 10) <= range.to;
-                    const logged = records
-                      .filter((r) => r.p === t.assignee.id && r.u === t.duty.id)
-                      .reduce((s, r) => s + r.min, 0);
-                    return (
-                      <Link key={t.id} to={`/tasks/${t.id}`} className="hb-row hb-rel-row">
-                        <span className="hb-stack">
-                          <span className="hb-name">{t.name}</span>
-                          <span className="hb-sub">
-                            #{t.id} · {personName(t.assignee)} · {t.duty.departmentName} ›{' '}
-                            {t.duty.name}
-                          </span>
-                          <span className="hb-small">
-                            {t.startAt ? formatDay(t.startAt.slice(0, 10)) : 'No start'} →{' '}
-                            {t.dueAt ? formatDay(t.dueAt.slice(0, 10)) : 'No due'} ·{' '}
-                            {inside ? 'within the period' : 'spans the period'}
-                          </span>
-                        </span>
-                        <span className="hb-right">
-                          <StatusPill status={t.status} />
-                          <span
-                            className="hb-small"
-                            title="Time the assignee logged on this duty in this period"
+                      }
+                    />
+                    {behind.length === 0 ? (
+                      <Empty good>Everyone has completed their past weekdays.</Empty>
+                    ) : (
+                      behind.slice(0, 8).map((b) => {
+                        const path = `p:${b.person.id}`;
+                        return (
+                          <button
+                            key={b.person.id}
+                            type="button"
+                            className={cx('hb-row', 'hb-row-btn', 'hov', sel === path && 'is-sel')}
+                            onClick={() => {
+                              setView('day');
+                              setSel(sel === path ? '' : path);
+                            }}
                           >
-                            {logged ? `${formatHM(logged)} logged` : 'none logged'}
-                          </span>
+                            <Avatar user={b.person} px={30} decorative />
+                            <span className="hb-stack">
+                              <span className="hb-name">{personName(b.person)}</span>
+                              <span className="hb-sub late">
+                                {b.empty > 0
+                                  ? `${b.empty} with nothing logged`
+                                  : 'Time logged, not completed'}
+                              </span>
+                            </span>
+                            <Pill tone="red">
+                              {b.late.length} {b.late.length === 1 ? 'day' : 'days'}
+                            </Pill>
+                          </button>
+                        );
+                      })
+                    )}
+                  </Card>
+
+                  <Card>
+                    <CardHead
+                      icon={<ListChecks size={16} />}
+                      title="Related tasks"
+                      right={<span className="hb-small">{related.length}</span>}
+                    />
+                    <div className="hb-rel-head">
+                      {sel ? (
+                        <span className="hb-chip-on">
+                          {selLabel}
+                          <button
+                            type="button"
+                            aria-label="Show related tasks for everyone"
+                            onClick={() => setSel('')}
+                          >
+                            <X size={13} aria-hidden="true" />
+                          </button>
                         </span>
-                      </Link>
-                    );
-                  })
-                )}
-              </Card>
+                      ) : (
+                        <span className="hb-small">
+                          Start–due range inside or across {rangeLabel}. Click a row to narrow.
+                        </span>
+                      )}
+                    </div>
+                    {related.length === 0 ? (
+                      <Empty>No related tasks.</Empty>
+                    ) : (
+                      related.map((t) => {
+                        const inside =
+                          !!t.startAt &&
+                          !!t.dueAt &&
+                          t.startAt.slice(0, 10) >= range.from &&
+                          t.dueAt.slice(0, 10) <= range.to;
+                        const logged = records
+                          .filter((r) => r.p === t.assignee.id && r.u === t.duty.id)
+                          .reduce((s, r) => s + r.min, 0);
+                        return (
+                          <Link key={t.id} to={`/tasks/${t.id}`} className="hb-row hb-rel-row">
+                            <span className="hb-stack">
+                              <span className="hb-name">{t.name}</span>
+                              <span className="hb-sub">
+                                #{t.id} · {personName(t.assignee)} · {t.duty.departmentName} ›{' '}
+                                {t.duty.name}
+                              </span>
+                              <span className="hb-small">
+                                {t.startAt ? formatDay(t.startAt.slice(0, 10)) : 'No start'} →{' '}
+                                {t.dueAt ? formatDay(t.dueAt.slice(0, 10)) : 'No due'} ·{' '}
+                                {inside ? 'within the period' : 'spans the period'}
+                              </span>
+                            </span>
+                            <span className="hb-right">
+                              <StatusPill status={t.status} />
+                              <span
+                                className="hb-small"
+                                title="Time the assignee logged on this duty in this period"
+                              >
+                                {logged ? `${formatHM(logged)} logged` : 'none logged'}
+                              </span>
+                            </span>
+                          </Link>
+                        );
+                      })
+                    )}
+                  </Card>
+                </>
+              )}
             </aside>
           )}
         </div>
-
-        {openDay && (
-          <DayEditorModal
-            date={openDay.date}
-            readOnly
-            person={openDay.person}
-            duties={new Map([...dutyById].map(([id, d]) => [id, { ...d, description: null }]))}
-            heldDutyIds={[]}
-            onClose={() => setOpenDay(null)}
-            onNavigate={(date) => setOpenDay({ person: openDay.person, date })}
-          />
-        )}
       </PageBody>
     </>
   );

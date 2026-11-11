@@ -23,7 +23,7 @@ vi.mock('../../api/client', () => ({
 }));
 
 const { api } = await import('../../api/client');
-const { DayEditorModal } = await import('./DayEditorModal');
+const { DayPanel } = await import('./DayPanel');
 const { renderWithDataRouter } = await import('../../test/render');
 
 const listDays = api.listTimeDays as unknown as ReturnType<typeof vi.fn>;
@@ -57,12 +57,12 @@ const day = (over: Partial<TimeDayDto> = {}): TimeDayDto => ({
   ...over,
 });
 
-function open(props: Partial<Parameters<typeof DayEditorModal>[0]> = {}) {
+function open(props: Partial<Parameters<typeof DayPanel>[0]> = {}) {
   const onClose = vi.fn();
   const onChanged = vi.fn();
   // A data router: the editor's unsaved-changes guard uses useBlocker.
   renderWithDataRouter(
-    <DayEditorModal
+    <DayPanel
       date="2026-09-21"
       readOnly={false}
       person={null}
@@ -100,7 +100,7 @@ const RELATED: RelatedTaskDto = {
   dueAt: null,
 };
 
-describe('DayEditorModal', () => {
+describe('DayPanel', () => {
   it('logs time against held duties with the quick buttons and saves the day', async () => {
     listDays.mockResolvedValue([]);
     saveDay.mockImplementation(async (_d: string, body: { entries: unknown[] }) =>
@@ -202,7 +202,7 @@ describe('DayEditorModal', () => {
       renderWithDataRouter(
         <>
           <Link to="/tasks/42">Sidebar link</Link>
-          <DayEditorModal
+          <DayPanel
             date="2026-09-21"
             readOnly={false}
             person={null}
