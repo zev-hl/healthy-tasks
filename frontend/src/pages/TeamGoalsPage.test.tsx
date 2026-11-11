@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { GoalDto, TaskUserRef } from '@healthy-tasks/shared';
 
 vi.mock('../auth/AuthContext', () => ({
@@ -89,13 +89,18 @@ describe('TeamGoalsPage — the open goal', () => {
     // includes it (as with a "Pending approval" status filter).
     m(api.listTeamGoals).mockResolvedValueOnce([PENDING]).mockResolvedValue([]);
     renderWithDataRouter(<TeamGoalsPage />);
-
-    fireEvent.click(await screen.findByText('Ship 100 orders a day'));
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
-
+    // Open it from the list (it is also on the "Waiting on you" card).
+    const [row] = await screen.findAllByRole('button', {
+      name: /Ship 100 orders a day/,
+      pressed: false,
+    });
+    fireEvent.click(row!);
+    const panel = await screen.findByRole('region', { name: 'Goal #7' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(api.listTeamGoals).toHaveBeenCalledTimes(2));
-    // The detail is still on screen, now showing the approved goal.
-    expect(screen.getByText('Ship 100 orders a day')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    // The panel is still on screen, now showing the approved goal.
+    const after = screen.getByRole('region', { name: 'Goal #7' });
+    expect(within(after).getByText('Ship 100 orders a day')).toBeInTheDocument();
+    expect(within(after).queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
   });
 });

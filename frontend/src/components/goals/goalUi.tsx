@@ -1,22 +1,19 @@
-import type { GoalMetricType, GoalStatus } from '@healthy-tasks/shared';
+import type { GoalDto, GoalMetricType, GoalStatus } from '@healthy-tasks/shared';
 import { GOAL_STATUS_LABELS, goalValueLabel } from '@healthy-tasks/shared';
+import { todayLocalDate } from '../../lib/datetime';
+import { Pill, type Tone } from '../harbor/ui';
 
-/** Soft-fill / deep-text colour pair per lifecycle status (Phase 9 tokens). */
-const STATUS_STYLE: Record<GoalStatus, { bg: string; fg: string }> = {
-  Draft: { bg: 'var(--canvas-deep)', fg: 'var(--muted)' },
-  PendingApproval: { bg: 'var(--warn-soft)', fg: 'var(--warn-deep)' },
-  Approved: { bg: 'var(--accent-soft)', fg: 'var(--accent-deep)' },
-  UnderReview: { bg: 'var(--review-soft)', fg: 'var(--review-deep)' },
-  Resolved: { bg: 'var(--ok-soft)', fg: 'var(--ok-deep)' },
+/** Each lifecycle step's meaning color (Harbor: grey, amber, blue, indigo, green). */
+export const GOAL_STATUS_TONE: Record<GoalStatus, Tone> = {
+  Draft: 'grey',
+  PendingApproval: 'amber',
+  Approved: 'blue',
+  UnderReview: 'review',
+  Resolved: 'green',
 };
 
 export function GoalStatusPill({ status }: { status: GoalStatus }) {
-  const s = STATUS_STYLE[status];
-  return (
-    <span className="goal-status-pill" style={{ background: s.bg, color: s.fg }}>
-      {GOAL_STATUS_LABELS[status]}
-    </span>
-  );
+  return <Pill tone={GOAL_STATUS_TONE[status]}>{GOAL_STATUS_LABELS[status]}</Pill>;
 }
 
 /** Format a target/result value with its metric unit (delegates to shared). */
@@ -43,12 +40,28 @@ export function formatDeadline(iso: string | null | undefined): string {
   });
 }
 
-/** ISO instant → the value a <input type="date"> expects (YYYY-MM-DD, UTC day). */
+/** Days from the viewer's today to the deadline's date (negative once past). */
+export function daysToDeadline(iso: string): number {
+  const today = Date.parse(`${todayLocalDate()}T00:00:00.000Z`);
+  const due = Date.parse(`${iso.slice(0, 10)}T00:00:00.000Z`);
+  return Math.round((due - today) / 86_400_000);
+}
+
+/** "in 12 days", "today", "3 days late" — late only matters before Resolved. */
+export function deadlineHint(goal: GoalDto): { text: string; late: boolean } {
+  if (goal.status === 'Resolved') return { text: '', late: false };
+  const d = daysToDeadline(goal.deadline);
+  if (d === 0) return { text: 'due today', late: false };
+  if (d > 0) return { text: `in ${d} ${d === 1 ? 'day' : 'days'}`, late: false };
+  return { text: `${-d} ${d === -1 ? 'day' : 'days'} late`, late: true };
+}
+
+/** ISO instant → the value a date field holds (YYYY-MM-DD, UTC day). */
 export function isoToDateInput(iso: string | null | undefined): string {
   return iso ? iso.slice(0, 10) : '';
 }
 
-/** A date-input value (YYYY-MM-DD) → an ISO instant at UTC midnight. */
+/** A date value (YYYY-MM-DD) → an ISO instant at UTC midnight. */
 export function dateInputToIso(value: string): string {
   return new Date(`${value}T00:00:00.000Z`).toISOString();
 }

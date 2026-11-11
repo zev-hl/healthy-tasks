@@ -33,8 +33,8 @@ vi.mock('../auth/AuthContext', () => ({
 const { api } = await import('../api/client');
 const { useBackdropDismiss } = await import('./useBackdropDismiss');
 const { TaskForm } = await import('../components/TaskForm');
-const { GoalEditorModal } = await import('../components/goals/GoalEditorModal');
-const { GoalDetailModal } = await import('../components/goals/GoalDetailModal');
+const { GoalForm } = await import('../components/goals/GoalForm');
+const { GoalPanel } = await import('../components/goals/GoalPanel');
 const { UserFormModal } = await import('../components/UserFormModal');
 const { UserEditModal } = await import('../components/UserEditModal');
 const { UNSAVED_CHANGES_MESSAGE } = await import('./useUnsavedChangesWarning');
@@ -59,6 +59,8 @@ const clickBackdrop = () => {
   fireEvent.mouseDown(backdrop());
   fireEvent.click(backdrop());
 };
+// Goals open in the side panel (no pop-up): its × button is the way out.
+const clickClose = () => fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 const clickCancel = () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 beforeEach(() => {
   vi.clearAllMocks();
@@ -147,14 +149,14 @@ describe('New task form', () => {
 
 describe('Goal editor', () => {
   const typed = (onClose: () => void) => {
-    renderWithSidebar(<GoalEditorModal onClose={onClose} onSaved={vi.fn()} />);
+    renderWithSidebar(<GoalForm onClose={onClose} onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
   };
 
-  it('asks on a click outside once something is typed, and stays open on Cancel', () => {
+  it('asks on Close once something is typed, and stays open when told to stay', () => {
     const onClose = vi.fn();
     typed(onClose);
-    clickBackdrop();
+    clickClose();
     expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/Specific/)).toHaveValue('Ship faster');
@@ -169,17 +171,17 @@ describe('Goal editor', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('closes on a click outside or Cancel without asking while still empty', () => {
+  it('closes on Close or Cancel without asking while still empty', () => {
     const onClose = vi.fn();
-    renderWithSidebar(<GoalEditorModal onClose={onClose} onSaved={vi.fn()} />);
-    clickBackdrop();
+    renderWithSidebar(<GoalForm onClose={onClose} onSaved={vi.fn()} />);
+    clickClose();
     clickCancel();
     expect(onClose).toHaveBeenCalledTimes(2);
     expect(confirm).not.toHaveBeenCalled();
   });
 
   it('keeps Create goal off until something is filled in', () => {
-    renderWithSidebar(<GoalEditorModal onClose={vi.fn()} onSaved={vi.fn()} />);
+    renderWithSidebar(<GoalForm onClose={vi.fn()} onSaved={vi.fn()} />);
     const create = () => screen.getByRole('button', { name: 'Create goal' });
     expect(create()).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
@@ -202,7 +204,7 @@ describe('Goal editor', () => {
       notes: null,
       updatedAt: '2026-10-20T12:00:00.000Z',
     } as unknown as GoalDto;
-    renderWithSidebar(<GoalEditorModal goal={goal} onClose={vi.fn()} onSaved={vi.fn()} />);
+    renderWithSidebar(<GoalForm goal={goal} onClose={vi.fn()} onSaved={vi.fn()} />);
     const save = () => screen.getByRole('button', { name: 'Save changes' });
     expect(save()).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/Notes/), { target: { value: 'Weekly check-in' } });
@@ -210,7 +212,7 @@ describe('Goal editor', () => {
   });
 
   it('asks before the page is left with a goal half-written', async () => {
-    renderWithSidebar(<GoalEditorModal onClose={vi.fn()} onSaved={vi.fn()} />);
+    renderWithSidebar(<GoalForm onClose={vi.fn()} onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
     fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
     await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
@@ -345,7 +347,7 @@ describe('Goal detail: the results panel', () => {
   async function openResults(onClose: () => void) {
     m(api.getGoal).mockResolvedValue(goal);
     renderWithSidebar(
-      <GoalDetailModal goal={goal} supervisorView={false} onClose={onClose} onChanged={vi.fn()} />,
+      <GoalPanel goal={goal} supervisorView={false} onClose={onClose} onChanged={vi.fn()} />,
     );
     fireEvent.click(await screen.findByRole('button', { name: 'Update results' }));
     fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Halfway there' } });
@@ -362,15 +364,15 @@ describe('Goal detail: the results panel', () => {
     expect(screen.queryByLabelText('Notes')).not.toBeInTheDocument();
   });
 
-  it('asks before a click outside closes the goal', async () => {
+  it('asks before Close closes the goal', async () => {
     const onClose = vi.fn();
     await openResults(onClose);
-    clickBackdrop();
+    clickClose();
     expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
     expect(onClose).not.toHaveBeenCalled();
 
     confirm.mockReturnValue(true);
-    clickBackdrop();
+    clickClose();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
