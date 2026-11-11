@@ -1,13 +1,14 @@
-import {
-  Fragment,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type DragEvent,
-  type ReactNode,
-} from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  AlertTriangle,
+  Building2,
+  ChevronRight,
+  GripVertical,
+  Network,
+  UserRoundX,
+  Users,
+} from 'lucide-react';
 import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
   isSupervisorRole,
@@ -15,80 +16,61 @@ import {
   type OrgAlertTaskPickDto,
   type OrgDto,
   type OrgPersonDto,
+  type Role,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
-import {
-  AlertTriangle,
-  ChevronRight,
-  ChevronsDownUp,
-  ChevronsUpDown,
-  GitBranch,
-  GripVertical,
-  Network,
-} from 'lucide-react';
 import { Avatar } from '../components/ui/Avatar';
 import { Swatch } from '../components/duties/DutyTag';
-import { highlight } from './DepartmentsPage';
 import { isStaleWriteError } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { PageBody, PageHeader } from '../components/harbor/PageHeader';
-import { SectionTabs } from '../components/SectionTabs';
 import { Select, type SelectOption } from '../components/harbor/Select';
 import { useToast as useHbToast } from '../components/harbor/Toast';
 import {
   Btn,
   Card,
   CardHead,
+  CountBadge,
   Empty,
   Pill,
-  Segmented,
   cx,
   type Tone,
 } from '../components/harbor/ui';
 
-/** A small shim so the logic below keeps its `showToast(message, tone)` calls. */
-function useShowToast() {
-  const toast = useHbToast();
-  return {
-    showToast: (message: string, tone: 'success' | 'error' | 'info' = 'info', undo?: () => void) =>
-      toast({
-        message,
-        undo,
-        tone: tone === 'success' ? 'success' : tone === 'error' ? 'error' : 'dark',
-      }),
-  };
-}
-
-const ROLE_TONE: Record<string, Tone> = { Admin: 'blue', Manager: 'review', Member: 'grey' };
-
 /**
- * Organization (Department Duties): who reports to whom, and which duties each
- * person holds. Four views of the same data — Reporting lines (drag a person
- * onto their new supervisor), By department, By person, By duty — plus a
- * person panel. Changes are STAGED and saved together, because one wrong drop
- * moves a whole team and task access (Phase 13) follows the hierarchy. Admins
- * manage everyone; a Manager manages the people below them.
+ * Organization (Department Duties), Harbor redesign after the Dashboard's
+ * My team view (brief §6.1). Two views of the same data, switched in the
+ * header, each with a red count of what needs attention:
+ *
+ * - People: what needs your attention first (no duties, no supervisor, duties
+ *   no one holds, each with its fix), then the reporting lines as sections of
+ *   people cards ("Reports to Maria Lopez"). Drag a card onto a supervisor's
+ *   card or section to move it; click a card for the person panel.
+ * - Departments: a card per department, each duty with the avatars of who
+ *   holds it and a "Give to…" picker.
+ *
+ * Changes are STAGED and saved together with the one Save bar, because one
+ * wrong drop moves a whole team and task access (Phase 13) follows the
+ * hierarchy. Admins manage everyone; a Manager manages the people below them.
  */
 
-type View = 'lines' | 'dept' | 'person' | 'duty';
-
-interface TreeNode {
-  key: string;
-  html: ReactNode;
-  pid?: string;
-  drag?: boolean;
-  sel?: boolean;
-  kids: TreeNode[];
-}
+type View = 'people' | 'departments';
 
 interface Draft {
   sup: Record<string, string | null>;
   duties: Record<string, Set<string>>;
 }
 
+const ALL = '__all';
+const ROLE_TONE: Record<string, Tone> = { Admin: 'blue', Manager: 'review', Member: 'grey' };
+
 const pname = (p: OrgPersonDto) => `${p.firstName} ${p.lastName}`.trim() || p.email;
 const byP = (a: OrgPersonDto, b: OrgPersonDto) => pname(a).localeCompare(pname(b));
 const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name);
+
+/** Old links (?view=lines|person|dept|duty) land on the matching new view. */
+const viewFrom = (v: string | null): View =>
+  v === 'dept' || v === 'duty' || v === 'departments' ? 'departments' : 'people';
 
 function draftFrom(org: OrgDto): Draft {
   return {
@@ -112,22 +94,37 @@ export function subtreeOf(pid: string, sup: Record<string, string | null>): Set<
   return out;
 }
 
+/** A small shim so the logic below keeps its `showToast(message, tone)` calls. */
+function useShowToast() {
+  const toast = useHbToast();
+  return {
+    showToast: (message: string, tone: 'success' | 'error' | 'info' = 'info', undo?: () => void) =>
+      toast({
+        message,
+        undo,
+        tone: tone === 'success' ? 'success' : tone === 'error' ? 'error' : 'dark',
+      }),
+  };
+}
+
 export function OrganizationPage() {
   const [params] = useSearchParams();
   const [org, setOrg] = useState<OrgDto | null>(null);
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
   const [draft, setDraft] = useState<Draft>({ sup: {}, duties: {} });
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>((params.get('view') as View) || 'lines');
+  const [view, setView] = useState<View>(viewFrom(params.get('view')));
   const [q, setQ] = useState('');
-  const [deptFilter, setDeptFilter] = useState('');
-  const [expanded, setExpanded] = useState<Set<string> | null>(null);
+  const [deptFilter, setDeptFilter] = useState(ALL);
+  const [roleFilter, setRoleFilter] = useState(ALL);
   const [selId, setSelId] = useState<string | null>(params.get('person'));
   const [pdOpen, setPdOpen] = useState<Map<string, boolean>>(new Map());
   const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [flashDuty, setFlashDuty] = useState<string | null>(params.get('duty'));
   const { showToast } = useShowToast();
-  const deepLinked = useRef(false);
+  const panelRef = useRef<HTMLElement>(null);
 
   async function load() {
     try {
@@ -160,6 +157,15 @@ export function OrganizationPage() {
     [departments],
   );
 
+  // A deep link to a duty (from Departments & duties) scrolls to it and flashes it.
+  useEffect(() => {
+    if (!flashDuty || !departments.length) return;
+    const el = document.getElementById(`duty-${flashDuty}`);
+    el?.scrollIntoView({ block: 'center' });
+    const t = window.setTimeout(() => setFlashDuty(null), 1600);
+    return () => window.clearTimeout(t);
+  }, [flashDuty, departments.length]);
+
   // --- Dirty state -----------------------------------------------------------
   const dirty = useMemo(() => {
     let sup = 0;
@@ -182,291 +188,67 @@ export function OrganizationPage() {
       .map((id) => deptById.get(id)!)
       .filter(Boolean)
       .sort(byName);
-  const kidsOf = (pid: string) => people.filter((p) => draft.sup[p.id] === pid);
-
-  // --- Tree nodes (one builder per view) --------------------------------------
-  const query = q.trim().toLowerCase();
-  const pm = (p: OrgPersonDto) =>
-    !query ||
-    pname(p).toLowerCase().includes(query) ||
-    (p.title ?? '').toLowerCase().includes(query);
-  const deptOk = (d: DepartmentDto) => !deptFilter || d.id === deptFilter;
-
-  const pRow = (p: OrgPersonDto, extra: ReactNode = null) => (
-    <>
-      <Avatar user={p} size="xs" decorative />
-      <button type="button" className="hb-org-name" onClick={() => setSelId(p.id)}>
-        {highlight(pname(p), query)}
-      </button>
-      {p.title && <span className="hb-org-title">{p.title}</span>}
-      {extra}
-    </>
-  );
-  const dRow = (d: DepartmentDto, extra: ReactNode = null) => (
-    <>
-      <Swatch color={d.color} />
-      <span className="hb-org-label is-dept">{highlight(d.name, query)}</span>
-      {extra}
-    </>
-  );
-  const uRow = (uId: string, extra: ReactNode = null) => {
-    const u = dutyIndex.get(uId)!;
-    return (
-      <>
-        <span className="hb-org-bullet" style={{ background: deptById.get(u.deptId)?.color }} />
-        <span className="hb-org-label">{highlight(u.name, query)}</span>
-        {extra}
-      </>
-    );
+  const kidsOf = (pid: string) => people.filter((p) => draft.sup[p.id] === pid).sort(byP);
+  const dutyChanged = (p: OrgPersonDto) => {
+    const now = draft.duties[p.id] ?? new Set<string>();
+    return now.size !== p.dutyIds.length || p.dutyIds.some((u) => !now.has(u));
   };
 
-  const nodes: TreeNode[] = useMemo(() => {
-    if (!org) return [];
-    if (view === 'lines') {
-      let keep: Set<string> | null = null;
-      if (query) {
-        keep = new Set();
-        for (const p of people.filter(pm)) {
-          let c: string | null = p.id;
-          const seen = new Set<string>();
-          while (c && !seen.has(c)) {
-            seen.add(c);
-            keep.add(c);
-            c = draft.sup[c] ?? null;
-          }
-        }
-      }
-      const build = (p: OrgPersonDto): TreeNode => {
-        const kids = kidsOf(p.id);
-        const ds = deptsOf(p.id);
-        return {
-          key: `L${p.id}`,
-          pid: p.id,
-          drag: p.canChangeSupervisor,
-          sel: selId === p.id,
-          html: pRow(
-            p,
-            <>
-              {(draft.sup[p.id] ?? null) !== p.supervisorId && (
-                <span className="hb-org-chg mv">Moved</span>
-              )}
-              <span className="hb-grow" />
-              {kids.length > 0 && <span className="hb-count">{kids.length} direct</span>}
-              <span className="hb-org-chips">
-                {ds.slice(0, 3).map((d) => (
-                  <span key={d.id} className="hb-org-chip">
-                    <Swatch color={d.color} size={7} />
-                    {d.name}
-                  </span>
-                ))}
-                {ds.length > 3 && <span className="hb-org-chip">+{ds.length - 3}</span>}
-                {activeDutiesOf(p.id).length === 0 && (
-                  <span className="hb-org-warn">No duties</span>
-                )}
-              </span>
-            </>,
-          ),
-          kids: kids
-            .filter((c) => !keep || keep.has(c.id))
-            .sort(byP)
-            .map(build),
-        };
-      };
-      // Roots: no supervisor, or a supervisor outside what this viewer can see.
-      return people
-        .filter((p) => (!draft.sup[p.id] || !P.has(draft.sup[p.id]!)) && (!keep || keep.has(p.id)))
-        .sort(byP)
-        .map(build);
-    }
-    if (view === 'dept') {
-      return activeDepts
-        .filter(deptOk)
-        .map((d) => {
-          const dm = !!query && d.name.toLowerCase().includes(query);
-          const inDept = (pid: string) =>
-            activeDutiesOf(pid).filter((u) => dutyIndex.get(u)!.deptId === d.id);
-          const ppl = people
-            .filter((p) => inDept(p.id).length > 0)
-            .filter(
-              (p) =>
-                !query ||
-                dm ||
-                pm(p) ||
-                inDept(p.id).some((u) => dutyIndex.get(u)!.name.toLowerCase().includes(query)),
-            )
-            .sort(byP);
-          if (query && !dm && ppl.length === 0) return null;
-          const unstaffed = d.duties.filter(
-            (u) => !u.archived && !people.some((p) => draft.duties[p.id]?.has(u.id)),
-          ).length;
-          return {
-            key: `D${d.id}`,
-            html: dRow(
-              d,
-              <>
-                <span className="hb-count">
-                  {ppl.length} {ppl.length === 1 ? 'person' : 'people'}
-                </span>
-                {unstaffed > 0 && (
-                  <span className="hb-org-warn">
-                    {unstaffed} {unstaffed === 1 ? 'duty' : 'duties'} unassigned
-                  </span>
-                )}
-              </>,
-            ),
-            kids: ppl.map((p) => {
-              const us = inDept(p.id).sort((a, b) =>
-                dutyIndex.get(a)!.name.localeCompare(dutyIndex.get(b)!.name),
-              );
-              return {
-                key: `D${d.id}${p.id}`,
-                pid: p.id,
-                sel: selId === p.id,
-                html: pRow(
-                  p,
-                  <>
-                    <span className="hb-grow" />
-                    <span className="hb-count">
-                      {us.length} {us.length === 1 ? 'duty' : 'duties'}
-                    </span>
-                  </>,
-                ),
-                kids: us.map((u) => ({ key: `D${d.id}${p.id}${u}`, html: uRow(u), kids: [] })),
-              };
-            }),
-          } as TreeNode;
-        })
-        .filter((n): n is TreeNode => n !== null);
-    }
-    if (view === 'person') {
-      return people
-        .filter(
-          (p) =>
-            !query ||
-            pm(p) ||
-            activeDutiesOf(p.id).some((u) => {
-              const x = dutyIndex.get(u)!;
-              return (
-                x.name.toLowerCase().includes(query) ||
-                (deptById.get(x.deptId)?.name ?? '').toLowerCase().includes(query)
-              );
-            }),
-        )
-        .filter((p) => !deptFilter || deptsOf(p.id).some((d) => d.id === deptFilter))
-        .sort(byP)
-        .map((p) => {
-          const ds = deptsOf(p.id).filter(deptOk);
-          const n = activeDutiesOf(p.id).length;
-          return {
-            key: `P${p.id}`,
-            pid: p.id,
-            sel: selId === p.id,
-            html: pRow(
-              p,
-              <>
-                <span className="hb-grow" />
-                {ds.length ? (
-                  <span className="hb-count">
-                    {ds.length} {ds.length === 1 ? 'dept' : 'depts'} · {n}{' '}
-                    {n === 1 ? 'duty' : 'duties'}
-                  </span>
-                ) : (
-                  <span className="hb-org-warn">No duties</span>
-                )}
-              </>,
-            ),
-            kids: ds.map((d) => {
-              const us = activeDutiesOf(p.id)
-                .filter((u) => dutyIndex.get(u)!.deptId === d.id)
-                .sort((a, b) => dutyIndex.get(a)!.name.localeCompare(dutyIndex.get(b)!.name));
-              return {
-                key: `P${p.id}${d.id}`,
-                html: dRow(d, <span className="hb-count">{us.length}</span>),
-                kids: us.map((u) => ({ key: `P${p.id}${u}`, html: uRow(u), kids: [] })),
-              };
-            }),
-          };
-        });
-    }
-    // By duty: Department › Duty › People who hold it.
-    return activeDepts
-      .filter(deptOk)
-      .map((d) => {
-        const dm = !!query && d.name.toLowerCase().includes(query);
-        const us = d.duties
-          .filter((u) => !u.archived)
-          .sort(byName)
-          .map((u) => {
-            const ppl = people.filter((p) => draft.duties[p.id]?.has(u.id)).sort(byP);
-            const um = u.name.toLowerCase().includes(query);
-            if (query && !dm && !um && !ppl.some(pm)) return null;
-            const shown = query && !dm && !um ? ppl.filter(pm) : ppl;
-            return {
-              key: `U${u.id}`,
-              html: uRow(
-                u.id,
-                <>
-                  <span className="hb-grow" />
-                  {ppl.length ? (
-                    <span className="hb-count">
-                      {ppl.length} {ppl.length === 1 ? 'person' : 'people'}
-                    </span>
-                  ) : (
-                    <span className="hb-org-warn">No one assigned</span>
-                  )}
-                </>,
-              ),
-              kids: shown.map((p) => ({
-                key: `U${u.id}${p.id}`,
-                pid: p.id,
-                sel: selId === p.id,
-                html: pRow(p),
-                kids: [],
-              })),
-            } as TreeNode;
-          })
-          .filter((n): n is TreeNode => n !== null);
-        if (query && !dm && us.length === 0) return null;
-        return {
-          key: `UD${d.id}`,
-          html: dRow(
-            d,
-            <span className="hb-count">{d.duties.filter((u) => !u.archived).length} duties</span>,
-          ),
-          kids: us,
-        } as TreeNode;
-      })
-      .filter((n): n is TreeNode => n !== null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org, view, query, deptFilter, draft, selId, departments]);
+  // --- What needs attention ----------------------------------------------------
+  const noDuties = people.filter((p) => activeDutiesOf(p.id).length === 0).sort(byP);
+  // The person at the very top (an Admin) is expected to have no supervisor.
+  const noSupervisor =
+    org?.scope === 'all'
+      ? people.filter((p) => !draft.sup[p.id] && p.role !== 'Admin').sort(byP)
+      : [];
+  const unheld = activeDepts.flatMap((d) =>
+    d.duties
+      .filter((u) => !u.archived && !people.some((p) => draft.duties[p.id]?.has(u.id)))
+      .map((u) => ({ dept: d, duty: u })),
+  );
+  const peopleFlags = noDuties.length + noSupervisor.length;
 
-  const allKeys = (ns: TreeNode[], out: string[] = []): string[] => {
-    for (const n of ns) {
-      if (n.kids.length) {
-        out.push(n.key);
-        allKeys(n.kids, out);
+  // --- Filters -----------------------------------------------------------------
+  const query = q.trim().toLowerCase();
+  const matches = (p: OrgPersonDto) =>
+    (!query ||
+      pname(p).toLowerCase().includes(query) ||
+      (p.title ?? '').toLowerCase().includes(query) ||
+      activeDutiesOf(p.id).some((u) => dutyIndex.get(u)!.name.toLowerCase().includes(query))) &&
+    (deptFilter === ALL || deptsOf(p.id).some((d) => d.id === deptFilter)) &&
+    (roleFilter === ALL || p.role === roleFilter);
+  const filtered = query !== '' || deptFilter !== ALL || roleFilter !== ALL;
+  const shownCount = people.filter(matches).length;
+
+  // --- Reporting-line sections: who reports to whom, top down ------------------
+  const sections = useMemo(() => {
+    if (!org) return [];
+    const roots = people.filter((p) => !draft.sup[p.id] || !P.has(draft.sup[p.id]!)).sort(byP);
+    const out: {
+      key: string;
+      sup: OrgPersonDto | null;
+      members: OrgPersonDto[];
+      chain: string[];
+    }[] = [{ key: '__root', sup: null, members: roots, chain: [] }];
+    const queue = [...roots];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const s = queue.shift()!;
+      if (seen.has(s.id)) continue;
+      seen.add(s.id);
+      const kids = kidsOf(s.id);
+      if (!kids.length) continue;
+      const chain: string[] = [];
+      for (let id = draft.sup[s.id] ?? null, g = 0; id && P.has(id) && g < 50; g++) {
+        chain.unshift(pname(P.get(id)!));
+        id = draft.sup[id] ?? null;
       }
+      out.push({ key: s.id, sup: s, members: kids, chain });
+      queue.push(...kids);
     }
     return out;
-  };
-
-  // Default expansion: reporting lines open; other views closed. A deep link
-  // (?view=duty&duty=…) opens that duty.
-  useEffect(() => {
-    if (!org || expanded !== null) return;
-    if (!deepLinked.current && params.get('duty')) {
-      deepLinked.current = true;
-      const dutyId = params.get('duty')!;
-      const u = dutyIndex.get(dutyId);
-      if (u) {
-        setDeptFilter(u.deptId);
-        setExpanded(new Set([`UD${u.deptId}`, `U${dutyId}`]));
-        return;
-      }
-    }
-    setExpanded(new Set(view === 'lines' ? allKeys(nodes).filter((k) => k.startsWith('L')) : []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [org, nodes, expanded, view]);
+  }, [org, people, draft]);
 
   // --- Drag & drop (reporting lines) ------------------------------------------
   const canDropOn = (target: string | '__root', subject: string | null): boolean => {
@@ -477,19 +259,9 @@ export function OrganizationPage() {
     if (!t || !isSupervisorRole(t.role)) return false;
     return !subtreeOf(subject, draft.sup).has(target);
   };
-  const [dropTarget, setDropTarget] = useState<{ id: string; ok: boolean } | null>(null);
-  // Open the new supervisor's node and every manager above it, so a person who
-  // was just moved stays visible in Reporting lines. The subject can't be an
-  // ancestor of `sup` (cycle check), so the current draft chain is still right.
-  function revealUnder(sup: string | null) {
-    const keys: string[] = [];
-    for (let id = sup, guard = 0; id && guard < 500; id = draft.sup[id] ?? null, guard++) {
-      keys.push(`L${id}`);
-    }
-    if (keys.length) setExpanded((e) => new Set([...(e ?? []), ...keys]));
-  }
   function moveTo(subject: string, target: string | '__root') {
     const p = P.get(subject)!;
+    if ((draft.sup[subject] ?? null) === (target === '__root' ? null : target)) return;
     if (!canDropOn(target, subject)) {
       const t = target !== '__root' ? P.get(target) : null;
       showToast(
@@ -500,15 +272,16 @@ export function OrganizationPage() {
       );
       return;
     }
+    const before = draft.sup[subject] ?? null;
     const sup = target === '__root' ? null : target;
     setDraft((d) => ({ ...d, sup: { ...d.sup, [subject]: sup } }));
     setSelId(subject);
-    revealUnder(sup);
     showToast(
       sup
         ? `${p.firstName} now reports to ${pname(P.get(sup)!)} (not saved yet)`
         : `${p.firstName} now has no supervisor (not saved yet)`,
       'info',
+      () => setDraft((d) => ({ ...d, sup: { ...d.sup, [subject]: before } })),
     );
   }
   const dropHandlers = (target: string | '__root') => ({
@@ -526,6 +299,8 @@ export function OrganizationPage() {
       setDropTarget(null);
     },
   });
+  const dropClass = (target: string) =>
+    dragId && dropTarget?.id === target ? (dropTarget.ok ? 'drop-ok' : 'drop-bad') : null;
 
   // HLAI-112: a duty someone's Alert Task Setup role needs can't be taken away
   // here; that role is first set to "Leave unassigned" there. While one is
@@ -586,95 +361,40 @@ export function OrganizationPage() {
     }
   }
 
-  // --- Render ---------------------------------------------------------------------
-  const exp = expanded ?? new Set<string>();
-  const forceOpen = !!query;
-  const renderNodes = (ns: TreeNode[], lvl: number): ReactNode =>
-    ns.map((n) => {
-      const has = n.kids.length > 0;
-      const open = has && (forceOpen || exp.has(n.key));
-      const isDropTarget = dropTarget && n.pid && dropTarget.id === n.pid && view === 'lines';
-      return (
-        <Fragment key={n.key}>
-          <div
-            className={cx(
-              'hb-org-row',
-              n.sel && 'is-sel',
-              isDropTarget && (dropTarget!.ok ? 'drop-ok' : 'drop-bad'),
-              dragId && dragId === n.pid && 'is-dragging',
-            )}
-            style={{ paddingLeft: 12 + lvl * 24 }}
-            draggable={view === 'lines' && n.drag ? true : undefined}
-            onDragStart={
-              view === 'lines' && n.drag
-                ? (e) => {
-                    setDragId(n.pid!);
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', n.pid!);
-                  }
-                : undefined
-            }
-            onDragEnd={() => {
-              setDragId(null);
-              setDropTarget(null);
-            }}
-            {...(view === 'lines' && n.pid ? dropHandlers(n.pid) : {})}
-          >
-            {has ? (
-              <button
-                type="button"
-                className={cx('hb-org-caret', open && 'is-open')}
-                onClick={() =>
-                  setExpanded((e) => {
-                    const next = new Set(e ?? []);
-                    if (next.has(n.key)) next.delete(n.key);
-                    else next.add(n.key);
-                    return next;
-                  })
-                }
-                aria-expanded={open}
-                aria-label={open ? 'Collapse' : 'Expand'}
-              >
-                <ChevronRight size={16} aria-hidden="true" />
-              </button>
-            ) : (
-              <span className="hb-org-caret is-blank" aria-hidden="true" />
-            )}
-            {view === 'lines' &&
-              (n.drag ? (
-                <span className="hb-org-grip" title="Drag onto a new supervisor" aria-hidden="true">
-                  <GripVertical size={15} />
-                </span>
-              ) : (
-                <span className="hb-org-grip is-blank" aria-hidden="true" />
-              ))}
-            {n.html}
-          </div>
-          {open && renderNodes(n.kids, lvl + 1)}
-        </Fragment>
-      );
-    });
+  // Pick a person and bring their panel into view (on narrow screens it is below).
+  function openPerson(id: string) {
+    setSelId(id);
+    if (window.matchMedia?.('(max-width: 1099px)').matches)
+      window.setTimeout(() => panelRef.current?.scrollIntoView({ block: 'start' }), 0);
+  }
+  function giveDuty(pid: string, dutyId: string) {
+    const p = P.get(pid);
+    if (!p) return;
+    setDraft((d) => ({
+      ...d,
+      duties: { ...d.duties, [pid]: new Set([...(d.duties[pid] ?? []), dutyId]) },
+    }));
+    showToast(
+      `${p.firstName || pname(p)} now holds ${dutyIndex.get(dutyId)?.name ?? 'the duty'} (not saved yet)`,
+      'info',
+      () =>
+        setDraft((d) => {
+          const next = new Set(d.duties[pid] ?? []);
+          next.delete(dutyId);
+          return { ...d, duties: { ...d.duties, [pid]: next } };
+        }),
+    );
+  }
 
-  const VIEWS: [View, string][] = [
-    ['lines', 'Reporting lines'],
-    ['dept', 'By department'],
-    ['person', 'By person'],
-    ['duty', 'By duty'],
-  ];
-  const HINT: Record<View, string> = {
-    lines:
-      org?.scope === 'all'
-        ? 'Supervisor › Subordinates. Drag a person by the handle onto their new supervisor, or into the box at the bottom to give them no supervisor.'
-        : 'Supervisor › Subordinates. Drag a person by the handle onto their new supervisor within your team.',
-    dept: 'Department › Person › the duties that person holds in that department',
-    person: 'Person › Department › Duties',
-    duty: 'Department › Duty › People who hold it',
-  };
-
+  // --- Render pieces ------------------------------------------------------------
   const sel = selId ? P.get(selId) : null;
   const deptOptions: SelectOption<string>[] = [
-    { value: '', label: 'All departments' },
+    { value: ALL, label: 'All departments' },
     ...activeDepts.map((d) => ({ value: d.id, label: d.name, dot: d.color })),
+  ];
+  const roleOptions: SelectOption<string>[] = [
+    { value: ALL, label: 'Any role' },
+    ...(['Admin', 'Manager', 'Member'] as Role[]).map((r) => ({ value: r, label: r })),
   ];
   const changeText = [
     dirty.sup ? `${dirty.sup} supervisor ${dirty.sup === 1 ? 'change' : 'changes'}` : '',
@@ -682,6 +402,332 @@ export function OrganizationPage() {
   ]
     .filter(Boolean)
     .join(' · ');
+  const giveOptions = (dutyId: string): SelectOption<string>[] =>
+    people
+      .filter((p) => p.canEditDuties && !draft.duties[p.id]?.has(dutyId))
+      .sort(byP)
+      .map((p) => ({
+        value: p.id,
+        label: pname(p),
+        hint: p.title ?? undefined,
+        lead: <Avatar user={p} size="xs" decorative />,
+      }));
+
+  const personCard = (p: OrgPersonDto) => {
+    const ds = deptsOf(p.id);
+    const nDuties = activeDutiesOf(p.id).length;
+    const reports = kidsOf(p.id).length;
+    const moved = (draft.sup[p.id] ?? null) !== p.supervisorId;
+    const canLead = isSupervisorRole(p.role);
+    return (
+      <div
+        key={p.id}
+        className={cx(
+          'hb-ocard',
+          selId === p.id && 'is-sel',
+          nDuties === 0 && 'is-flag',
+          dragId === p.id && 'is-dragging',
+          canLead && dropClass(p.id),
+        )}
+        draggable={p.canChangeSupervisor || undefined}
+        onDragStart={
+          p.canChangeSupervisor
+            ? (e) => {
+                setDragId(p.id);
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', p.id);
+              }
+            : undefined
+        }
+        onDragEnd={() => {
+          setDragId(null);
+          setDropTarget(null);
+        }}
+        {...(canLead ? dropHandlers(p.id) : {})}
+      >
+        <button
+          type="button"
+          className="hb-ocard-main"
+          aria-pressed={selId === p.id}
+          aria-label={`${pname(p)}, ${p.role}`}
+          onClick={() => openPerson(p.id)}
+        >
+          <span className="hb-ocard-top">
+            <Avatar user={p} px={36} decorative />
+            <span className="hb-stack">
+              <span className="hb-ocard-name">{pname(p)}</span>
+              <span className="hb-sub">{p.title || p.email}</span>
+            </span>
+          </span>
+          <span className="hb-ocard-depts">
+            {ds.slice(0, 3).map((d) => (
+              <span key={d.id} className="hb-org-chip">
+                <Swatch color={d.color} size={7} />
+                {d.name}
+              </span>
+            ))}
+            {ds.length > 3 && <span className="hb-org-chip">+{ds.length - 3}</span>}
+          </span>
+          <span className="hb-ocard-stats">
+            <span className="stat">
+              <b>{nDuties}</b>
+              <span>{nDuties === 1 ? 'duty' : 'duties'}</span>
+            </span>
+            {canLead && (
+              <span className="stat">
+                <b>{reports}</b>
+                <span>{reports === 1 ? 'report' : 'reports'}</span>
+              </span>
+            )}
+            <span className="hb-grow" />
+            <Pill tone={ROLE_TONE[p.role] ?? 'grey'}>{p.role}</Pill>
+          </span>
+          {(nDuties === 0 || moved || dutyChanged(p)) && (
+            <span className="hb-ocard-flags">
+              {nDuties === 0 && <Pill tone="amber">No duties yet</Pill>}
+              {moved && <Pill tone="blue">Moved · not saved</Pill>}
+              {dutyChanged(p) && <Pill tone="blue">Duties changed · not saved</Pill>}
+            </span>
+          )}
+        </button>
+        {p.canChangeSupervisor && (
+          <span className="hb-ocard-grip" title="Drag onto a new supervisor" aria-hidden="true">
+            <GripVertical size={15} />
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // All clear is one quiet line; anything to fix gets the full card.
+  const attention =
+    peopleFlags + unheld.length === 0 ? (
+      <div className="hb-attn-ok" role="status">
+        <Empty good>Everyone has a supervisor and duties, and every duty has someone.</Empty>
+      </div>
+    ) : (
+      <Card className="hb-attn">
+        <CardHead
+          icon={<AlertTriangle size={16} aria-hidden="true" />}
+          tone="amber"
+          title="Needs your attention"
+          right={<span className="hb-small">{peopleFlags + unheld.length} to sort out</span>}
+        />
+        <div className="hb-attn-grid">
+          {noDuties.length > 0 && (
+            <div className="hb-attn-col">
+              <span className="hb-attn-title">
+                No duties yet <CountBadge n={noDuties.length} red />
+              </span>
+              {noDuties.slice(0, 5).map((p) => (
+                <div key={p.id} className="hb-attn-row">
+                  <Avatar user={p} size="xs" decorative />
+                  <span className="hb-attn-name">{pname(p)}</span>
+                  {p.canEditDuties && (
+                    <Btn kind="link" className="hb-btn-sm" onClick={() => openPerson(p.id)}>
+                      Choose duties
+                    </Btn>
+                  )}
+                </div>
+              ))}
+              {noDuties.length > 5 && (
+                <span className="hb-small">and {noDuties.length - 5} more</span>
+              )}
+            </div>
+          )}
+          {noSupervisor.length > 0 && (
+            <div className="hb-attn-col">
+              <span className="hb-attn-title">
+                No supervisor <CountBadge n={noSupervisor.length} red />
+              </span>
+              {noSupervisor.slice(0, 5).map((p) => (
+                <div key={p.id} className="hb-attn-row">
+                  <Avatar user={p} size="xs" decorative />
+                  <span className="hb-attn-name">{pname(p)}</span>
+                  {p.canChangeSupervisor && (
+                    <Btn kind="link" className="hb-btn-sm" onClick={() => openPerson(p.id)}>
+                      Choose supervisor
+                    </Btn>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {unheld.length > 0 && (
+            <div className="hb-attn-col">
+              <span className="hb-attn-title">
+                Duties no one holds <CountBadge n={unheld.length} red />
+              </span>
+              {unheld.slice(0, 5).map(({ dept, duty }) => (
+                <div key={duty.id} className="hb-attn-row">
+                  <Swatch color={dept.color} />
+                  <span className="hb-attn-name">
+                    <span className="hb-sub">{dept.name} › </span>
+                    {duty.name}
+                  </span>
+                  {giveOptions(duty.id).length > 0 && (
+                    <Select
+                      variant="plain"
+                      className="hb-give"
+                      label={`Give ${duty.name} to`}
+                      value={null}
+                      placeholder="Give to…"
+                      searchPlaceholder="Search people…"
+                      options={giveOptions(duty.id)}
+                      onChange={(pid) => giveDuty(pid, duty.id)}
+                    />
+                  )}
+                </div>
+              ))}
+              {unheld.length > 5 && <span className="hb-small">and {unheld.length - 5} more</span>}
+            </div>
+          )}
+        </div>
+      </Card>
+    );
+
+  const peopleView = (
+    <>
+      {sections.map((s) => {
+        const members = s.members.filter(matches);
+        if (!members.length && (filtered || s.key !== '__root')) return null;
+        const isRoot = s.key === '__root';
+        const target = isRoot ? '__root' : s.key;
+        const canDrop = isRoot ? org?.scope === 'all' : true;
+        return (
+          <section
+            key={s.key}
+            className={cx('hb-osec', canDrop && dropClass(target))}
+            {...(canDrop ? dropHandlers(target) : {})}
+          >
+            <div className="hb-osec-head">
+              {isRoot ? (
+                <span className="hb-ic tone-grey" aria-hidden="true">
+                  <Network size={15} />
+                </span>
+              ) : (
+                <Avatar user={s.sup!} px={28} decorative />
+              )}
+              <div className="hb-stack">
+                <h2>
+                  {isRoot
+                    ? org?.scope === 'all'
+                      ? 'Top level'
+                      : 'You'
+                    : `Reports to ${pname(s.sup!)}`}
+                </h2>
+                {!isRoot && s.chain.length > 0 && (
+                  <span className="hb-sub">
+                    {s.chain.join(' › ')} › {pname(s.sup!)}
+                  </span>
+                )}
+                {isRoot && org?.scope === 'all' && (
+                  <span className="hb-sub">No supervisor · drop someone here to clear theirs</span>
+                )}
+              </div>
+              <span className="hb-count">{members.length}</span>
+            </div>
+            <div className="hb-ogrid">{members.map(personCard)}</div>
+          </section>
+        );
+      })}
+      {filtered && shownCount === 0 && <Empty>No one matches these filters.</Empty>}
+    </>
+  );
+
+  const deptCards = activeDepts
+    .filter((d) => deptFilter === ALL || d.id === deptFilter)
+    .map((d) => {
+      const dm = !!query && d.name.toLowerCase().includes(query);
+      const duties = d.duties
+        .filter((u) => !u.archived)
+        .sort(byName)
+        .map((u) => ({
+          duty: u,
+          holders: people
+            .filter((p) => draft.duties[p.id]?.has(u.id))
+            .filter((p) => roleFilter === ALL || p.role === roleFilter)
+            .sort(byP),
+        }))
+        .filter(
+          ({ duty, holders }) =>
+            !query ||
+            dm ||
+            duty.name.toLowerCase().includes(query) ||
+            holders.some((p) => pname(p).toLowerCase().includes(query)),
+        );
+      if (query && !dm && duties.length === 0) return null;
+      const inDept = new Set(duties.flatMap((x) => x.holders.map((p) => p.id))).size;
+      const gaps = duties.filter((x) => x.holders.length === 0).length;
+      return (
+        <Card key={d.id} className="hb-dcard">
+          <div className="hb-card-head">
+            <span className="hb-dcard-sw" style={{ background: d.color }} aria-hidden="true" />
+            <h3>{d.name}</h3>
+            {gaps > 0 && <Pill tone="amber">{gaps} not held</Pill>}
+            <span className="hb-small">
+              {inDept} {inDept === 1 ? 'person' : 'people'}
+            </span>
+          </div>
+          {duties.length === 0 ? (
+            <Empty>No duties in this department yet.</Empty>
+          ) : (
+            duties.map(({ duty, holders }) => {
+              const give = giveOptions(duty.id);
+              return (
+                <div
+                  key={duty.id}
+                  id={`duty-${duty.id}`}
+                  className={cx('hb-drow', flashDuty === duty.id && 'hb-flash')}
+                >
+                  <span className="hb-stack">
+                    <span className="hb-drow-name">{duty.name}</span>
+                    <span className="hb-sub">
+                      {holders.length
+                        ? holders.length === 1
+                          ? pname(holders[0]!)
+                          : `${holders.length} people`
+                        : 'No one holds this'}
+                    </span>
+                  </span>
+                  <span className="hb-stackav">
+                    {holders.slice(0, 5).map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={cx('hb-stackav-btn', selId === p.id && 'is-sel')}
+                        title={pname(p)}
+                        aria-label={`Open ${pname(p)}`}
+                        onClick={() => openPerson(p.id)}
+                      >
+                        <Avatar user={p} px={28} decorative />
+                      </button>
+                    ))}
+                    {holders.length > 5 && (
+                      <span className="hb-stackav-more">+{holders.length - 5}</span>
+                    )}
+                    {holders.length === 0 && <Pill tone="amber">Not held</Pill>}
+                  </span>
+                  {give.length > 0 && (
+                    <Select
+                      variant="plain"
+                      className="hb-give"
+                      label={`Give ${duty.name} to`}
+                      value={null}
+                      placeholder="Give to…"
+                      searchPlaceholder="Search people…"
+                      options={give}
+                      onChange={(pid) => giveDuty(pid, duty.id)}
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </Card>
+      );
+    })
+    .filter(Boolean);
 
   return (
     <>
@@ -689,34 +735,37 @@ export function OrganizationPage() {
         title="Organization"
         subtitle={
           <>
-            {people.length} {people.length === 1 ? 'person' : 'people'}
-            {org?.scope === 'all'
-              ? ` · ${people.filter((p) => !draft.sup[p.id]).length} without a supervisor`
-              : ' · you and your team'}
+            {people.length} {people.length === 1 ? 'person' : 'people'} · {activeDepts.length}{' '}
+            {activeDepts.length === 1 ? 'department' : 'departments'}
+            {org?.scope === 'team' && ' · you and your team'}
           </>
         }
-        searchPlaceholder="Search people, departments, duties"
+        switcher={
+          <div className="hb-seg" role="group" aria-label="View">
+            <button
+              type="button"
+              aria-pressed={view === 'people'}
+              onClick={() => setView('people')}
+            >
+              <Users size={15} aria-hidden="true" /> People
+              {peopleFlags > 0 && <CountBadge n={peopleFlags} red />}
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === 'departments'}
+              onClick={() => setView('departments')}
+            >
+              <Building2 size={15} aria-hidden="true" /> Departments
+              {unheld.length > 0 && <CountBadge n={unheld.length} red />}
+            </button>
+          </div>
+        }
+        searchPlaceholder="Search people, titles, duties"
         searchLabel="Search"
         searchValue={q}
         onSearchChange={setQ}
         onSearch={() => undefined}
         newTask={false}
-        tabs={
-          <>
-            <SectionTabs />
-            <span className="hb-grow" />
-            <Segmented
-              small
-              label="View"
-              value={view}
-              options={VIEWS.map(([value, label]) => ({ value, label }))}
-              onChange={(k) => {
-                setView(k);
-                setExpanded(null);
-              }}
-            />
-          </>
-        }
       />
       <PageBody className={cx(dirty.any && 'hb-has-savebar')}>
         {error && (
@@ -725,62 +774,69 @@ export function OrganizationPage() {
           </div>
         )}
 
+        <div className="hb-toolbar">
+          <span className="hb-count-label">
+            {view === 'people'
+              ? `${filtered ? `${shownCount} of ` : ''}${people.length} ${people.length === 1 ? 'person' : 'people'}`
+              : `${activeDepts.length} ${activeDepts.length === 1 ? 'department' : 'departments'}`}
+          </span>
+          <Select
+            variant="chip"
+            label="Department"
+            value={deptFilter}
+            options={deptOptions}
+            active={deptFilter !== ALL}
+            onChange={setDeptFilter}
+          />
+          <Select
+            variant="chip"
+            label="Role"
+            value={roleFilter}
+            options={roleOptions}
+            active={roleFilter !== ALL}
+            onChange={setRoleFilter}
+          />
+          {filtered && (
+            <Btn
+              kind="link"
+              onClick={() => {
+                setQ('');
+                setDeptFilter(ALL);
+                setRoleFilter(ALL);
+              }}
+            >
+              Reset
+            </Btn>
+          )}
+          <span className="hb-grow" />
+          {view === 'people' && (
+            <span className="hb-small hb-org-tip">
+              <GripVertical size={14} aria-hidden="true" /> Drag a card onto a supervisor to move it
+            </span>
+          )}
+        </div>
+
         <div className="hb-cols hb-org-cols">
           <div className="hb-col">
-            <Card className="hb-org-tree">
-              <CardHead
-                icon={view === 'lines' ? <Network size={16} /> : <GitBranch size={16} />}
-                title={VIEWS.find(([k]) => k === view)![1]}
-                right={
-                  <span className="hb-org-tools">
-                    {view !== 'lines' && (
-                      <Select
-                        variant="chip"
-                        label="Department"
-                        value={deptFilter}
-                        options={deptOptions}
-                        active={deptFilter !== ''}
-                        onChange={setDeptFilter}
-                      />
-                    )}
-                    <Btn
-                      kind="ghost"
-                      className="hb-btn-sm"
-                      onClick={() => setExpanded(new Set(allKeys(nodes)))}
-                    >
-                      <ChevronsUpDown size={15} aria-hidden="true" /> Expand all
-                    </Btn>
-                    <Btn kind="ghost" className="hb-btn-sm" onClick={() => setExpanded(new Set())}>
-                      <ChevronsDownUp size={15} aria-hidden="true" /> Collapse all
-                    </Btn>
-                  </span>
-                }
-              />
-              <p className="hb-org-hint">{HINT[view]}</p>
-              <div className="hb-org-rows">
-                {!org ? (
-                  <Empty>Loading…</Empty>
-                ) : nodes.length ? (
-                  renderNodes(nodes, 0)
+            {!org ? (
+              <Card>
+                <Empty>Loading…</Empty>
+              </Card>
+            ) : (
+              <>
+                {attention}
+                {view === 'people' ? (
+                  peopleView
+                ) : deptCards.length ? (
+                  <div className="hb-grid2">{deptCards}</div>
                 ) : (
-                  <Empty>{query ? `Nothing matches “${q}”.` : 'Nothing to show yet.'}</Empty>
+                  <Empty>{query ? `Nothing matches “${q}”.` : 'No departments yet.'}</Empty>
                 )}
-              </div>
-              {view === 'lines' && org?.scope === 'all' && (
-                <div
-                  className={cx(
-                    'hb-org-dropzone',
-                    dropTarget?.id === '__root' && dropTarget.ok && 'drop-ok',
-                  )}
-                  {...dropHandlers('__root')}
-                >
-                  Drop here to remove the supervisor (top level)
-                </div>
-              )}
-            </Card>
+              </>
+            )}
           </div>
 
-          <aside className="hb-col hb-org-side">
+          <aside className="hb-col hb-org-side" ref={panelRef}>
             {sel ? (
               <PersonPanel
                 person={sel}
@@ -791,17 +847,19 @@ export function OrganizationPage() {
                 scope={org?.scope ?? 'team'}
                 onToggleDept={(key, open) => setPdOpen((m) => new Map(m).set(key, !open))}
                 onSelect={setSelId}
-                onSupervisor={(sup) => {
-                  setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }));
-                  revealUnder(sup);
-                }}
+                onSupervisor={(sup) =>
+                  setDraft((d) => ({ ...d, sup: { ...d.sup, [sel.id]: sup } }))
+                }
                 onDuties={(next) =>
                   setDraft((d) => ({ ...d, duties: { ...d.duties, [sel.id]: next } }))
                 }
               />
             ) : (
               <Card>
-                <Empty>Select a person to see their supervisor and duties.</Empty>
+                <Empty>
+                  <UserRoundX size={16} aria-hidden="true" /> Pick a person to see their supervisor
+                  and duties.
+                </Empty>
               </Card>
             )}
           </aside>
