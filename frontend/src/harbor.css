@@ -7990,3 +7990,31 @@ textarea.hb-tpl-input {
     animation: none;
   }
 }
+
+/* --- Phones: the last few things that wrapped or got cut off ------------- */
+.hb-stepper > span {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  /* The task stepper keeps its arrows; the "24 of 25" count is dropped. */
+  .hb-stepper > span {
+    display: none;
+  }
+  /* The calendar controls wrap onto a second line instead of being cut off. */
+  .hb-tcal-slot {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  /* A header view switch scrolls sideways rather than breaking in two. */
+  .hb-top .hb-seg {
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .hb-top .hb-seg button {
+    flex: none;
+    white-space: nowrap;
+  }
+}
