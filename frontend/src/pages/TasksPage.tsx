@@ -629,9 +629,15 @@ export function TasksPage() {
       />
       <PageBody>
         <div className="hb-toolbar">
-          <span className="hb-count-label">
-            {loading ? 'Loading…' : `${total} ${total === 1 ? 'task' : 'tasks'}`}
-          </span>
+          {/* The tab's badge already says how many; only say it here when it
+              differs — a search or filters narrow it, or a saved view (no badge). */}
+          {!loading && (activeView || isFiltered(state) || text.trim() !== '') && (
+            <span className="hb-count-label">
+              {activeView && !isFiltered(state) && !text.trim()
+                ? `${total} ${total === 1 ? 'task' : 'tasks'}`
+                : `${total} match`}
+            </span>
+          )}
           <Select
             variant="chip"
             label="Status"
