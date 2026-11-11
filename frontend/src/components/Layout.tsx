@@ -131,7 +131,7 @@ function Sidebar() {
                 aria-current={active && !onSub ? 'page' : undefined}
                 title={n.label}
               >
-                <Icon size={20} strokeWidth={1.8} aria-hidden="true" />
+                <Icon size={18} strokeWidth={1.7} aria-hidden="true" />
                 <span className="side-label">{n.label}</span>
               </NavLink>
               {active &&
@@ -164,7 +164,7 @@ function Sidebar() {
           className={`side-account${pathname === '/profile' ? ' active' : ''}`}
           title="Your profile"
         >
-          <Avatar user={user} px={32} decorative />
+          <Avatar user={user} px={28} decorative />
           <span className="side-account-text">
             <span className="side-account-name">{userLabel(user)}</span>
             <span className="side-account-role">{user.role}</span>

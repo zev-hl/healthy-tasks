@@ -310,7 +310,7 @@ textarea:focus-visible {
   min-height: 100vh;
 }
 .app-main {
-  margin-left: 232px;
+  margin-left: 220px;
   min-height: 100vh;
 }
 
@@ -493,7 +493,7 @@ textarea:focus-visible {
   top: 0;
   left: 0;
   bottom: 0;
-  width: 232px;
+  width: 220px;
   background: var(--surface);
   border-right: 1px solid var(--border);
   padding: 20px 14px;
@@ -9125,7 +9125,7 @@ button.dd-pd-name:hover {
 }
 .dd-savebar {
   position: fixed;
-  left: 232px;
+  left: 220px;
   right: 0;
   bottom: 0;
   display: flex;

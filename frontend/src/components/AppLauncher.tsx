@@ -92,7 +92,7 @@ export function AppLauncher({ current }: { current: AppKey }) {
         onClick={() => (open ? close() : setOpen(true))}
         title="All apps"
       >
-        <Grip size={20} strokeWidth={1.8} aria-hidden="true" />
+        <Grip size={18} strokeWidth={1.7} aria-hidden="true" />
         <span className="side-label">All apps</span>
       </button>
       {open && (
