@@ -251,6 +251,37 @@ const REC_SHORT: Record<RecurrenceType, string> = {
   RelativeToCompletion: 'After completion',
 };
 
+/**
+ * The list in sections (meeting decision, Nov 11), by how a template is used.
+ * Sections by the main task's department need the department in the list's
+ * data (backend job 12); until then, by repeat.
+ */
+const SECTIONS: {
+  key: string;
+  title: string;
+  hint: string;
+  test: (t: TemplateSummaryDto) => boolean;
+}[] = [
+  {
+    key: 'repeat',
+    title: 'Repeating',
+    hint: 'Make their tasks on their own',
+    test: (t) => t.recurrenceType !== 'None' && t.isActive,
+  },
+  {
+    key: 'oneoff',
+    title: 'Used when needed',
+    hint: 'You make their tasks with “Create tasks”',
+    test: (t) => t.recurrenceType === 'None',
+  },
+  {
+    key: 'paused',
+    title: 'Paused',
+    hint: 'Repeating, switched off for now',
+    test: (t) => t.recurrenceType !== 'None' && !t.isActive,
+  },
+];
+
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** "Day 2 → 5", "Due day 5", "Starts day 2", or null when no dates are set. */
@@ -432,76 +463,92 @@ export function TemplatesPage() {
               ) : shown.length === 0 ? (
                 <Empty>No templates match{q.trim() ? ` “${q.trim()}”` : ''}.</Empty>
               ) : (
-                <div role="list">
-                  {shown.map((t) => (
-                    <div key={t.id} role="listitem" className="hb-row hb-tpl-row">
-                      <span
-                        className={cx('hb-ic', `tone-${REC_TONE[t.recurrenceType]}`)}
-                        aria-hidden="true"
-                      >
-                        {t.recurrenceType === 'None' ? (
-                          <ListTree size={16} />
-                        ) : (
-                          <Repeat size={16} />
-                        )}
-                      </span>
-                      <div className="hb-stack">
-                        <button
-                          type="button"
-                          className="hb-linklike hb-name"
-                          onClick={() => void editTemplate(t.id)}
-                        >
-                          {t.name}
-                        </button>
-                        <span className="hb-sub hb-tpl-desc" title={t.description ?? undefined}>
-                          {plural(t.nodeCount, 'task')} ·{' '}
-                          {t.occurrenceCount
-                            ? `used ${plural(t.occurrenceCount, 'time')}`
-                            : 'not used yet'}
-                          {' · '}
-                          {t.description || `by ${userLabel(t.createdBy)}`}
-                        </span>
+                SECTIONS.map((sec) => {
+                  const items = shown.filter(sec.test);
+                  if (items.length === 0) return null;
+                  return (
+                    <section key={sec.key} className="hb-tpl-section" aria-label={sec.title}>
+                      <h4 className="hb-tpl-section-head">
+                        {sec.title}
+                        <span className="hb-tpl-section-count">{items.length}</span>
+                        <span className="hb-tpl-section-hint">{sec.hint}</span>
+                      </h4>
+                      <div role="list">
+                        {items.map((t) => (
+                          <div key={t.id} role="listitem" className="hb-row hb-tpl-row">
+                            <span
+                              className={cx('hb-ic', `tone-${REC_TONE[t.recurrenceType]}`)}
+                              aria-hidden="true"
+                            >
+                              {t.recurrenceType === 'None' ? (
+                                <ListTree size={16} />
+                              ) : (
+                                <Repeat size={16} />
+                              )}
+                            </span>
+                            <div className="hb-stack">
+                              <button
+                                type="button"
+                                className="hb-linklike hb-name"
+                                onClick={() => void editTemplate(t.id)}
+                              >
+                                {t.name}
+                              </button>
+                              <span
+                                className="hb-sub hb-tpl-desc"
+                                title={t.description ?? undefined}
+                              >
+                                {plural(t.nodeCount, 'task')} ·{' '}
+                                {t.occurrenceCount
+                                  ? `used ${plural(t.occurrenceCount, 'time')}`
+                                  : 'not used yet'}
+                                {' · '}
+                                {t.description || `by ${userLabel(t.createdBy)}`}
+                              </span>
+                            </div>
+                            <div className="hb-tpl-facts">
+                              <span title={REPEAT_LABEL[t.recurrenceType]}>
+                                <Pill tone={REC_TONE[t.recurrenceType]}>
+                                  {REC_SHORT[t.recurrenceType]}
+                                </Pill>
+                              </span>
+                              {t.recurrenceType !== 'None' && !t.isActive && (
+                                <Pill tone="amber">Paused</Pill>
+                              )}
+                            </div>
+                            <div className="hb-tpl-actions">
+                              <Btn
+                                kind="primary"
+                                className="hb-btn-sm"
+                                onClick={() => void openInstantiate(t.id)}
+                              >
+                                Create tasks
+                              </Btn>
+                              <button
+                                type="button"
+                                className="hb-icon-btn hb-icon-btn-sm"
+                                aria-label={`Edit ${t.name}`}
+                                title="Edit"
+                                onClick={() => void editTemplate(t.id)}
+                              >
+                                <Pencil size={16} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
+                                aria-label={`Delete ${t.name}`}
+                                title="Delete"
+                                onClick={() => void removeTemplate(t)}
+                              >
+                                <Trash2 size={16} aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="hb-tpl-facts">
-                        <span title={REPEAT_LABEL[t.recurrenceType]}>
-                          <Pill tone={REC_TONE[t.recurrenceType]}>
-                            {REC_SHORT[t.recurrenceType]}
-                          </Pill>
-                        </span>
-                        {t.recurrenceType !== 'None' && !t.isActive && (
-                          <Pill tone="amber">Paused</Pill>
-                        )}
-                      </div>
-                      <div className="hb-tpl-actions">
-                        <Btn
-                          kind="primary"
-                          className="hb-btn-sm"
-                          onClick={() => void openInstantiate(t.id)}
-                        >
-                          Create tasks
-                        </Btn>
-                        <button
-                          type="button"
-                          className="hb-icon-btn hb-icon-btn-sm"
-                          aria-label={`Edit ${t.name}`}
-                          title="Edit"
-                          onClick={() => void editTemplate(t.id)}
-                        >
-                          <Pencil size={16} aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
-                          aria-label={`Delete ${t.name}`}
-                          title="Delete"
-                          onClick={() => void removeTemplate(t)}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    </section>
+                  );
+                })
               )}
             </Card>
           </div>
@@ -1160,7 +1207,9 @@ function TemplateEditor({
           pendingFuture.map((f) => f.occurrenceId),
         );
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Could not update the task sets already created');
+        setError(
+          e instanceof ApiError ? e.message : 'Could not update the task sets already created',
+        );
         setPendingFuture(null);
         return;
       }

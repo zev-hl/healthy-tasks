@@ -97,6 +97,9 @@ stated fallback.
     Parent, Blocked by and Blocks exist today, so the card's type dropdown offers those three.
 11. **Search by person:** the brief's Tasks search matches people too. The search endpoint
     matches title, #number and tags only, so the box says "Search by title, #number or tag".
+12. **Templates by department:** the Templates list is in sections (Nov 11). Sections by the main
+    task's department need it in the template list's data (`TemplateSummaryDto`: the root node's
+    duty department). Until then the sections are Repeating / Used when needed / Paused.
 
 ## Changed from the brief, at the user's request
 
