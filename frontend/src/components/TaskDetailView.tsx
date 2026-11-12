@@ -77,7 +77,6 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { TimeBlock } from './harbor/TimeBlock';
 import { useToast } from './harbor/Toast';
 import { PRIORITY_OPTIONS, dueInfo } from './harbor/taskHelpers';
-import { formatClock, useTimer } from '../lib/timer';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { isMismatch, useDutyCatalog } from '../lib/duties';
@@ -156,8 +155,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const navigate = useNavigate();
   const toast = useToast();
   const [task, setTask] = useState<TaskDetailDto>(initialTask);
-  const { timer: runningTimer, elapsed: timerElapsed } = useTimer();
-  const timerHere = runningTimer?.taskId === initialTask.id;
 
   const [historyVersion, setHistoryVersion] = useState(0);
   const applyTask = useCallback((t: TaskDetailDto) => {
@@ -997,15 +994,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       ),
   ];
   const stagedDue = dueInfo(stagedDueIso, task.status);
+  // A short note inside the Status chip: what the status is waiting on. (Sub-task
+  // progress is on the Sub-tasks card; "Open" already means not started.)
+  const openBlocker = task.isBlockedBy.find(
+    (b) => b.status !== 'Completed' && b.status !== 'Canceled',
+  );
   const statusHint = isInReview
-    ? 'Waiting on a review'
-    : task.isBlockedBy.some((b) => b.status !== 'Completed' && b.status !== 'Canceled')
-      ? 'Waiting on a linked task'
-      : task.children.length > 0
-        ? `${doneChildren} of ${task.children.length} sub-tasks done`
-        : task.status === 'Open'
-          ? 'Not started'
-          : null;
+    ? 'with the reviewer'
+    : openBlocker
+      ? `waiting on #${openBlocker.id}`
+      : null;
   const childFacts = useChildFacts(task.children);
   // Fold the header to the title and one summary line (Nov 11: room to work).
   const [headFolded, setHeadFolded] = useState(() => {
@@ -1041,7 +1039,25 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <ChevronLeft size={16} aria-hidden="true" /> Tasks
           </Link>
           <span aria-hidden="true">/</span>
+          {/* A sub-task's parent sits in the path, not on a line of its own (Nov 12). */}
+          {task.parent && (
+            <>
+              {task.parent.accessible ? (
+                <Link
+                  to={`/tasks/${task.parent.id}`}
+                  className="hb-crumb-parent"
+                  title={task.parent.name}
+                >
+                  #{task.parent.id} {task.parent.name}
+                </Link>
+              ) : (
+                <span>#{task.parent.id}</span>
+              )}
+              <span aria-hidden="true">/</span>
+            </>
+          )}
           <span>#{task.id}</span>
+          {!canEdit && <span className="hb-crumb-flag">Read-only</span>}
         </nav>
         {pos >= 0 && order.length > 1 && (
           <span className="hb-stepper">
@@ -1067,11 +1083,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </span>
         )}
         <span className="hb-grow" />
-        {timerHere && (
-          <span className="hb-mini-clock" title="The timer is running on this task">
-            <span className="hb-live" aria-hidden="true" /> {formatClock(timerElapsed)}
-          </span>
-        )}
+        <TimeBlock
+          compact
+          task={{
+            id: task.id,
+            name: task.name,
+            dutyId: task.dutyId,
+            dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
+          }}
+        />
         <button
           type="button"
           className="hb-icon-btn hb-icon-btn-sm"
@@ -1213,24 +1233,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </button>
             </p>
           )}
-          {/* Each fact shows once, where it is set (Nov 12): status, duty, privacy and
-              due date are their chips below; this line only adds what no chip says. */}
-          <p className="hb-meta hb-unfolded">
-            #{task.id}
-            {!canEdit && <> · Read-only</>}
-            {statusHint && <> · {statusHint}</>}
-            {task.parent && (
-              <>
-                {' '}
-                · Sub-task of <TaskRefLink task={task.parent} />
-              </>
-            )}
-          </p>
 
           <div className="hb-chips hb-unfolded">
             {isInReview || !canEdit ? (
               <span className="hb-chip static">
                 <StatusPill status={task.status} />
+                {statusHint && <span className="hb-chip-note">{statusHint}</span>}
               </span>
             ) : (
               <span ref={statusChipRef} className="hb-prop-anchor">
@@ -1249,6 +1257,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                         aria-hidden="true"
                       />{' '}
                       {o?.label}
+                      {statusHint && status === task.status && (
+                        <span className="hb-chip-note">{statusHint}</span>
+                      )}
                     </>
                   )}
                   onChange={(v) => setStatus(v)}
@@ -1423,14 +1434,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             />
           )}
         </div>
-        <TimeBlock
-          task={{
-            id: task.id,
-            name: task.name,
-            dutyId: task.dutyId,
-            dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
-          }}
-        />
       </header>
 
       <div className="hb-task-body">

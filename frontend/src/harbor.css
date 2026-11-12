@@ -9169,3 +9169,61 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   font-size: 13px;
   color: var(--muted);
 }
+
+/* Notes and path pieces that replace the header's info line (Nov 12). */
+.hb-chip-note {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.hb-crumb-parent {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-crumb-flag {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* The timer as one button in the task page's top bar (Nov 12). */
+.hb-timer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-deep);
+  cursor: pointer;
+}
+.hb-timer-btn:hover {
+  border-color: var(--accent);
+}
+.hb-timer-btn-n {
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+}
+.hb-timer-btn.is-running {
+  border-color: #f3b4ae;
+  background: #fff5f4;
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}
+.hb-taskhead {
+  padding-top: 18px;
+  padding-bottom: 16px;
+}

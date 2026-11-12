@@ -21,8 +21,14 @@ import { cx } from './ui';
  */
 export function TimeBlock({
   task,
+  compact = false,
 }: {
   task: { id: number; name: string; dutyId: string | null; dutyLabel?: string | null };
+  /**
+   * One button for the task page's top bar (Nov 12: time tracking isn't required
+   * at rollout, so it doesn't get a big box). The details go in its tooltip.
+   */
+  compact?: boolean;
 }) {
   const { timer, elapsed } = useTimer();
   const toast = useToast();
@@ -52,6 +58,39 @@ export function TimeBlock({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (compact) {
+    const where = elsewhere
+      ? `The timer is on “${elsewhere.taskName}”`
+      : task.dutyId
+        ? `Logs to My Time under ${task.dutyLabel ?? 'its duty'}`
+        : 'Give the task a duty to log time to My Time';
+    return running ? (
+      <button
+        type="button"
+        className="hb-timer-btn is-running"
+        disabled={busy}
+        onClick={() => void stop()}
+        title="Stop and log the time to My Time"
+      >
+        <span className="hb-live" aria-hidden="true" />
+        <span aria-live="off">{formatClock(elapsed)}</span>
+        <Square size={12} fill="currentColor" aria-hidden="true" /> Stop &amp; log
+      </button>
+    ) : (
+      <button
+        type="button"
+        className="hb-timer-btn"
+        disabled={busy}
+        onClick={() => void start()}
+        title={`${where}${log.minutes > 0 ? ` · ${formatMinutes(log.minutes)} logged here` : ''}`}
+      >
+        <Play size={13} fill="currentColor" aria-hidden="true" />
+        {elsewhere ? 'Switch timer here' : 'Start timer'}
+        {log.minutes > 0 && <span className="hb-timer-btn-n">{formatMinutes(log.minutes)}</span>}
+      </button>
+    );
   }
 
   return (
