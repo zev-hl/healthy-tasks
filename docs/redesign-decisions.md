@@ -192,6 +192,17 @@ These replace the brief too.
   - **Unread alerts** count on the Dashboard item in the sidebar.
   - **"Create tasks" is now "Use template"** (the button, the side panel and the help text); the
     panel's final button still says what it does: "Create 4 tasks".
+- **Lipa's layout vision, applied (Nov 12):**
+  - **Templates open beside the list:** the list stays as a rail on the left (foldable), switching
+    asks first when there is unsaved work; type a name to start a template or add a sub-task.
+  - **Everything folds for room:** the sidebar folds to icons, the task header to its title and one
+    summary line. Both are remembered in the browser.
+  - **Overdue stands out:** a red box above a late task's title says how many days late.
+  - **Sub-task rows** show priority and due date beside the status.
+  - **Who made a task** is at the bottom of the ⋯ menu, not in the header.
+  - **White = you can change it, grey = fixed:** checked across the main screens; search boxes are
+    now white. Kept on purpose: status pills are colored by status, and an active filter is tinted.
+  - The Dashboard already had "Done today" (Lipa's "closed today").
 
 ## The preview site
 
