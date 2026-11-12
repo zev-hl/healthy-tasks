@@ -56,6 +56,8 @@ import {
   ChevronDown,
   Search,
   TriangleAlert,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from 'lucide-react';
 import {
   Bar,
@@ -1015,6 +1017,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           ? 'Not started'
           : null;
   const childFacts = useChildFacts(task.children);
+  // Fold the header to the title and one summary line (Nov 11: room to work).
+  const [headFolded, setHeadFolded] = useState(() => {
+    try {
+      return localStorage.getItem('hb-taskhead-folded') === '1';
+    } catch {
+      return false;
+    }
+  });
+  function toggleHead() {
+    setHeadFolded((f) => {
+      try {
+        localStorage.setItem('hb-taskhead-folded', f ? '0' : '1');
+      } catch {
+        // Private mode: not remembered.
+      }
+      return !f;
+    });
+  }
   const [activity, setActivity] = useState<'comments' | 'history' | 'reminders'>('comments');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
@@ -1063,6 +1083,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <span className="hb-live" aria-hidden="true" /> {formatClock(timerElapsed)}
           </span>
         )}
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={toggleHead}
+          aria-pressed={headFolded}
+          aria-label={headFolded ? 'Show the task details' : 'Fold the task details'}
+          title={headFolded ? 'Show the task details' : 'Fold the task details'}
+        >
+          {headFolded ? (
+            <ChevronsUpDown size={16} aria-hidden="true" />
+          ) : (
+            <ChevronsDownUp size={16} aria-hidden="true" />
+          )}
+        </button>
         {canEdit &&
           !isInReview &&
           (done ? (
@@ -1171,7 +1205,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       </div>
 
       {/* Header band */}
-      <header className={`hb-taskhead${justCompleted ? ' just-completed' : ''}`}>
+      <header
+        className={`hb-taskhead${justCompleted ? ' just-completed' : ''}${headFolded ? ' is-folded' : ''}`}
+      >
         <div className="hb-taskhead-main">
           {lateDays != null && (
             <div className="hb-overdue-box" role="status">
@@ -1218,7 +1254,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           ) : (
             <h1 className="hb-title-text">{task.name}</h1>
           )}
-          <p className="hb-meta">
+          {headFolded && (
+            <p className="hb-meta hb-fold-summary">
+              #{task.id} · {TASK_STATUS_LABELS[task.status]} ·{' '}
+              {task.assignee ? userLabel(task.assignee) : 'Unassigned'} ·{' '}
+              {savedDue ? `Due ${savedDue.text}` : 'No due date'} · {task.priority} priority{' '}
+              <button type="button" className="hb-linklike" onClick={toggleHead}>
+                Show details
+              </button>
+            </p>
+          )}
+          <p className="hb-meta hb-unfolded">
             #{task.id}
             {statusHint && <> · {statusHint}</>}
             {task.duty && (
@@ -1235,7 +1281,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             )}
           </p>
 
-          <div className="hb-chips">
+          <div className="hb-chips hb-unfolded">
             {isInReview || !canEdit ? (
               <span className="hb-chip static">
                 <StatusPill status={task.status} />

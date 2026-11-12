@@ -49,8 +49,15 @@ input[type='radio'] {
 
 /* --- App shell --------------------------------------------------------------- */
 
+:root {
+  /* The sidebar's width; 64px when folded (html.side-folded). */
+  --side-w: 220px;
+}
+html.side-folded {
+  --side-w: 64px;
+}
 .app-main {
-  margin-left: 220px;
+  margin-left: var(--side-w);
   min-width: 0;
 }
 
@@ -58,7 +65,7 @@ input[type='radio'] {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 220px;
+  width: var(--side-w);
   background: var(--side);
   border-right: 0;
   padding: 16px 12px;
@@ -205,7 +212,7 @@ input[type='radio'] {
 }
 .launcher {
   position: fixed;
-  left: 244px;
+  left: calc(var(--side-w) + 24px);
   bottom: 16px;
   width: 368px;
   max-width: calc(100vw - 260px);
@@ -2067,7 +2074,7 @@ button.hb-vtab:hover,
 /* The batch bar */
 .hb-batch {
   position: fixed;
-  left: calc(220px + 32px);
+  left: calc(var(--side-w) + 32px);
   right: 32px;
   bottom: 20px;
   z-index: 120;
@@ -2850,7 +2857,7 @@ button.hb-x:hover {
 /* The one Save bar */
 .hb-savebar {
   position: fixed;
-  left: calc(220px + 32px);
+  left: calc(var(--side-w) + 32px);
   right: 32px;
   bottom: 20px;
   z-index: 120;
@@ -8939,4 +8946,79 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   border-top: 1px solid var(--border);
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Fold the sidebar to icons (Nov 11: everything can fold away for room). Wide screens only. */
+.side-fold {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 4px 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--side-text);
+  opacity: 0.75;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.side-fold:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.06);
+}
+@media (min-width: 820px) {
+  html.side-folded .sidebar {
+    padding: 16px 8px;
+    align-items: stretch;
+  }
+  html.side-folded .side-brand-name,
+  html.side-folded .side-label,
+  html.side-folded .side-account-text,
+  html.side-folded .side-sub-item,
+  html.side-folded .side-fold-text,
+  html.side-folded .launcher-label {
+    display: none;
+  }
+  html.side-folded .sidebar .side-brand,
+  html.side-folded .sidebar .side-nav-item,
+  html.side-folded .side-fold,
+  html.side-folded .side-account {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  html.side-folded .sidebar .side-nav-item {
+    position: relative;
+  }
+  html.side-folded .side-count {
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    box-shadow: 0 0 0 2px var(--side);
+  }
+}
+@media (max-width: 819px) {
+  .side-fold {
+    display: none;
+  }
+}
+
+/* Task page header folded: title and one summary line; chips and timer hidden. */
+.hb-taskhead.is-folded .hb-unfolded,
+.hb-taskhead.is-folded .hb-timeblock {
+  display: none;
+}
+.hb-taskhead.is-folded {
+  padding-bottom: 14px;
+}
+.hb-fold-summary .hb-linklike {
+  margin-left: 6px;
+  font-size: inherit;
 }
