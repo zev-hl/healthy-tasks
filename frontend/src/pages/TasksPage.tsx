@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStickyToolbar } from '../lib/useStickyToolbar';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Check,
@@ -106,6 +107,7 @@ export function TasksPage() {
   const me = user?.id ?? '';
   const canTeam = user?.role === 'Admin' || user?.role === 'Manager';
   const location = useLocation();
+  const toolbarRef = useStickyToolbar<HTMLDivElement>();
   const toast = useToast();
 
   // --- Reference data --------------------------------------------------------
@@ -647,7 +649,7 @@ export function TasksPage() {
         }
       />
       <PageBody>
-        <div className="hb-toolbar">
+        <div ref={toolbarRef} className="hb-toolbar is-sticky">
           {/* The tab's badge already says how many; only say it here when it
               differs — a search or filters narrow it, or a saved view (no badge). */}
           {/* The calendar shows the tasks themselves; its row needs the room. */}
