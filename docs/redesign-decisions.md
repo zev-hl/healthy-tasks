@@ -150,6 +150,17 @@ These replace the brief too.
   confirmation; **More details** carries what was typed to the full New task page.
   The Dashboard's own **Quick add** card (brief §6.1) was removed, since this panel does the same
   from every page.
+- **Expand in place:** an arrow before each task's name (Tasks list; Dashboard's Overdue, Waiting
+  on your review and My tasks) opens its description and details under the row, with "Open task".
+- **Parents and sub-tasks look different:** in the nested Tasks list a parent shows "N sub-tasks"
+  and a sub-task hangs off a connector on a lighter row ("sub-task of #N"); in the Templates editor
+  the main task is a tinted header card and each sub-task shows ↳ and its number.
+- **Plain words:** "Repeats" for recurrence, "task"/"main task" for node/root, "Start date" for the
+  anchor date, "Batch label" for the instance label, "Coming repeat" for ghost occurrences, "Create
+  repeating tasks (days ahead)" for materialize. Every screen's visible text was checked.
+- **Calendar colors by kind:** due (soft blue), starts with no due date (grey, "Starts"), coming
+  repeat (dashed), with a key under the grid; the dot stays the status. Calls and meetings get
+  their own once they exist.
 - Recorded for later (each needs the backend): snooze with the due date kept, "Request update"
   with a required note, drafts, voice notes, subtasks with their own status and priority,
   converting between subtask / ticket / project with a three-level limit, due dates changeable

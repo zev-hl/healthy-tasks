@@ -9,7 +9,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
-import { STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
+import { Dot, STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
 
 export type CalendarScale = 'month' | 'week' | 'day';
 
@@ -30,6 +30,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LANE_H = 24;
 const NUM_H = 32;
 const HEAD_H = 34; // the weekday row
+const LEGEND_H = 30; // the key under the grid
 const MORE_H = 22; // room for "N more" at the foot of a day
 const MIN_WEEK_H = 60;
 
@@ -144,7 +145,7 @@ export function TaskCalendar({
       const el = gridRef.current;
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY;
-      setAvail(Math.max(6 * MIN_WEEK_H + HEAD_H, window.innerHeight - top - 24));
+      setAvail(Math.max(6 * MIN_WEEK_H + HEAD_H, window.innerHeight - top - 24 - LEGEND_H));
     };
     measure();
     // Again once the page above has settled (filters, chips and rows load in).
@@ -271,7 +272,13 @@ export function TaskCalendar({
       <button
         key={p.item.key}
         type="button"
-        className={cx('hb-tcal-ev', isLate(t) && 'is-late', readOnly && 'is-readonly')}
+        className={cx(
+          'hb-tcal-ev',
+          // Each kind of item has its own look (Nov 11): due dates, start-only, repeats.
+          t.dueAt ? 'kind-due' : 'kind-start',
+          isLate(t) && 'is-late',
+          readOnly && 'is-readonly',
+        )}
         style={{ top, left, width }}
         title={`#${t.id} ${t.name} · ${TASK_STATUS_LABELS[t.status]}${
           readOnly
@@ -287,6 +294,7 @@ export function TaskCalendar({
           ) : (
             <Eye size={11} aria-hidden="true" />
           ))}
+        {!t.dueAt && <span className="hb-tcal-ev-kind">Starts</span>}
         {time && <span className="hb-tcal-ev-time">{time}</span>}
         <span className="hb-tcal-ev-name">{t.name}</span>
       </button>
@@ -446,6 +454,22 @@ export function TaskCalendar({
           })}
         </div>
       )}
+      {scale !== 'day' && (
+        <div className="hb-tcal-legend" aria-label="What the colors mean">
+          <span>
+            <i className="kind-due" aria-hidden="true" /> Due
+          </span>
+          <span>
+            <i className="kind-start" aria-hidden="true" /> Starts (no due date)
+          </span>
+          <span>
+            <i className="kind-ghost" aria-hidden="true" /> Coming repeat
+          </span>
+          <span className="hb-tcal-legend-dot">
+            <Dot color={STATUS_DOT.InProgress} size={8} /> The dot is the status
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -479,12 +503,12 @@ function DayList({
               className="hb-tcal-dayrow is-ghost"
               disabled={materializing === key}
               onClick={() => onGhost(g)}
-              title="Upcoming repeat — click to create it now"
+              title="Coming repeat: click to create it now"
             >
               <Repeat size={15} aria-hidden="true" />
               <span className="hb-stack">
                 <b>{materializing === key ? 'Creating…' : g.name}</b>
-                <span className="hb-sub">Upcoming repeat · click to create it now</span>
+                <span className="hb-sub">Coming repeat · click to create it now</span>
               </span>
             </button>
           );
