@@ -890,6 +890,12 @@ describe('Immediate alert tasks', () => {
     );
     const group = await watchingGroup('Wasif - US', { PriceChanged: 'immediate' });
     const alert = await logAlert(group, 'PriceChanged', 'B0NOTIFY01');
+    // The saver asked for Assigned emails too.
+    await prisma.notificationPreference.create({
+      data: { userId: saver.id, assignedEmail: true },
+    });
+    const mailer = await import('../src/utils/mailer.js');
+    mailer.__resetSentEmails();
 
     assert.equal((await run()).made, 1);
     const [step1, step2] = await tasksOf(alert.id);
@@ -904,6 +910,54 @@ describe('Immediate alert tasks', () => {
         [saver.id, step2!.id, 'added', null],
       ],
     );
+
+    // On the Notifications screen it is "Alert-assigned", naming no one.
+    const list = await request(app)
+      .get('/api/notifications')
+      .set(auth(await login('saver@test.local')));
+    assert.equal(list.status, 200);
+    assert.deepEqual(
+      list.body.assigned.map((a: { taskId: number; byAlert: boolean; actor: unknown }) => [
+        a.taskId,
+        a.byAlert,
+        a.actor,
+      ]),
+      [[step2!.id, true, null]],
+    );
+
+    // The email (only the saver asked for one) says which alert, and what it was.
+    await mailer.backgroundEmailsSent();
+    assert.deepEqual(
+      mailer.sentEmails.map((e) => e.to),
+      ['saver@test.local'],
+    );
+    const text = mailer.sentEmails[0]!.text;
+    assert.match(text, /It was made automatically from a Price Changed alert in Wasif - US\./);
+    assert.match(text, /Widget\nASIN B0NOTIFY01 · USA\nSomething changed\.\nAlerted Oct 19, 2026/);
+  });
+
+  it('a person reassigning an alert task later is named, not "Alert-assigned"', async () => {
+    const admin = await adminToken();
+    const saver = await seedUser({ email: 'saver@test.local', role: 'Admin' });
+    const ana = await seedUser({ email: 'ana@test.local', role: 'Member' });
+    const tpl = await makeTemplate(admin, 'Price Review', [{ role: 'Analyst' }]);
+    await setUp('PriceChanged', tpl, [], saver.id);
+    const group = await watchingGroup('Wasif - US', { PriceChanged: 'immediate' });
+    const alert = await logAlert(group, 'PriceChanged', 'B0REASSIGN');
+    assert.equal((await run()).made, 1);
+    const [step1] = await tasksOf(alert.id);
+
+    const res = await request(app)
+      .patch(`/api/tasks/${step1!.id}`)
+      .set(auth(admin))
+      .send({ assigneeId: ana.id, expectedUpdatedAt: step1!.updatedAt.toISOString() });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const list = await request(app)
+      .get('/api/notifications')
+      .set(auth(await login('ana@test.local')));
+    const [row] = list.body.assigned;
+    assert.equal(row.byAlert, false);
+    assert.equal(row.actor.email, ADMIN_EMAIL);
   });
 
   /** A template whose top task says `topText` (one task under it), set up for `alertType`. */

@@ -42,6 +42,7 @@ interface FeedItem {
   canceledReason?: ReminderCancelReason | null;
   action?: AssignAction;
   actor?: TaskUserRef | null; // assigned: who assigned/unassigned
+  byAlert?: boolean; // assigned: made with a task from an alert ("Alert-assigned")
   dueAt?: string | null; // assigned: the task's due date
   blockedByCount?: number; // assigned: open blockers on the task
   // Department Duties: an auto-created task went to someone lacking its duty.
@@ -75,6 +76,7 @@ function buildFeed(d: NotificationsDto): FeedItem[] {
       priority: a.priority,
       action: a.action,
       actor: a.actor,
+      byAlert: a.byAlert,
       dueAt: a.dueAt,
       blockedByCount: a.blockedByCount,
       dutyMismatch: a.dutyMismatch,
@@ -353,6 +355,8 @@ export function NotificationsPage() {
                         <Avatar user={it.commenter} px={30} decorative />
                       ) : it.dutyMismatch ? (
                         <span className="notif-badge assigned">⚠</span>
+                      ) : it.kind === 'assigned' && it.byAlert ? (
+                        <span className="notif-badge assigned">ALR</span>
                       ) : it.kind === 'assigned' && it.actor ? (
                         <Avatar user={it.actor} px={30} decorative />
                       ) : (
@@ -376,7 +380,9 @@ export function NotificationsPage() {
                               {dutyLabel(it.dutyMismatch.duty)}
                             </>
                           ) : it.kind === 'assigned' ? (
-                            it.actor ? (
+                            it.byAlert ? (
+                              <strong>Alert-assigned</strong>
+                            ) : it.actor ? (
                               <>
                                 <strong>{userLabel(it.actor)}</strong>{' '}
                                 {it.action === 'added' ? 'assigned you' : 'unassigned you'}

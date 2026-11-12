@@ -1169,6 +1169,12 @@ export interface AssignedNotificationDto {
   priority: TaskPriority;
   action: AssignAction;
   actor: TaskUserRef | null; // who assigned/unassigned (null for legacy rows)
+  /**
+   * The task was made from an Exclusives alert and this is that automatic
+   * assignment: shown as "Alert-assigned" rather than naming a person (`actor`
+   * is then null).
+   */
+  byAlert: boolean;
   blockedByCount: number; // open blockers on the task
   createdAt: string; // ISO
   read: boolean;

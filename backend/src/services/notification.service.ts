@@ -1,7 +1,12 @@
 import { prisma } from '../db/prisma.js';
 import { HttpError } from '../utils/http-error.js';
 import { sendInBackground } from '../utils/mailer.js';
-import { assignmentEmail, mentionEmail, reminderEmail } from '../utils/notification-emails.js';
+import {
+  assignmentEmail,
+  mentionEmail,
+  reminderEmail,
+  type AssignmentAlertDetails,
+} from '../utils/notification-emails.js';
 import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
 import { toUserRef } from './user.mapper.js';
@@ -12,8 +17,10 @@ import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cac
 import { formatBusinessTimestamp } from '../utils/business-time.js';
 import type { Actor } from './access-control.service.js';
 import {
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   reminderLeadLabel,
   TERMINAL_TASK_STATUSES,
+  type ExclusivesAlertType,
   type AssignAction,
   type AssignedNotificationDto,
   type MentionedFilter,
@@ -88,7 +95,7 @@ export async function createAssignedNotification(params: {
     data: { userId: recipientId, type: 'assigned', taskId, assignAction: action, actorId },
   });
   invalidateUnread(recipientId);
-  if (prefs.assignedEmail) await emailAssignment(recipientId, taskId, action);
+  if (prefs.assignedEmail) await emailAssignment(recipientId, taskId, action, actorId === null);
 }
 
 /**
@@ -164,6 +171,9 @@ export async function listNotifications(
           startAt: true,
           dueAt: true,
           priority: true,
+          createdAt: true,
+          creatorId: true,
+          templateOccurrence: { select: { origin: true } },
           assignee: {
             select: { id: true, email: true, firstName: true, lastName: true, title: true },
           },
@@ -198,6 +208,17 @@ export async function listNotifications(
   const actorById = new Map(actorRows.map((u) => [u.id, toUserRef(u)]));
   const blockedByCount = new Map(blockerGroups.map((g) => [g.blockedId, g._count._all]));
 
+  // An alert task's own assignment, made with it. Since 2026-11-12 it has no
+  // actor; earlier ones named the Admin who saved Alert Task Setup (the task's
+  // creator) and were made in the same moment as the task, so they count too.
+  // A later reassignment by a person is not one.
+  const byAlert = (r: (typeof assignedRows)[number]) =>
+    r.type === 'assigned' &&
+    r.task.templateOccurrence?.origin === 'alert' &&
+    (r.actorId === null ||
+      (r.actorId === r.task.creatorId &&
+        Math.abs(r.createdAt.getTime() - r.task.createdAt.getTime()) < 60_000));
+
   const assigned: AssignedNotificationDto[] = assignedRows.map((r) => ({
     id: r.id,
     taskId: r.taskId,
@@ -206,7 +227,8 @@ export async function listNotifications(
     dueAt: iso(r.task.dueAt),
     priority: r.task.priority,
     action: (r.assignAction ?? 'added') as AssignAction,
-    actor: r.actorId ? (actorById.get(r.actorId) ?? null) : null,
+    byAlert: byAlert(r),
+    actor: r.actorId && !byAlert(r) ? (actorById.get(r.actorId) ?? null) : null,
     blockedByCount: blockedByCount.get(r.taskId) ?? 0,
     createdAt: r.createdAt.toISOString(),
     read: r.readAt !== null,
@@ -404,12 +426,70 @@ async function emailMention(taskId: number, commentId: string, userIds: string[]
   }
 }
 
-async function emailAssignment(userId: string, taskId: number, action: AssignAction): Promise<void> {
+/** At most this many alerts are written out in an assignment email. */
+const EMAIL_ALERTS_SHOWN = 5;
+
+/**
+ * The alert(s) a task was made from, for its assignment email: those linked to
+ * the top task of its template occurrence (a Daily task can carry several).
+ * Null for a task not made from an alert.
+ */
+async function alertDetailsFor(
+  taskId: number,
+  timeZone: string | null,
+): Promise<AssignmentAlertDetails | null> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { templateOccurrence: { select: { origin: true, rootTaskId: true } } },
+  });
+  const occ = task?.templateOccurrence;
+  if (occ?.origin !== 'alert' || occ.rootTaskId === null) return null;
+  const where = { taskId: occ.rootTaskId };
+  const [rows, total] = await Promise.all([
+    prisma.alertLog.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      take: EMAIL_ALERTS_SHOWN,
+      select: {
+        alertType: true,
+        groupName: true,
+        asin: true,
+        marketplace: true,
+        title: true,
+        message: true,
+        createdAt: true,
+      },
+    }),
+    prisma.alertLog.count({ where }),
+  ]);
+  if (rows.length === 0) return null;
+  const type = rows[0]!.alertType as ExclusivesAlertType;
+  return {
+    typeLabel: EXCLUSIVES_ALERT_TYPE_LABELS[type] ?? type,
+    groupName: rows[0]!.groupName,
+    alerts: rows.map((r) => ({
+      asin: r.asin,
+      marketplace: r.marketplace,
+      title: r.title,
+      message: r.message,
+      at: formatBusinessTimestamp(r.createdAt, timeZone ?? undefined),
+    })),
+    more: total - rows.length,
+  };
+}
+
+async function emailAssignment(
+  userId: string,
+  taskId: number,
+  action: AssignAction,
+  fromAlert: boolean,
+): Promise<void> {
   const [task, user] = await Promise.all([
     prisma.task.findUnique({ where: { id: taskId }, select: { name: true } }),
-    prisma.user.findUnique({ where: { id: userId }, select: { email: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { email: true, timeZone: true } }),
   ]);
   if (!task || !user) return;
+  const alert = fromAlert ? await alertDetailsFor(taskId, user.timeZone) : null;
   // In the background, so saving the task does not wait on the mail provider.
   sendInBackground(`assignment to ${user.email}`, () =>
     queueEmail(
@@ -419,6 +499,7 @@ async function emailAssignment(userId: string, taskId: number, action: AssignAct
         taskId,
         taskName: task.name,
         link: taskLink(taskId),
+        alert,
       }),
       { kind: 'assignment' },
     ),
