@@ -1160,7 +1160,7 @@ function TemplateEditor({
           pendingFuture.map((f) => f.occurrenceId),
         );
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Could not update future instances');
+        setError(e instanceof ApiError ? e.message : 'Could not update the task sets already created');
         setPendingFuture(null);
         return;
       }
@@ -1510,7 +1510,7 @@ function TemplateEditor({
 
       {pendingFuture && (
         <ModalShell
-          title="Update future instances?"
+          title="Update the tasks already created?"
           width="520px"
           onBackdropClick={() => void applyFuture(false)}
           actions={
@@ -1616,7 +1616,7 @@ function InstantiatePanel({
       if (isDutyNotHeldError(e)) {
         // Someone's duties changed since the check: show what's missing now.
         setProblems((e.details as { problems: TemplateDutyProblemDto[] }).problems ?? []);
-      } else setError(e instanceof ApiError ? e.message : 'Could not instantiate the template');
+      } else setError(e instanceof ApiError ? e.message : 'Could not create the tasks');
       setBusy(false);
     }
   }
