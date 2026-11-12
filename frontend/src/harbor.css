@@ -8660,3 +8660,38 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   font-weight: 500;
   color: var(--muted);
 }
+
+/* Tags and alert card on the task page (out of the header, Nov 11). */
+.hb-labels .hb-card-pad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hb-labels-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: start;
+  gap: 10px;
+}
+.hb-labels-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.hb-labels-v {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+}
+.hb-labels-v .hb-attrs,
+.hb-labels-v .task-attrs {
+  margin: 0;
+}

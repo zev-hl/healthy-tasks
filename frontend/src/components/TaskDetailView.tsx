@@ -1307,45 +1307,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )
             )}
 
-            {task.tags.map((t) => (
-              <span key={t} className="hb-chip hb-tagchip">
-                {t}
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => removeTag(t)}
-                    disabled={tagBusy}
-                    aria-label={`Remove tag ${t}`}
-                  >
-                    <X size={12} aria-hidden="true" />
-                  </button>
-                )}
-              </span>
-            ))}
-            {canEdit && (
-              <span className="hb-chip hb-addtag">
-                <Tag size={13} aria-hidden="true" />
-                <input
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void addTagFromDraft();
-                    }
-                  }}
-                  placeholder="Add tag"
-                  aria-label="Add a tag"
-                  list="detail-tag-list"
-                />
-                <datalist id="detail-tag-list">
-                  {availableTags.map((t) => (
-                    <option key={t} value={t} />
-                  ))}
-                </datalist>
-              </span>
-            )}
-
             <span className="hb-chip-divider" aria-hidden="true" />
             <span
               className="hb-chip static soon"
@@ -1381,21 +1342,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )
             )}
           </div>
-
-          {/* HLAI-118: the special attributes, under the chips. */}
-          {canEdit ? (
-            <TaskAttributeChips
-              savedGroup={task.alertGroup}
-              groups={alertGroups}
-              groupId={attrGroupId}
-              onGroup={setAttrGroupId}
-              alertType={attrType}
-              onType={setAttrType}
-              savedType={task.alertType ?? ''}
-            />
-          ) : (
-            <TaskAttributesBar task={task} />
-          )}
 
           {dutyMismatch && stagedDuty && doer && doerId && (
             <DutyCrossCheck
@@ -1541,6 +1487,77 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <div className="hb-card-pad">
                 {descHead(false)}
                 {descExpanded ? descText : descBody}
+              </div>
+            </section>
+
+            {/* Tags and the alert attributes (HLAI-118) live here, out of the
+                header (meeting decision, Nov 11): the header keeps what is changed often. */}
+            <section className="hb-card hb-labels" aria-label="Tags and alert">
+              <div className="hb-card-pad">
+                <div className="hb-labels-row">
+                  <span className="hb-labels-k">
+                    <Tag size={13} aria-hidden="true" /> Tags
+                  </span>
+                  <div className="hb-labels-v">
+                    {task.tags.map((t) => (
+                      <span key={t} className="hb-chip hb-tagchip">
+                        {t}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => removeTag(t)}
+                            disabled={tagBusy}
+                            aria-label={`Remove tag ${t}`}
+                          >
+                            <X size={12} aria-hidden="true" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    {canEdit && (
+                      <span className="hb-chip hb-addtag">
+                        <Tag size={13} aria-hidden="true" />
+                        <input
+                          value={tagDraft}
+                          onChange={(e) => setTagDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void addTagFromDraft();
+                            }
+                          }}
+                          placeholder="Add tag"
+                          aria-label="Add a tag"
+                          list="detail-tag-list"
+                        />
+                        <datalist id="detail-tag-list">
+                          {availableTags.map((t) => (
+                            <option key={t} value={t} />
+                          ))}
+                        </datalist>
+                      </span>
+                    )}
+                    {!canEdit && task.tags.length === 0 && <span className="hb-small">None</span>}
+                  </div>
+                </div>
+                <div className="hb-labels-row">
+                  <span className="hb-labels-k">Alert</span>
+                  <div className="hb-labels-v">
+                    {canEdit ? (
+                      <TaskAttributeChips
+                        savedGroup={task.alertGroup}
+                        groups={alertGroups}
+                        groupId={attrGroupId}
+                        onGroup={setAttrGroupId}
+                        alertType={attrType}
+                        onType={setAttrType}
+                        savedType={task.alertType ?? ''}
+                      />
+                    ) : (
+                      <TaskAttributesBar task={task} />
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
 
