@@ -117,7 +117,7 @@ These replace what the brief says. Don't "fix" them back.
   multi-day bars. The month fits the window without scrolling. Its controls sit in the filter
   row, where Sort is hidden.
 - **Side panels instead of pop-ups:** People (Add, Edit, Merge users), Goals, the Time day editor,
-  and Templates' Create tasks open in the page's side column.
+  and Templates' Use template open in the page's side column.
 - **Other menus instead of pop-ups:** linking a task (a search under the Type + Task dropdowns),
   Send for review (under the Status chip, or the Board card dropped into Review), Duplicate and
   Save as template (under the ⋯ button), New sub-task (an inline row in its card), and the alert
@@ -190,6 +190,8 @@ These replace the brief too.
   - **Calendar Me / Team / All** switch, in place of the Owner chip.
   - **Repeats:** Daily / Weekly on the task's day / Monthly / Custom, and a sentence-style form.
   - **Unread alerts** count on the Dashboard item in the sidebar.
+  - **"Create tasks" is now "Use template"** (the button, the side panel and the help text); the
+    panel's final button still says what it does: "Create 4 tasks".
 
 ## The preview site
 

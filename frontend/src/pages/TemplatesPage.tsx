@@ -81,7 +81,7 @@ import {
  * editor follows the task page: the template's details and its task tree on
  * the left, how it repeats and what it makes on the right, and one Save bar.
  * Each task in the tree is a row (drag handle, name, its settings as chips)
- * that opens in place to edit everything else. "Create tasks" (instantiate)
+ * that opens in place to edit everything else. "Use template" (instantiate)
  * asks for Day 0, a label and who fills each role, then checks duties.
  */
 
@@ -271,7 +271,7 @@ const SECTIONS: {
   {
     key: 'oneoff',
     title: 'Used when needed',
-    hint: 'You make their tasks with “Create tasks”',
+    hint: 'You make their tasks with “Use template”',
     test: (t) => t.recurrenceType === 'None',
   },
   {
@@ -522,7 +522,7 @@ export function TemplatesPage() {
                                 className="hb-btn-sm"
                                 onClick={() => void openInstantiate(t.id)}
                               >
-                                Create tasks
+                                Use template
                               </Btn>
                               <button
                                 type="button"
@@ -628,7 +628,7 @@ export function TemplatesPage() {
                     </li>
                     <li>
                       <strong>Repeat it, or use it by hand.</strong> A repeating template makes its
-                      tasks on schedule; Create tasks makes them now.
+                      tasks on schedule; Use template makes them now.
                     </li>
                   </ol>
                 </Card>
@@ -1367,7 +1367,7 @@ function TemplateEditor({
                 </div>
                 {r.recurrenceType === 'None' ? (
                   <p className="hb-tpl-note">
-                    Used by hand only: Create tasks on the Templates list makes a new set.
+                    Used by hand only: Use template on the Templates list makes a new set.
                   </p>
                 ) : (
                   <>
@@ -1591,7 +1591,7 @@ const REPEAT_LABEL: Record<RecurrenceType, string> = {
   RelativeToCompletion: 'After the last one is done',
 };
 
-// --- Instantiate panel ("Create tasks"), in the page's side column ------------
+// --- Instantiate panel ("Use template"), in the page's side column ------------
 
 function InstantiatePanel({
   template,
@@ -1863,7 +1863,7 @@ function InstantiatePanel({
     <InstPanel
       onClose={onClose}
       busy={busy}
-      title={`Create tasks from “${template.name}”`}
+      title={`Use “${template.name}”`}
       hint={`${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'} will be created`}
       actions={
         <>
@@ -2000,7 +2000,7 @@ function InstantiatePanel({
   );
 }
 
-/** The side panel the two steps of Create tasks sit in. */
+/** The side panel the two steps of Use template sit in. */
 function InstPanel({
   title,
   hint,
@@ -2021,7 +2021,7 @@ function InstPanel({
       <section aria-label={title}>
         <div className="hb-gpanel-head">
           <div className="hb-stack">
-            <span className="hb-gpanel-eyebrow">Create tasks</span>
+            <span className="hb-gpanel-eyebrow">Use template</span>
             <h2>{title}</h2>
           </div>
           <button

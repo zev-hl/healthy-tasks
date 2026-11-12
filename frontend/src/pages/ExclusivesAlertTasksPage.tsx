@@ -80,7 +80,7 @@ const roleNeeds = (template: TemplateDto, role: string): string[] => [
  * template its tasks are made from, and who fills each of that template's
  * roles. The same for every alert group. Admins and Managers.
  *
- * The roles work as in the template's Create tasks window: a person per role,
+ * The roles work as in the template's Use template window: a person per role,
  * ⚠ for someone missing a duty that role's tasks carry. Nothing is kept until
  * Save, which sends every row at once; Cancel puts back what was last saved.
  * Both stay off until something has changed, and leaving with changes not
@@ -389,7 +389,7 @@ export function ExclusivesAlertTasksPage() {
 
 /**
  * One alert type's Role Assignment cell: each role of its template with a
- * person, as the Create tasks window asks for them.
+ * person, as the Use template window asks for them.
  */
 function RoleCell({
   typeLabel,
