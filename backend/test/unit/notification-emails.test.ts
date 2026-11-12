@@ -166,3 +166,55 @@ describe('the queue test email', () => {
     assert.match(looksRight(email), /Queued at 2026-10-23T15:00:00\.000Z\./);
   });
 });
+
+describe('assignment from a text-change alert', () => {
+  const email = () =>
+    assignmentEmail({
+      to: 'a@b.test',
+      action: 'added',
+      taskId: 42,
+      taskName: 'WasiU_DC_263160842: Review',
+      link: LINK,
+      alert: {
+        typeLabel: 'Description Changed',
+        groupName: 'Wasif - US',
+        alerts: [
+          {
+            asin: 'B0AAA00001',
+            marketplace: 'USA',
+            title: 'Tea',
+            message: 'Description changed from "..." to "...".',
+            at: 'Nov 12, 2026, 8:42 AM EST (New York)',
+            compare: {
+              label: 'Description',
+              before: '...for busy mornings, brewed <fast> in five...',
+              after: '...for busy mornings, steeped <fast> in three...',
+            },
+          },
+        ],
+        more: 0,
+      },
+    });
+
+  it('shows Before and Now side by side, the changed words marked', () => {
+    const html = looksRight(email(), { button: 'Open the task' });
+    const table = /<table[^>]*table-layout:fixed[^>]*><tr>(.*?)<\/tr><\/table>/s.exec(html)?.[1];
+    assert.ok(table, 'a two-column table');
+    const cells = table!.split('<td width="50%"').slice(1);
+    assert.equal(cells.length, 2);
+    assert.match(cells[0]!, />Before</);
+    assert.match(cells[1]!, />Now</);
+    assert.match(cells[0]!, /line-through;[^>]*>brewed<\/span>/);
+    assert.match(cells[1]!, /background:#e2f0e6;[^>]*>steeped<\/span>/);
+    assert.ok(cells[0]!.includes('&lt;fast&gt;'), 'typed text never read as a tag');
+    // The message is not repeated above it.
+    assert.doesNotMatch(html, /Description changed from/);
+  });
+
+  it('the text version lists Before then Now', () => {
+    assert.match(
+      email().text,
+      /Alerted Nov 12, 2026, 8:42 AM EST \(New York\)\nDescription changed:\n\nBefore:\n\.\.\.for busy mornings, brewed <fast> in five\.\.\.\n\nNow:\n\.\.\.for busy mornings, steeped <fast> in three\.\.\./,
+    );
+  });
+});

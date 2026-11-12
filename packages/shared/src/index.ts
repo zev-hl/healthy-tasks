@@ -2852,3 +2852,135 @@ export function formatDuration(minutes: number): string {
   if (!h) return `${r}m`;
   return r ? `${h}h ${r}m` : `${h}h`;
 }
+
+// ---------------------------------------------------------------------------
+// Word-level comparison of two versions of a text (Exclusives text-change
+// alerts: the Compare pop-up and the assignment email show them side by side).
+// ---------------------------------------------------------------------------
+
+/** A run of text, and whether it differs from the other version. */
+export interface DiffPart {
+  text: string;
+  changed: boolean;
+}
+
+/**
+ * Amazon descriptions can carry HTML. As plain text: line and paragraph breaks
+ * kept, other tags dropped, the common entities read. React shows the result
+ * as text, so nothing in it is ever run as markup.
+ */
+export function plainText(s: string | null): string {
+  return (s ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h\d)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Words and the spaces between them, both kept, so the text reads as it was. */
+const diffTokens = (s: string): string[] => s.split(/(\s+)/).filter((t) => t.length > 0);
+
+/** Above this many token pairs the full comparison is skipped (see below). */
+const DIFF_MAX_CELLS = 4_000_000;
+
+function mergeDiffParts(parts: DiffPart[]): DiffPart[] {
+  const out: DiffPart[] = [];
+  for (const p of parts) {
+    const last = out[out.length - 1];
+    // Spaces between two changed words stay inside the one marked run.
+    if (last && (last.changed === p.changed || (/^\s+$/.test(p.text) && last.changed))) {
+      last.text += p.text;
+    } else out.push({ ...p });
+  }
+  // A marked run doesn't end in the space after it.
+  for (let i = 0; i < out.length; i++) {
+    const p = out[i]!;
+    const m = p.changed ? /\s+$/.exec(p.text) : null;
+    if (m) {
+      p.text = p.text.slice(0, m.index);
+      const next = out[i + 1];
+      if (next && !next.changed) next.text = m[0] + next.text;
+      else out.splice(i + 1, 0, { text: m[0], changed: false });
+    }
+  }
+  return out.filter((p) => p.text.length > 0);
+}
+
+/**
+ * Both versions split into runs, the words not in the other version marked.
+ * Uses the longest common run of words; for texts too long for that, only the
+ * unchanged start and end are found and everything between them is marked.
+ */
+export function diffWords(
+  before: string,
+  after: string,
+): { before: DiffPart[]; after: DiffPart[] } {
+  const a = diffTokens(before);
+  const b = diffTokens(after);
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  const midA = a.slice(start, endA);
+  const midB = b.slice(start, endB);
+  const keep = (t: string[]): DiffPart[] => t.map((text) => ({ text, changed: false }));
+  const left: DiffPart[] = keep(a.slice(0, start));
+  const right: DiffPart[] = keep(b.slice(0, start));
+
+  const n = midA.length;
+  const m = midB.length;
+  if (n * m > DIFF_MAX_CELLS) {
+    left.push(...midA.map((text) => ({ text, changed: true })));
+    right.push(...midB.map((text) => ({ text, changed: true })));
+  } else {
+    // lcs[i][j]: the longest common run of midA[i..] and midB[j..].
+    const lcs = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) {
+      for (let j = m - 1; j >= 0; j--) {
+        lcs[i]![j] =
+          midA[i] === midB[j]
+            ? lcs[i + 1]![j + 1]! + 1
+            : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+      }
+    }
+    let i = 0;
+    let j = 0;
+    while (i < n && j < m) {
+      if (midA[i] === midB[j]) {
+        left.push({ text: midA[i]!, changed: false });
+        right.push({ text: midB[j]!, changed: false });
+        i++;
+        j++;
+      } else if (lcs[i + 1]![j]! >= lcs[i]![j + 1]!) {
+        left.push({ text: midA[i++]!, changed: true });
+      } else {
+        right.push({ text: midB[j++]!, changed: true });
+      }
+    }
+    while (i < n) left.push({ text: midA[i++]!, changed: true });
+    while (j < m) right.push({ text: midB[j++]!, changed: true });
+  }
+
+  left.push(...keep(a.slice(endA)));
+  right.push(...keep(b.slice(endB)));
+  // Whitespace alone never counts as a change.
+  const unmarkSpaces = (p: DiffPart): DiffPart =>
+    /^\s+$/.test(p.text) ? { ...p, changed: false } : p;
+  return {
+    before: mergeDiffParts(left.map(unmarkSpaces)),
+    after: mergeDiffParts(right.map(unmarkSpaces)),
+  };
+}

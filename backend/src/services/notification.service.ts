@@ -9,7 +9,7 @@ import {
 } from '../utils/notification-emails.js';
 import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
-import { alertLogMessage } from './exclusives/alert-message.js';
+import { alertCompare, alertLogMessage } from './exclusives/alert-message.js';
 import { toUserRef } from './user.mapper.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
@@ -469,6 +469,7 @@ async function alertDetailsFor(
       title: r.title,
       message: alertLogMessage(r),
       at: formatBusinessTimestamp(r.createdAt, timeZone ?? undefined),
+      compare: alertCompare(r),
     })),
     more: total - rows.length,
   };

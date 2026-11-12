@@ -22,6 +22,7 @@ import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { absoluteShort, formatAgo } from '../lib/datetime';
 import { TableEmptyRow } from '../components/ui/EmptyState';
 import { ClampedText } from '../components/exclusives/ClampedText';
+import { AlertCompareLink } from '../components/exclusives/AlertCompare';
 import { AlertTypeBadge } from '../components/exclusives/AlertBadge';
 import { ExcPager } from '../components/exclusives/ExcPager';
 import { Flag } from '../components/exclusives/Flag';
@@ -519,6 +520,7 @@ export function ExclusivesLogPage() {
                         around and made the rows uneven. */}
                     <td className="exc-col-detail">
                       <ClampedText className="exc-log-detail" text={row.message} lines={3} />
+                      <AlertCompareLink row={row} />
                     </td>
                   </tr>
                 );

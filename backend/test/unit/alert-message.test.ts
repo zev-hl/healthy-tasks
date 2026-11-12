@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  alertCompare,
   alertLogMessage,
   describeAlert,
   describeTextChange,
@@ -285,6 +286,39 @@ describe('Description changed: where the text first differs', () => {
     assert.equal(
       alertLogMessage({ ...old, alertType: 'TitleChanged', message: 'Title changed.' }),
       'Title changed.',
+    );
+  });
+});
+
+describe('alertCompare: what the email puts side by side', () => {
+  it('a description gives the excerpts around its first difference', () => {
+    assert.deepEqual(
+      alertCompare({
+        alertType: 'DescriptionChanged',
+        previousValue: 'w1 w2 w3 w4 w5 old end',
+        newValue: 'w1 w2 w3 w4 w5 new end',
+      }),
+      { label: 'Description', before: '...w3 w4 w5 old end', after: '...w3 w4 w5 new end' },
+    );
+  });
+
+  it('a title or bullets give the whole text; other alerts nothing', () => {
+    assert.deepEqual(
+      alertCompare({ alertType: 'TitleChanged', previousValue: 'Tea', newValue: 'Green Tea' }),
+      { label: 'Title', before: 'Tea', after: 'Green Tea' },
+    );
+    assert.equal(
+      alertCompare({ alertType: 'BulletPointsChanged', previousValue: '2. a', newValue: '2. b' })
+        ?.label,
+      'Bullet points',
+    );
+    assert.equal(
+      alertCompare({ alertType: 'PriceChanged', previousValue: '1', newValue: '2' }),
+      null,
+    );
+    assert.equal(
+      alertCompare({ alertType: 'DescriptionChanged', previousValue: 'a  b', newValue: 'a b' }),
+      null,
     );
   });
 });

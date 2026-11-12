@@ -46,6 +46,11 @@ export interface AssignmentAlertDetails {
     message: string;
     /** When it was alerted, written out in the reader's time zone. */
     at: string;
+    /**
+     * A text change (title, description, bullet points): what it said and says,
+     * shown side by side in place of the message. `label` names the text.
+     */
+    compare?: { label: string; before: string; after: string } | null;
   }[];
   /** How many more alerts the task has beyond `alerts`. */
   more: number;
@@ -72,9 +77,16 @@ export function assignmentEmail(o: {
       } in ${a.groupName}.`,
     });
     for (const x of a.alerts) {
-      blocks.push({
-        text: `${x.title}\nASIN ${x.asin} · ${x.marketplace}\n${x.message}\nAlerted ${x.at}`,
-      });
+      if (x.compare) {
+        blocks.push({
+          text: `${x.title}\nASIN ${x.asin} · ${x.marketplace}\nAlerted ${x.at}\n${x.compare.label} changed:`,
+        });
+        blocks.push({ compare: { before: x.compare.before, after: x.compare.after } });
+      } else {
+        blocks.push({
+          text: `${x.title}\nASIN ${x.asin} · ${x.marketplace}\n${x.message}\nAlerted ${x.at}`,
+        });
+      }
     }
     if (a.more > 0) {
       blocks.push({

@@ -200,12 +200,61 @@ export function describeTextChange(
   if (a.length === 0 && b.length === 0) return `${label} changed.`;
   if (a.length === 0) return `${label} added: "${snippet(b, 0)}".`;
   if (b.length === 0) return `${label} removed (was "${snippet(a, 0)}").`;
+  const x = textChangeExcerpts(before, after);
+  // The same words: only spacing or markup changed.
+  if (!x) return `${label} changed (spacing or formatting only).`;
+  return `${label} changed from "${x.before}" to "${x.after}".`;
+}
+
+/**
+ * The two excerpts `describeTextChange` quotes: from up to three words before
+ * the first difference, a line or two of each version. Null when the words are
+ * the same. An empty side is "".
+ */
+export function textChangeExcerpts(
+  before: string | null,
+  after: string | null,
+): { before: string; after: string } | null {
+  const a = wordsOf(before);
+  const b = wordsOf(after);
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  // The same words: only spacing or markup changed.
-  if (i === a.length && i === b.length) return `${label} changed (spacing or formatting only).`;
+  if (i === a.length && i === b.length) return null;
   const from = Math.max(0, i - CONTEXT_WORDS);
-  return `${label} changed from "${snippet(a, from)}" to "${snippet(b, from)}".`;
+  return {
+    before: a.length ? snippet(a, Math.min(from, a.length - 1)) : '',
+    after: b.length ? snippet(b, Math.min(from, b.length - 1)) : '',
+  };
+}
+
+/**
+ * A text-change alert's before and now, to show side by side (the assignment
+ * email): the whole title, the changed bullets, or a description's excerpts
+ * around its first difference. Null for other alerts, or with nothing saved.
+ */
+export function alertCompare(row: {
+  alertType: string;
+  previousValue: string | null;
+  newValue: string | null;
+}): { label: string; before: string; after: string } | null {
+  if (row.previousValue == null && row.newValue == null) return null;
+  const whole = (label: string) => ({
+    label,
+    before: row.previousValue ?? '',
+    after: row.newValue ?? '',
+  });
+  switch (row.alertType) {
+    case 'TitleChanged':
+      return whole('Title');
+    case 'BulletPointsChanged':
+      return whole('Bullet points');
+    case 'DescriptionChanged': {
+      const x = textChangeExcerpts(row.previousValue, row.newValue);
+      return x ? { label: 'Description', ...x } : null;
+    }
+    default:
+      return null;
+  }
 }
 
 /**
