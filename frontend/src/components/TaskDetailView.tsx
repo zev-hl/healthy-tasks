@@ -1733,7 +1733,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <span className="hb-ic tone-blue">
                   <Repeat size={16} aria-hidden="true" />
                 </span>
-                <h3>Recurrence</h3>
+                <h3>Repeats</h3>
               </div>
               <div className="hb-card-pad hb-legacy-rail">
                 <TaskRecurrencePanel task={task} onChanged={applyTask} />

@@ -49,7 +49,9 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   // Form state (seeded from the existing rule or sensible defaults).
-  const [type, setType] = useState<TaskRecurrenceDto['recurrenceType']>(rec?.recurrenceType ?? 'Fixed');
+  const [type, setType] = useState<TaskRecurrenceDto['recurrenceType']>(
+    rec?.recurrenceType ?? 'Fixed',
+  );
   const [count, setCount] = useState(String(rec?.intervalCount ?? 1));
   const [unit, setUnit] = useState<RecurrenceUnit>(rec?.intervalUnit ?? 'Week');
   const [weekdays, setWeekdays] = useState<number[]>(rec?.weekdays ?? []);
@@ -112,7 +114,7 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
   if (isOccurrence) {
     return (
       <div className="rail-section">
-        <div className="rail-section-title">Recurrence</div>
+        <div className="rail-section-title">Repeats</div>
         <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
           Occurrence #{task.recurrenceSeq} of a recurring task.{' '}
           <Link to={`/tasks/${task.recurrenceSourceId}`}>View the series</Link>
@@ -123,9 +125,13 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
 
   return (
     <div className="rail-section">
-      <div className="rail-section-title">Recurrence</div>
+      <div className="rail-section-title">Repeats</div>
 
-      {error && <div className="alert error" style={{ marginBottom: '0.5rem' }}>{error}</div>}
+      {error && (
+        <div className="alert error" style={{ marginBottom: '0.5rem' }}>
+          {error}
+        </div>
+      )}
 
       {!editing ? (
         rec ? (
@@ -138,17 +144,27 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
               {!rec.isActive && ' · paused'}
             </p>
             <div className="btn-row">
-              <button type="button" className="secondary btn-sm" onClick={openEditor} disabled={busy}>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={openEditor}
+                disabled={busy}
+              >
                 Edit
               </button>
-              <button type="button" className="secondary btn-sm" onClick={() => void stop()} disabled={busy}>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={() => void stop()}
+                disabled={busy}
+              >
                 Stop
               </button>
             </div>
           </div>
         ) : hasAnchor ? (
           <button type="button" className="tertiary btn-sm" onClick={openEditor}>
-            + Make recurring
+            + Make it repeat
           </button>
         ) : (
           <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
@@ -159,7 +175,11 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
         <div className="recur-form">
           <div className="field">
             <label htmlFor="recur-type">Repeat</label>
-            <select id="recur-type" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+            <select
+              id="recur-type"
+              value={type}
+              onChange={(e) => setType(e.target.value as typeof type)}
+            >
               <option value="Fixed">On a fixed schedule</option>
               <option value="RelativeToCompletion">After each completion</option>
             </select>
@@ -175,7 +195,11 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
                 onChange={(e) => setCount(e.target.value)}
                 style={{ width: 64 }}
               />
-              <select value={unit} onChange={(e) => setUnit(e.target.value as RecurrenceUnit)} aria-label="Interval unit">
+              <select
+                value={unit}
+                onChange={(e) => setUnit(e.target.value as RecurrenceUnit)}
+                aria-label="Interval unit"
+              >
                 {RECURRENCE_UNITS.map((u) => (
                   <option key={u} value={u}>
                     {RECURRENCE_UNIT_LABELS[u]}
@@ -192,18 +216,29 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
           )}
           <div className="field">
             <label htmlFor="recur-end">Ends</label>
-            <select id="recur-end" value={endType} onChange={(e) => setEndType(e.target.value as RecurrenceEndType)}>
+            <select
+              id="recur-end"
+              value={endType}
+              onChange={(e) => setEndType(e.target.value as RecurrenceEndType)}
+            >
               <option value="Never">Never</option>
               <option value="OnDate">On a date</option>
               <option value="AfterOccurrences">
-                {type === 'RelativeToCompletion' ? 'Stop after N completions' : 'After N occurrences'}
+                {type === 'RelativeToCompletion'
+                  ? 'After it’s done a number of times'
+                  : 'After a number of times'}
               </option>
             </select>
           </div>
           {endType === 'OnDate' && (
             <div className="field">
               <label htmlFor="recur-enddate">End date</label>
-              <input id="recur-enddate" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <input
+                id="recur-enddate"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
             </div>
           )}
           {endType === 'AfterOccurrences' && (
@@ -225,7 +260,12 @@ export function TaskRecurrencePanel({ task, onChanged }: Props) {
             <button type="button" className="btn-sm" onClick={() => void save()} disabled={busy}>
               {busy ? 'Saving…' : 'Save'}
             </button>
-            <button type="button" className="secondary btn-sm" onClick={() => setEditing(false)} disabled={busy}>
+            <button
+              type="button"
+              className="secondary btn-sm"
+              onClick={() => setEditing(false)}
+              disabled={busy}
+            >
               Cancel
             </button>
           </div>
