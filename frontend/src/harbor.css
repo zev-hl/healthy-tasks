@@ -8266,3 +8266,62 @@ textarea.hb-tpl-input {
     margin-left: 0;
   }
 }
+
+/* --- Parents and sub-tasks look different (Nov 11) ----------------------- */
+/* Templates editor: the main task is a tinted header card; sub-tasks are
+   plain rows with a ↳ marker and their number. */
+.hb-tpl-node.is-root {
+  background: #f5f9fe;
+  border-color: #b7cdee;
+}
+.hb-tpl-node.is-root .hb-tpl-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.hb-tpl-node.is-sub .hb-tpl-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.hb-tpl-num {
+  gap: 2px;
+  grid-auto-flow: column;
+}
+.hb-tpl-num.is-root {
+  background: var(--accent);
+  color: #fff;
+}
+/* Tasks list (sub-tasks under their parent): a parent shows how many it has;
+   a sub-task hangs off a connector, a step lighter. */
+.hb-sub-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--track);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.hb-table tr.is-child > td {
+  background: #fbfcfe;
+}
+.hb-table tr.is-child .hb-task-name {
+  font-weight: 500;
+  font-size: 13.5px;
+}
+.hb-table tr.is-child td.hb-col-task {
+  position: relative;
+}
+.hb-table tr.is-child td.hb-col-task::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--tree-x, 34px));
+  top: 0;
+  height: 50%;
+  width: 14px;
+  border-left: 1.5px solid #9aa7b8;
+  border-bottom: 1.5px solid #9aa7b8;
+  border-bottom-left-radius: 6px;
+}

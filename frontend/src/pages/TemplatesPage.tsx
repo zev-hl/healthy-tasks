@@ -17,6 +17,7 @@ import {
   GripVertical,
   Link2,
   ListTree,
+  CornerDownRight,
   Paperclip,
   Pencil,
   Plus,
@@ -705,12 +706,12 @@ function TemplateEditor({
     patch({ nodes, dependencies });
   }
 
-  // Stable "Node N" identifiers (like task #ids) so nodes are referenceable in
+  // Stable "Task N" identifiers (like task #ids) so nodes are referenceable in
   // the dependency pickers even before they're named.
   const nodeDisplay = (key: string) => {
     const idx = editor.nodes.findIndex((n) => n.key === key);
     const n = editor.nodes[idx];
-    return `Node ${idx + 1}${n?.name ? ` · ${n.name}` : ''}`;
+    return `Task ${idx + 1}${n?.name ? ` · ${n.name}` : ''}`;
   };
 
   // --- Tree structure (derived from parentKey, so a Parent change auto-nests) ---
@@ -830,6 +831,7 @@ function TemplateEditor({
         <div
           className={cx(
             'hb-tpl-node',
+            isRoot ? 'is-root' : 'is-sub',
             open && 'is-open',
             dragKey === n.key && 'is-dragging',
             hint && `drop-${hint}`,
@@ -873,14 +875,23 @@ function TemplateEditor({
             ) : (
               <span className="hb-tpl-caret is-blank" aria-hidden="true" />
             )}
-            <span className={cx('hb-tpl-num', isRoot && 'is-root')} title={`Node ${idx + 1}`}>
-              {idx + 1}
-            </span>
+            {/* Main task and sub-tasks look different (Nov 11): the main task has a
+                tinted header card, each sub-task a ↳ marker and its number. */}
+            {isRoot ? (
+              <span className="hb-tpl-num is-root" title="The main task">
+                <ListTree size={14} aria-hidden="true" />
+              </span>
+            ) : (
+              <span className="hb-tpl-num" title={`Task ${idx + 1}, a sub-task`}>
+                <CornerDownRight size={12} aria-hidden="true" />
+                {idx + 1}
+              </span>
+            )}
             <input
               className="hb-tpl-name"
               value={n.name}
               placeholder={isRoot ? 'Main task name' : 'Task name'}
-              aria-label={`Name for node ${idx + 1}`}
+              aria-label={isRoot ? 'Name of the main task' : `Name of task ${idx + 1}`}
               onChange={(e) => patchNode(n.key, { name: e.target.value })}
             />
             <span className="hb-tpl-chips">

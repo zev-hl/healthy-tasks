@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Lock } from 'lucide-react';
+import { ArrowDown, ArrowUp, ListTree, Lock } from 'lucide-react';
 import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
   type TaskPriority,
@@ -160,6 +160,7 @@ export function TaskTable({
                     selected.has(t.id) && 'selected',
                     flash.has(t.id) && 'flash',
                     open && 'is-peek',
+                    !!t.depth && 'is-child',
                   )}
                 >
                   <td className="hb-check">
@@ -175,7 +176,14 @@ export function TaskTable({
                   </td>
                   <td
                     className="hb-col-task"
-                    style={t.depth ? { paddingLeft: 12 + t.depth * 22 } : undefined}
+                    style={
+                      t.depth
+                        ? ({
+                            paddingLeft: 12 + t.depth * 22,
+                            ['--tree-x' as string]: `${t.depth * 22 - 2}px`,
+                          } as CSSProperties)
+                        : undefined
+                    }
                   >
                     <div className="hb-task-cell has-peek">
                       <PeekToggle
@@ -190,11 +198,12 @@ export function TaskTable({
                       <span className="hb-task-sub">
                         #{t.id}
                         {t.duty && <> · {dutyLabel(t.duty)}</>}
+                        {!!t.depth && t.parentId && <> · sub-task of #{t.parentId}</>}
                         {t.childrenCount > 0 && (
-                          <>
-                            {' '}
-                            · {t.childrenCount} sub-task{t.childrenCount === 1 ? '' : 's'}
-                          </>
+                          <span className="hb-sub-count">
+                            <ListTree size={11} aria-hidden="true" />
+                            {t.childrenCount} sub-task{t.childrenCount === 1 ? '' : 's'}
+                          </span>
                         )}
                         {t.dutyMismatch && (
                           <span className="hb-warn-note"> · owner doesn’t hold this duty</span>
