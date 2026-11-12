@@ -466,7 +466,6 @@ async function makeAlertTask(o: {
   rootDescriptionExtra?: (room: number) => string;
 }): Promise<void> {
   const { recipe } = o;
-  if (!recipe.savedById) throw new Error('no one is recorded as having saved this alert type');
 
   // A person no longer active leaves their role's tasks unassigned.
   const byRole = new Map(
@@ -507,8 +506,10 @@ async function makeAlertTask(o: {
     instanceLabel: withClashCounter(label, new Set(taken.map((t) => t.instanceLabel ?? ''))),
     anchorStart: o.anchorAt,
     assigneeByNodeId,
-    creatorId: recipe.savedById,
-    actorId: recipe.savedById,
+    // No person makes these: they show as "Alert-assigned", and everyone they
+    // are assigned to is told. Who last saved the setup is on AlertTaskSetting.
+    creatorId: null,
+    actorId: null,
     alertGroupId: o.groupId,
     alertType: o.type,
     rootDescriptionExtra: extra,

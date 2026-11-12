@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  ALERT_ASSIGNED_LABEL,
   REMINDER_BLOCK_LABELS,
   reminderAddBlock,
   TASK_NAME_MIN_LENGTH,
@@ -28,7 +29,7 @@ import { ReviewerPickerModal } from './ReviewerPickerModal';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
-import { UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
+import { AlertAssignedChip, UserChip, UnassignedAvatar, userLabel } from './ui/Avatar';
 import { StatusPill, PriorityRamp } from './ui/indicators';
 import { DueDate, AgoDate } from './ui/dates';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
@@ -1134,7 +1135,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
 
           {tab === 'history' && (
             <section className="card">
-              <TaskHistory taskId={task.id} version={historyVersion} />
+              <TaskHistory
+                taskId={task.id}
+                version={historyVersion}
+                noUserLabel={task.creator ? undefined : ALERT_ASSIGNED_LABEL}
+              />
             </section>
           )}
         </div>
@@ -1203,7 +1208,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </div>
             <div className="rail-row">
               <span className="rail-label">Creator</span>
-              <UserChip user={task.creator} />
+              {task.creator ? <UserChip user={task.creator} /> : <AlertAssignedChip />}
             </div>
             <div className="rail-row">
               <span className="rail-label">Created</span>

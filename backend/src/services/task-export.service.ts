@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import {
+  ALERT_ASSIGNED_LABEL,
   EXCLUSIVES_ALERT_TYPE_LABELS,
   TASK_ATTRIBUTE_LABELS,
   TASK_STATUS_LABELS,
@@ -59,7 +60,7 @@ export async function buildTasksWorkbook(
       statusChangedAt: toExcelLocalDate(r.statusChangedAt, timeZone),
       priority: r.priority,
       assignee: r.assignee?.email ?? '',
-      creator: r.creator.email,
+      creator: r.creator?.email ?? ALERT_ASSIGNED_LABEL,
       createdAt: toExcelLocalDate(r.createdAt, timeZone),
       startAt: toExcelLocalDate(r.startAt, timeZone),
       dueAt: toExcelLocalDate(r.dueAt, timeZone),

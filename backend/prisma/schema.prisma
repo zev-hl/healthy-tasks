@@ -170,8 +170,11 @@ model Task {
   description String?
 
   // Creator is set to the authenticated user at creation and never changes.
-  creatorId String
-  creator   User   @relation("TaskCreator", fields: [creatorId], references: [id])
+  // Null for a task made from an Exclusives alert: no person made it (shown as
+  // "Alert-assigned"; who last saved that alert type's setup is on
+  // AlertTaskSetting.savedById).
+  creatorId String?
+  creator   User?   @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Restrict)
 
   // Assignee is optional and chosen from active users.
   assigneeId String?
