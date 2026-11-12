@@ -35,9 +35,11 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
       list: 'assigned' as const,
       taskId: a.taskId,
       taskName: a.taskName,
-      who: a.actor,
-      text:
-        a.action === 'added'
+      who: a.byAlert ? null : a.actor,
+      // A task made from an Exclusives alert is assigned by the alert, not a person.
+      text: a.byAlert
+        ? 'Alert-assigned'
+        : a.action === 'added'
           ? `${a.actor ? userLabel(a.actor) : 'Someone'} assigned you`
           : `${a.actor ? userLabel(a.actor) : 'Someone'} unassigned you`,
       at: a.createdAt,
