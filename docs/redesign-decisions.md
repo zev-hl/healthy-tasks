@@ -161,6 +161,13 @@ These replace the brief too.
 - **Calendar colors by kind:** due (soft blue), starts with no due date (grey, "Starts"), coming
   repeat (dashed), with a key under the grid; the dot stays the status. Calls and meetings get
   their own once they exist.
+- **Headers that stay put:** on Tasks and Users (wide screens) the filter row and the column
+  headings stay visible while the list scrolls. The calendar's controls fit on one line (a compact
+  "Show: Month" menu; no task count there).
+- **Alerts on the Dashboard:** one section that folds away (remembered), with All, Mentions,
+  Reminders and Assigned tabs and unread counts. Snoozed tasks join it once snooze exists.
+- **Reminders** are a tab of the task page's Activity card (Comments | History | Reminders), apart
+  from sub-tasks; the separate Reminders card is gone.
 - Recorded for later (each needs the backend): snooze with the due date kept, "Request update"
   with a required note, drafts, voice notes, subtasks with their own status and priority,
   converting between subtask / ticket / project with a three-level limit, due dates changeable
@@ -168,6 +175,13 @@ These replace the brief too.
   sign-in, and no 8-hour logout on trusted devices.
 - **Deleting a task:** a confirmation only. The meeting's 10-second Undo countdown is not needed
   for HL Central (user decision, Nov 12).
+
+## The preview site
+
+`https://hlcentral-redesign.onrender.com` (the `redesign` branch on the Staging API and data) is for
+reviewing the redesign only. Google sign-in is **not** set up for it (user decision, Nov 12): once
+approved, the redesign moves to the regular Staging site, which already has it. Sign in there with
+a password account.
 
 ## How the older screens were brought in
 

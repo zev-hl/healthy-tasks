@@ -8485,3 +8485,14 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
 .hb-alerts .hb-sub svg {
   vertical-align: -1px;
 }
+.hb-reminders-block {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--track);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.hb-reminders-block svg {
+  vertical-align: -2px;
+}

@@ -965,7 +965,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         : task.status === 'Open'
           ? 'Not started'
           : null;
-  const [activity, setActivity] = useState<'comments' | 'history'>('comments');
+  const [activity, setActivity] = useState<'comments' | 'history' | 'reminders'>('comments');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const done = task.status === 'Completed';
@@ -1501,6 +1501,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                       label: `Comments${task.comments.length ? ` (${task.comments.length})` : ''}`,
                     },
                     { value: 'history', label: 'History' },
+                    // Reminders sit apart from sub-tasks, as their own tab (Nov 11).
+                    { value: 'reminders', label: 'Reminders' },
                   ]}
                 />
               </div>
@@ -1516,6 +1518,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               {activity === 'history' && (
                 <div className="hb-card-pad">
                   <TaskHistory taskId={task.id} version={historyVersion} />
+                </div>
+              )}
+              {activity === 'reminders' && (
+                <div className="hb-card-pad hb-legacy-rail hb-reminders-tab">
+                  {reminderBlock && (
+                    <p className="hb-reminders-block">
+                      <AlarmClock size={14} aria-hidden="true" />{' '}
+                      {REMINDER_BLOCK_LABELS[reminderBlock]}
+                    </p>
+                  )}
+                  <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
                 </div>
               )}
             </section>
@@ -1737,21 +1750,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
               <div className="hb-card-pad hb-legacy-rail">
                 <TaskRecurrencePanel task={task} onChanged={applyTask} />
-              </div>
-            </section>
-
-            <section className="hb-card">
-              <div className="hb-card-head">
-                <span className="hb-ic tone-blue">
-                  <AlarmClock size={16} aria-hidden="true" />
-                </span>
-                <h3>Reminders</h3>
-                {reminderBlock && (
-                  <span className="hb-small">{REMINDER_BLOCK_LABELS[reminderBlock]}</span>
-                )}
-              </div>
-              <div className="hb-card-pad hb-legacy-rail">
-                <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
               </div>
             </section>
           </div>
