@@ -1767,7 +1767,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 </span>
                 <h3>Repeats</h3>
               </div>
-              <div className="hb-card-pad hb-legacy-rail">
+              <div className="hb-card-pad">
                 <TaskRecurrencePanel task={task} onChanged={applyTask} />
               </div>
             </section>

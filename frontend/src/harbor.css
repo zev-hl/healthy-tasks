@@ -8730,3 +8730,106 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
     display: none;
   }
 }
+
+/* Repeats on the task page, as a sentence (Nov 11). */
+.hb-recur-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hb-recur-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hb-recur-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.hb-recur-k {
+  min-width: 48px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.hb-recur-line .hb-recur-k:not(:first-child) {
+  min-width: 0;
+  font-weight: 400;
+}
+.hb-recur-num {
+  width: 64px;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  background: var(--surface, #fff);
+}
+.hb-recur-days {
+  display: flex;
+  gap: 4px;
+}
+.hb-recur-day {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface, #fff);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.hb-recur-day.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.hb-recur-preview,
+.hb-recur-rule {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-tint);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+.hb-recur-rule {
+  padding: 0;
+  background: none;
+  font-size: 15px;
+  color: var(--ink);
+}
+.hb-recur-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.hb-recur-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+.hb-recur-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+.hb-recur-form .hb-recur-actions {
+  margin-top: 0;
+}
+.hb-recur-line .hb-select-field {
+  width: auto;
+  min-width: 110px;
+  height: 36px;
+  gap: 8px;
+}
+.hb-recur-num {
+  height: 36px;
+}
