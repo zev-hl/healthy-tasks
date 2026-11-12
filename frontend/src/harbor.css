@@ -8527,3 +8527,38 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
     box-shadow: 0 0 0 2px var(--side);
   }
 }
+
+/* Comment quick filters: All / Mentions me / With files (Nov 11) */
+.hb-cfilter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0 6px;
+}
+.hb-cfilter button {
+  all: unset;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.hb-cfilter button:hover {
+  border-color: #b9c4d4;
+}
+.hb-cfilter button.is-on {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.hb-cfilter button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.hb-cfilter-none {
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--muted);
+}

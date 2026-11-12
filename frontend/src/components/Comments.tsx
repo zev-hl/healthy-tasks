@@ -42,6 +42,15 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   const [confirmingDelete, setConfirmingDelete] = useState<CommentDto | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Quick filters on a long thread (meeting decision, Nov 11).
+  const [show, setShow] = useState<'all' | 'mentions' | 'files'>('all');
+  const mentionsMe = (c: CommentDto) =>
+    (c.mentionedUsers ?? []).some((u) => u.id === currentUser.id);
+  const hasFiles = (c: CommentDto) => (c.attachments ?? []).length > 0;
+  const shownComments = task.comments.filter((c) =>
+    show === 'mentions' ? mentionsMe(c) : show === 'files' ? hasFiles(c) : true,
+  );
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
@@ -325,13 +334,42 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
         </div>
       )}
 
+      {task.comments.length > 0 && (
+        <div className="hb-cfilter" role="group" aria-label="Show comments">
+          {(
+            [
+              ['all', `All (${task.comments.length})`],
+              ['mentions', `Mentions me (${task.comments.filter(mentionsMe).length})`],
+              ['files', `With files (${task.comments.filter(hasFiles).length})`],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={show === value ? 'is-on' : undefined}
+              aria-pressed={show === value}
+              onClick={() => setShow(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {task.comments.length === 0 ? (
         <EmptyState compact title="No comments yet">
           Start the conversation — add the first comment above.
         </EmptyState>
+      ) : shownComments.length === 0 ? (
+        <p className="hb-cfilter-none">
+          {show === 'mentions' ? 'No comments mention you.' : 'No comments have files.'}{' '}
+          <button type="button" className="hb-btn hb-btn-link" onClick={() => setShow('all')}>
+            Show all
+          </button>
+        </p>
       ) : (
         <ul className="comment-list">
-          {task.comments.map((c) => (
+          {shownComments.map((c) => (
             <li key={c.id} className="comment">
               <div className="comment-head">
                 <Avatar user={c.author} size="xs" decorative />
