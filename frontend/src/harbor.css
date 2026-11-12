@@ -9022,3 +9022,145 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   margin-left: 6px;
   font-size: inherit;
 }
+
+/* Templates: the list as a rail beside an open template (Nov 11), foldable. */
+.hb-tpl-split {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  align-items: start;
+}
+.hb-tpl-split.is-rail-folded {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+.hb-tpl-split-main {
+  min-width: 0;
+}
+.hb-tpl-rail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hb-tpl-rail.is-folded {
+  padding: 16px 6px;
+  align-items: center;
+}
+.hb-tpl-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 8px;
+}
+.hb-tpl-rail-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.hb-tpl-rail-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 10px;
+}
+.hb-tpl-rail-k {
+  padding: 0 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.hb-tpl-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+}
+.hb-tpl-rail-item svg {
+  flex: none;
+  color: var(--muted);
+}
+.hb-tpl-rail-item:hover {
+  background: var(--surface-sunk);
+}
+.hb-tpl-rail-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.hb-tpl-rail-item.is-new {
+  margin-top: 10px;
+  cursor: default;
+}
+.hb-tpl-rail-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-tpl-rail-n {
+  font-size: 12px;
+  color: var(--muted);
+}
+.hb-tpl-quickadd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 20px 16px;
+  padding: 0 12px;
+  min-height: 40px;
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--surface);
+}
+.hb-tpl-quickadd:focus-within {
+  border-style: solid;
+  border-color: var(--accent);
+}
+.hb-tpl-quickadd input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+}
+.hb-tpl-quickadd.is-rail {
+  margin: 0 0 4px;
+  min-height: 36px;
+}
+/* With the rail open, the editor's own two columns need a wide screen. */
+@media (max-width: 1799px) {
+  .hb-tpl-split:not(.is-rail-folded) .hb-tpl-split-main .hb-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 819px) {
+  .hb-tpl-split,
+  .hb-tpl-split.is-rail-folded {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hb-tpl-rail {
+    display: none;
+  }
+}

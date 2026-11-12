@@ -26,6 +26,8 @@ import {
   Trash2,
   UserRound,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import {
   RECURRENCE_UNIT_LABELS,
@@ -330,11 +332,44 @@ export function TemplatesPage() {
   const keyCounter = useRef(0);
   const nextKey = () => `n${(keyCounter.current += 1)}`;
 
-  function newTemplate() {
+  // While a template is open, the list is a rail beside it (Nov 11: opening a
+  // template no longer takes over the page). It folds away for room.
+  const editorDirty = useRef(false);
+  const [editorKey, setEditorKey] = useState(0);
+  const [railFolded, setRailFolded] = useState(() => {
+    try {
+      return localStorage.getItem('hb-tpl-rail-folded') === '1';
+    } catch {
+      return false;
+    }
+  });
+  function toggleRail() {
+    setRailFolded((f) => {
+      try {
+        localStorage.setItem('hb-tpl-rail-folded', f ? '0' : '1');
+      } catch {
+        // Private mode: not remembered.
+      }
+      return !f;
+    });
+  }
+  // Another template opens at its top.
+  useEffect(() => {
+    if (editorKey) window.scrollTo(0, 0);
+  }, [editorKey]);
+  /** Leave the open template for another one, asking first if it has unsaved work. */
+  function switchTo(next: () => void) {
+    if (editor && !confirmDiscard(editorDirty.current)) return;
+    editorDirty.current = false;
+    next();
+  }
+
+  function newTemplate(name = '') {
     keyCounter.current = 0;
     const rootKey = nextKey();
+    setEditorKey((k) => k + 1);
     setEditor({
-      name: '',
+      name,
       description: '',
       nodes: [blankNode(rootKey, null)],
       dependencies: [],
@@ -347,6 +382,7 @@ export function TemplatesPage() {
     try {
       const t = await api.getTemplate(id);
       keyCounter.current = 0;
+      setEditorKey((k) => k + 1);
       setEditor(toEditor(t));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not open the template');
@@ -387,17 +423,37 @@ export function TemplatesPage() {
 
   if (editor) {
     return (
-      <TemplateEditor
-        editor={editor}
-        setEditor={setEditor}
-        nextKey={nextKey}
-        onCancel={() => setEditor(null)}
-        onSaved={(msg) => {
-          setEditor(null);
-          toast({ message: msg, tone: 'success' });
-          load();
-        }}
-      />
+      <div className={cx('hb-tpl-split', railFolded && 'is-rail-folded')}>
+        <TemplateRail
+          list={list}
+          activeId={editor.id ?? null}
+          folded={railFolded}
+          onToggle={toggleRail}
+          onPick={(id) => switchTo(() => void editTemplate(id))}
+          onNew={(name) => switchTo(() => newTemplate(name))}
+        />
+        <div className="hb-tpl-split-main">
+          <TemplateEditor
+            key={editorKey}
+            editor={editor}
+            setEditor={setEditor}
+            nextKey={nextKey}
+            onDirty={(d) => {
+              editorDirty.current = d;
+            }}
+            onCancel={() => {
+              editorDirty.current = false;
+              setEditor(null);
+            }}
+            onSaved={(msg) => {
+              editorDirty.current = false;
+              setEditor(null);
+              toast({ message: msg, tone: 'success' });
+              load();
+            }}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -419,7 +475,7 @@ export function TemplatesPage() {
         searchValue={q}
         onSearchChange={setQ}
         actions={
-          <Btn kind="primary" onClick={newTemplate}>
+          <Btn kind="primary" onClick={() => newTemplate()}>
             <Plus size={16} aria-hidden="true" /> New template
           </Btn>
         }
@@ -456,7 +512,7 @@ export function TemplatesPage() {
                     A template is a task tree you reuse: dates count from a Day 0, people are roles
                     you fill when you use it, and it can repeat on a schedule.
                   </span>
-                  <Btn kind="primary" onClick={newTemplate}>
+                  <Btn kind="primary" onClick={() => newTemplate()}>
                     <Plus size={16} aria-hidden="true" /> New template
                   </Btn>
                 </div>
@@ -641,18 +697,122 @@ export function TemplatesPage() {
   );
 }
 
+// --- Rail: the list beside an open template ---------------------------------
+
+function TemplateRail({
+  list,
+  activeId,
+  folded,
+  onToggle,
+  onPick,
+  onNew,
+}: {
+  list: TemplateSummaryDto[];
+  activeId: number | null;
+  folded: boolean;
+  onToggle: () => void;
+  onPick: (id: number) => void;
+  onNew: (name: string) => void;
+}) {
+  const [name, setName] = useState('');
+  if (folded) {
+    return (
+      <aside className="hb-tpl-rail is-folded" aria-label="Templates">
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={onToggle}
+          aria-label="Show the templates list"
+          title="Show the templates list"
+        >
+          <PanelLeftOpen size={16} aria-hidden="true" />
+        </button>
+      </aside>
+    );
+  }
+  return (
+    <aside className="hb-tpl-rail" aria-label="Templates">
+      <div className="hb-tpl-rail-head">
+        <span className="hb-tpl-rail-title">Templates</span>
+        <span className="hb-small">{list.length}</span>
+        <span className="hb-grow" />
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={onToggle}
+          aria-label="Fold the templates list"
+          title="Fold the templates list"
+        >
+          <PanelLeftClose size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <label className="hb-tpl-quickadd is-rail">
+        <Plus size={15} aria-hidden="true" />
+        <input
+          value={name}
+          placeholder="New template…"
+          aria-label="New template name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim()) {
+              e.preventDefault();
+              onNew(name.trim());
+              setName('');
+            }
+          }}
+        />
+      </label>
+      {SECTIONS.map((sec) => {
+        const items = list.filter(sec.test);
+        if (items.length === 0) return null;
+        return (
+          <div key={sec.key} className="hb-tpl-rail-sec">
+            <span className="hb-tpl-rail-k">{sec.title}</span>
+            {items.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={cx('hb-tpl-rail-item', t.id === activeId && 'is-active')}
+                aria-current={t.id === activeId ? 'true' : undefined}
+                onClick={() => t.id !== activeId && onPick(t.id)}
+              >
+                {t.recurrenceType === 'None' ? (
+                  <ListTree size={14} aria-hidden="true" />
+                ) : (
+                  <Repeat size={14} aria-hidden="true" />
+                )}
+                <span className="hb-tpl-rail-name">{t.name}</span>
+                <span className="hb-tpl-rail-n">{t.nodeCount}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
+      {activeId == null && (
+        <span className="hb-tpl-rail-item is-active is-new">
+          <Plus size={14} aria-hidden="true" />
+          <span className="hb-tpl-rail-name">New template</span>
+        </span>
+      )}
+    </aside>
+  );
+}
+
 // --- Editor ----------------------------------------------------------------
 
 function TemplateEditor({
   editor,
   setEditor,
   nextKey,
+  onDirty,
   onCancel,
   onSaved,
 }: {
   editor: EditorState;
   setEditor: (e: EditorState) => void;
   nextKey: () => string;
+  /** Tells the page whether there is unsaved work, before it switches templates. */
+  onDirty?: (dirty: boolean) => void;
   onCancel: () => void;
   onSaved: (msg: string) => void;
 }) {
@@ -670,6 +830,9 @@ function TemplateEditor({
   const [original] = useState(() => JSON.stringify(editor));
   const dirty = savedId === null && JSON.stringify(editor) !== original;
   useUnsavedChangesWarning(dirty && !saving);
+  useEffect(() => onDirty?.(dirty), [dirty, onDirty]);
+  // Quick add: type a task name and press Enter (Nov 11), without opening its details.
+  const [quickName, setQuickName] = useState('');
   // Collapsed node keys (display-only; never affects drag/order). Drag state for
   // sibling reordering within the tree.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -728,6 +891,15 @@ function TemplateEditor({
     patch({ nodes: [...editor.nodes, blankNode(key, parent)] });
     revealUnder(parent);
     setOpen(key, true);
+  }
+  function quickAdd() {
+    const name = quickName.trim();
+    if (!name) return;
+    const root = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
+    const key = nextKey();
+    patch({ nodes: [...editor.nodes, { ...blankNode(key, root?.key ?? null), name }] });
+    revealUnder(root?.key ?? null);
+    setQuickName('');
   }
   function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
@@ -1345,6 +1517,22 @@ function TemplateEditor({
                 to reorder it among its siblings; “Sub-task of” moves it elsewhere.
               </p>
               <div className="hb-tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
+              <label className="hb-tpl-quickadd">
+                <Plus size={15} aria-hidden="true" />
+                <input
+                  value={quickName}
+                  placeholder="Type a sub-task name and press Enter"
+                  aria-label="Quick add a sub-task"
+                  maxLength={300}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      quickAdd();
+                    }
+                  }}
+                />
+              </label>
             </Card>
           </div>
 
