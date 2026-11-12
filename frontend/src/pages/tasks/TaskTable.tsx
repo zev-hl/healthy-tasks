@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Lock } from 'lucide-react';
 import {
@@ -12,6 +12,7 @@ import { Avatar, userLabel } from '../../components/ui/Avatar';
 import { Select, type SelectOption } from '../../components/harbor/Select';
 import { DatePicker } from '../../components/harbor/DatePicker';
 import { PriorityMark, StatusPill, STATUS_TONE, cx } from '../../components/harbor/ui';
+import { PeekToggle, TaskPeek, usePeek } from '../../components/harbor/TaskPeek';
 import {
   PRIORITY_OPTIONS,
   dueInfo,
@@ -112,6 +113,12 @@ export function TaskTable({
   }, [some, all]);
 
   const th = { sortField, sortDir, onSort };
+  const peek = usePeek();
+  const colCount =
+    5 +
+    (showOwner ? 1 : 0) +
+    ['start', 'created', 'tags', 'attributes'].filter((c) => columns.has(c as OptionalColumn))
+      .length;
 
   return (
     <div className="hb-table-wrap">
@@ -144,171 +151,192 @@ export function TaskTable({
           {rows.map((t) => {
             const ro = t.mentionOnly || t.treeOnly;
             const due = dueInfo(t.dueAt, t.status);
+            const open = peek.isOpen(t.id);
             return (
-              <tr
-                key={t.id}
-                id={`task-row-${t.id}`}
-                className={cx(selected.has(t.id) && 'selected', flash.has(t.id) && 'flash')}
-              >
-                <td className="hb-check">
-                  <label className="hb-hit">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(t.id)}
-                      disabled={ro}
-                      onChange={(e) => onSelect(t.id, e.target.checked)}
-                      aria-label={`Select ${t.name}`}
-                    />
-                  </label>
-                </td>
-                <td
-                  className="hb-col-task"
-                  style={t.depth ? { paddingLeft: 12 + t.depth * 22 } : undefined}
+              <Fragment key={t.id}>
+                <tr
+                  id={`task-row-${t.id}`}
+                  className={cx(
+                    selected.has(t.id) && 'selected',
+                    flash.has(t.id) && 'flash',
+                    open && 'is-peek',
+                  )}
                 >
-                  <div className="hb-task-cell">
-                    <Link to={`/tasks/${t.id}`} className="hb-task-name">
-                      {t.name}
-                    </Link>
-                    <span className="hb-task-sub">
-                      #{t.id}
-                      {t.duty && <> · {dutyLabel(t.duty)}</>}
-                      {t.childrenCount > 0 && (
-                        <>
-                          {' '}
-                          · {t.childrenCount} sub-task{t.childrenCount === 1 ? '' : 's'}
-                        </>
-                      )}
-                      {t.dutyMismatch && (
-                        <span className="hb-warn-note"> · owner doesn’t hold this duty</span>
-                      )}
-                      {ro && (
-                        <span
-                          className="hb-ro"
-                          title={
-                            t.mentionOnly
-                              ? 'You were mentioned: read-only'
-                              : 'Visible through its parent: read-only'
-                          }
-                        >
-                          <Lock size={11} aria-hidden="true" /> read-only
+                  <td className="hb-check">
+                    <label className="hb-hit">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(t.id)}
+                        disabled={ro}
+                        onChange={(e) => onSelect(t.id, e.target.checked)}
+                        aria-label={`Select ${t.name}`}
+                      />
+                    </label>
+                  </td>
+                  <td
+                    className="hb-col-task"
+                    style={t.depth ? { paddingLeft: 12 + t.depth * 22 } : undefined}
+                  >
+                    <div className="hb-task-cell has-peek">
+                      <PeekToggle
+                        open={open}
+                        onToggle={() => peek.toggle(t.id)}
+                        name={t.name}
+                        controls={`task-peek-${t.id}`}
+                      />
+                      <Link to={`/tasks/${t.id}`} className="hb-task-name">
+                        {t.name}
+                      </Link>
+                      <span className="hb-task-sub">
+                        #{t.id}
+                        {t.duty && <> · {dutyLabel(t.duty)}</>}
+                        {t.childrenCount > 0 && (
+                          <>
+                            {' '}
+                            · {t.childrenCount} sub-task{t.childrenCount === 1 ? '' : 's'}
+                          </>
+                        )}
+                        {t.dutyMismatch && (
+                          <span className="hb-warn-note"> · owner doesn’t hold this duty</span>
+                        )}
+                        {ro && (
+                          <span
+                            className="hb-ro"
+                            title={
+                              t.mentionOnly
+                                ? 'You were mentioned: read-only'
+                                : 'Visible through its parent: read-only'
+                            }
+                          >
+                            <Lock size={11} aria-hidden="true" /> read-only
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </td>
+                  {showOwner && (
+                    <td>
+                      {ro ? (
+                        <span className="hb-owner">
+                          {t.assignee ? (
+                            <Avatar user={t.assignee} px={26} decorative />
+                          ) : (
+                            <span className="hb-unassigned">?</span>
+                          )}
+                          {t.assignee ? userLabel(t.assignee) : 'Unassigned'}
                         </span>
+                      ) : (
+                        <Select
+                          variant="plain"
+                          label={`Owner of ${t.name}`}
+                          value={t.assignee?.id ?? '__unassigned'}
+                          options={owners}
+                          searchPlaceholder="Search people…"
+                          onChange={(v) =>
+                            onEdit(t, { assigneeId: v === '__unassigned' ? null : v })
+                          }
+                        />
                       )}
-                    </span>
-                  </div>
-                </td>
-                {showOwner && (
+                    </td>
+                  )}
                   <td>
                     {ro ? (
-                      <span className="hb-owner">
-                        {t.assignee ? (
-                          <Avatar user={t.assignee} px={26} decorative />
-                        ) : (
-                          <span className="hb-unassigned">?</span>
-                        )}
-                        {t.assignee ? userLabel(t.assignee) : 'Unassigned'}
+                      <span className={cx('hb-due-cell', due?.late && 'late')}>
+                        {due?.text ?? '—'}
                       </span>
                     ) : (
-                      <Select
+                      <DatePicker
                         variant="plain"
-                        label={`Owner of ${t.name}`}
-                        value={t.assignee?.id ?? '__unassigned'}
-                        options={owners}
-                        searchPlaceholder="Search people…"
-                        onChange={(v) => onEdit(t, { assigneeId: v === '__unassigned' ? null : v })}
+                        label={`Due date of ${t.name}`}
+                        value={ymdFromIso(t.dueAt)}
+                        placeholder="No date"
+                        className={cx('hb-due-cell', due?.late && 'late')}
+                        renderValue={() => due?.text ?? 'No date'}
+                        overdueNote={due?.late ? `Currently ${due.text}` : undefined}
+                        onChange={(v) => onEdit(t, { dueYmd: v })}
                       />
                     )}
                   </td>
-                )}
-                <td>
-                  {ro ? (
-                    <span className={cx('hb-due-cell', due?.late && 'late')}>
-                      {due?.text ?? '—'}
-                    </span>
-                  ) : (
-                    <DatePicker
-                      variant="plain"
-                      label={`Due date of ${t.name}`}
-                      value={ymdFromIso(t.dueAt)}
-                      placeholder="No date"
-                      className={cx('hb-due-cell', due?.late && 'late')}
-                      renderValue={() => due?.text ?? 'No date'}
-                      overdueNote={due?.late ? `Currently ${due.text}` : undefined}
-                      onChange={(v) => onEdit(t, { dueYmd: v })}
-                    />
-                  )}
-                </td>
-                <td>
-                  {ro || t.status === 'Review' ? (
-                    <StatusPill status={t.status} />
-                  ) : (
-                    <Select
-                      variant="pill"
-                      className={`tone-${STATUS_TONE[t.status]}`}
-                      label={`Status of ${t.name}`}
-                      value={t.status}
-                      options={statusOptions(t.status)}
-                      onChange={(s) => onEdit(t, { status: s })}
-                    />
-                  )}
-                </td>
-                <td>
-                  {ro ? (
-                    <PriorityMark priority={t.priority} />
-                  ) : (
-                    <Select
-                      variant="plain"
-                      className={cx('hb-prio', `prio-${t.priority.toLowerCase()}`)}
-                      label={`Priority of ${t.name}`}
-                      value={t.priority}
-                      options={PRIORITY_OPTIONS}
-                      onChange={(p) => onEdit(t, { priority: p })}
-                    />
-                  )}
-                </td>
-                {columns.has('start') && (
-                  <td className="hb-muted-cell">
-                    {t.startAt
-                      ? new Date(t.startAt).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                        })
-                      : '—'}
-                  </td>
-                )}
-                {columns.has('created') && (
-                  <td className="hb-muted-cell">
-                    {new Date(t.createdAt).toLocaleDateString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </td>
-                )}
-                {columns.has('tags') && (
                   <td>
-                    {t.tags.length === 0 ? (
-                      <span className="hb-muted-cell">—</span>
+                    {ro || t.status === 'Review' ? (
+                      <StatusPill status={t.status} />
                     ) : (
-                      <span className="hb-tags">
-                        {t.tags.map((g) => (
-                          <span key={g} className="hb-tag">
-                            {g}
-                          </span>
-                        ))}
-                      </span>
+                      <Select
+                        variant="pill"
+                        className={`tone-${STATUS_TONE[t.status]}`}
+                        label={`Status of ${t.name}`}
+                        value={t.status}
+                        options={statusOptions(t.status)}
+                        onChange={(s) => onEdit(t, { status: s })}
+                      />
                     )}
                   </td>
-                )}
-                {columns.has('attributes') && (
-                  <td className="hb-muted-cell">
-                    {[
-                      t.alertGroup?.name,
-                      t.alertType ? EXCLUSIVES_ALERT_TYPE_LABELS[t.alertType] : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
+                  <td>
+                    {ro ? (
+                      <PriorityMark priority={t.priority} />
+                    ) : (
+                      <Select
+                        variant="plain"
+                        className={cx('hb-prio', `prio-${t.priority.toLowerCase()}`)}
+                        label={`Priority of ${t.name}`}
+                        value={t.priority}
+                        options={PRIORITY_OPTIONS}
+                        onChange={(p) => onEdit(t, { priority: p })}
+                      />
+                    )}
                   </td>
+                  {columns.has('start') && (
+                    <td className="hb-muted-cell">
+                      {t.startAt
+                        ? new Date(t.startAt).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : '—'}
+                    </td>
+                  )}
+                  {columns.has('created') && (
+                    <td className="hb-muted-cell">
+                      {new Date(t.createdAt).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </td>
+                  )}
+                  {columns.has('tags') && (
+                    <td>
+                      {t.tags.length === 0 ? (
+                        <span className="hb-muted-cell">—</span>
+                      ) : (
+                        <span className="hb-tags">
+                          {t.tags.map((g) => (
+                            <span key={g} className="hb-tag">
+                              {g}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </td>
+                  )}
+                  {columns.has('attributes') && (
+                    <td className="hb-muted-cell">
+                      {[
+                        t.alertGroup?.name,
+                        t.alertType ? EXCLUSIVES_ALERT_TYPE_LABELS[t.alertType] : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </td>
+                  )}
+                </tr>
+                {open && (
+                  <tr className="hb-peek-row">
+                    <td colSpan={colCount}>
+                      <TaskPeek id={t.id} panelId={`task-peek-${t.id}`} />
+                    </td>
+                  </tr>
                 )}
-              </tr>
+              </Fragment>
             );
           })}
         </tbody>

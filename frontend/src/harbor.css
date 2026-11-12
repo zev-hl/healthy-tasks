@@ -8065,3 +8065,204 @@ textarea.hb-tpl-input {
   gap: 8px;
   margin-top: 2px;
 }
+
+/* --- Expand a task row in place (Tasks list, Dashboard) ------------------ */
+.hb-peek-btn {
+  all: unset;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.hb-peek-btn svg {
+  transition: transform 0.15s ease;
+}
+.hb-peek-btn.is-open svg {
+  transform: rotate(90deg);
+}
+.hb-peek-btn:hover {
+  background: var(--canvas);
+  color: var(--ink);
+}
+.hb-peek-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.hb-task-cell.has-peek {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 6px;
+  margin-left: -6px;
+}
+.hb-task-cell.has-peek > .hb-peek-btn {
+  grid-row: 1 / span 2;
+  align-self: start;
+}
+.hb-table tr.is-peek > td {
+  border-bottom-color: transparent;
+}
+.hb-table tr.hb-peek-row > td {
+  padding: 0 18px 14px 58px;
+  background: #fafcfe;
+}
+.hb-peek {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 10px 24px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.hb-peek-desc {
+  min-width: 0;
+}
+.hb-peek-k {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hb-peek-rich {
+  max-height: 9.5em;
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  -webkit-mask-image: linear-gradient(to bottom, #000 75%, transparent);
+  mask-image: linear-gradient(to bottom, #000 75%, transparent);
+}
+.hb-peek-none {
+  margin: 0;
+  color: var(--muted);
+}
+.hb-peek-facts {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.hb-peek-facts > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 8px;
+}
+.hb-peek-facts dt {
+  color: var(--muted);
+}
+.hb-peek-facts dd {
+  margin: 0;
+  color: var(--ink);
+  min-width: 0;
+}
+.hb-peek-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hb-peek-list a {
+  color: var(--accent-deep);
+}
+.hb-peek-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.hb-peek-more {
+  color: var(--muted);
+}
+.hb-peek-foot {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--row-line);
+  min-width: 0;
+}
+.hb-peek-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+.hb-peek-comment {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+.hb-peek-comment svg {
+  vertical-align: -2px;
+  margin-right: 5px;
+}
+.hb-peek-open {
+  flex: none;
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+@media (max-width: 819px) {
+  .hb-peek {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hb-table tr.hb-peek-row > td {
+    padding-left: 12px;
+  }
+  .hb-peek-foot {
+    flex-wrap: wrap;
+  }
+}
+.hb-row.has-peek {
+  padding-left: 10px;
+}
+.hb-row.has-peek > .hb-peek-btn {
+  margin-right: -2px;
+}
+.hb-row.is-peek,
+.hb-table tr.is-peek > td {
+  background: #fafcfe;
+}
+.hb-peek-under {
+  padding: 0 18px 14px 44px;
+  background: #fafcfe;
+}
+.hb-peek-under + .hb-row {
+  border-top: 1px solid var(--row-line);
+}
+@media (max-width: 819px) {
+  .hb-peek-under {
+    padding-left: 12px;
+  }
+}
+@media (max-width: 560px) {
+  /* Phones: the title gets the whole line; due date, status and buttons wrap under it. */
+  .hb-row.has-peek {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .hb-row.has-peek > .hb-stack {
+    flex: 1 1 calc(100% - 40px);
+  }
+  .hb-row.has-peek > .hb-stack ~ * {
+    margin-left: 30px;
+  }
+  .hb-row.has-peek > .hb-stack ~ * ~ * {
+    margin-left: 0;
+  }
+}
