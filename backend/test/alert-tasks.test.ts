@@ -871,6 +871,41 @@ describe('Immediate alert tasks', () => {
     assert.equal(await prisma.task.count(), 2);
   });
 
+  it('notifies every assignee, the Admin who saved the setup included, naming no one as the assigner', async () => {
+    const admin = await adminToken();
+    const saver = await seedUser({ email: 'saver@test.local', role: 'Admin' });
+    const ana = await seedUser({ email: 'ana@test.local', role: 'Member' });
+    const tpl = await makeTemplate(admin, 'Price Review', [
+      { role: 'Analyst' },
+      { role: 'Reviewer' },
+    ]);
+    await setUp(
+      'PriceChanged',
+      tpl,
+      [
+        { role: 'Analyst', assigneeId: ana.id },
+        { role: 'Reviewer', assigneeId: saver.id },
+      ],
+      saver.id,
+    );
+    const group = await watchingGroup('Wasif - US', { PriceChanged: 'immediate' });
+    const alert = await logAlert(group, 'PriceChanged', 'B0NOTIFY01');
+
+    assert.equal((await run()).made, 1);
+    const [step1, step2] = await tasksOf(alert.id);
+    const notes = await prisma.notification.findMany({
+      where: { type: 'assigned' },
+      orderBy: { taskId: 'asc' },
+    });
+    assert.deepEqual(
+      notes.map((n) => [n.userId, n.taskId, n.assignAction, n.actorId]),
+      [
+        [ana.id, step1!.id, 'added', null],
+        [saver.id, step2!.id, 'added', null],
+      ],
+    );
+  });
+
   /** A template whose top task says `topText` (one task under it), set up for `alertType`. */
   async function setUpWithText(alertType: string, topText: string) {
     const admin = await adminToken();

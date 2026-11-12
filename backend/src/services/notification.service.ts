@@ -67,15 +67,19 @@ export async function createMentionNotifications(
  * Create an Assigned notification for a user added/removed as a task's assignee.
  * Self-assignment (recipient === actor) is skipped. In-app requires opt-in;
  * email requires opt-in AND the "also email me" flag.
+ *
+ * `actorId: null` means nobody did it by hand (a task made from an Exclusives
+ * alert): it always notifies, even the Admin who saved the Alert Task Setup,
+ * and the in-app item names no one ("Assigned to you").
  */
 export async function createAssignedNotification(params: {
   recipientId: string;
-  actorId: string;
+  actorId: string | null;
   taskId: number;
   action: AssignAction;
 }): Promise<void> {
   const { recipientId, actorId, taskId, action } = params;
-  if (recipientId === actorId) return;
+  if (actorId !== null && recipientId === actorId) return;
 
   const prefs = await getNotificationPreferences(recipientId);
   if (!prefs.assignedInApp) return; // opted out of Assigned entirely

@@ -254,11 +254,14 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
   );
 
   // Assignment notifications post-commit (self-assignments are skipped inside).
+  // A task made from an alert was assigned by no one (its "actor" is just the
+  // Admin who saved the Alert Task Setup), so it notifies everyone, that Admin
+  // included.
   for (const c of result.created) {
     if (c.assigneeId) {
       await createAssignedNotification({
         recipientId: c.assigneeId,
-        actorId,
+        actorId: origin === 'alert' ? null : actorId,
         taskId: c.taskId,
         action: 'added',
       });
