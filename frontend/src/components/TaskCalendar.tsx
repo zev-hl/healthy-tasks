@@ -10,6 +10,7 @@ import {
 import { api, ApiError } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
 import { Dot, STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
+import { Select } from './harbor/Select';
 
 export type CalendarScale = 'month' | 'week' | 'day';
 
@@ -332,17 +333,32 @@ export function TaskCalendar({
       </span>
       <h2 className="hb-tcal-label">{label}</h2>
       {loading && <span className="hb-small">Loading…</span>}
-      <Segmented
-        small
-        label="Calendar scale"
-        value={scale}
-        options={[
-          { value: 'month', label: 'Month' },
-          { value: 'week', label: 'Week' },
-          { value: 'day', label: 'Day' },
-        ]}
-        onChange={onScaleChange}
-      />
+      {toolbarSlot ? (
+        // In the page's filter row, a compact chip keeps everything on one line.
+        <Select
+          variant="chip"
+          label="Show"
+          value={scale}
+          options={[
+            { value: 'month', label: 'Month' },
+            { value: 'week', label: 'Week' },
+            { value: 'day', label: 'Day' },
+          ]}
+          onChange={onScaleChange}
+        />
+      ) : (
+        <Segmented
+          small
+          label="Calendar scale"
+          value={scale}
+          options={[
+            { value: 'month', label: 'Month' },
+            { value: 'week', label: 'Week' },
+            { value: 'day', label: 'Day' },
+          ]}
+          onChange={onScaleChange}
+        />
+      )}
     </>
   );
 

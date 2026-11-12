@@ -650,7 +650,8 @@ export function TasksPage() {
         <div className="hb-toolbar">
           {/* The tab's badge already says how many; only say it here when it
               differs — a search or filters narrow it, or a saved view (no badge). */}
-          {!loading && (
+          {/* The calendar shows the tasks themselves; its row needs the room. */}
+          {!loading && view !== 'calendar' && (
             <span className="hb-count-label">
               {!isFiltered(state) && !text.trim()
                 ? `${total} ${total === 1 ? 'task' : 'tasks'}`
