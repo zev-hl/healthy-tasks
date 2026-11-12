@@ -55,6 +55,7 @@ import {
   X,
   ChevronDown,
   Search,
+  TriangleAlert,
 } from 'lucide-react';
 import {
   Bar,
@@ -110,6 +111,53 @@ const LINK_LABEL: Record<Exclude<PickerKind, 'child'>, string> = {
 interface Props {
   initialTask: TaskDetailDto;
   currentUser: UserDto;
+}
+
+/** Whole days between the due day and today (0 when it was due earlier today). */
+function daysLate(iso: string): number {
+  const d = new Date(iso);
+  const now = new Date();
+  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
+
+/**
+ * Each sub-task's priority and due date, for the Sub-tasks card (Nov 11: sub-tasks
+ * show status and priority). A task's own data lists its sub-tasks by name and
+ * status only, so the first 20 are loaded in parallel.
+ */
+function useChildFacts(children: TaskDetailDto['children']) {
+  const [facts, setFacts] = useState<
+    Record<number, { priority: TaskPriority; dueAt: string | null }>
+  >({});
+  const key = children.map((c) => `${c.id}:${c.status}`).join(',');
+  useEffect(() => {
+    let alive = true;
+    const ids = children
+      .filter((c) => c.accessible)
+      .slice(0, 20)
+      .map((c) => c.id);
+    if (ids.length === 0) return;
+    void Promise.all(
+      ids.map((id) =>
+        api.getTask(id).then(
+          (t) => [id, { priority: t.priority, dueAt: t.dueAt }] as const,
+          () => null,
+        ),
+      ),
+    ).then((rows) => {
+      if (!alive) return;
+      const next: Record<number, { priority: TaskPriority; dueAt: string | null }> = {};
+      for (const r of rows) if (r && r[1].priority) next[r[0]] = r[1];
+      setFacts(next);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return facts;
 }
 
 export function TaskDetailView({ initialTask, currentUser }: Props) {
@@ -966,10 +1014,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         : task.status === 'Open'
           ? 'Not started'
           : null;
+  const childFacts = useChildFacts(task.children);
   const [activity, setActivity] = useState<'comments' | 'history' | 'reminders'>('comments');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const done = task.status === 'Completed';
+  // The saved due date, not the one being edited: a big red box while it is late.
+  const savedDue = dueInfo(task.dueAt, task.status);
+  const lateDays = savedDue?.late && task.dueAt ? daysLate(task.dueAt) : null;
 
   return (
     <div className="hb-task">
@@ -1105,6 +1157,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <Trash2 size={16} aria-hidden="true" /> Delete task
               </button>
             )}
+            {/* Who made it lives here, off the header (Nov 11): it is rarely needed. */}
+            <p className="hb-actions-info">
+              Created by {userLabel(task.creator)} on{' '}
+              {new Date(task.createdAt).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+            </p>
           </div>
         </Popover>
       </div>
@@ -1112,6 +1173,24 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {/* Header band */}
       <header className={`hb-taskhead${justCompleted ? ' just-completed' : ''}`}>
         <div className="hb-taskhead-main">
+          {lateDays != null && (
+            <div className="hb-overdue-box" role="status">
+              <TriangleAlert size={18} aria-hidden="true" />
+              <strong>
+                {lateDays === 0
+                  ? 'Overdue: it was due earlier today'
+                  : `Overdue by ${lateDays} ${lateDays === 1 ? 'day' : 'days'}`}
+              </strong>
+              <span>
+                Was due{' '}
+                {new Date(task.dueAt!).toLocaleDateString(undefined, {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                })}
+              </span>
+            </div>
+          )}
           {(done || task.isPrivate || !canEdit) && (
             <div className="hb-flags">
               {done && <Pill tone="green">Done</Pill>}
@@ -1153,13 +1232,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 {' '}
                 · Sub-task of <TaskRefLink task={task.parent} />
               </>
-            )}{' '}
-            · created by {userLabel(task.creator)} on{' '}
-            {new Date(task.createdAt).toLocaleDateString(undefined, {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })}
+            )}
           </p>
 
           <div className="hb-chips">
@@ -1658,8 +1731,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     >
                       <span className="hb-stack">
                         <span className="hb-name">{c.name}</span>
-                        <span className="hb-sub">#{c.id}</span>
+                        <span className="hb-sub">
+                          #{c.id}
+                          {(() => {
+                            const due = dueInfo(childFacts[c.id]?.dueAt ?? null, c.status);
+                            return due ? (
+                              <span className={due.late ? 'hb-late' : undefined}>
+                                {' '}
+                                · {due.text}
+                              </span>
+                            ) : null;
+                          })()}
+                        </span>
                       </span>
+                      {childFacts[c.id] && <PriorityMark priority={childFacts[c.id]!.priority} />}
                       <StatusPill status={c.status} />
                     </Link>
                   ) : (

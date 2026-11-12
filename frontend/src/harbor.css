@@ -8914,3 +8914,29 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
 .comment-foot button.danger:hover {
   color: var(--danger);
 }
+
+/* Task page: a big red box while the task is overdue (Nov 11). */
+.hb-overdue-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--danger-line);
+  border-left: 4px solid var(--danger);
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+  font-size: 14px;
+}
+.hb-overdue-box span {
+  color: var(--danger);
+}
+.hb-actions-info {
+  margin: 4px 0 0;
+  padding: 8px 12px 4px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
