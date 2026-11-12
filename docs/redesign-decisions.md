@@ -134,6 +134,26 @@ These replace what the brief says. Don't "fix" them back.
   `#B7CDEE`) so it reads apart from In Progress. High priority is red everywhere (two bars on the
   Board; Urgent has three).
 
+## Decided in the Nov 11 meeting (Lipa, Zev, Shloma)
+
+These replace the brief too.
+
+- **Task page:** the conversation (Activity: Comments | History) is front and center in the main
+  column; the description sits on the right with Files, then Sub-tasks, Linked tasks, Checklist,
+  Recurrence and Reminders. On phones: description and files first, then the conversation.
+- **One Tasks list:** no separate My tasks / All tasks / My team tabs. Whose tasks is the **Owner**
+  filter: Me (the default), My team, Anyone, Unassigned, or a person. The tabs row keeps "Tasks",
+  your saved views and "+ Add view" (it reads "+ Save as view" when the filters differ). The task
+  count shows in the filter row, since no tab carries it any more.
+- **Two ways to make a task:** the header's **New task** opens a quick panel right there (title,
+  due date and time; assigned to you) that saves without leaving the page, with "Open" in the
+  confirmation; **More details** carries what was typed to the full New task page.
+- Recorded for later (each needs the backend): snooze with the due date kept, "Request update"
+  with a required note, drafts, voice notes, subtasks with their own status and priority,
+  converting between subtask / ticket / project with a three-level limit, due dates changeable
+  only by the creator or a supervisor, company-wide or department templates, removing password
+  sign-in, no 8-hour logout on trusted devices, and a 10-second Undo banner after deleting.
+
 ## How the older screens were brought in
 
 - **Header band:** Time, Goals, People, Settings, Profile, Templates and Exclusive Alerts use the header band (`PageHeader`), with their sibling pages as tabs inside it.

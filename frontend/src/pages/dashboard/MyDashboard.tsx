@@ -1,3 +1,4 @@
+import { TASK_CREATED_EVENT } from '../../components/harbor/QuickTask';
 import { ActivitySoon } from './ActivitySoon';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -236,6 +237,12 @@ export function MyDashboard({
     setError(null);
     Promise.all([loadCounts(), loadLists(), loadMine()]).catch((e) => setError(errorText(e)));
   }, [loadCounts, loadLists, loadMine]);
+
+  // A task made from the header's quick "New task" panel shows up straight away.
+  useEffect(() => {
+    window.addEventListener(TASK_CREATED_EVENT, reloadAll);
+    return () => window.removeEventListener(TASK_CREATED_EVENT, reloadAll);
+  }, [reloadAll]);
 
   useEffect(() => {
     if (!me) return;

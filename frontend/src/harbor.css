@@ -2710,12 +2710,32 @@ button.hb-privacy.on {
 .hb-task-cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'desc'
+    'act'
+    'rest';
   gap: 20px;
   align-items: start;
 }
+.hb-tc-act {
+  grid-area: act;
+}
+.hb-tc-desc {
+  grid-area: desc;
+}
+.hb-tc-rest {
+  grid-area: rest;
+}
+/* Wide: comments front and center on the left (both rows), the description
+   and the other cards on the right. */
 @media (min-width: 1180px) {
   .hb-task-cols {
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-areas:
+      'act desc'
+      'act rest';
+    grid-template-rows: auto 1fr;
+    row-gap: 16px;
   }
 }
 .hb-card-pad {
@@ -2835,9 +2855,9 @@ button.hb-x:hover {
 .hb-activity .hb-card-head .hb-seg {
   margin-left: auto;
 }
+/* The conversation is the main column now (Nov 11): it scrolls with the page. */
 .hb-activity {
-  position: sticky;
-  top: 72px;
+  min-height: 320px;
 }
 
 /* The one Save bar */
@@ -8017,4 +8037,44 @@ textarea.hb-tpl-input {
     flex: none;
     white-space: nowrap;
   }
+}
+
+/* --- Quick "New task" panel under the header button ---------------------- */
+.hb-quicktask {
+  width: 400px;
+  max-width: calc(100vw - 16px);
+  padding: 14px;
+}
+.hb-quicktask form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hb-quicktask-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.hb-quicktask-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.hb-quicktask-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.hb-quicktask .hb-select-field {
+  width: 100%;
+}
+.hb-quicktask-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+.hb-quicktask-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
 }

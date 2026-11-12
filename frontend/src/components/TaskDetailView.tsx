@@ -1481,7 +1481,47 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         )}
 
         <div className="hb-task-cols">
-          <div className="hb-col">
+          {/* Meeting decision (Nov 11): the conversation is front and center and the
+              description sits on the right. Phones: description, then comments. */}
+          <div className="hb-col hb-tc-act">
+            <section className="hb-card hb-activity">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <MessageSquare size={16} aria-hidden="true" />
+                </span>
+                <h3>Activity</h3>
+                <Segmented
+                  small
+                  label="Show"
+                  value={activity}
+                  onChange={setActivity}
+                  options={[
+                    {
+                      value: 'comments',
+                      label: `Comments${task.comments.length ? ` (${task.comments.length})` : ''}`,
+                    },
+                    { value: 'history', label: 'History' },
+                  ]}
+                />
+              </div>
+              {/* Always mounted, only hidden: switching to History keeps a comment being written. */}
+              <div className="hb-card-pad" hidden={activity !== 'comments'}>
+                <Comments
+                  task={task}
+                  currentUser={currentUser}
+                  onChanged={applyTask}
+                  onDirtyChange={setCommentsDirty}
+                />
+              </div>
+              {activity === 'history' && (
+                <div className="hb-card-pad">
+                  <TaskHistory taskId={task.id} version={historyVersion} />
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="hb-col hb-tc-desc">
             <section className="hb-card detail-desc">
               <div className="hb-card-pad">
                 {descHead(false)}
@@ -1489,20 +1529,27 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
             </section>
 
-            <section className="hb-card hb-soon-card" aria-disabled="true">
+            <section className="hb-card detail-attachments">
               <div className="hb-card-head">
-                <span className="hb-ic tone-grey">
-                  <ListChecks size={16} aria-hidden="true" />
+                <span className="hb-ic tone-blue">
+                  <Paperclip size={16} aria-hidden="true" />
                 </span>
-                <h3>Checklist</h3>
-                <Pill tone="grey">Coming soon</Pill>
+                <h3>Files</h3>
+                <span className="hb-small">{task.attachments.length || ''}</span>
               </div>
-              <p className="hb-soon-text">
-                Steps you tick off inside a task. This needs a backend change first; until then, use
-                sub-tasks below.
-              </p>
+              <div className="hb-card-pad">
+                <AttachmentSection
+                  attachments={task.attachments}
+                  target={{ kind: 'task', taskId: task.id }}
+                  canUpload
+                  currentUser={currentUser}
+                  onChanged={applyTask}
+                />
+              </div>
             </section>
+          </div>
 
+          <div className="hb-col hb-tc-rest">
             <section className="hb-card">
               <div className="hb-card-head">
                 <span className="hb-ic tone-blue">
@@ -1667,23 +1714,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )}
             </section>
 
-            <section className="hb-card detail-attachments">
+            <section className="hb-card hb-soon-card" aria-disabled="true">
               <div className="hb-card-head">
-                <span className="hb-ic tone-blue">
-                  <Paperclip size={16} aria-hidden="true" />
+                <span className="hb-ic tone-grey">
+                  <ListChecks size={16} aria-hidden="true" />
                 </span>
-                <h3>Files</h3>
-                <span className="hb-small">{task.attachments.length || ''}</span>
+                <h3>Checklist</h3>
+                <Pill tone="grey">Coming soon</Pill>
               </div>
-              <div className="hb-card-pad">
-                <AttachmentSection
-                  attachments={task.attachments}
-                  target={{ kind: 'task', taskId: task.id }}
-                  canUpload
-                  currentUser={currentUser}
-                  onChanged={applyTask}
-                />
-              </div>
+              <p className="hb-soon-text">
+                Steps you tick off inside a task. This needs a backend change first; until then, use
+                sub-tasks.
+              </p>
             </section>
 
             <section className="hb-card hb-recur-card">
@@ -1711,44 +1753,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               <div className="hb-card-pad hb-legacy-rail">
                 <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
               </div>
-            </section>
-          </div>
-
-          <div className="hb-col">
-            <section className="hb-card hb-activity">
-              <div className="hb-card-head">
-                <span className="hb-ic tone-blue">
-                  <MessageSquare size={16} aria-hidden="true" />
-                </span>
-                <h3>Activity</h3>
-                <Segmented
-                  small
-                  label="Show"
-                  value={activity}
-                  onChange={setActivity}
-                  options={[
-                    {
-                      value: 'comments',
-                      label: `Comments${task.comments.length ? ` (${task.comments.length})` : ''}`,
-                    },
-                    { value: 'history', label: 'History' },
-                  ]}
-                />
-              </div>
-              {/* Always mounted, only hidden: switching to History keeps a comment being written. */}
-              <div className="hb-card-pad" hidden={activity !== 'comments'}>
-                <Comments
-                  task={task}
-                  currentUser={currentUser}
-                  onChanged={applyTask}
-                  onDirtyChange={setCommentsDirty}
-                />
-              </div>
-              {activity === 'history' && (
-                <div className="hb-card-pad">
-                  <TaskHistory taskId={task.id} version={historyVersion} />
-                </div>
-              )}
             </section>
           </div>
         </div>
