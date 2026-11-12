@@ -356,12 +356,6 @@ export function TasksPage() {
   // Whose tasks: Me / My team / Anyone, then Unassigned and each person.
   const ME = '__me';
   const TEAM = '__team';
-  const ownerFilterOptions: SelectOption<string>[] = [
-    { value: ME, label: 'Me', hint: 'assigned to you' },
-    ...(canTeam ? [{ value: TEAM, label: 'My team', hint: 'your departments' }] : []),
-    { value: ALL, label: 'Anyone' },
-    ...ownerOptions,
-  ];
   const ownerValue =
     state.scope === 'mine'
       ? ME
@@ -651,6 +645,19 @@ export function TasksPage() {
           <>
             {tabs}
             <span className="hb-grow" />
+            {/* Whose tasks, up front (Nov 11: the most-used filter is never hidden in a
+                  menu). It replaces the old My tasks / All tasks / Team tabs. */}
+            <Segmented
+              small
+              label="Whose tasks"
+              value={ownerValue}
+              options={[
+                { value: ME, label: 'Me' },
+                ...(canTeam ? [{ value: TEAM, label: 'My team' }] : []),
+                { value: ALL, label: 'Everyone' },
+              ]}
+              onChange={pickOwner}
+            />
             <Segmented label="Show as" value={view} options={VIEWS} onChange={setView} small />
           </>
         }
@@ -691,31 +698,17 @@ export function TasksPage() {
             active={state.duty !== ALL}
             onChange={(v) => patch({ duty: v })}
           />
-          {view === 'calendar' && canTeam && [ME, TEAM, ALL].includes(ownerValue) ? (
-            // The calendar's own Me / Team switch (Nov 11: one calendar, a toggle
-            // between yours and your team's, never a separate team calendar).
-            <Segmented
-              small
-              label="Whose calendar"
-              value={ownerValue}
-              options={[
-                { value: ME, label: 'Me' },
-                { value: TEAM, label: 'Team' },
-                { value: ALL, label: 'All' },
-              ]}
-              onChange={pickOwner}
-            />
-          ) : (
-            <Select
-              variant="chip"
-              label="Owner"
-              value={ownerValue}
-              options={ownerFilterOptions}
-              active={ownerValue !== ME}
-              searchPlaceholder="Search people…"
-              onChange={pickOwner}
-            />
-          )}
+          {/* One person, or nobody: the switch above covers Me / My team / Everyone. */}
+          <Select
+            variant="chip"
+            label="Person"
+            value={[ME, TEAM, ALL].includes(ownerValue) ? null : ownerValue}
+            placeholder=""
+            options={ownerOptions}
+            active={![ME, TEAM, ALL].includes(ownerValue)}
+            searchPlaceholder="Search people…"
+            onChange={pickOwner}
+          />
           <Select
             variant="chip"
             label="Priority"

@@ -56,7 +56,8 @@ export const defaultState = (scope: Scope = 'mine'): ViewState => ({
 });
 
 export const STATUS_PRESETS: SelectOption<StatusPreset>[] = [
-  { value: 'open', label: 'Open' },
+  // Every status not finished yet. Not "Open": that is also the name of one status.
+  { value: 'open', label: 'Not done' },
   { value: 'overdue', label: 'Overdue', dot: '#b42318' },
   { value: 'dueToday', label: 'Due today' },
   { value: 'dueWeek', label: 'Due this week' },

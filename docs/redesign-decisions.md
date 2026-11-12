@@ -222,6 +222,15 @@ layout was undone the same day, back to the brief's Dashboard with only the meet
 - Everything else is the brief's: My dashboard / My team with their badges, the Period toggle, the
   seven tiles, Waiting on your review, the Time tracker, Due in the next 7 days, and My team.
 
+## Tasks list: whose tasks up front, "Not done" (user, Nov 12)
+
+- **Me / My team / Everyone** is a switch beside List / Board / Calendar (My team for Admins and
+  Managers), as the meeting asked for the most-used filter to be up front. It is what the old
+  My tasks / All tasks / Team tabs did. The filter row keeps a **Person** chip for one person or
+  Unassigned. The calendar's own Me / Team / All switch went into this one.
+- **The default status filter is "Not done"** (was "Open", which is also the name of one status).
+  It still means every status not finished: Open, In Progress, On Hold and Review.
+
 ## The preview site
 
 `https://hlcentral-redesign.onrender.com` (the `redesign` branch on the Staging API and data) is for
