@@ -9,6 +9,7 @@ import {
 } from '../utils/notification-emails.js';
 import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
+import { alertLogMessage } from './exclusives/alert-message.js';
 import { toUserRef } from './user.mapper.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
@@ -450,6 +451,8 @@ async function alertDetailsFor(
         marketplace: true,
         title: true,
         message: true,
+        previousValue: true,
+        newValue: true,
         createdAt: true,
       },
     }),
@@ -464,7 +467,7 @@ async function alertDetailsFor(
       asin: r.asin,
       marketplace: r.marketplace,
       title: r.title,
-      message: r.message,
+      message: alertLogMessage(r),
       at: formatBusinessTimestamp(r.createdAt, timeZone ?? undefined),
     })),
     more: total - rows.length,

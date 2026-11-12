@@ -4,6 +4,7 @@ import type {
   ExclusivesAlertType,
   ExclusivesMarketplace,
 } from '@healthy-tasks/shared';
+import { alertLogMessage } from './alert-message.js';
 
 /**
  * The alert row is already denormalized (asin, title, marketplace and group
@@ -21,7 +22,7 @@ export function toExclusivesAlertRowDto(alert: AlertLog): ExclusivesAlertRowDto 
     title: alert.title,
     alertType: alert.alertType as ExclusivesAlertType,
     category: alert.category,
-    message: alert.message,
+    message: alertLogMessage(alert),
     previousValue: alert.previousValue,
     newValue: alert.newValue,
     createdAt: alert.createdAt.toISOString(),

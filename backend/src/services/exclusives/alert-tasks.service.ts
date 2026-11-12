@@ -13,6 +13,7 @@ import { richTextLength, sanitizeRichText } from '../../utils/rich-text.js';
 import { generateOccurrence } from '../template-instantiation.service.js';
 import { alertTaskRecipes, type AlertTaskRecipe } from './alert-task-setup.service.js';
 import { dailyWindowStart, lastDailyRunAt, nextDailyRunAt } from './daily-window.js';
+import { alertLogMessage } from './alert-message.js';
 
 /**
  * HLAI-112: tasks made from Exclusives alerts, by the Alert Task Setup — per
@@ -66,9 +67,23 @@ const waitingSelect = {
   groupId: true,
   asin: true,
   message: true,
+  previousValue: true,
+  newValue: true,
   createdAt: true,
   group: { select: { name: true, settings: { select: { alertType: true, mode: true } } } },
 } as const;
+
+/** A waiting alert with its message as it reads now (see `alertLogMessage`). */
+const withCurrentMessage = <
+  A extends {
+    alertType: string;
+    message: string;
+    previousValue: string | null;
+    newValue: string | null;
+  },
+>(
+  a: A,
+): A => ({ ...a, message: alertLogMessage(a) });
 
 /** The alert's group's mode for its type now ('immediate', 'daily', 'off'). */
 const modeOf = (a: WaitingAlert) =>
@@ -102,11 +117,13 @@ export async function makeImmediateAlertTasks(
 }
 
 async function makeImmediate(onLog: Log, now: () => Date): Promise<AlertTaskRunReport> {
-  const waiting: WaitingAlert[] = await prisma.alertLog.findMany({
-    where: { taskHandledAt: null },
-    orderBy: { id: 'asc' },
-    select: waitingSelect,
-  });
+  const waiting: WaitingAlert[] = (
+    await prisma.alertLog.findMany({
+      where: { taskHandledAt: null },
+      orderBy: { id: 'asc' },
+      select: waitingSelect,
+    })
+  ).map(withCurrentMessage);
   if (waiting.length === 0) return NOTHING;
 
   const recipes = await alertTaskRecipes();
@@ -201,11 +218,13 @@ export async function makeDailyAlertTasks(
 }
 
 async function makeDaily(onLog: Log, now: Date, at: ClockTime): Promise<AlertTaskRunReport> {
-  const waiting: WaitingAlert[] = await prisma.alertLog.findMany({
-    where: { taskHandledAt: null, createdAt: { lt: lastDailyRunAt(now, at) } },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    select: waitingSelect,
-  });
+  const waiting: WaitingAlert[] = (
+    await prisma.alertLog.findMany({
+      where: { taskHandledAt: null, createdAt: { lt: lastDailyRunAt(now, at) } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: waitingSelect,
+    })
+  ).map(withCurrentMessage);
   if (waiting.length === 0) return NOTHING;
 
   const recipes = await alertTaskRecipes();

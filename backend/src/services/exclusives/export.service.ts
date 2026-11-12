@@ -9,6 +9,7 @@ import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../utils/http-error.js';
 import { csvDate, toCsv } from '../../utils/csv.js';
 import { buildAlertWhere, type AlertQueryInput } from './alert-log.service.js';
+import { alertLogMessage } from './alert-message.js';
 
 const marketplaceLabel = (value: string): string =>
   EXCLUSIVES_MARKETPLACE_LABELS[value as ExclusivesMarketplace] ?? value;
@@ -57,7 +58,7 @@ export async function exportAlertsCsv(
       r.title,
       r.groupName,
       alertTypeLabel(r.alertType),
-      r.message,
+      alertLogMessage(r),
       r.previousValue,
       r.newValue,
     ]),

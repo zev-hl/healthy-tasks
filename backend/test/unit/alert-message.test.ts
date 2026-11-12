@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeAlert } from '../../src/services/exclusives/alert-message.js';
+import {
+  alertLogMessage,
+  describeAlert,
+  describeTextChange,
+} from '../../src/services/exclusives/alert-message.js';
 import type { DetectedAlert } from '../../src/services/exclusives/alert-detection.js';
 import type { SnapshotView } from '../../src/services/exclusives/snapshot-diff.js';
 
@@ -88,7 +92,7 @@ describe('describeAlert', () => {
     );
   });
 
-  it('Title names both titles; Image and Description stay short fixed lines', () => {
+  it('Title and Image name both versions', () => {
     assert.equal(
       msg(alert({ alertType: 'TitleChanged' }), base, s({ title: 'Widget Pro' })),
       'Title changed from "Widget" to "Widget Pro".',
@@ -98,8 +102,8 @@ describe('describeAlert', () => {
       'Main image changed from "http://img/a.jpg" to "http://img/b.jpg".',
     );
     assert.equal(
-      msg(alert({ alertType: 'DescriptionChanged' }), base, base),
-      'Description changed.',
+      msg(alert({ alertType: 'DescriptionChanged' }), base, s({ description: 'A gadget.' })),
+      'Description changed from "A widget." to "A gadget.".',
     );
   });
 
@@ -210,5 +214,77 @@ describe("describeAlert — competitive price (HLAI-124, the client's rules of 2
       const text = msg(of(type), at(10, before), at(12, now));
       assert.doesNotMatch(text, /-1|n\/a/, `${type}: ${text}`);
     }
+  });
+});
+
+describe('Description changed: where the text first differs', () => {
+  const words = (n: number, from = 1) =>
+    Array.from({ length: n }, (_, i) => `w${i + from}`).join(' ');
+  const LONG_TAIL =
+    ' and then it keeps going on about the product for quite a while, much longer than a line or two would ever show in the alert log';
+
+  it('starts three same words before the first difference, with "..." around it', () => {
+    const before = `${words(10)} old bit${LONG_TAIL}${LONG_TAIL}`;
+    const after = `${words(10)} new bit${LONG_TAIL}${LONG_TAIL}`;
+    const m = describeTextChange('Description', before, after);
+    assert.match(m, /^Description changed from "\.\.\.w8 w9 w10 old bit and then /);
+    assert.match(m, /" to "\.\.\.w8 w9 w10 new bit and then /);
+    // About a line or two of each, then "..." for the rest.
+    assert.match(m, /\.\.\." to "/);
+    assert.match(m, /\.\.\."\.$/);
+    const [, fromQuote] = /from "(.*?)" to/.exec(m)!;
+    assert.ok(fromQuote!.length <= 170, `a line or two, got ${fromQuote!.length}`);
+  });
+
+  it('a difference in the first words starts at the start, with no leading "..."', () => {
+    assert.equal(
+      describeTextChange('Description', 'Great tea for mornings.', 'Fine tea for mornings.'),
+      'Description changed from "Great tea for mornings." to "Fine tea for mornings.".',
+    );
+    // Two same words: shows both, still no "..." before them.
+    assert.equal(
+      describeTextChange('Description', 'Great tea for mornings.', 'Great tea at night.'),
+      'Description changed from "Great tea for mornings." to "Great tea at night.".',
+    );
+  });
+
+  it('text added at the end shows the last words and what was added', () => {
+    assert.equal(
+      describeTextChange('Description', words(6), `${words(6)} plus more`),
+      'Description changed from "...w4 w5 w6" to "...w4 w5 w6 plus more".',
+    );
+  });
+
+  it('says added, removed, or only spacing/markup changed', () => {
+    assert.equal(
+      describeTextChange('Description', null, 'Brand new.'),
+      'Description added: "Brand new.".',
+    );
+    assert.equal(
+      describeTextChange('Description', 'Gone now.', ''),
+      'Description removed (was "Gone now.").',
+    );
+    assert.equal(
+      describeTextChange('Description', 'Same  words<br>here', 'Same words here'),
+      'Description changed (spacing or formatting only).',
+    );
+  });
+
+  it('rebuilds alerts logged with the old short message; leaves everything else', () => {
+    const old = {
+      alertType: 'DescriptionChanged',
+      message: 'Description changed.',
+      previousValue: 'A widget.',
+      newValue: 'A gadget.',
+    };
+    assert.equal(alertLogMessage(old), 'Description changed from "A widget." to "A gadget.".');
+    assert.equal(
+      alertLogMessage({ ...old, previousValue: null, newValue: null }),
+      'Description changed.',
+    );
+    assert.equal(
+      alertLogMessage({ ...old, alertType: 'TitleChanged', message: 'Title changed.' }),
+      'Title changed.',
+    );
   });
 });
