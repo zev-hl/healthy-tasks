@@ -178,6 +178,18 @@ These replace the brief too.
   sign-in, and no 8-hour logout on trusted devices.
 - **Deleting a task:** a confirmation only. The meeting's 10-second Undo countdown is not needed
   for HL Central (user decision, Nov 12).
+- **Second round (Nov 12):**
+  - **Group by** on the Tasks list: None / Status / Owner / Department / Due date, a foldable header
+    row per group. Picking one also sorts by it, so groups stay together across pages.
+  - **Templates in sections:** Repeating / Used when needed / Paused (by department after backend
+    job 12).
+  - **Tags and alert chips** moved out of the task header into a Tags card under the Description.
+  - **Parent box:** a sub-task's page shows its parent's status, due date, priority, owner and
+    description at the top of the right column.
+  - **Comment filters:** All / Mentions me / With files.
+  - **Calendar Me / Team / All** switch, in place of the Owner chip.
+  - **Repeats:** Daily / Weekly on the task's day / Monthly / Custom, and a sentence-style form.
+  - **Unread alerts** count on the Dashboard item in the sidebar.
 
 ## The preview site
 
