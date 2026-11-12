@@ -55,7 +55,6 @@ import {
   X,
   ChevronDown,
   Search,
-  TriangleAlert,
   ChevronsDownUp,
   ChevronsUpDown,
 } from 'lucide-react';
@@ -113,15 +112,6 @@ const LINK_LABEL: Record<Exclude<PickerKind, 'child'>, string> = {
 interface Props {
   initialTask: TaskDetailDto;
   currentUser: UserDto;
-}
-
-/** Whole days between the due day and today (0 when it was due earlier today). */
-function daysLate(iso: string): number {
-  const d = new Date(iso);
-  const now = new Date();
-  const a = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
 /**
@@ -1041,7 +1031,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const done = task.status === 'Completed';
   // The saved due date, not the one being edited: a big red box while it is late.
   const savedDue = dueInfo(task.dueAt, task.status);
-  const lateDays = savedDue?.late && task.dueAt ? daysLate(task.dueAt) : null;
 
   return (
     <div className="hb-task">
@@ -1166,19 +1155,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <FileStack size={16} aria-hidden="true" /> Save as template
               </button>
             )}
-            {task.canTogglePrivate && (
-              <button
-                type="button"
-                disabled={privacyBusy}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void togglePrivate();
-                }}
-              >
-                <Lock size={16} aria-hidden="true" />{' '}
-                {task.isPrivate ? 'Make visible to the team' : 'Make private'}
-              </button>
-            )}
             {currentUser.role === 'Admin' && (
               <button
                 type="button"
@@ -1209,18 +1185,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         className={`hb-taskhead${justCompleted ? ' just-completed' : ''}${headFolded ? ' is-folded' : ''}`}
       >
         <div className="hb-taskhead-main">
-          {(done || task.isPrivate || !canEdit) && (
-            <div className="hb-flags">
-              {done && <Pill tone="green">Done</Pill>}
-              {task.status === 'Canceled' && <Pill tone="grey">Canceled</Pill>}
-              {task.isPrivate && (
-                <Pill tone="blue">
-                  <Lock size={12} aria-hidden="true" /> Private
-                </Pill>
-              )}
-              {!canEdit && <Pill tone="grey">Read-only</Pill>}
-            </div>
-          )}
           {canEdit ? (
             <textarea
               className={`hb-title-input${nameDraft.trim() !== task.name ? ' is-dirty' : ''}`}
@@ -1238,38 +1202,23 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           )}
           {headFolded && (
             <p className="hb-meta hb-fold-summary">
-              {lateDays != null && (
-                <span className="hb-overdue-badge">
-                  <TriangleAlert size={13} aria-hidden="true" />
-                  {lateDays === 0 ? 'Overdue today' : `${lateDays}d overdue`}
-                </span>
-              )}
               #{task.id} · {TASK_STATUS_LABELS[task.status]} ·{' '}
               {task.assignee ? userLabel(task.assignee) : 'Unassigned'} ·{' '}
-              {savedDue ? `Due ${savedDue.text}` : 'No due date'} · {task.priority} priority{' '}
+              <span className={savedDue?.late ? 'hb-late' : undefined}>
+                {savedDue ? `Due ${savedDue.text}` : 'No due date'}
+              </span>{' '}
+              · {task.priority} priority{' '}
               <button type="button" className="hb-linklike" onClick={toggleHead}>
                 Show details
               </button>
             </p>
           )}
+          {/* Each fact shows once, where it is set (Nov 12): status, duty, privacy and
+              due date are their chips below; this line only adds what no chip says. */}
           <p className="hb-meta hb-unfolded">
-            {/* Late: a small red badge on this line, no extra height (Nov 11). */}
-            {lateDays != null && (
-              <span className="hb-overdue-badge" role="status">
-                <TriangleAlert size={13} aria-hidden="true" />
-                {lateDays === 0
-                  ? 'Overdue today'
-                  : `${lateDays} ${lateDays === 1 ? 'day' : 'days'} overdue`}
-              </span>
-            )}
             #{task.id}
+            {!canEdit && <> · Read-only</>}
             {statusHint && <> · {statusHint}</>}
-            {task.duty && (
-              <>
-                {' '}
-                · Duty: {task.duty.departmentName} › {task.duty.name}
-              </>
-            )}
             {task.parent && (
               <>
                 {' '}

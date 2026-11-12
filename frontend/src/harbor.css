@@ -8923,20 +8923,6 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   color: var(--danger);
 }
 
-/* Task page: a small solid-red badge on the info line while the task is late (Nov 11). */
-.hb-overdue-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-right: 8px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--danger);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  vertical-align: 1px;
-}
 .hb-actions-info {
   margin: 4px 0 0;
   padding: 8px 12px 4px;
