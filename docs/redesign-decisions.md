@@ -208,27 +208,19 @@ These replace the brief too.
     now white. Kept on purpose: status pills are colored by status, and an active filter is tinted.
   - The Dashboard already had "Done today" (Lipa's "closed today").
 
-## Dashboard, after Lipa's system (Nov 12)
+## Lipa's system: a reference, not a model (user, Nov 12)
 
-Rebuilt after looking at Lipa's ticket system: **numbers first, lists on demand.**
+Lipa's ticket system (shared as screenshots) only shows what she meant in the Nov 11 meeting. **The
+brief and the meeting notes decide; her screens are not copied.** A Dashboard built after her
+layout was undone the same day, back to the brief's Dashboard with only the meeting's points:
 
-- **Filters on the first line:** Period · Department · Person (Me; Admins and Managers also My
-  team, Everyone for Admins, or one person). They replace the "My dashboard / My team" tabs and
-  are remembered. `#team` still opens on My team.
-- **Four numbers:** Not done · In progress · Overdue · Done today/this week/this month. Clicking
-  one opens its list right under the row (up to 10, with the expand arrow, the status menu and
-  Done for overdue ones, and "See all N in Tasks"); clicking again or ✕ closes it.
-- **Needs you** (always yours): To review · Mentions · Reminders · Assigned to you, opening the
-  same way. This replaces the Alerts card (the bell still has everything).
-- **Below:** Where things stand (a bar per status) and Due next (5, not late). With My team or
-  Everyone, a Workload card (each person's open tasks, late part in red; click a person to see
-  their numbers).
-- **Removed:** the separate Overdue, Waiting on your review and My tasks lists, Due in the next 7
-  days, the Time tracker card (it stays on My Time), the "My activity" placeholder, Due-date
-  performance (for Insights), and the old My team page (its people and load are the Workload card).
-- **Not built yet, needs the backend:** a "Stale, 2+ days with no activity" tile (the app keeps no
-  last-activity time) and Recent activity (no feed across tasks yet). Snoozed joins Needs you once
-  snooze exists.
+- **No "Overdue, mine" card:** it repeated My tasks. The Overdue tile filters My tasks, and late
+  rows there have a one-click **Done**.
+- **My tasks shows 8 rows;** "Show all N" opens the rest in place (no long list by default).
+- **Alerts is one line when nothing is unread** ("All caught up"); it opens to look back.
+- **No "coming soon" placeholders** (My activity on both views).
+- Everything else is the brief's: My dashboard / My team with their badges, the Period toggle, the
+  seven tiles, Waiting on your review, the Time tracker, Due in the next 7 days, and My team.
 
 ## The preview site
 
