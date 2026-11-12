@@ -42,6 +42,7 @@ import { TaskKanban } from '../components/TaskKanban';
 import { TaskCalendar, type CalendarScale } from '../components/TaskCalendar';
 import { TaskGantt } from '../components/TaskGantt';
 import { TaskTable, OPTIONAL_COLUMNS, type OptionalColumn, type RowEdit } from './tasks/TaskTable';
+import { GROUP_OPTIONS, GROUP_SORT, isGroupBy, type GroupBy } from './tasks/grouping';
 import { MoreFilters } from './tasks/MoreFilters';
 import {
   ALL,
@@ -78,6 +79,7 @@ interface Stored {
   hbView?: TaskView;
   hbColumns?: OptionalColumn[];
   hbNest?: boolean;
+  hbGroup?: GroupBy;
   hbReadOnly?: boolean;
   hbCalScale?: CalendarScale;
 }
@@ -128,6 +130,7 @@ export function TasksPage() {
   const [view, setView] = useState<TaskView>('list');
   const [columns, setColumns] = useState<Set<OptionalColumn>>(new Set());
   const [nest, setNest] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [includeReadOnly, setIncludeReadOnly] = useState(true);
   const [calScale, setCalScale] = useState<CalendarScale>('month');
   const [calSlot, setCalSlot] = useState<HTMLSpanElement | null>(null);
@@ -172,6 +175,7 @@ export function TasksPage() {
       if (s.hbView) setView(s.hbView);
       if (Array.isArray(s.hbColumns)) setColumns(new Set(s.hbColumns));
       if (typeof s.hbNest === 'boolean') setNest(s.hbNest);
+      if (isGroupBy(s.hbGroup)) setGroupBy(s.hbGroup);
       if (typeof s.hbReadOnly === 'boolean') setIncludeReadOnly(s.hbReadOnly);
       if (s.hbCalScale) setCalScale(s.hbCalScale);
 
@@ -218,10 +222,11 @@ export function TasksPage() {
       hbView: view,
       hbColumns: [...columns],
       hbNest: nest,
+      hbGroup: groupBy,
       hbReadOnly: includeReadOnly,
       hbCalScale: calScale,
     }),
-    [state, tab, views, view, columns, nest, includeReadOnly, calScale],
+    [state, tab, views, view, columns, nest, groupBy, includeReadOnly, calScale],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -770,6 +775,20 @@ export function TasksPage() {
             <span ref={setCalSlot} className="hb-tcal-slot" />
           ) : (
             <>
+              {view === 'list' && (
+                <Select
+                  variant="chip"
+                  label="Group"
+                  value={groupBy}
+                  options={GROUP_OPTIONS}
+                  active={groupBy !== 'none'}
+                  onChange={(g) => {
+                    setGroupBy(g);
+                    // The list is paged: sorting by the grouping keeps each group together.
+                    if (g !== 'none') patch({ sortField: GROUP_SORT[g], sortDir: 'asc' });
+                  }}
+                />
+              )}
               <Select
                 variant="chip"
                 label="Sort"
@@ -824,6 +843,7 @@ export function TasksPage() {
             ) : (
               <TaskTable
                 rows={rows}
+                groupBy={groupBy}
                 owners={ownerOptions}
                 selected={selected}
                 onSelect={(id, on) =>

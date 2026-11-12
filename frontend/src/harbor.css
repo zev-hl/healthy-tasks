@@ -8621,3 +8621,42 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Group by on the Tasks list (meeting decision, Nov 11): a header row per group. */
+.hb-group-row th {
+  padding: 0;
+  background: var(--accent-tint);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.hb-group-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.hb-group-btn svg {
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.hb-group-btn.is-open svg {
+  transform: rotate(90deg);
+}
+.hb-group-btn:hover .hb-group-label {
+  text-decoration: underline;
+}
+.hb-group-count {
+  font-weight: 500;
+  color: var(--muted);
+}
