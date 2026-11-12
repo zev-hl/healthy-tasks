@@ -8,8 +8,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardCheck,
-  ListTodo,
-  Plus,
   Target,
 } from 'lucide-react';
 import type {
@@ -37,7 +35,7 @@ import {
   STATUS_TONE,
 } from '../../components/harbor/ui';
 import { Select } from '../../components/harbor/Select';
-import { DatePicker, toYmd } from '../../components/harbor/DatePicker';
+import { toYmd } from '../../components/harbor/DatePicker';
 import { useToast } from '../../components/harbor/Toast';
 import {
   markRead,
@@ -48,7 +46,6 @@ import {
 import {
   ACTIVE_STATUSES,
   dueInfo,
-  dueIsoFromYmd,
   periodRange,
   statusOptions,
   taskSub,
@@ -533,7 +530,6 @@ export function MyDashboard({
             ))}
           </Card>
 
-          <QuickAdd onAdded={reloadAll} />
 
           <Card>
             <CardHead
@@ -636,55 +632,3 @@ export function PerformanceBody({ totals }: { totals: DueDateBucketTotals | null
   );
 }
 
-/** Title + a due date (calendar) + Add, straight into My tasks. */
-function QuickAdd({ onAdded }: { onAdded: () => void }) {
-  const { user } = useAuth();
-  const toast = useToast();
-  const [name, setName] = useState('');
-  const [due, setDue] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function add(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim() || !user) return;
-    setBusy(true);
-    try {
-      const t = await api.createTask({
-        name: name.trim(),
-        assigneeId: user.id,
-        dueAt: dueIsoFromYmd(due),
-      });
-      setName('');
-      setDue(null);
-      onAdded();
-      toast({
-        message: `Added “${t.name}” to your tasks.`,
-        tone: 'success',
-      });
-    } catch (err) {
-      toast({ message: errorText(err), tone: 'error' });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHead icon={<ListTodo size={16} />} title="Quick add" />
-      <form className="hb-qa" onSubmit={add}>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="What needs doing?"
-          aria-label="New task title"
-        />
-        <div className="hb-qa-row">
-          <DatePicker value={due} onChange={setDue} label="Due date" placeholder="Due date" />
-          <button type="submit" className="hb-btn hb-btn-primary" disabled={busy || !name.trim()}>
-            <Plus size={16} aria-hidden="true" /> Add
-          </button>
-        </div>
-      </form>
-    </Card>
-  );
-}

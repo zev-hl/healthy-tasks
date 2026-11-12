@@ -1588,19 +1588,6 @@ button.hb-row-btn + .hb-row-btn {
   font-size: 13px;
   color: var(--ink-3);
 }
-.hb-qa {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 18px 16px;
-}
-.hb-qa-row {
-  display: flex;
-  gap: 8px;
-}
-.hb-qa-row > .hb-select {
-  flex: 1;
-}
 
 /* My team */
 .hb-filterbar {

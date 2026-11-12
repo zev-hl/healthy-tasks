@@ -148,6 +148,8 @@ These replace the brief too.
 - **Two ways to make a task:** the header's **New task** opens a quick panel right there (title,
   due date and time; assigned to you) that saves without leaving the page, with "Open" in the
   confirmation; **More details** carries what was typed to the full New task page.
+  The Dashboard's own **Quick add** card (brief §6.1) was removed, since this panel does the same
+  from every page.
 - Recorded for later (each needs the backend): snooze with the due date kept, "Request update"
   with a required note, drafts, voice notes, subtasks with their own status and priority,
   converting between subtask / ticket / project with a three-level limit, due dates changeable
