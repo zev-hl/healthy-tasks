@@ -9248,3 +9248,104 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   background: var(--accent-tint);
   color: var(--accent-deep);
 }
+
+/* Voice note and screen recording in the comment box (Nov 11 meeting). */
+.composer-attach {
+  flex-wrap: wrap;
+}
+.hb-rec {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid #f3b4ae;
+  border-radius: 999px;
+  background: #fff5f4;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hb-rec-btn,
+.hb-rec-btn:hover,
+.hb-rec-btn:active {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hb-rec-btn.is-stop,
+.hb-rec-btn.is-stop:hover {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+.hb-rec-error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+/* Status is a tinted tag (square-ish corners, no dot) everywhere; priority stays a
+   coloured dot and a word; a person is an avatar (Nov 11: distinct shapes). */
+.hb-pill.hb-status,
+.hb-select-pill {
+  border-radius: 6px;
+}
+.hb-prop.is-status {
+  border-radius: 8px;
+  border-color: transparent;
+  font-weight: 600;
+}
+.hb-prop.is-status.tone-grey {
+  background: var(--canvas-deep);
+}
+.hb-prop.is-status.tone-grey .hb-select-value {
+  color: var(--ink-2);
+}
+.hb-prop.is-status.tone-blue {
+  background: var(--accent-soft);
+}
+.hb-prop.is-status.tone-blue .hb-select-value {
+  color: var(--accent-deep);
+}
+.hb-prop.is-status.tone-amber {
+  background: var(--warn-soft);
+}
+.hb-prop.is-status.tone-amber .hb-select-value {
+  color: var(--warn-deep);
+}
+.hb-prop.is-status.tone-green {
+  background: var(--ok-soft);
+}
+.hb-prop.is-status.tone-green .hb-select-value {
+  color: var(--ok);
+}
+.hb-prop.is-status.tone-review {
+  background: var(--review-soft);
+  border-color: #b7cdee;
+}
+.hb-prop.is-status.tone-review .hb-select-value {
+  color: var(--review-deep);
+}
+.hb-prop.is-status:hover {
+  border-color: var(--accent);
+}
+.hb-filetile.kind-audio {
+  background: #dff3f1;
+  color: #0f6b63;
+  font-size: 8px;
+}
+.hb-filetile.kind-video {
+  background: #fff0cc;
+  color: #7a4d00;
+  font-size: 8px;
+}

@@ -81,8 +81,17 @@ export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <span className={cx('hb-pill', `tone-${tone}`)}>{children}</span>;
 }
 
+/**
+ * Status is a tinted tag with square-ish corners and no dot, so it never looks
+ * like priority (a coloured dot and a word) or a person (an avatar) — Nov 11:
+ * different attributes, different shapes.
+ */
 export function StatusPill({ status }: { status: TaskStatus }) {
-  return <Pill tone={STATUS_TONE[status]}>{TASK_STATUS_LABELS[status]}</Pill>;
+  return (
+    <span className={cx('hb-pill', 'hb-status', `tone-${STATUS_TONE[status]}`)}>
+      {TASK_STATUS_LABELS[status]}
+    </span>
+  );
 }
 
 export function Dot({ color, size = 10 }: { color: string; size?: number }) {

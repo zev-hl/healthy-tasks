@@ -172,7 +172,7 @@ These replace the brief too.
 - **Reminders** are a tab of the task page's Activity card (Comments | History | Reminders), apart
   from sub-tasks; the separate Reminders card is gone.
 - Recorded for later (each needs the backend): snooze with the due date kept, "Request update"
-  with a required note, drafts, voice notes, subtasks with their own status and priority,
+  with a required note, drafts, subtasks with their own status and priority,
   converting between subtask / ticket / project with a three-level limit, due dates changeable
   only by the creator or a supervisor, company-wide or department templates, removing password
   sign-in, and no 8-hour logout on trusted devices.
@@ -230,6 +230,19 @@ layout was undone the same day, back to the brief's Dashboard with only the meet
   Unassigned. The calendar's own Me / Team / All switch went into this one.
 - **The default status filter is "Not done"** (was "Open", which is also the name of one status).
   It still means every status not finished: Open, In Progress, On Hold and Review.
+
+## Comment box and status shape (user, Nov 12)
+
+- **Voice note and screen recording** in the comment box (the meeting's "voice note attachments
+  with simple send, delete and re-record", and screen recording). Recorded in the browser and
+  attached as an ordinary audio or video file: no backend change, since audio and video were
+  already allowed. Voice up to 5 minutes; screen (with your voice, if the microphone is allowed) up
+  to 3 minutes so it stays under the 25 MB file limit. "Stop and attach" keeps it, the bin throws
+  it away; stopping the screen share keeps it. The buttons don't show in browsers that can't record.
+  File tiles now say AUDIO or VIDEO.
+- **Status looks different from priority:** status is a tinted tag with square-ish corners and no
+  dot (the task page's Status chip too); priority stays a coloured dot and a word; a person is an
+  avatar. The meeting asked for different shapes for different attributes.
 
 ## The preview site
 

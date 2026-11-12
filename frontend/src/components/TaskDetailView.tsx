@@ -1245,17 +1245,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <Select
                   variant="chip"
                   hideLabel
-                  className={`hb-prop tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
+                  className={`hb-prop is-status tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
                   label="Status"
                   value={status}
                   options={statusChoices}
                   renderValue={(o) => (
                     <>
-                      <span
-                        className="hb-dot"
-                        style={{ background: STATUS_DOT[status] }}
-                        aria-hidden="true"
-                      />{' '}
                       {o?.label}
                       {statusHint && status === task.status && (
                         <span className="hb-chip-note">{statusHint}</span>

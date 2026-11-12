@@ -18,6 +18,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { TimeStamp } from './ui/TimeStamp';
 import { Paperclip } from 'lucide-react';
+import { Recorder } from './Recorder';
 
 interface Props {
   task: TaskDetailDto;
@@ -100,7 +101,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
    * Every rejection is reported, including picking the same file twice —
    * silently dropping it looks exactly like the attach button being broken.
    */
-  function addFiles(picked: FileList | null) {
+  function addFiles(picked: FileList | File[] | null) {
     if (!picked || picked.length === 0) return;
     const next = [...pending];
     const problems: string[] = [];
@@ -278,6 +279,10 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                   <Paperclip size={14} aria-hidden="true" />{' '}
                   {pending.length === 0 ? 'Attach files' : 'Add more files'}
                 </button>
+                <Recorder
+                  disabled={submitting || pending.length >= COMMENT_MAX_ATTACHMENTS}
+                  onFile={(f) => addFiles([f])}
+                />
                 <span className="muted composer-attach-hint">
                   {pending.length}/{COMMENT_MAX_ATTACHMENTS} · up to 25 MB each · Ctrl + Enter posts
                 </span>
