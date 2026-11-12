@@ -154,7 +154,9 @@ These replace the brief too.
   with a required note, drafts, voice notes, subtasks with their own status and priority,
   converting between subtask / ticket / project with a three-level limit, due dates changeable
   only by the creator or a supervisor, company-wide or department templates, removing password
-  sign-in, no 8-hour logout on trusted devices, and a 10-second Undo banner after deleting.
+  sign-in, and no 8-hour logout on trusted devices.
+- **Deleting a task:** a confirmation only. The meeting's 10-second Undo countdown is not needed
+  for HL Central (user decision, Nov 12).
 
 ## How the older screens were brought in
 
