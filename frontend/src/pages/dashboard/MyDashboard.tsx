@@ -1,16 +1,10 @@
 import { TASK_CREATED_EVENT } from '../../components/harbor/QuickTask';
 import { PeekRow } from '../../components/harbor/TaskPeek';
+import { AlertsCard } from './AlertsCard';
 import { ActivitySoon } from './ActivitySoon';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  AlertTriangle,
-  Bell,
-  CalendarClock,
-  CheckCircle2,
-  ClipboardCheck,
-  Target,
-} from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, ClipboardCheck, Target } from 'lucide-react';
 import type {
   DueDateBucketTotals,
   TaskRowDto,
@@ -22,7 +16,6 @@ import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useNotifications } from '../../notifications/NotificationContext';
 import { effectiveFilters, nowContext } from '../../lib/taskSearch';
-import { Avatar } from '../../components/ui/Avatar';
 import {
   Bar,
   Btn,
@@ -38,12 +31,7 @@ import {
 import { Select } from '../../components/harbor/Select';
 import { toYmd } from '../../components/harbor/DatePicker';
 import { useToast } from '../../components/harbor/Toast';
-import {
-  markRead,
-  toFeed,
-  whenLabel,
-  type FeedItem,
-} from '../../components/harbor/notificationFeed';
+import { markRead, toFeed, type FeedItem } from '../../components/harbor/notificationFeed';
 import {
   ACTIVE_STATUSES,
   dueInfo,
@@ -227,7 +215,7 @@ export function MyDashboard({
         ...nowContext(),
       }),
     ]);
-    setFeed(toFeed(n).slice(0, 6));
+    setFeed(toFeed(n).slice(0, 40));
     setPerf(report.bucketTotals);
   }, [me, range]);
 
@@ -490,46 +478,16 @@ export function MyDashboard({
 
         <aside className="hb-col">
           <TimeTrackerCard period={period} />
-          <Card>
-            <CardHead
-              icon={<Bell size={16} />}
-              title="Notifications"
-              right={
-                feed && feed.some((f) => !f.read) ? (
-                  <span className="hb-small">{feed.filter((f) => !f.read).length} unread</span>
-                ) : undefined
+          <AlertsCard
+            feed={feed}
+            onOpen={async (it) => {
+              if (!it.read) {
+                await markRead(it).catch(() => {});
+                refreshUnread();
               }
-            />
-            {feed === null && <Empty>Loading…</Empty>}
-            {feed?.length === 0 && <Empty>You are all caught up.</Empty>}
-            {feed?.map((it) => (
-              <button
-                key={it.key}
-                type="button"
-                className={cx('hb-row', 'hb-row-btn', 'hov', !it.read && 'unread')}
-                onClick={async () => {
-                  if (!it.read) {
-                    await markRead(it).catch(() => {});
-                    refreshUnread();
-                  }
-                  navigate(`/tasks/${it.taskId}`);
-                }}
-              >
-                {it.who ? (
-                  <Avatar user={it.who} px={28} decorative />
-                ) : (
-                  <span className="hb-av-ph">
-                    <Bell size={14} />
-                  </span>
-                )}
-                <span className="hb-stack">
-                  <span className="hb-sub">{it.text}</span>
-                  <span className="hb-name">{it.taskName}</span>
-                </span>
-                <span className="hb-small">{whenLabel(it.at)}</span>
-              </button>
-            ))}
-          </Card>
+              navigate(`/tasks/${it.taskId}`);
+            }}
+          />
 
           <Card>
             <CardHead

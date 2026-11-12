@@ -8412,3 +8412,76 @@ textarea.hb-tpl-input {
     border-top-right-radius: 12px;
   }
 }
+
+/* --- Dashboard: Alerts (mentions, reminders, assigned), folds away -------- */
+button.hb-alerts-head {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 18px 10px;
+  cursor: pointer;
+}
+button.hb-alerts-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+button.hb-alerts-head .hb-small {
+  margin-left: auto;
+}
+button.hb-alerts-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 12px;
+}
+.hb-alerts-caret {
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+button.hb-alerts-head .hb-small + .hb-alerts-caret {
+  margin-left: 0;
+}
+button.hb-alerts-head h3 + .hb-alerts-caret {
+  margin-left: auto;
+}
+.hb-alerts.is-folded .hb-alerts-caret {
+  transform: rotate(-90deg);
+}
+.hb-alerts-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 14px 8px;
+  border-bottom: 1px solid var(--row-line);
+  overflow-x: auto;
+}
+.hb-alerts-tab {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--ink-3);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hb-alerts-tab:hover {
+  background: var(--canvas);
+}
+.hb-alerts-tab.is-on {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.hb-alerts-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.hb-alerts .hb-sub svg {
+  vertical-align: -1px;
+}
