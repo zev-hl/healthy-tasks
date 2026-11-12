@@ -97,6 +97,9 @@ function isUnder(pathname: string, base: string): boolean {
 
 function Sidebar() {
   const { user } = useAuth();
+  // Unread alerts also show in the personal menu (meeting decision, Nov 11).
+  const { unread } = useNotifications();
+  const unreadCount = unread?.total ?? 0;
   const { pathname } = useLocation();
   const app = appForPath(pathname);
   const nav = (app === 'exclusives' ? EXCLUSIVES_NAV : CENTRAL_NAV).filter(
@@ -133,6 +136,11 @@ function Sidebar() {
               >
                 <Icon size={18} strokeWidth={1.7} aria-hidden="true" />
                 <span className="side-label">{n.label}</span>
+                {n.to === '/' && app !== 'exclusives' && unreadCount > 0 && (
+                  <span className="side-count" aria-label={`${unreadCount} unread alerts`}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </NavLink>
               {active &&
                 subs.map((s) => {

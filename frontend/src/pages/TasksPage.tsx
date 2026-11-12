@@ -684,15 +684,31 @@ export function TasksPage() {
             active={state.duty !== ALL}
             onChange={(v) => patch({ duty: v })}
           />
-          <Select
-            variant="chip"
-            label="Owner"
-            value={ownerValue}
-            options={ownerFilterOptions}
-            active={ownerValue !== ME}
-            searchPlaceholder="Search people…"
-            onChange={pickOwner}
-          />
+          {view === 'calendar' && canTeam && [ME, TEAM, ALL].includes(ownerValue) ? (
+            // The calendar's own Me / Team switch (Nov 11: one calendar, a toggle
+            // between yours and your team's, never a separate team calendar).
+            <Segmented
+              small
+              label="Whose calendar"
+              value={ownerValue}
+              options={[
+                { value: ME, label: 'Me' },
+                { value: TEAM, label: 'Team' },
+                { value: ALL, label: 'All' },
+              ]}
+              onChange={pickOwner}
+            />
+          ) : (
+            <Select
+              variant="chip"
+              label="Owner"
+              value={ownerValue}
+              options={ownerFilterOptions}
+              active={ownerValue !== ME}
+              searchPlaceholder="Search people…"
+              onChange={pickOwner}
+            />
+          )}
           <Select
             variant="chip"
             label="Priority"

@@ -8496,3 +8496,34 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
 .hb-reminders-block svg {
   vertical-align: -2px;
 }
+
+/* Unread alerts next to Dashboard in the sidebar (Nov 11) */
+.side-count {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  background: #d92d20;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 819px) {
+  .side-nav-item {
+    position: relative;
+  }
+  .side-count {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    box-shadow: 0 0 0 2px var(--side);
+  }
+}

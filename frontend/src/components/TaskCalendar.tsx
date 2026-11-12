@@ -337,6 +337,7 @@ export function TaskCalendar({
         // In the page's filter row, a compact chip keeps everything on one line.
         <Select
           variant="chip"
+          hideLabel
           label="Show"
           value={scale}
           options={[
