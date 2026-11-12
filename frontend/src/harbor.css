@@ -8562,3 +8562,62 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   font-size: 13px;
   color: var(--muted);
 }
+
+/* Parent box on a sub-task's page (meeting decision, Nov 11). */
+.hb-parentbox {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 3px solid var(--accent, #3b6fd1);
+}
+.hb-parentbox-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #6b7280);
+}
+.hb-parentbox-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.hb-parentbox-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink, inherit);
+  text-decoration: none;
+}
+.hb-parentbox-name:hover {
+  text-decoration: underline;
+}
+.hb-parentbox-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.hb-parentbox-due.is-late {
+  color: var(--danger, #c0392b);
+  font-weight: 600;
+}
+.hb-parentbox-who {
+  color: var(--muted, #6b7280);
+}
+.hb-parentbox-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
