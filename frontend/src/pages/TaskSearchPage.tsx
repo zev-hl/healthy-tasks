@@ -55,7 +55,7 @@ import { MultiSelect } from '../components/MultiSelect';
 import { TaskAttributesCell } from '../components/TaskAttributesCell';
 import { FilterPopover } from '../components/FilterPopover';
 import { HierarchyTree, toggleSubtree } from '../components/HierarchyTree';
-import { UserChip, UnassignedAvatar } from '../components/ui/Avatar';
+import { AlertAssignedChip, UserChip, UnassignedAvatar } from '../components/ui/Avatar';
 import { StatusPill, PriorityRamp } from '../components/ui/indicators';
 import { AnimatedCount } from '../components/ui/AnimatedCount';
 import { ExcPager } from '../components/exclusives/ExcPager';
@@ -892,7 +892,7 @@ export function TaskSearchPage() {
           </span>
         );
       case 'creator':
-        return <UserChip user={row.creator} />;
+        return row.creator ? <UserChip user={row.creator} /> : <AlertAssignedChip />;
       case 'createdAt':
         return <AgoDate iso={row.createdAt} />;
       case 'startAt':

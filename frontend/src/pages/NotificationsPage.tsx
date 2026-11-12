@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  ALERT_ASSIGNED_LABEL,
   REMINDER_CANCEL_REASON_LABELS,
   REMINDER_SNOOZE_OPTIONS,
   reminderLeadLabel,
@@ -381,7 +382,7 @@ export function NotificationsPage() {
                             </>
                           ) : it.kind === 'assigned' ? (
                             it.byAlert ? (
-                              <strong>Alert-assigned</strong>
+                              <strong>{ALERT_ASSIGNED_LABEL}</strong>
                             ) : it.actor ? (
                               <>
                                 <strong>{userLabel(it.actor)}</strong>{' '}

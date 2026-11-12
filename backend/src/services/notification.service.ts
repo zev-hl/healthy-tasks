@@ -171,8 +171,6 @@ export async function listNotifications(
           startAt: true,
           dueAt: true,
           priority: true,
-          createdAt: true,
-          creatorId: true,
           templateOccurrence: { select: { origin: true } },
           assignee: {
             select: { id: true, email: true, firstName: true, lastName: true, title: true },
@@ -208,16 +206,11 @@ export async function listNotifications(
   const actorById = new Map(actorRows.map((u) => [u.id, toUserRef(u)]));
   const blockedByCount = new Map(blockerGroups.map((g) => [g.blockedId, g._count._all]));
 
-  // An alert task's own assignment, made with it. Since 2026-11-12 it has no
-  // actor; earlier ones named the Admin who saved Alert Task Setup (the task's
-  // creator) and were made in the same moment as the task, so they count too.
-  // A later reassignment by a person is not one.
+  // An alert task's own assignment, made with it: no actor (older ones were
+  // cleared by the 20261112120000 migration). A later reassignment by a person
+  // names them.
   const byAlert = (r: (typeof assignedRows)[number]) =>
-    r.type === 'assigned' &&
-    r.task.templateOccurrence?.origin === 'alert' &&
-    (r.actorId === null ||
-      (r.actorId === r.task.creatorId &&
-        Math.abs(r.createdAt.getTime() - r.task.createdAt.getTime()) < 60_000));
+    r.type === 'assigned' && r.actorId === null && r.task.templateOccurrence?.origin === 'alert';
 
   const assigned: AssignedNotificationDto[] = assignedRows.map((r) => ({
     id: r.id,
@@ -228,7 +221,7 @@ export async function listNotifications(
     priority: r.task.priority,
     action: (r.assignAction ?? 'added') as AssignAction,
     byAlert: byAlert(r),
-    actor: r.actorId && !byAlert(r) ? (actorById.get(r.actorId) ?? null) : null,
+    actor: r.actorId ? (actorById.get(r.actorId) ?? null) : null,
     blockedByCount: blockedByCount.get(r.taskId) ?? 0,
     createdAt: r.createdAt.toISOString(),
     read: r.readAt !== null,

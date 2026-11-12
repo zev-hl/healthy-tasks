@@ -307,8 +307,9 @@ export interface TaskDto {
   id: number;
   name: string;
   description: string | null;
-  creatorId: string;
-  creator: TaskUserRef;
+  /** Null for a task made from an Exclusives alert: shown as "Alert-assigned". */
+  creatorId: string | null;
+  creator: TaskUserRef | null;
   assigneeId: string | null;
   assignee: TaskUserRef | null;
   parentId: number | null;
@@ -908,7 +909,8 @@ export interface TaskRowDto {
   statusChangedAt: string | null;
   priority: TaskPriority;
   assignee: TaskUserRef | null;
-  creator: TaskUserRef;
+  /** Null for a task made from an Exclusives alert ("Alert-assigned"). */
+  creator: TaskUserRef | null;
   createdAt: string;
   startAt: string | null;
   dueAt: string | null;
@@ -1160,6 +1162,9 @@ export interface ReminderNotificationDto {
 }
 
 /** A row in the Assigned list (assignee added/removed). */
+/** How a task made from an Exclusives alert shows where a person would be named. */
+export const ALERT_ASSIGNED_LABEL = 'Alert-assigned';
+
 export interface AssignedNotificationDto {
   id: string; // Notification id (for mark-read)
   taskId: number;

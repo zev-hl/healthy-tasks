@@ -13,6 +13,8 @@
  * always the same color.
  */
 
+import { ALERT_ASSIGNED_LABEL } from '@healthy-tasks/shared';
+
 export interface UserLike {
   id?: string | null;
   email?: string | null;
@@ -155,6 +157,31 @@ export function UserChip({
         {text}
         {showTitle && user.title ? <span className="muted"> · {user.title}</span> : null}
       </span>
+    </span>
+  );
+}
+
+/**
+ * Where a task made from an Exclusives alert would name a person (its creator):
+ * "Alert-assigned", with a small badge in place of the avatar.
+ */
+export function AlertAssignedChip({ px = 22 }: { px?: number }) {
+  return (
+    <span className="user-chip muted" title="Made automatically from an Exclusives alert">
+      <span
+        className="avatar"
+        aria-hidden="true"
+        style={{
+          background: 'var(--canvas-deep)',
+          color: 'var(--muted)',
+          width: px,
+          height: px,
+          fontSize: Math.round(px * 0.5),
+        }}
+      >
+        ⚡
+      </span>
+      <span className="user-name">{ALERT_ASSIGNED_LABEL}</span>
     </span>
   );
 }

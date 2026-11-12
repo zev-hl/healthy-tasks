@@ -795,7 +795,7 @@ describe('Immediate alert tasks', () => {
           ),
     );
 
-  it('a check’s Immediate alert makes its own task tree: labelled, tagged, assigned, created by the saver', async () => {
+  it('a check’s Immediate alert makes its own task tree: labelled, tagged, assigned, created by no one (Alert-assigned)', async () => {
     const admin = await adminToken();
     const saver = await seedUser({ email: 'saver@test.local', role: 'Admin' });
     const ana = await seedUser({ email: 'ana@test.local', role: 'Member' });
@@ -855,8 +855,8 @@ describe('Immediate alert tasks', () => {
     assert.deepEqual(
       tasks.map((t) => [t.name, t.assigneeId, t.creatorId, t.alertGroupId, t.alertType]),
       [
-        ['WasiU_PC_262920824: Step 1', ana.id, saver.id, group.id, 'PriceChanged'],
-        ['WasiU_PC_262920824: Step 2', null, saver.id, group.id, 'PriceChanged'],
+        ['WasiU_PC_262920824: Step 1', ana.id, null, group.id, 'PriceChanged'],
+        ['WasiU_PC_262920824: Step 2', null, null, group.id, 'PriceChanged'],
       ],
     );
     assert.equal(alert.taskId, tasks[0]!.id);
@@ -864,7 +864,12 @@ describe('Immediate alert tasks', () => {
       where: { taskId: tasks[0]!.id, field: 'alert' },
     });
     assert.equal(line.detail, 'a Price Changed alert (Wasif - US)');
-    assert.equal(line.userId, saver.id);
+    assert.equal(line.userId, null);
+    // Its page and the Tasks grid show no person as its creator.
+    const page = await request(app).get(`/api/tasks/${tasks[0]!.id}`).set(auth(admin));
+    assert.equal(page.status, 200);
+    assert.equal(page.body.creatorId, null);
+    assert.equal(page.body.creator, null);
 
     // The next check makes nothing more for it.
     assert.deepEqual(await run(), { made: 0, noTask: 0, failed: 0 });
@@ -1166,7 +1171,13 @@ describe('Immediate alert tasks', () => {
     const admin = await adminToken();
     const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
     const tpl = await makeTemplate(admin, 'Check', [{ role: null }]);
-    await setUp('PriceChanged', tpl, [], null); // nobody recorded as its creator
+    const parked = await makeTemplate(admin, 'Parked', [{ role: null }]);
+    await setUp('PriceChanged', tpl, [], adminUser.id);
+    // Its template has no tasks to make for now, so making one fails.
+    await prisma.taskTemplateNode.updateMany({
+      where: { templateId: tpl },
+      data: { templateId: parked },
+    });
     const group = await watchingGroup('Wasif - US', { PriceChanged: 'immediate' });
     const alert = await logAlert(group, 'PriceChanged');
 
@@ -1182,10 +1193,11 @@ describe('Immediate alert tasks', () => {
       null,
     );
 
-    await prisma.alertTaskSetting.update({
-      where: { alertType: 'PriceChanged' },
-      data: { savedById: adminUser.id },
+    const ours = await prisma.taskTemplateNode.findMany({
+      where: { templateId: parked },
+      orderBy: { id: 'asc' },
     });
+    await prisma.taskTemplateNode.update({ where: { id: ours[0]!.id }, data: { templateId: tpl } });
     assert.deepEqual(await run(), { made: 1, noTask: 0, failed: 0 });
   });
 
@@ -1751,5 +1763,96 @@ describe('Organization: duties Alert Task Setup needs', () => {
     const res = await saveDuties(await login('manager@test.local'), ana.id, [], [needed]);
     assert.equal(res.status, 422);
     assert.match(res.body.error, /\(only an Admin can change Alert Task Setup\)\.$/);
+  });
+});
+
+describe('migration 20261112120000: existing alert tasks lose their person-creator', () => {
+  /** The migration's data steps (its ALTER has already run on this database). */
+  async function runBackfill() {
+    const { readFile } = await import('node:fs/promises');
+    const sql = await readFile(
+      new globalThis.URL(
+        '../prisma/migrations/20261112120000_alert_tasks_no_creator/migration.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const statements = sql
+      .split(';')
+      .map((s) => s.replace(/^\s*--.*$/gm, '').trim())
+      .filter((s) => s.startsWith('UPDATE'));
+    assert.equal(statements.length, 3);
+    for (const s of statements) await prisma.$executeRawUnsafe(s);
+  }
+
+  it('clears the saver from the task, its creation history and its own assignment notice only', async () => {
+    const admin = await adminToken();
+    const saver = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN_EMAIL } });
+    const ana = await seedUser({ email: 'ana@test.local', role: 'Member' });
+    const bob = await seedUser({ email: 'bob@test.local', role: 'Manager' });
+    const tpl = await makeTemplate(admin, 'Price Review', [{ role: 'Analyst' }]);
+    const [node] = await prisma.taskTemplateNode.findMany({ where: { templateId: tpl } });
+    // Made the old way: the saver as creator and actor.
+    const old = await generateOccurrence({
+      templateId: tpl,
+      seq: null,
+      origin: 'alert',
+      instanceLabel: 'WasiU_PC_262920824',
+      anchorStart: new Date('2026-10-19T12:30:00Z'),
+      assigneeByNodeId: new Map([[node!.id, ana.id]]),
+      creatorId: saver.id,
+      actorId: saver.id,
+      alertType: 'PriceChanged',
+    });
+    const taskId = old.rootTaskId;
+    // Later, by hand: Bob reassigns it to Ana (a notice naming Bob), and a comment-ish change by the saver.
+    await prisma.notification.create({
+      data: { userId: ana.id, type: 'assigned', taskId, assignAction: 'added', actorId: bob.id },
+    });
+    await prisma.taskHistory.create({
+      data: { taskId, userId: saver.id, field: 'status', changeType: 'updated' },
+    });
+    // A task made by hand from the same template keeps its creator.
+    const manual = await generateOccurrence({
+      templateId: tpl,
+      seq: null,
+      origin: 'manual',
+      instanceLabel: null,
+      anchorStart: new Date('2026-10-19T12:30:00Z'),
+      assigneeByNodeId: new Map([[node!.id, ana.id]]),
+      creatorId: saver.id,
+      actorId: saver.id,
+    });
+
+    await runBackfill();
+
+    const task = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+    assert.equal(task.creatorId, null);
+    const notices = await prisma.notification.findMany({
+      where: { taskId, type: 'assigned' },
+      orderBy: { createdAt: 'asc' },
+    });
+    assert.deepEqual(
+      notices.map((n) => n.actorId),
+      [null, bob.id],
+    );
+    const history = await prisma.taskHistory.findMany({
+      where: { taskId },
+      orderBy: { field: 'asc' },
+    });
+    assert.deepEqual(
+      history.map((h) => [h.field, h.userId]),
+      [
+        ['alert', null],
+        ['status', saver.id],
+        ['template', null],
+      ],
+    );
+    const kept = await prisma.task.findUniqueOrThrow({ where: { id: manual.rootTaskId } });
+    assert.equal(kept.creatorId, saver.id);
+    const keptNotice = await prisma.notification.findFirstOrThrow({
+      where: { taskId: manual.rootTaskId },
+    });
+    assert.equal(keptNotice.actorId, saver.id);
   });
 });
