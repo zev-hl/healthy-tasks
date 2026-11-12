@@ -197,7 +197,8 @@ These replace the brief too.
     asks first when there is unsaved work; type a name to start a template or add a sub-task.
   - **Everything folds for room:** the sidebar folds to icons, the task header to its title and one
     summary line. Both are remembered in the browser.
-  - **Overdue stands out:** a red box above a late task's title says how many days late.
+  - **Overdue stands out without taking room:** a small solid-red badge ("11 days overdue") on the
+    info line under the title, and the Due chip turns solid red. No extra height (user, Nov 12).
   - **Sub-task rows** show priority and due date beside the status.
   - **Who made a task** is at the bottom of the ⋯ menu, not in the header.
   - **White = you can change it, grey = fixed:** checked across the main screens; search boxes are

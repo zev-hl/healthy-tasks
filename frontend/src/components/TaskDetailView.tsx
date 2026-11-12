@@ -1209,24 +1209,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         className={`hb-taskhead${justCompleted ? ' just-completed' : ''}${headFolded ? ' is-folded' : ''}`}
       >
         <div className="hb-taskhead-main">
-          {lateDays != null && (
-            <div className="hb-overdue-box" role="status">
-              <TriangleAlert size={18} aria-hidden="true" />
-              <strong>
-                {lateDays === 0
-                  ? 'Overdue: it was due earlier today'
-                  : `Overdue by ${lateDays} ${lateDays === 1 ? 'day' : 'days'}`}
-              </strong>
-              <span>
-                Was due{' '}
-                {new Date(task.dueAt!).toLocaleDateString(undefined, {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </span>
-            </div>
-          )}
           {(done || task.isPrivate || !canEdit) && (
             <div className="hb-flags">
               {done && <Pill tone="green">Done</Pill>}
@@ -1256,6 +1238,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           )}
           {headFolded && (
             <p className="hb-meta hb-fold-summary">
+              {lateDays != null && (
+                <span className="hb-overdue-badge">
+                  <TriangleAlert size={13} aria-hidden="true" />
+                  {lateDays === 0 ? 'Overdue today' : `${lateDays}d overdue`}
+                </span>
+              )}
               #{task.id} · {TASK_STATUS_LABELS[task.status]} ·{' '}
               {task.assignee ? userLabel(task.assignee) : 'Unassigned'} ·{' '}
               {savedDue ? `Due ${savedDue.text}` : 'No due date'} · {task.priority} priority{' '}
@@ -1265,6 +1253,15 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </p>
           )}
           <p className="hb-meta hb-unfolded">
+            {/* Late: a small red badge on this line, no extra height (Nov 11). */}
+            {lateDays != null && (
+              <span className="hb-overdue-badge" role="status">
+                <TriangleAlert size={13} aria-hidden="true" />
+                {lateDays === 0
+                  ? 'Overdue today'
+                  : `${lateDays} ${lateDays === 1 ? 'day' : 'days'} overdue`}
+              </span>
+            )}
             #{task.id}
             {statusHint && <> · {statusHint}</>}
             {task.duty && (

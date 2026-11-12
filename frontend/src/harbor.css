@@ -2469,12 +2469,12 @@ button.hb-vtab:hover,
   background: var(--warn-tint);
 }
 .hb-prop.is-late {
-  border-color: var(--danger-line);
-  background: var(--danger-soft);
+  border-color: var(--danger);
+  background: var(--danger);
 }
 .hb-prop.is-late .hb-select-value,
 .hb-prop.is-late svg {
-  color: var(--danger);
+  color: #fff;
 }
 .hb-prop.tone-blue .hb-select-value {
   color: var(--accent-deep);
@@ -8923,23 +8923,19 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   color: var(--danger);
 }
 
-/* Task page: a big red box while the task is overdue (Nov 11). */
-.hb-overdue-box {
-  display: flex;
-  flex-wrap: wrap;
+/* Task page: a small solid-red badge on the info line while the task is late (Nov 11). */
+.hb-overdue-badge {
+  display: inline-flex;
   align-items: center;
-  gap: 6px 10px;
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--danger-line);
-  border-left: 4px solid var(--danger);
-  border-radius: 10px;
-  background: var(--danger-soft);
-  color: var(--danger-deep);
-  font-size: 14px;
-}
-.hb-overdue-box span {
-  color: var(--danger);
+  gap: 4px;
+  margin-right: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: 1px;
 }
 .hb-actions-info {
   margin: 4px 0 0;
