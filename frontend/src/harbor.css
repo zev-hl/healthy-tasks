@@ -9227,3 +9227,217 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
   padding-top: 18px;
   padding-bottom: 16px;
 }
+
+/* --- Dashboard, after Lipa's system (Nov 12): numbers first, lists on demand --- */
+.hb-dash-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hb-dash-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+.hb-dash-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.hb-dash-k {
+  margin: 22px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.hb-dash-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.hb-dash-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.hb-dash-tile:hover {
+  border-color: var(--accent);
+}
+.hb-dash-tile.is-open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.hb-dash-tile .k {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.hb-dash-tile .v {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.hb-dash-tile .h {
+  font-size: 13px;
+  color: var(--muted);
+}
+.hb-dash-tile.dt-red .v {
+  color: var(--danger);
+}
+.hb-dash-tile.dt-red {
+  border-color: var(--danger-line);
+}
+.hb-dash-tile.dt-green .v {
+  color: #1b6b2e;
+}
+.hb-dash-tile.dt-blue .v {
+  color: var(--accent);
+}
+.hb-dash-tile.dt-review .v {
+  color: var(--review, #6e95d3);
+}
+.hb-dash-tiles.is-small .hb-dash-tile {
+  padding: 10px 14px;
+}
+.hb-dash-tiles.is-small .hb-dash-tile .v {
+  font-size: 22px;
+}
+.hb-dash-panel {
+  margin-top: 12px;
+}
+.hb-dash-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.hb-dash-panel-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.hb-dash-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-top: 24px;
+}
+.hb-dash-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.hb-dash-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 12px;
+}
+.hb-dash-bar {
+  display: grid;
+  grid-template-columns: auto 120px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+}
+.hb-dash-bar .l {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+.hb-dash-bar .track {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  overflow: hidden;
+}
+.hb-dash-bar .track > span {
+  height: 100%;
+  background: var(--accent);
+}
+.hb-dash-bar .track > span.late {
+  background: var(--danger);
+}
+.hb-dash-bar .n {
+  min-width: 28px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.hb-dash-bar .n em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--danger);
+}
+.hb-dash-bar.is-person {
+  cursor: pointer;
+}
+.hb-dash-bar.is-person:hover:not(:disabled) {
+  background: var(--surface-sunk);
+}
+.hb-dash-next .hb-name {
+  font-weight: 500;
+}
+@media (max-width: 1099px) {
+  .hb-dash-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .hb-dash-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* These are buttons: keep the app's blue button look (and its hover) off them. */
+.hb-dash-tile,
+.hb-dash-tile:hover,
+.hb-dash-tile:active {
+  background: var(--surface);
+  color: var(--ink);
+}
+.hb-dash-tile.is-open,
+.hb-dash-tile.is-open:hover {
+  background: var(--accent-tint);
+}
+.hb-dash-bar,
+.hb-dash-bar:active {
+  background: none;
+  color: var(--ink);
+}
+.hb-dash-bar.is-person:disabled {
+  opacity: 1;
+  cursor: default;
+}

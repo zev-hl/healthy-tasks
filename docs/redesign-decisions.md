@@ -208,6 +208,28 @@ These replace the brief too.
     now white. Kept on purpose: status pills are colored by status, and an active filter is tinted.
   - The Dashboard already had "Done today" (Lipa's "closed today").
 
+## Dashboard, after Lipa's system (Nov 12)
+
+Rebuilt after looking at Lipa's ticket system: **numbers first, lists on demand.**
+
+- **Filters on the first line:** Period · Department · Person (Me; Admins and Managers also My
+  team, Everyone for Admins, or one person). They replace the "My dashboard / My team" tabs and
+  are remembered. `#team` still opens on My team.
+- **Four numbers:** Not done · In progress · Overdue · Done today/this week/this month. Clicking
+  one opens its list right under the row (up to 10, with the expand arrow, the status menu and
+  Done for overdue ones, and "See all N in Tasks"); clicking again or ✕ closes it.
+- **Needs you** (always yours): To review · Mentions · Reminders · Assigned to you, opening the
+  same way. This replaces the Alerts card (the bell still has everything).
+- **Below:** Where things stand (a bar per status) and Due next (5, not late). With My team or
+  Everyone, a Workload card (each person's open tasks, late part in red; click a person to see
+  their numbers).
+- **Removed:** the separate Overdue, Waiting on your review and My tasks lists, Due in the next 7
+  days, the Time tracker card (it stays on My Time), the "My activity" placeholder, Due-date
+  performance (for Insights), and the old My team page (its people and load are the Workload card).
+- **Not built yet, needs the backend:** a "Stale, 2+ days with no activity" tile (the app keeps no
+  last-activity time) and Recent activity (no feed across tasks yet). Snoozed joins Needs you once
+  snooze exists.
+
 ## The preview site
 
 `https://hlcentral-redesign.onrender.com` (the `redesign` branch on the Staging API and data) is for

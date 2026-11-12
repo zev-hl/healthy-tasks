@@ -1,18 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
+import type { DepartmentDto, OrgPersonDto } from '@healthy-tasks/shared';
+import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { loadTeamScope } from '../lib/teamScope';
 import { PageBody, PageHeader } from '../components/harbor/PageHeader';
-import { CountBadge, Segmented } from '../components/harbor/ui';
-import { PERIOD_OPTIONS, periodRange, type Period } from '../components/harbor/taskHelpers';
-import { MyDashboard } from './dashboard/MyDashboard';
-import { MyTeam } from './dashboard/MyTeam';
+import { Select } from '../components/harbor/Select';
+import type { Period } from '../components/harbor/taskHelpers';
+import {
+  ALL_DEPTS,
+  Dashboard,
+  EVERYONE,
+  ME,
+  PERIOD_OPTIONS,
+  TEAM,
+  deptOptions,
+  scopeOptions,
+} from './dashboard/Dashboard';
 
-type View = 'me' | 'team';
-
-function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+function readStored(key: string, fallback: string): string {
   try {
-    const v = localStorage.getItem(key);
-    return v && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
+    return localStorage.getItem(key) ?? fallback;
   } catch {
     return fallback;
   }
@@ -26,43 +34,63 @@ function store(key: string, v: string) {
 }
 
 /**
- * The Dashboard (§6.1), at `/`: My dashboard for everyone, My team for Admins
- * and Managers. The view and the period are remembered; `#me` / `#team` link
- * straight to a view.
+ * The Dashboard, at `/`. One page for everyone (Nov 12, after Lipa's system): the
+ * header's Period, Department and Person decide what the numbers cover. Person is
+ * Me for everyone; Admins and Managers also get My team, Everyone (Admins) and
+ * each person. The choices are remembered; `#team` opens on My team.
  */
 export function DashboardPage() {
   const { user } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const canTeam = user?.role === 'Admin' || user?.role === 'Manager';
+  const isAdmin = user?.role === 'Admin';
 
-  const hashView = location.hash === '#team' ? 'team' : location.hash === '#me' ? 'me' : null;
-  const [view, setView] = useState<View>(
-    () => hashView ?? readStored('hb-dash-view', ['me', 'team'] as const, 'me'),
+  const [period, setPeriod] = useState<Period>(() => {
+    const v = readStored('hb-dash-period', 'today');
+    return v === 'week' || v === 'month' ? v : 'today';
+  });
+  const [scope, setScope] = useState<string>(() =>
+    location.hash === '#team' ? TEAM : readStored('hb-dash-scope', ME),
   );
-  const [period, setPeriod] = useState<Period>(() =>
-    readStored('hb-dash-period', ['today', 'week', 'month'] as const, 'today'),
-  );
-  const [meAttention, setMeAttention] = useState(0);
-  const [teamAttention, setTeamAttention] = useState(0);
-  const onMe = useCallback((n: number) => setMeAttention(n), []);
-  const onTeam = useCallback((n: number) => setTeamAttention(n), []);
+  const [dept, setDept] = useState<string>(() => readStored('hb-dash-dept', ALL_DEPTS));
+  const [people, setPeople] = useState<OrgPersonDto[]>([]);
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<DepartmentDto[]>([]);
 
   useEffect(() => {
-    if (hashView) setView(hashView);
-  }, [hashView]);
+    if (!user) return;
+    loadTeamScope(user)
+      .then((s) => {
+        setPeople(s.people);
+        setTeamIds(s.teamIds);
+      })
+      .catch(() => {});
+    api
+      .listDepartments()
+      .then(setDepartments)
+      .catch(() => {});
+  }, [user]);
 
-  const shown: View = canTeam ? view : 'me';
-  const range = periodRange(period);
+  // Someone who can't see the team only ever has their own numbers.
+  const shownScope = canTeam ? scope : ME;
+  const personOpts = useMemo(
+    () => scopeOptions(canTeam, people, teamIds, user?.id ?? '', isAdmin),
+    [canTeam, people, teamIds, user?.id, isAdmin],
+  );
+  // A remembered person who is no longer in reach falls back to Me.
+  useEffect(() => {
+    if (
+      people.length &&
+      ![ME, TEAM, EVERYONE].includes(scope) &&
+      !personOpts.some((o) => o.value === scope)
+    ) {
+      setScope(ME);
+    }
+  }, [people, scope, personOpts]);
 
-  function pickView(v: View) {
-    setView(v);
-    store('hb-dash-view', v);
-    navigate({ hash: v }, { replace: true });
-  }
-  function pickPeriod(p: Period) {
-    setPeriod(p);
-    store('hb-dash-period', p);
+  function pick(key: string, v: string, set: (v: string) => void) {
+    set(v);
+    store(key, v);
   }
 
   const today = new Date().toLocaleDateString(undefined, {
@@ -74,42 +102,44 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        subtitle={first ? `${today} · Hello, ${first}` : today}
-        switcher={
-          canTeam ? (
-            <Segmented
-              label="Dashboard view"
-              value={shown}
-              onChange={pickView}
-              options={[
-                {
-                  value: 'me',
-                  label: <>My dashboard {meAttention > 0 && <CountBadge n={meAttention} red />}</>,
-                },
-                {
-                  value: 'team',
-                  label: <>My team {teamAttention > 0 && <CountBadge n={teamAttention} red />}</>,
-                },
-              ]}
-            />
-          ) : undefined
-        }
-      />
+      <PageHeader title="Dashboard" subtitle={first ? `${today} · Hello, ${first}` : today} />
       <PageBody>
-        <div className="hb-periodline">
-          <h2>{range.heading}</h2>
-          <Segmented label="Period" value={period} onChange={pickPeriod} options={PERIOD_OPTIONS} />
-          <span className="hb-small">
-            Click a number to filter {shown === 'me' ? 'your tasks' : 'your team'}
-          </span>
-        </div>
-        {shown === 'me' ? (
-          <MyDashboard period={period} onCounts={onMe} />
-        ) : (
-          <MyTeam period={period} onCounts={onTeam} />
-        )}
+        <Dashboard
+          period={period}
+          scope={shownScope}
+          dept={dept}
+          onScope={(v) => pick('hb-dash-scope', v, setScope)}
+          filters={
+            <div className="hb-dash-filters">
+              <Select
+                variant="chip"
+                label="Period"
+                value={period}
+                options={PERIOD_OPTIONS}
+                onChange={(v) => pick('hb-dash-period', v, (x) => setPeriod(x as Period))}
+              />
+              <Select
+                variant="chip"
+                label="Department"
+                value={dept}
+                options={deptOptions(departments)}
+                active={dept !== ALL_DEPTS}
+                onChange={(v) => pick('hb-dash-dept', v, setDept)}
+              />
+              {canTeam && (
+                <Select
+                  variant="chip"
+                  label="Person"
+                  value={shownScope}
+                  options={personOpts}
+                  active={shownScope !== ME}
+                  searchPlaceholder="Search people…"
+                  onChange={(v) => pick('hb-dash-scope', v, setScope)}
+                />
+              )}
+            </div>
+          }
+        />
       </PageBody>
     </>
   );
