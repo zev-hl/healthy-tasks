@@ -8833,3 +8833,84 @@ button.hb-alerts-head h3 + .hb-alerts-caret {
 .hb-recur-num {
   height: 36px;
 }
+
+/* Sort direction: words on wide screens, the arrow alone below 1600px (title keeps the words). */
+.hb-sortdir {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.hb-sortdir-ic {
+  display: none;
+}
+@media (max-width: 1599px) {
+  .hb-sortdir {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .hb-sortdir-ic {
+    display: block;
+  }
+  .hb-sortdir-words {
+    display: none;
+  }
+}
+.hb-select-chip .hb-select-value:empty {
+  display: none;
+}
+@media (max-width: 1439px) {
+  .hb-toolbar {
+    column-gap: 6px;
+  }
+  .hb-toolbar .hb-select-chip {
+    padding-left: 10px;
+    padding-right: 8px;
+  }
+}
+
+/* Under your own comment: Attach file · Edit · Delete as one row of quiet text actions. */
+.comment-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 4px;
+}
+.comment-foot .comment-attachments,
+.comment-foot .attachments,
+.comment-foot .comment-actions {
+  display: contents;
+}
+.comment-foot .hb-files-list {
+  flex-basis: 100%;
+  order: -1;
+  margin: 0;
+}
+.comment-foot .alert {
+  flex-basis: 100%;
+  order: -2;
+}
+.comment-foot button.secondary,
+.comment-foot button.danger {
+  height: auto;
+  min-height: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+}
+.comment-foot button.secondary:hover,
+.comment-foot button.danger:hover {
+  background: none;
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+.comment-foot button.danger:hover {
+  color: var(--danger);
+}

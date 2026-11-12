@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStickyToolbar } from '../lib/useStickyToolbar';
 import { Link, useLocation } from 'react-router-dom';
 import {
+  ArrowDown,
+  ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -782,6 +784,8 @@ export function TasksPage() {
                   value={groupBy}
                   options={GROUP_OPTIONS}
                   active={groupBy !== 'none'}
+                  // Ungrouped, the chip just says "Group": the toolbar fits a laptop screen.
+                  renderValue={(o) => (groupBy === 'none' ? null : o?.label)}
                   onChange={(g) => {
                     setGroupBy(g);
                     // The list is paged: sorting by the grouping keeps each group together.
@@ -801,9 +805,17 @@ export function TasksPage() {
                 className="hb-sortdir"
                 onClick={() => patch({ sortDir: state.sortDir === 'asc' ? 'desc' : 'asc' })}
                 aria-label={`Sort direction: ${dirLabel(state.sortField, state.sortDir)}. Click to reverse.`}
-                title="Reverse the order"
+                title={`${dirLabel(state.sortField, state.sortDir).replace(/^[↑↓] /, '')}: click to reverse`}
               >
-                {dirLabel(state.sortField, state.sortDir)}
+                {/* Narrower screens show the arrow only; the words are its tooltip. */}
+                {state.sortDir === 'asc' ? (
+                  <ArrowUp size={14} aria-hidden="true" className="hb-sortdir-ic" />
+                ) : (
+                  <ArrowDown size={14} aria-hidden="true" className="hb-sortdir-ic" />
+                )}
+                <span className="hb-sortdir-words">
+                  {dirLabel(state.sortField, state.sortDir).replace(/^[↑↓] /, '')}
+                </span>
               </button>
             </>
           )}

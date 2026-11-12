@@ -402,29 +402,32 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
               ) : (
                 <>
                   <RichText html={c.body} className="comment-body" />
-                  <div className="comment-attachments">
-                    <AttachmentSection
-                      attachments={c.attachments}
-                      target={{ kind: 'comment', commentId: c.id }}
-                      canUpload={isAuthor(c)}
-                      currentUser={currentUser}
-                      onChanged={onChanged}
-                    />
-                  </div>
-                  {isAuthor(c) && (
-                    <div className="btn-row comment-actions">
-                      <button type="button" className="secondary" onClick={() => startEdit(c)}>
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => setConfirmingDelete(c)}
-                      >
-                        Delete
-                      </button>
+                  {/* Attach · Edit · Delete on one quiet row; files list above it. */}
+                  <div className="comment-foot">
+                    <div className="comment-attachments">
+                      <AttachmentSection
+                        attachments={c.attachments}
+                        target={{ kind: 'comment', commentId: c.id }}
+                        canUpload={isAuthor(c)}
+                        currentUser={currentUser}
+                        onChanged={onChanged}
+                      />
                     </div>
-                  )}
+                    {isAuthor(c) && (
+                      <div className="btn-row comment-actions">
+                        <button type="button" className="secondary" onClick={() => startEdit(c)}>
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() => setConfirmingDelete(c)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </li>
