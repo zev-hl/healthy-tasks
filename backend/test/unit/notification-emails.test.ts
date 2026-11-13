@@ -72,6 +72,56 @@ describe('the task emails', () => {
     looksRight(removed, { button: 'Open the task' });
   });
 
+  it('assignment from an alert: which alert(s), and what each said', () => {
+    const one = (asin: string, title = 'Widget') => ({
+      asin,
+      marketplace: 'USA',
+      title,
+      message: 'Price went from $34.99 to $31.49 (-10.0%).',
+      at: 'Nov 12, 2026, 8:42 AM EST (New York)',
+    });
+    const email = assignmentEmail({
+      to: 'a@b.test',
+      action: 'added',
+      taskId: 42,
+      taskName: 'WasiU_PC_263160842: Review',
+      link: LINK,
+      alert: {
+        typeLabel: 'Price Changed',
+        groupName: 'Wasif - US',
+        alerts: [one('B0AAA00001', 'Tea <Green> & "Mint"'), one('B0AAA00002')],
+        more: 3,
+      },
+    });
+    assert.equal(email.subject, 'You were assigned to “WasiU_PC_263160842: Review”');
+    assert.equal(
+      email.text,
+      [
+        'You were assigned to task #42 (“WasiU_PC_263160842: Review”). It was made ' +
+          'automatically from 5 Price Changed alerts in Wasif - US.',
+        'Tea <Green> & "Mint"\nASIN B0AAA00001 · USA\nPrice went from $34.99 to $31.49 (-10.0%).' +
+          '\nAlerted Nov 12, 2026, 8:42 AM EST (New York)',
+        'Widget\nASIN B0AAA00002 · USA\nPrice went from $34.99 to $31.49 (-10.0%).' +
+          '\nAlerted Nov 12, 2026, 8:42 AM EST (New York)',
+        'And 3 more alerts: the task lists them all.',
+        `Open the task:\n${LINK}`,
+      ].join('\n\n'),
+    );
+    const html = looksRight(email, { button: 'Open the task' });
+    assert.ok(html.includes('Tea &lt;Green&gt; &amp; &quot;Mint&quot;<br>ASIN B0AAA00001'));
+
+    const single = assignmentEmail({
+      to: 'a@b.test',
+      action: 'added',
+      taskId: 42,
+      taskName: 'T',
+      link: LINK,
+      alert: { typeLabel: 'Buy Box Lost', groupName: 'Wasif - CA', alerts: [one('B0X')], more: 0 },
+    });
+    assert.match(single.text, /from a Buy Box Lost alert in Wasif - CA\./);
+    assert.doesNotMatch(single.text, /more alert/);
+  });
+
   it('reminder: with its start time on the next line, or without one', () => {
     const starts = 'Fri, Oct 23, 2026, 9:00 AM EDT — 1 hour before';
     const email = reminderEmail({ to: 'a@b.test', taskId: 42, taskName: NAME, starts, link: LINK });
@@ -114,5 +164,57 @@ describe('the queue test email', () => {
     assert.equal(email.subject, 'HL Central test email (queue)');
     assert.match(email.text, /Queued at 2026-10-23T15:00:00\.000Z\./);
     assert.match(looksRight(email), /Queued at 2026-10-23T15:00:00\.000Z\./);
+  });
+});
+
+describe('assignment from a text-change alert', () => {
+  const email = () =>
+    assignmentEmail({
+      to: 'a@b.test',
+      action: 'added',
+      taskId: 42,
+      taskName: 'WasiU_DC_263160842: Review',
+      link: LINK,
+      alert: {
+        typeLabel: 'Description Changed',
+        groupName: 'Wasif - US',
+        alerts: [
+          {
+            asin: 'B0AAA00001',
+            marketplace: 'USA',
+            title: 'Tea',
+            message: 'Description changed from "..." to "...".',
+            at: 'Nov 12, 2026, 8:42 AM EST (New York)',
+            compare: {
+              label: 'Description',
+              before: '...for busy mornings, brewed <fast> in five...',
+              after: '...for busy mornings, steeped <fast> in three...',
+            },
+          },
+        ],
+        more: 0,
+      },
+    });
+
+  it('shows Before and Now side by side, the changed words marked', () => {
+    const html = looksRight(email(), { button: 'Open the task' });
+    const table = /<table[^>]*table-layout:fixed[^>]*><tr>(.*?)<\/tr><\/table>/s.exec(html)?.[1];
+    assert.ok(table, 'a two-column table');
+    const cells = table!.split('<td width="50%"').slice(1);
+    assert.equal(cells.length, 2);
+    assert.match(cells[0]!, />Before</);
+    assert.match(cells[1]!, />Now</);
+    assert.match(cells[0]!, /line-through;[^>]*>brewed<\/span>/);
+    assert.match(cells[1]!, /background:#e2f0e6;[^>]*>steeped<\/span>/);
+    assert.ok(cells[0]!.includes('&lt;fast&gt;'), 'typed text never read as a tag');
+    // The message is not repeated above it.
+    assert.doesNotMatch(html, /Description changed from/);
+  });
+
+  it('the text version lists Before then Now', () => {
+    assert.match(
+      email().text,
+      /Alerted Nov 12, 2026, 8:42 AM EST \(New York\)\nDescription changed:\n\nBefore:\n\.\.\.for busy mornings, brewed <fast> in five\.\.\.\n\nNow:\n\.\.\.for busy mornings, steeped <fast> in three\.\.\./,
+    );
   });
 });

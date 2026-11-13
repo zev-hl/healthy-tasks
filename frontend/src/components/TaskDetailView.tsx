@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  ALERT_ASSIGNED_LABEL,
   REMINDER_BLOCK_LABELS,
   reminderAddBlock,
   TASK_NAME_MIN_LENGTH,
@@ -1153,7 +1154,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 · Sub-task of <TaskRefLink task={task.parent} />
               </>
             )}{' '}
-            · created by {userLabel(task.creator)} on{' '}
+            · created by {task.creator ? userLabel(task.creator) : ALERT_ASSIGNED_LABEL} on{' '}
             {new Date(task.createdAt).toLocaleDateString(undefined, {
               month: 'short',
               day: 'numeric',
@@ -1746,7 +1747,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
               {activity === 'history' && (
                 <div className="hb-card-pad">
-                  <TaskHistory taskId={task.id} version={historyVersion} />
+                  <TaskHistory
+                    taskId={task.id}
+                    version={historyVersion}
+                    noUserLabel={task.creator ? undefined : ALERT_ASSIGNED_LABEL}
+                  />
                 </div>
               )}
             </section>

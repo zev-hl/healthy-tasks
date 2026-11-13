@@ -117,6 +117,65 @@ async function main() {
         }),
     ],
     [
+      'assignment-from-description-alert',
+      () =>
+        notices.assignmentEmail({
+          to: TO,
+          action: 'added',
+          taskId: 42,
+          taskName: 'WasiU_DC_263160842: Review the description change',
+          link: taskLink,
+          alert: {
+            typeLabel: 'Description Changed',
+            groupName: 'Wasif - US',
+            alerts: [
+              {
+                asin: 'B0ABC12345',
+                marketplace: 'USA',
+                title: 'Organic Green Tea, 100 Bags',
+                message: '',
+                at: 'Nov 12, 2026, 8:42 AM EST (New York)',
+                compare: {
+                  label: 'Description',
+                  before:
+                    '...for busy mornings, brewed in five minutes with water just off the boil. ' +
+                    'Each bag is sealed for freshness and...',
+                  after:
+                    '...for busy mornings, steeped in three minutes with water just off the ' +
+                    'boil. Each bag is sealed and compostable for...',
+                },
+              },
+            ],
+            more: 0,
+          },
+        }),
+    ],
+    [
+      'assignment-from-alert',
+      () =>
+        notices.assignmentEmail({
+          to: TO,
+          action: 'added',
+          taskId: 42,
+          taskName: 'WasiU_PC_263160842: Review the price change',
+          link: taskLink,
+          alert: {
+            typeLabel: 'Price Changed',
+            groupName: 'Wasif - US',
+            alerts: [
+              {
+                asin: 'B0ABC12345',
+                marketplace: 'USA',
+                title: 'Organic Green Tea, 100 Bags',
+                message: 'Price went from $34.99 to $31.49 (-10.0%).',
+                at: 'Nov 12, 2026, 8:42 AM EST (New York)',
+              },
+            ],
+            more: 0,
+          },
+        }),
+    ],
+    [
       'assignment-removed',
       () =>
         notices.assignmentEmail({

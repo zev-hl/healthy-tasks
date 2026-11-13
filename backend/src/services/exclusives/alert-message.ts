@@ -140,7 +140,7 @@ export function describeAlert(
         current.mainImageUrl,
       )}.`;
     case 'DescriptionChanged':
-      return 'Description changed.';
+      return describeTextChange('Description', prev.description, current.description);
     case 'BulletPointsChanged':
       return describeBullets(alert.category, prev, current);
     case 'CompetitivePriceBelowOurs':
@@ -152,6 +152,127 @@ export function describeAlert(
     default:
       return 'Changed.';
   }
+}
+
+/** Words shown before the first difference, when there are that many. */
+const CONTEXT_WORDS = 3;
+/** About a line or two of text in each quote. */
+const SNIPPET_CHARS = 160;
+
+/** A long text as words: markup dropped, any run of spaces or lines one space. */
+function wordsOf(text: string | null): string[] {
+  return (text ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/**
+ * Words from `start` up to about a line or two, with "..." where the text goes
+ * on before or after them.
+ */
+function snippet(words: string[], start: number): string {
+  let end = start;
+  let length = 0;
+  while (end < words.length && (end === start || length + words[end]!.length < SNIPPET_CHARS)) {
+    length += words[end]!.length + 1;
+    end++;
+  }
+  const lead = start > 0 ? '...' : '';
+  const tail = end < words.length ? '...' : '';
+  return `${lead}${words.slice(start, end).join(' ')}${tail}`;
+}
+
+/**
+ * A long text that changed (a description): where it first differs, as
+ * "from ... to ..." — up to three unchanged words before the difference (none
+ * when it differs from the very start), then a line or two of each version,
+ * with "..." where it goes on. Pure; also rebuilds the message of alerts logged
+ * before it existed (`alertLogMessage`).
+ */
+export function describeTextChange(
+  label: string,
+  before: string | null,
+  after: string | null,
+): string {
+  const a = wordsOf(before);
+  const b = wordsOf(after);
+  if (a.length === 0 && b.length === 0) return `${label} changed.`;
+  if (a.length === 0) return `${label} added: "${snippet(b, 0)}".`;
+  if (b.length === 0) return `${label} removed (was "${snippet(a, 0)}").`;
+  const x = textChangeExcerpts(before, after);
+  // The same words: only spacing or markup changed.
+  if (!x) return `${label} changed (spacing or formatting only).`;
+  return `${label} changed from "${x.before}" to "${x.after}".`;
+}
+
+/**
+ * The two excerpts `describeTextChange` quotes: from up to three words before
+ * the first difference, a line or two of each version. Null when the words are
+ * the same. An empty side is "".
+ */
+export function textChangeExcerpts(
+  before: string | null,
+  after: string | null,
+): { before: string; after: string } | null {
+  const a = wordsOf(before);
+  const b = wordsOf(after);
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i === a.length && i === b.length) return null;
+  const from = Math.max(0, i - CONTEXT_WORDS);
+  return {
+    before: a.length ? snippet(a, Math.min(from, a.length - 1)) : '',
+    after: b.length ? snippet(b, Math.min(from, b.length - 1)) : '',
+  };
+}
+
+/**
+ * A text-change alert's before and now, to show side by side (the assignment
+ * email): the whole title, the changed bullets, or a description's excerpts
+ * around its first difference. Null for other alerts, or with nothing saved.
+ */
+export function alertCompare(row: {
+  alertType: string;
+  previousValue: string | null;
+  newValue: string | null;
+}): { label: string; before: string; after: string } | null {
+  if (row.previousValue == null && row.newValue == null) return null;
+  const whole = (label: string) => ({
+    label,
+    before: row.previousValue ?? '',
+    after: row.newValue ?? '',
+  });
+  switch (row.alertType) {
+    case 'TitleChanged':
+      return whole('Title');
+    case 'BulletPointsChanged':
+      return whole('Bullet points');
+    case 'DescriptionChanged': {
+      const x = textChangeExcerpts(row.previousValue, row.newValue);
+      return x ? { label: 'Description', ...x } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * An alert's message as it should read now. Description alerts logged before
+ * their message showed the change just said "Description changed."; their
+ * before and after are on the row, so it is rebuilt from them.
+ */
+export function alertLogMessage(row: {
+  alertType: string;
+  message: string;
+  previousValue: string | null;
+  newValue: string | null;
+}): string {
+  if (row.alertType === 'DescriptionChanged' && row.message === 'Description changed.') {
+    if (row.previousValue == null && row.newValue == null) return row.message;
+    return describeTextChange('Description', row.previousValue, row.newValue);
+  }
+  return row.message;
 }
 
 export function describeAlerts(

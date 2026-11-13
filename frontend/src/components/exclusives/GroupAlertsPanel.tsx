@@ -17,6 +17,7 @@ import {
 import { api, ApiError } from '../../api/client';
 import { absoluteShort, formatAgo } from '../../lib/datetime';
 import { ClampedText } from './ClampedText';
+import { AlertCompareLink } from './AlertCompare';
 import { AlertTypeBadge, GroupStatusBadge, GroupTypeBadge, alertTone } from './AlertBadge';
 import { Flag } from './Flag';
 
@@ -184,6 +185,7 @@ export function GroupAlertsPanel({
                     </div>
                     <p className="exc-drawer-product">{row.title}</p>
                     <ClampedText className="exc-drawer-message" text={row.message} lines={3} />
+                    <AlertCompareLink row={row} />
                   </div>
                 </article>
               ))}

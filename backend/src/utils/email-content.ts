@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { diffWords, type DiffPart } from '@healthy-tasks/shared';
 
 // Every email's HTML and text versions (HLAI-135), made from one description of
 // the email so the two always say the same thing. The HTML is the shared look:
@@ -18,7 +19,12 @@ export type EmailBlock =
    * version has no button: it says `lead` and puts the link on the next line,
    * or, with no `lead`, has the link on its own.
    */
-  | { button: { label: string; url: string; lead?: string } };
+  | { button: { label: string; url: string; lead?: string } }
+  /**
+   * Two versions of a text side by side, "Before" and "Now", the words that
+   * changed marked in each. The text version lists them one after the other.
+   */
+  | { compare: { before: string; after: string } };
 
 export interface EmailContent {
   /**
@@ -99,10 +105,54 @@ function button(label: string, url: string): string {
   );
 }
 
+/** Changed words: struck through on a red tint before, on a green tint now. */
+const CHANGED_STYLE = {
+  before: 'background:#fbe6e0;text-decoration:line-through;',
+  now: 'background:#e2f0e6;',
+} as const;
+
+function compareSide(label: string, text: string, kind: 'before' | 'now', parts: DiffPart[]) {
+  const body = text
+    ? parts
+        .map((p) => {
+          const t = escapeHtml(p.text).replace(/\n/g, '<br>');
+          return p.changed
+            ? `<span style="${CHANGED_STYLE[kind]}border-radius:3px;">${t}</span>`
+            : t;
+        })
+        .join('')
+    : `<span style="color:${MUTED};">(none)</span>`;
+  return (
+    `<td width="50%" valign="top" style="width:50%;vertical-align:top;padding:0 ${
+      kind === 'before' ? '6px 0 0' : '0 0 6px'
+    };">` +
+    `<div style="font-family:${FONT};font-size:11px;font-weight:bold;letter-spacing:0.04em;` +
+    `text-transform:uppercase;color:${MUTED};margin:0 0 4px;">${label}</div>` +
+    `<div style="background:${CANVAS};border:1px solid ${BORDER};border-radius:8px;padding:10px 12px;` +
+    `font-family:${FONT};font-size:13px;line-height:1.5;color:${INK};word-break:break-word;">` +
+    `${body}</div></td>`
+  );
+}
+
+/** Before and Now in two columns (a table, so every mail app keeps them side by side). */
+function compare(before: string, after: string): string {
+  const d = diffWords(before, after);
+  return (
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
+    'style="width:100%;table-layout:fixed;margin:0 0 18px;"><tr>' +
+    compareSide('Before', before, 'before', d.before) +
+    compareSide('Now', after, 'now', d.after) +
+    '</tr></table>'
+  );
+}
+
 function textVersion(blocks: EmailBlock[]): string {
   return blocks
     .map((b) => {
       if ('text' in b) return b.text;
+      if ('compare' in b) {
+        return `Before:\n${b.compare.before || '(none)'}\n\nNow:\n${b.compare.after || '(none)'}`;
+      }
       const url = webAddress(b.button.url);
       return b.button.lead ? `${b.button.lead}\n${url}` : url;
     })
@@ -111,7 +161,13 @@ function textVersion(blocks: EmailBlock[]): string {
 
 function htmlVersion(blocks: EmailBlock[], preview: string): string {
   const body = blocks
-    .map((b) => ('text' in b ? paragraph(b.text) : button(b.button.label, b.button.url)))
+    .map((b) =>
+      'text' in b
+        ? paragraph(b.text)
+        : 'compare' in b
+          ? compare(b.compare.before, b.compare.after)
+          : button(b.button.label, b.button.url),
+    )
     .join('');
   // After the preview, blank space so mail apps don't run on into the email's
   // first words in the inbox list.

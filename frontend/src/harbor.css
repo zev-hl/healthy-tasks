@@ -8018,3 +8018,25 @@ textarea.hb-tpl-input {
     white-space: nowrap;
   }
 }
+
+/* My Time day panel: copy another day's time (from staging, Nov 11). */
+.hb-daycopy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-sunk);
+}
+.hb-daycopy-k {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.hb-daycopy-note {
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--muted);
+}

@@ -140,3 +140,14 @@ These replace what the brief says. Don't "fix" them back.
 - **Style layer:** a shared layer in `harbor.css` restyles the older pieces they still use: view switches, buttons, tables, notices and cards.
 - **Dropdowns and dates:** `NativeEnhancer` opens the Harbor menu and calendar for every remaining browser dropdown and date field, so none of the browser's own popups appear. The page code is unchanged.
 - **Removed pages:** the Notifications and Due Date Performance pages now redirect to the Dashboard. The Queue dashboard card moved from Profile to Settings.
+
+## Rolled back to the brief (user, Nov 13)
+
+Everything built from the Nov 11 meeting transcript (commits `0ea4afc` to `8042c96`) was rolled
+back: the branch is the brief's redesign again (as of `1e7a999`), with staging's own work merged
+in (My Time "copy another day", "Alert-assigned" notifications and creators, the Organization
+duty link, text-change alerts). The meeting work stays in the history.
+
+Next: a reviewed list of proposed changes from the meeting and Lipa's vision, agreed item by item
+before anything is built, including how HL Central Tasks fits with Connect.
+

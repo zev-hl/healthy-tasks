@@ -9485,6 +9485,31 @@ button.dd-quick-btn:hover {
   gap: 8px;
   margin: -4px 0 10px;
 }
+/* "Copy time from" another day, at the top of the day editor. */
+.dd-copy {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--canvas);
+  font-size: 12.5px;
+}
+.dd-copy label {
+  font-weight: 600;
+  color: var(--ink);
+}
+.dd-copy input[type='date'] {
+  width: auto;
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+.dd-copy-note {
+  flex-basis: 100%;
+  color: var(--muted);
+}
 
 /* --- Tables (review pivot, related tasks) ------------------------------------ */
 .dd-tbl-wrap {
@@ -9889,4 +9914,61 @@ button.dd-ctx-x:hover {
   .exc-page-btn {
     padding-inline: 8px;
   }
+}
+
+/* --- Text-change alerts: Compare before and now --------------------------- */
+.exc-compare-link {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+}
+.exc-compare-about {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+}
+.exc-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .exc-compare {
+    grid-template-columns: 1fr;
+  }
+}
+.exc-compare-side {
+  min-width: 0;
+}
+.exc-compare-h {
+  margin: 0 0 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.exc-compare-text {
+  max-height: 55vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--canvas);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+mark.exc-diff {
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+mark.exc-diff.before {
+  background: var(--danger-soft);
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+}
+mark.exc-diff.now {
+  background: var(--ok-soft);
 }
