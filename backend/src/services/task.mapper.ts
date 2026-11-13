@@ -131,7 +131,7 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     name: task.name,
     description: task.description,
     creatorId: task.creatorId,
-    creator: toUserRef(task.creator),
+    creator: task.creator ? toUserRef(task.creator) : null,
     assigneeId: task.assigneeId,
     assignee: task.assignee ? toUserRef(task.assignee) : null,
     parentId: task.parentId,

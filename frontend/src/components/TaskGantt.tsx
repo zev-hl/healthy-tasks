@@ -682,7 +682,7 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
                       style={{ top, left: geom.x, width: geom.w }}
                       onClick={() => void materializeGhost(g)}
                       disabled={materializing === key}
-                      title={`Coming repeat of “${g.name}” (number ${g.seq}): click to create it now`}
+                      title={`Upcoming occurrence #${g.seq} of “${g.name}” — click to create it now`}
                       aria-label={`Create upcoming occurrence #${g.seq} of ${g.name} now`}
                     >
                       {materializing === key ? '…' : <Repeat size={12} aria-hidden="true" />}

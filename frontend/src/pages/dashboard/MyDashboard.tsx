@@ -1,9 +1,16 @@
-import { TASK_CREATED_EVENT } from '../../components/harbor/QuickTask';
-import { PeekRow } from '../../components/harbor/TaskPeek';
-import { AlertsCard } from './AlertsCard';
+import { ActivitySoon } from './ActivitySoon';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, ClipboardCheck, Target } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bell,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardCheck,
+  ListTodo,
+  Plus,
+  Target,
+} from 'lucide-react';
 import type {
   DueDateBucketTotals,
   TaskRowDto,
@@ -15,6 +22,7 @@ import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import { useNotifications } from '../../notifications/NotificationContext';
 import { effectiveFilters, nowContext } from '../../lib/taskSearch';
+import { Avatar } from '../../components/ui/Avatar';
 import {
   Bar,
   Btn,
@@ -28,20 +36,24 @@ import {
   STATUS_TONE,
 } from '../../components/harbor/ui';
 import { Select } from '../../components/harbor/Select';
-import { toYmd } from '../../components/harbor/DatePicker';
+import { DatePicker, toYmd } from '../../components/harbor/DatePicker';
 import { useToast } from '../../components/harbor/Toast';
-import { markRead, toFeed, type FeedItem } from '../../components/harbor/notificationFeed';
+import {
+  markRead,
+  toFeed,
+  whenLabel,
+  type FeedItem,
+} from '../../components/harbor/notificationFeed';
 import {
   ACTIVE_STATUSES,
   dueInfo,
+  dueIsoFromYmd,
   periodRange,
   statusOptions,
   taskSub,
   type Period,
 } from '../../components/harbor/taskHelpers';
 import { TimeTrackerCard } from './TimeTrackerCard';
-
-const MINE_SHOWN = 8;
 
 type TileKey = 'open' | 'overdue' | 'due' | 'inProgress' | 'onHold' | 'review' | 'done';
 
@@ -85,8 +97,7 @@ export function MyDashboard({
   const range = useMemo(() => periodRange(period), [period]);
 
   const [counts, setCounts] = useState<Counts | null>(null);
-  // My tasks shows its first rows; the rest open in place (Nov 11: no long lists).
-  const [allMine, setAllMine] = useState(false);
+  const [overdue, setOverdue] = useState<TaskRowDto[]>([]);
   const [review, setReview] = useState<TaskRowDto[]>([]);
   const [mine, setMine] = useState<TaskRowDto[] | null>(null);
   const [mineTotal, setMineTotal] = useState(0);
@@ -158,7 +169,14 @@ export function MyDashboard({
     const t = new Date();
     const tomorrow = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1);
     const in7 = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 7);
-    const [rv, nx] = await Promise.all([
+    const [od, rv, nx] = await Promise.all([
+      api.queryTasks({
+        filters: { ...base, overdue: true },
+        sort: [{ field: 'dueAt', dir: 'asc' }],
+        page: 1,
+        pageSize: 8,
+        ...ctx,
+      }),
       api.queryTasks({
         filters: { ...base, statuses: ['Review'] },
         sort: [{ field: 'dueAt', dir: 'asc' }],
@@ -180,6 +198,7 @@ export function MyDashboard({
         ...ctx,
       }),
     ]);
+    setOverdue(od.rows);
     setReview(rv.rows);
     setNext7(nx.rows);
   }, [base]);
@@ -209,7 +228,7 @@ export function MyDashboard({
         ...nowContext(),
       }),
     ]);
-    setFeed(toFeed(n).slice(0, 40));
+    setFeed(toFeed(n).slice(0, 6));
     setPerf(report.bucketTotals);
   }, [me, range]);
 
@@ -217,12 +236,6 @@ export function MyDashboard({
     setError(null);
     Promise.all([loadCounts(), loadLists(), loadMine()]).catch((e) => setError(errorText(e)));
   }, [loadCounts, loadLists, loadMine]);
-
-  // A task made from the header's quick "New task" panel shows up straight away.
-  useEffect(() => {
-    window.addEventListener(TASK_CREATED_EVENT, reloadAll);
-    return () => window.removeEventListener(TASK_CREATED_EVENT, reloadAll);
-  }, [reloadAll]);
 
   useEffect(() => {
     if (!me) return;
@@ -262,8 +275,6 @@ export function MyDashboard({
       toast({ message: errorText(e), tone: 'error' });
     }
   }
-
-  useEffect(() => setAllMine(false), [tile]);
 
   function pickTile(k: TileKey) {
     if (k === 'review') {
@@ -346,37 +357,67 @@ export function MyDashboard({
 
       <div className="hb-cols">
         <div className="hb-col">
-          {/* No separate "Overdue, mine" card (Nov 11: each task shows once): the
-              Overdue tile filters My tasks, and late rows there have Done. */}
-          <div ref={reviewRef} className={cx('hb-card-wrap', flashReview && 'hb-flash')}>
+          <div className="hb-grid2">
             <Card>
               <CardHead
-                icon={<ClipboardCheck size={16} />}
-                tone="review"
-                title="Waiting on your review"
-                right={<span className="hb-big">{counts?.review ?? ''}</span>}
+                icon={<AlertTriangle size={16} />}
+                tone="red"
+                title="Overdue, mine"
+                right={
+                  <span className={cx('hb-big', overdue.length > 0 && 'hb-late')}>
+                    {counts?.overdue ?? ''}
+                  </span>
+                }
               />
-              {review.length === 0 ? (
-                <Empty>Nothing is waiting on your review.</Empty>
+              {overdue.length === 0 ? (
+                <Empty good>Nothing overdue. Nice.</Empty>
               ) : (
-                review.map((t) => (
-                  <PeekRow key={t.id} id={t.id} name={t.name}>
+                overdue.map((t) => (
+                  <div key={t.id} className="hb-row">
                     <div className="hb-stack">
                       <Link className="hb-name" to={`/tasks/${t.id}`}>
                         {t.name}
                       </Link>
-                      <span className="hb-sub">{taskSub(t)}</span>
+                      <span className="hb-sub late">{dueInfo(t.dueAt, t.status)?.text}</span>
                     </div>
-                    <Link className="hb-btn" to={`/tasks/${t.id}`}>
-                      Open
-                    </Link>
-                    <Btn kind="ok" onClick={() => markReviewed(t)}>
-                      Reviewed
+                    <Btn kind="ok" onClick={() => setStatus(t, 'Completed')}>
+                      <CheckCircle2 size={16} aria-hidden="true" /> Done
                     </Btn>
-                  </PeekRow>
+                  </div>
                 ))
               )}
             </Card>
+
+            <div ref={reviewRef} className={cx('hb-card-wrap', flashReview && 'hb-flash')}>
+              <Card>
+                <CardHead
+                  icon={<ClipboardCheck size={16} />}
+                  tone="review"
+                  title="Waiting on your review"
+                  right={<span className="hb-big">{counts?.review ?? ''}</span>}
+                />
+                {review.length === 0 ? (
+                  <Empty>Nothing is waiting on your review.</Empty>
+                ) : (
+                  review.map((t) => (
+                    <div key={t.id} className="hb-row">
+                      <div className="hb-stack">
+                        <Link className="hb-name" to={`/tasks/${t.id}`}>
+                          {t.name}
+                        </Link>
+                        <span className="hb-sub">{taskSub(t)}</span>
+                      </div>
+                      <Link className="hb-btn" to={`/tasks/${t.id}`}>
+                        Open
+                      </Link>
+                      <Btn kind="ok" onClick={() => markReviewed(t)}>
+                        Reviewed
+                      </Btn>
+                    </div>
+                  ))
+                )}
+              </Card>
+            </div>
           </div>
 
           <Section
@@ -410,11 +451,10 @@ export function MyDashboard({
                   {tile ? 'No tasks match this filter.' : 'You are all caught up.'}
                 </Empty>
               )}
-              {mine?.slice(0, allMine ? undefined : MINE_SHOWN).map((t) => {
+              {mine?.map((t) => {
                 const due = dueInfo(t.dueAt, t.status);
-                const ro = t.status === 'Review' || t.mentionOnly || t.treeOnly;
                 return (
-                  <PeekRow key={t.id} id={t.id} name={t.name}>
+                  <div key={t.id} className="hb-row">
                     <div className="hb-stack">
                       <Link className="hb-name" to={`/tasks/${t.id}`}>
                         {t.name}
@@ -424,7 +464,7 @@ export function MyDashboard({
                     <span className={cx('hb-due', due?.late && 'late', due?.today && 'today')}>
                       {due?.text ?? 'No due date'}
                     </span>
-                    {ro ? (
+                    {t.status === 'Review' || t.mentionOnly || t.treeOnly ? (
                       <StatusPill status={t.status} />
                     ) : (
                       <Select
@@ -436,40 +476,57 @@ export function MyDashboard({
                         onChange={(s) => setStatus(t, s)}
                       />
                     )}
-                    {due?.late && !ro && (
-                      <Btn kind="ok" onClick={() => setStatus(t, 'Completed')}>
-                        <CheckCircle2 size={16} aria-hidden="true" /> Done
-                      </Btn>
-                    )}
-                  </PeekRow>
+                  </div>
                 );
               })}
-              {mine && mine.length > MINE_SHOWN && (
-                <button
-                  type="button"
-                  className="hb-more-rows"
-                  aria-expanded={allMine}
-                  onClick={() => setAllMine((a) => !a)}
-                >
-                  {allMine ? 'Show fewer' : `Show all ${mine.length}`}
-                </button>
-              )}
             </Card>
           </Section>
         </div>
 
         <aside className="hb-col">
           <TimeTrackerCard period={period} />
-          <AlertsCard
-            feed={feed}
-            onOpen={async (it) => {
-              if (!it.read) {
-                await markRead(it).catch(() => {});
-                refreshUnread();
+          <Card>
+            <CardHead
+              icon={<Bell size={16} />}
+              title="Notifications"
+              right={
+                feed && feed.some((f) => !f.read) ? (
+                  <span className="hb-small">{feed.filter((f) => !f.read).length} unread</span>
+                ) : undefined
               }
-              navigate(`/tasks/${it.taskId}`);
-            }}
-          />
+            />
+            {feed === null && <Empty>Loading…</Empty>}
+            {feed?.length === 0 && <Empty>You are all caught up.</Empty>}
+            {feed?.map((it) => (
+              <button
+                key={it.key}
+                type="button"
+                className={cx('hb-row', 'hb-row-btn', 'hov', !it.read && 'unread')}
+                onClick={async () => {
+                  if (!it.read) {
+                    await markRead(it).catch(() => {});
+                    refreshUnread();
+                  }
+                  navigate(`/tasks/${it.taskId}`);
+                }}
+              >
+                {it.who ? (
+                  <Avatar user={it.who} px={28} decorative />
+                ) : (
+                  <span className="hb-av-ph">
+                    <Bell size={14} />
+                  </span>
+                )}
+                <span className="hb-stack">
+                  <span className="hb-sub">{it.text}</span>
+                  <span className="hb-name">{it.taskName}</span>
+                </span>
+                <span className="hb-small">{whenLabel(it.at)}</span>
+              </button>
+            ))}
+          </Card>
+
+          <QuickAdd onAdded={reloadAll} />
 
           <Card>
             <CardHead
@@ -506,6 +563,7 @@ export function MyDashboard({
             />
             <PerformanceBody totals={perf} />
           </Card>
+          <ActivitySoon />
         </aside>
       </div>
     </>
@@ -568,5 +626,58 @@ export function PerformanceBody({ totals }: { totals: DueDateBucketTotals | null
         </span>
       </div>
     </div>
+  );
+}
+
+/** Title + a due date (calendar) + Add, straight into My tasks. */
+function QuickAdd({ onAdded }: { onAdded: () => void }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [due, setDue] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !user) return;
+    setBusy(true);
+    try {
+      const t = await api.createTask({
+        name: name.trim(),
+        assigneeId: user.id,
+        dueAt: dueIsoFromYmd(due),
+      });
+      setName('');
+      setDue(null);
+      onAdded();
+      toast({
+        message: `Added “${t.name}” to your tasks.`,
+        tone: 'success',
+      });
+    } catch (err) {
+      toast({ message: errorText(err), tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHead icon={<ListTodo size={16} />} title="Quick add" />
+      <form className="hb-qa" onSubmit={add}>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="What needs doing?"
+          aria-label="New task title"
+        />
+        <div className="hb-qa-row">
+          <DatePicker value={due} onChange={setDue} label="Due date" placeholder="Due date" />
+          <button type="submit" className="hb-btn hb-btn-primary" disabled={busy || !name.trim()}>
+            <Plus size={16} aria-hidden="true" /> Add
+          </button>
+        </div>
+      </form>
+    </Card>
   );
 }

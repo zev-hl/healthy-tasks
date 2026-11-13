@@ -203,8 +203,6 @@ describe('TaskDetailView — Linked tasks', () => {
   // jsdom has no scrollIntoView; the menus call it to keep the highlight in view.
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
-    // The parent box loads the parent.
-    (api.getTask as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeTask(null));
   });
   const ref = (id: number, name: string) =>
     ({ id, name, status: 'Open', accessible: true }) as const;
@@ -261,56 +259,5 @@ describe('TaskDetailView — Linked tasks', () => {
       'Blocked bywaits for it',
       'Blocksit waits for this',
     ]);
-  });
-});
-
-describe('TaskDetailView — parent box', () => {
-  beforeEach(() => {
-    Element.prototype.scrollIntoView = vi.fn();
-  });
-
-  it("shows the parent's due date, status and description on a sub-task", async () => {
-    const getTask = api.getTask as unknown as ReturnType<typeof vi.fn>;
-    getTask.mockResolvedValue({
-      ...makeTask('<p>Check every <b>supplier</b> price.</p>'),
-      id: 1,
-      name: 'Quarter plan',
-      status: 'InProgress',
-      dueAt: '2020-01-02T17:00:00.000Z',
-    });
-    renderWithDataRouter(
-      <TaskDetailView
-        initialTask={{
-          ...makeTask(null),
-          parent: { id: 1, name: 'Quarter plan', status: 'InProgress', accessible: true },
-        }}
-        currentUser={me}
-      />,
-      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
-    );
-    await settle();
-    const box = screen.getByRole('region', { name: 'Parent task' });
-    expect(within(box).getByRole('link', { name: '#1 Quarter plan' })).toBeTruthy();
-    expect(within(box).getByText('Check every supplier price.')).toBeTruthy();
-    expect(box.querySelector('.hb-parentbox-due.is-late')).not.toBeNull();
-  });
-
-  it('names a parent you cannot open without loading it', async () => {
-    const getTask = api.getTask as unknown as ReturnType<typeof vi.fn>;
-    getTask.mockClear();
-    renderWithDataRouter(
-      <TaskDetailView
-        initialTask={{
-          ...makeTask(null),
-          parent: { id: 1, name: 'Hidden', status: 'Open', accessible: false },
-        }}
-        currentUser={me}
-      />,
-      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
-    );
-    await settle();
-    const box = screen.getByRole('region', { name: 'Parent task' });
-    expect(within(box).getByText(/#1, which you can’t open/)).toBeTruthy();
-    expect(getTask).not.toHaveBeenCalledWith(1);
   });
 });

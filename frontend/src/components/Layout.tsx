@@ -5,8 +5,6 @@ import {
   LayoutDashboard,
   Layers,
   ListChecks,
-  PanelLeftClose,
-  PanelLeftOpen,
   ScrollText,
   Settings,
   Target,
@@ -97,34 +95,8 @@ function isUnder(pathname: string, base: string): boolean {
   return base === '/' ? pathname === '/' : pathname === base || pathname.startsWith(`${base}/`);
 }
 
-const FOLD_KEY = 'hb-side-folded';
-
-/** The sidebar folds to icons; the choice is remembered in this browser. */
-function useSideFold() {
-  const [folded, setFolded] = useState(() => {
-    try {
-      return localStorage.getItem(FOLD_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    document.documentElement.classList.toggle('side-folded', folded);
-    try {
-      localStorage.setItem(FOLD_KEY, folded ? '1' : '0');
-    } catch {
-      // Private mode: the fold just isn't remembered.
-    }
-  }, [folded]);
-  return [folded, () => setFolded((f) => !f)] as const;
-}
-
 function Sidebar() {
-  const [folded, toggleFold] = useSideFold();
   const { user } = useAuth();
-  // Unread alerts also show in the personal menu (meeting decision, Nov 11).
-  const { unread } = useNotifications();
-  const unreadCount = unread?.total ?? 0;
   const { pathname } = useLocation();
   const app = appForPath(pathname);
   const nav = (app === 'exclusives' ? EXCLUSIVES_NAV : CENTRAL_NAV).filter(
@@ -161,11 +133,6 @@ function Sidebar() {
               >
                 <Icon size={18} strokeWidth={1.7} aria-hidden="true" />
                 <span className="side-label">{n.label}</span>
-                {n.to === '/' && app !== 'exclusives' && unreadCount > 0 && (
-                  <span className="side-count" aria-label={`${unreadCount} unread alerts`}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                )}
               </NavLink>
               {active &&
                 subs.map((s) => {
@@ -188,21 +155,6 @@ function Sidebar() {
 
       <div className="side-spacer" />
 
-      <button
-        type="button"
-        className="side-fold"
-        onClick={toggleFold}
-        aria-pressed={folded}
-        aria-label={folded ? 'Show menu' : 'Fold menu'}
-        title={folded ? 'Show the menu' : 'Fold the menu to icons'}
-      >
-        {folded ? (
-          <PanelLeftOpen size={18} strokeWidth={1.7} aria-hidden="true" />
-        ) : (
-          <PanelLeftClose size={18} strokeWidth={1.7} aria-hidden="true" />
-        )}
-        <span className="side-fold-text">{folded ? 'Show menu' : 'Fold menu'}</span>
-      </button>
       <TimerPill hiddenOnTaskId={taskIdOnPage(pathname)} />
       <AppLauncher current={app} />
 

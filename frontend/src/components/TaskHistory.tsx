@@ -14,6 +14,11 @@ interface Props {
   taskId: number;
   /** Bumped by the parent after each mutation so the log refetches. */
   version: number;
+  /**
+   * Who to show for a line with no person behind it. A task made from an
+   * Exclusives alert passes "Alert-assigned" (its creation lines have no user).
+   */
+  noUserLabel?: string;
 }
 
 function fieldLabel(field: string): string {
@@ -72,7 +77,7 @@ function describe(entry: TaskHistoryEntryDto): string {
  * The change-history log for a task (Phase 5). Shows who changed what and when,
  * most recent first. Visible to anyone who can see the task.
  */
-export function TaskHistory({ taskId, version }: Props) {
+export function TaskHistory({ taskId, version, noUserLabel = 'Unknown user' }: Props) {
   const [entries, setEntries] = useState<TaskHistoryEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +128,7 @@ export function TaskHistory({ taskId, version }: Props) {
             <div className="history-body">
               <div className="history-what">{describe(entry)}</div>
               <div className="muted history-meta">
-                {entry.user ? userLabel(entry.user) : 'Unknown user'} ·{' '}
+                {entry.user ? userLabel(entry.user) : noUserLabel} ·{' '}
                 <TimeStamp iso={entry.changedAt} />
               </div>
             </div>

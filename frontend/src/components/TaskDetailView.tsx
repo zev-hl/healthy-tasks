@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  ALERT_ASSIGNED_LABEL,
   REMINDER_BLOCK_LABELS,
   reminderAddBlock,
   TASK_NAME_MIN_LENGTH,
@@ -55,8 +56,6 @@ import {
   X,
   ChevronDown,
   Search,
-  ChevronsDownUp,
-  ChevronsUpDown,
 } from 'lucide-react';
 import {
   Bar,
@@ -77,6 +76,7 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { TimeBlock } from './harbor/TimeBlock';
 import { useToast } from './harbor/Toast';
 import { PRIORITY_OPTIONS, dueInfo } from './harbor/taskHelpers';
+import { formatClock, useTimer } from '../lib/timer';
 import { isoToParts, partsToIso, DEFAULT_START_HOUR, DEFAULT_DUE_HOUR } from '../lib/datetime';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { isMismatch, useDutyCatalog } from '../lib/duties';
@@ -84,7 +84,6 @@ import { DutyCrossCheck } from './duties/DutyCrossCheck';
 import { TaskAttributesBar } from './TaskAttributesBar';
 import { TaskAttributeChips } from './TaskAttributeChips';
 import { ExpandIcon } from './ui/ExpandIcon';
-import { ParentBox } from './ParentBox';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
 
@@ -113,48 +112,12 @@ interface Props {
   currentUser: UserDto;
 }
 
-/**
- * Each sub-task's priority and due date, for the Sub-tasks card (Nov 11: sub-tasks
- * show status and priority). A task's own data lists its sub-tasks by name and
- * status only, so the first 20 are loaded in parallel.
- */
-function useChildFacts(children: TaskDetailDto['children']) {
-  const [facts, setFacts] = useState<
-    Record<number, { priority: TaskPriority; dueAt: string | null }>
-  >({});
-  const key = children.map((c) => `${c.id}:${c.status}`).join(',');
-  useEffect(() => {
-    let alive = true;
-    const ids = children
-      .filter((c) => c.accessible)
-      .slice(0, 20)
-      .map((c) => c.id);
-    if (ids.length === 0) return;
-    void Promise.all(
-      ids.map((id) =>
-        api.getTask(id).then(
-          (t) => [id, { priority: t.priority, dueAt: t.dueAt }] as const,
-          () => null,
-        ),
-      ),
-    ).then((rows) => {
-      if (!alive) return;
-      const next: Record<number, { priority: TaskPriority; dueAt: string | null }> = {};
-      for (const r of rows) if (r && r[1].priority) next[r[0]] = r[1];
-      setFacts(next);
-    });
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-  return facts;
-}
-
 export function TaskDetailView({ initialTask, currentUser }: Props) {
   const navigate = useNavigate();
   const toast = useToast();
   const [task, setTask] = useState<TaskDetailDto>(initialTask);
+  const { timer: runningTimer, elapsed: timerElapsed } = useTimer();
+  const timerHere = runningTimer?.taskId === initialTask.id;
 
   const [historyVersion, setHistoryVersion] = useState(0);
   const applyTask = useCallback((t: TaskDetailDto) => {
@@ -994,41 +957,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       ),
   ];
   const stagedDue = dueInfo(stagedDueIso, task.status);
-  // A short note inside the Status chip: what the status is waiting on. (Sub-task
-  // progress is on the Sub-tasks card; "Open" already means not started.)
-  const openBlocker = task.isBlockedBy.find(
-    (b) => b.status !== 'Completed' && b.status !== 'Canceled',
-  );
   const statusHint = isInReview
-    ? 'with the reviewer'
-    : openBlocker
-      ? `waiting on #${openBlocker.id}`
-      : null;
-  const childFacts = useChildFacts(task.children);
-  // Fold the header to the title and one summary line (Nov 11: room to work).
-  const [headFolded, setHeadFolded] = useState(() => {
-    try {
-      return localStorage.getItem('hb-taskhead-folded') === '1';
-    } catch {
-      return false;
-    }
-  });
-  function toggleHead() {
-    setHeadFolded((f) => {
-      try {
-        localStorage.setItem('hb-taskhead-folded', f ? '0' : '1');
-      } catch {
-        // Private mode: not remembered.
-      }
-      return !f;
-    });
-  }
-  const [activity, setActivity] = useState<'comments' | 'history' | 'reminders'>('comments');
+    ? 'Waiting on a review'
+    : task.isBlockedBy.some((b) => b.status !== 'Completed' && b.status !== 'Canceled')
+      ? 'Waiting on a linked task'
+      : task.children.length > 0
+        ? `${doneChildren} of ${task.children.length} sub-tasks done`
+        : task.status === 'Open'
+          ? 'Not started'
+          : null;
+  const [activity, setActivity] = useState<'comments' | 'history'>('comments');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
   const done = task.status === 'Completed';
-  // The saved due date, not the one being edited: a big red box while it is late.
-  const savedDue = dueInfo(task.dueAt, task.status);
 
   return (
     <div className="hb-task">
@@ -1039,25 +980,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <ChevronLeft size={16} aria-hidden="true" /> Tasks
           </Link>
           <span aria-hidden="true">/</span>
-          {/* A sub-task's parent sits in the path, not on a line of its own (Nov 12). */}
-          {task.parent && (
-            <>
-              {task.parent.accessible ? (
-                <Link
-                  to={`/tasks/${task.parent.id}`}
-                  className="hb-crumb-parent"
-                  title={task.parent.name}
-                >
-                  #{task.parent.id} {task.parent.name}
-                </Link>
-              ) : (
-                <span>#{task.parent.id}</span>
-              )}
-              <span aria-hidden="true">/</span>
-            </>
-          )}
           <span>#{task.id}</span>
-          {!canEdit && <span className="hb-crumb-flag">Read-only</span>}
         </nav>
         {pos >= 0 && order.length > 1 && (
           <span className="hb-stepper">
@@ -1083,29 +1006,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </span>
         )}
         <span className="hb-grow" />
-        <TimeBlock
-          compact
-          task={{
-            id: task.id,
-            name: task.name,
-            dutyId: task.dutyId,
-            dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
-          }}
-        />
-        <button
-          type="button"
-          className="hb-icon-btn hb-icon-btn-sm"
-          onClick={toggleHead}
-          aria-pressed={headFolded}
-          aria-label={headFolded ? 'Show the task details' : 'Fold the task details'}
-          title={headFolded ? 'Show the task details' : 'Fold the task details'}
-        >
-          {headFolded ? (
-            <ChevronsUpDown size={16} aria-hidden="true" />
-          ) : (
-            <ChevronsDownUp size={16} aria-hidden="true" />
-          )}
-        </button>
+        {timerHere && (
+          <span className="hb-mini-clock" title="The timer is running on this task">
+            <span className="hb-live" aria-hidden="true" /> {formatClock(timerElapsed)}
+          </span>
+        )}
         {canEdit &&
           !isInReview &&
           (done ? (
@@ -1175,6 +1080,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <FileStack size={16} aria-hidden="true" /> Save as template
               </button>
             )}
+            {task.canTogglePrivate && (
+              <button
+                type="button"
+                disabled={privacyBusy}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void togglePrivate();
+                }}
+              >
+                <Lock size={16} aria-hidden="true" />{' '}
+                {task.isPrivate ? 'Make visible to the team' : 'Make private'}
+              </button>
+            )}
             {currentUser.role === 'Admin' && (
               <button
                 type="button"
@@ -1187,24 +1105,25 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <Trash2 size={16} aria-hidden="true" /> Delete task
               </button>
             )}
-            {/* Who made it lives here, off the header (Nov 11): it is rarely needed. */}
-            <p className="hb-actions-info">
-              Created by {userLabel(task.creator)} on{' '}
-              {new Date(task.createdAt).toLocaleDateString(undefined, {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </p>
           </div>
         </Popover>
       </div>
 
       {/* Header band */}
-      <header
-        className={`hb-taskhead${justCompleted ? ' just-completed' : ''}${headFolded ? ' is-folded' : ''}`}
-      >
+      <header className={`hb-taskhead${justCompleted ? ' just-completed' : ''}`}>
         <div className="hb-taskhead-main">
+          {(done || task.isPrivate || !canEdit) && (
+            <div className="hb-flags">
+              {done && <Pill tone="green">Done</Pill>}
+              {task.status === 'Canceled' && <Pill tone="grey">Canceled</Pill>}
+              {task.isPrivate && (
+                <Pill tone="blue">
+                  <Lock size={12} aria-hidden="true" /> Private
+                </Pill>
+              )}
+              {!canEdit && <Pill tone="grey">Read-only</Pill>}
+            </div>
+          )}
           {canEdit ? (
             <textarea
               className={`hb-title-input${nameDraft.trim() !== task.name ? ' is-dirty' : ''}`}
@@ -1220,41 +1139,51 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           ) : (
             <h1 className="hb-title-text">{task.name}</h1>
           )}
-          {headFolded && (
-            <p className="hb-meta hb-fold-summary">
-              #{task.id} · {TASK_STATUS_LABELS[task.status]} ·{' '}
-              {task.assignee ? userLabel(task.assignee) : 'Unassigned'} ·{' '}
-              <span className={savedDue?.late ? 'hb-late' : undefined}>
-                {savedDue ? `Due ${savedDue.text}` : 'No due date'}
-              </span>{' '}
-              · {task.priority} priority{' '}
-              <button type="button" className="hb-linklike" onClick={toggleHead}>
-                Show details
-              </button>
-            </p>
-          )}
+          <p className="hb-meta">
+            #{task.id}
+            {statusHint && <> · {statusHint}</>}
+            {task.duty && (
+              <>
+                {' '}
+                · Duty: {task.duty.departmentName} › {task.duty.name}
+              </>
+            )}
+            {task.parent && (
+              <>
+                {' '}
+                · Sub-task of <TaskRefLink task={task.parent} />
+              </>
+            )}{' '}
+            · created by {task.creator ? userLabel(task.creator) : ALERT_ASSIGNED_LABEL} on{' '}
+            {new Date(task.createdAt).toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
 
-          <div className="hb-chips hb-unfolded">
+          <div className="hb-chips">
             {isInReview || !canEdit ? (
               <span className="hb-chip static">
                 <StatusPill status={task.status} />
-                {statusHint && <span className="hb-chip-note">{statusHint}</span>}
               </span>
             ) : (
               <span ref={statusChipRef} className="hb-prop-anchor">
                 <Select
                   variant="chip"
                   hideLabel
-                  className={`hb-prop is-status tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
+                  className={`hb-prop tone-${STATUS_TONE[status]}${status !== task.status ? ' is-dirty' : ''}`}
                   label="Status"
                   value={status}
                   options={statusChoices}
                   renderValue={(o) => (
                     <>
+                      <span
+                        className="hb-dot"
+                        style={{ background: STATUS_DOT[status] }}
+                        aria-hidden="true"
+                      />{' '}
                       {o?.label}
-                      {statusHint && status === task.status && (
-                        <span className="hb-chip-note">{statusHint}</span>
-                      )}
                     </>
                   )}
                   onChange={(v) => setStatus(v)}
@@ -1378,6 +1307,45 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )
             )}
 
+            {task.tags.map((t) => (
+              <span key={t} className="hb-chip hb-tagchip">
+                {t}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => removeTag(t)}
+                    disabled={tagBusy}
+                    aria-label={`Remove tag ${t}`}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {canEdit && (
+              <span className="hb-chip hb-addtag">
+                <Tag size={13} aria-hidden="true" />
+                <input
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void addTagFromDraft();
+                    }
+                  }}
+                  placeholder="Add tag"
+                  aria-label="Add a tag"
+                  list="detail-tag-list"
+                />
+                <datalist id="detail-tag-list">
+                  {availableTags.map((t) => (
+                    <option key={t} value={t} />
+                  ))}
+                </datalist>
+              </span>
+            )}
+
             <span className="hb-chip-divider" aria-hidden="true" />
             <span
               className="hb-chip static soon"
@@ -1414,6 +1382,21 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             )}
           </div>
 
+          {/* HLAI-118: the special attributes, under the chips. */}
+          {canEdit ? (
+            <TaskAttributeChips
+              savedGroup={task.alertGroup}
+              groups={alertGroups}
+              groupId={attrGroupId}
+              onGroup={setAttrGroupId}
+              alertType={attrType}
+              onType={setAttrType}
+              savedType={task.alertType ?? ''}
+            />
+          ) : (
+            <TaskAttributesBar task={task} />
+          )}
+
           {dutyMismatch && stagedDuty && doer && doerId && (
             <DutyCrossCheck
               personName={userLabel(doer)}
@@ -1429,6 +1412,14 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             />
           )}
         </div>
+        <TimeBlock
+          task={{
+            id: task.id,
+            name: task.name,
+            dutyId: task.dutyId,
+            dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
+          }}
+        />
       </header>
 
       <div className="hb-task-body">
@@ -1491,61 +1482,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         )}
 
         <div className="hb-task-cols">
-          {/* Meeting decision (Nov 11): the conversation is front and center and the
-              description sits on the right. Phones: description, then comments. */}
-          <div className="hb-col hb-tc-act">
-            <section className="hb-card hb-activity">
-              <div className="hb-card-head">
-                <span className="hb-ic tone-blue">
-                  <MessageSquare size={16} aria-hidden="true" />
-                </span>
-                <h3>Activity</h3>
-                <Segmented
-                  small
-                  label="Show"
-                  value={activity}
-                  onChange={setActivity}
-                  options={[
-                    {
-                      value: 'comments',
-                      label: `Comments${task.comments.length ? ` (${task.comments.length})` : ''}`,
-                    },
-                    { value: 'history', label: 'History' },
-                    // Reminders sit apart from sub-tasks, as their own tab (Nov 11).
-                    { value: 'reminders', label: 'Reminders' },
-                  ]}
-                />
-              </div>
-              {/* Always mounted, only hidden: switching to History keeps a comment being written. */}
-              <div className="hb-card-pad" hidden={activity !== 'comments'}>
-                <Comments
-                  task={task}
-                  currentUser={currentUser}
-                  onChanged={applyTask}
-                  onDirtyChange={setCommentsDirty}
-                />
-              </div>
-              {activity === 'history' && (
-                <div className="hb-card-pad">
-                  <TaskHistory taskId={task.id} version={historyVersion} />
-                </div>
-              )}
-              {activity === 'reminders' && (
-                <div className="hb-card-pad hb-legacy-rail hb-reminders-tab">
-                  {reminderBlock && (
-                    <p className="hb-reminders-block">
-                      <AlarmClock size={14} aria-hidden="true" />{' '}
-                      {REMINDER_BLOCK_LABELS[reminderBlock]}
-                    </p>
-                  )}
-                  <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className="hb-col hb-tc-desc">
-            {task.parent && <ParentBox parent={task.parent} />}
+          <div className="hb-col">
             <section className="hb-card detail-desc">
               <div className="hb-card-pad">
                 {descHead(false)}
@@ -1553,98 +1490,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
             </section>
 
-            {/* Tags and the alert attributes (HLAI-118) live here, out of the
-                header (meeting decision, Nov 11): the header keeps what is changed often. */}
-            <section className="hb-card hb-labels" aria-label="Tags and alert">
-              <div className="hb-card-pad">
-                <div className="hb-labels-row">
-                  <span className="hb-labels-k">
-                    <Tag size={13} aria-hidden="true" /> Tags
-                  </span>
-                  <div className="hb-labels-v">
-                    {task.tags.map((t) => (
-                      <span key={t} className="hb-chip hb-tagchip">
-                        {t}
-                        {canEdit && (
-                          <button
-                            type="button"
-                            onClick={() => removeTag(t)}
-                            disabled={tagBusy}
-                            aria-label={`Remove tag ${t}`}
-                          >
-                            <X size={12} aria-hidden="true" />
-                          </button>
-                        )}
-                      </span>
-                    ))}
-                    {canEdit && (
-                      <span className="hb-chip hb-addtag">
-                        <Tag size={13} aria-hidden="true" />
-                        <input
-                          value={tagDraft}
-                          onChange={(e) => setTagDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              void addTagFromDraft();
-                            }
-                          }}
-                          placeholder="Add tag"
-                          aria-label="Add a tag"
-                          list="detail-tag-list"
-                        />
-                        <datalist id="detail-tag-list">
-                          {availableTags.map((t) => (
-                            <option key={t} value={t} />
-                          ))}
-                        </datalist>
-                      </span>
-                    )}
-                    {!canEdit && task.tags.length === 0 && <span className="hb-small">None</span>}
-                  </div>
-                </div>
-                <div className="hb-labels-row">
-                  <span className="hb-labels-k">Alert</span>
-                  <div className="hb-labels-v">
-                    {canEdit ? (
-                      <TaskAttributeChips
-                        savedGroup={task.alertGroup}
-                        groups={alertGroups}
-                        groupId={attrGroupId}
-                        onGroup={setAttrGroupId}
-                        alertType={attrType}
-                        onType={setAttrType}
-                        savedType={task.alertType ?? ''}
-                      />
-                    ) : (
-                      <TaskAttributesBar task={task} />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="hb-card detail-attachments">
+            <section className="hb-card hb-soon-card" aria-disabled="true">
               <div className="hb-card-head">
-                <span className="hb-ic tone-blue">
-                  <Paperclip size={16} aria-hidden="true" />
+                <span className="hb-ic tone-grey">
+                  <ListChecks size={16} aria-hidden="true" />
                 </span>
-                <h3>Files</h3>
-                <span className="hb-small">{task.attachments.length || ''}</span>
+                <h3>Checklist</h3>
+                <Pill tone="grey">Coming soon</Pill>
               </div>
-              <div className="hb-card-pad">
-                <AttachmentSection
-                  attachments={task.attachments}
-                  target={{ kind: 'task', taskId: task.id }}
-                  canUpload
-                  currentUser={currentUser}
-                  onChanged={applyTask}
-                />
-              </div>
+              <p className="hb-soon-text">
+                Steps you tick off inside a task. This needs a backend change first; until then, use
+                sub-tasks below.
+              </p>
             </section>
-          </div>
 
-          <div className="hb-col hb-tc-rest">
             <section className="hb-card">
               <div className="hb-card-head">
                 <span className="hb-ic tone-blue">
@@ -1721,20 +1580,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     >
                       <span className="hb-stack">
                         <span className="hb-name">{c.name}</span>
-                        <span className="hb-sub">
-                          #{c.id}
-                          {(() => {
-                            const due = dueInfo(childFacts[c.id]?.dueAt ?? null, c.status);
-                            return due ? (
-                              <span className={due.late ? 'hb-late' : undefined}>
-                                {' '}
-                                · {due.text}
-                              </span>
-                            ) : null;
-                          })()}
-                        </span>
+                        <span className="hb-sub">#{c.id}</span>
                       </span>
-                      {childFacts[c.id] && <PriorityMark priority={childFacts[c.id]!.priority} />}
                       <StatusPill status={c.status} />
                     </Link>
                   ) : (
@@ -1821,18 +1668,23 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               )}
             </section>
 
-            <section className="hb-card hb-soon-card" aria-disabled="true">
+            <section className="hb-card detail-attachments">
               <div className="hb-card-head">
-                <span className="hb-ic tone-grey">
-                  <ListChecks size={16} aria-hidden="true" />
+                <span className="hb-ic tone-blue">
+                  <Paperclip size={16} aria-hidden="true" />
                 </span>
-                <h3>Checklist</h3>
-                <Pill tone="grey">Coming soon</Pill>
+                <h3>Files</h3>
+                <span className="hb-small">{task.attachments.length || ''}</span>
               </div>
-              <p className="hb-soon-text">
-                Steps you tick off inside a task. This needs a backend change first; until then, use
-                sub-tasks.
-              </p>
+              <div className="hb-card-pad">
+                <AttachmentSection
+                  attachments={task.attachments}
+                  target={{ kind: 'task', taskId: task.id }}
+                  canUpload
+                  currentUser={currentUser}
+                  onChanged={applyTask}
+                />
+              </div>
             </section>
 
             <section className="hb-card hb-recur-card">
@@ -1840,11 +1692,68 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <span className="hb-ic tone-blue">
                   <Repeat size={16} aria-hidden="true" />
                 </span>
-                <h3>Repeats</h3>
+                <h3>Recurrence</h3>
               </div>
-              <div className="hb-card-pad">
+              <div className="hb-card-pad hb-legacy-rail">
                 <TaskRecurrencePanel task={task} onChanged={applyTask} />
               </div>
+            </section>
+
+            <section className="hb-card">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <AlarmClock size={16} aria-hidden="true" />
+                </span>
+                <h3>Reminders</h3>
+                {reminderBlock && (
+                  <span className="hb-small">{REMINDER_BLOCK_LABELS[reminderBlock]}</span>
+                )}
+              </div>
+              <div className="hb-card-pad hb-legacy-rail">
+                <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
+              </div>
+            </section>
+          </div>
+
+          <div className="hb-col">
+            <section className="hb-card hb-activity">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <MessageSquare size={16} aria-hidden="true" />
+                </span>
+                <h3>Activity</h3>
+                <Segmented
+                  small
+                  label="Show"
+                  value={activity}
+                  onChange={setActivity}
+                  options={[
+                    {
+                      value: 'comments',
+                      label: `Comments${task.comments.length ? ` (${task.comments.length})` : ''}`,
+                    },
+                    { value: 'history', label: 'History' },
+                  ]}
+                />
+              </div>
+              {/* Always mounted, only hidden: switching to History keeps a comment being written. */}
+              <div className="hb-card-pad" hidden={activity !== 'comments'}>
+                <Comments
+                  task={task}
+                  currentUser={currentUser}
+                  onChanged={applyTask}
+                  onDirtyChange={setCommentsDirty}
+                />
+              </div>
+              {activity === 'history' && (
+                <div className="hb-card-pad">
+                  <TaskHistory
+                    taskId={task.id}
+                    version={historyVersion}
+                    noUserLabel={task.creator ? undefined : ALERT_ASSIGNED_LABEL}
+                  />
+                </div>
+              )}
             </section>
           </div>
         </div>

@@ -78,7 +78,7 @@ export function SettingsPage() {
         <section className="card settings-card">
           <h2 className="settings-card-title">Recurring tasks</h2>
           <div className="field">
-            <label htmlFor="materialize-lead">Create repeating tasks (days ahead)</label>
+            <label htmlFor="materialize-lead">Materialize (days ahead)</label>
             <input
               id="materialize-lead"
               type="number"
@@ -93,8 +93,8 @@ export function SettingsPage() {
               style={{ width: 100 }}
             />
             <p className="muted settings-help">
-              Repeating tasks are created this many days before they’re due; later ones show as
-              faded previews on the calendar.
+              Occurrences turn into real tasks this many days before they’re due; further-out ones
+              show as ghost previews.
             </p>
           </div>
           <div className="btn-row">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft, MessageSquare, Paperclip, Tag, X } from 'lucide-react';
 import {
   DEFAULT_TASK_PRIORITY,
@@ -34,13 +34,7 @@ export function TaskCreatePage() {
   const { user: me } = useAuth();
   const titleRef = useRef<HTMLInputElement>(null);
 
-  // What the quick "New task" panel carried over ("More details").
-  const carried = (useLocation().state ?? {}) as {
-    name?: string;
-    dueDate?: string;
-    dueTime?: string;
-  };
-  const [name, setName] = useState(carried.name ?? '');
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [assigneeId, setAssigneeId] = useState(me?.id ?? '');
   const [priority, setPriority] = useState<TaskPriority>(DEFAULT_TASK_PRIORITY);
@@ -50,8 +44,8 @@ export function TaskCreatePage() {
   const [tagDraft, setTagDraft] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
-  const [dueDate, setDueDate] = useState(carried.dueDate ?? '');
-  const [dueTime, setDueTime] = useState(carried.dueTime ?? '');
+  const [dueDate, setDueDate] = useState('');
+  const [dueTime, setDueTime] = useState('');
   const [dutyId, setDutyId] = useState('');
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [error, setError] = useState<string | null>(null);

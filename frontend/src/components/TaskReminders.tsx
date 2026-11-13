@@ -71,7 +71,7 @@ export function TaskReminders({ taskId, startAt, status }: Props) {
   return (
     <div className="rail-reminders">
       <p className="muted rail-reminders-hint">
-        Personal to you: it shows in your Alerts near the Start time.
+        Personal to you — surfaces in Notifications near the Start time.
       </p>
       {error && <div className="alert error">{error}</div>}
       <ul className="reminder-list">

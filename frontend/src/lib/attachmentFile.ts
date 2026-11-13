@@ -13,16 +13,13 @@ export function humanSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export type FileKind = 'pdf' | 'xls' | 'doc' | 'img' | 'audio' | 'video' | 'other';
+export type FileKind = 'pdf' | 'xls' | 'doc' | 'img' | 'other';
 
 /** The brief's file-type tiles: PDF, XLS, DOC, IMG, or other. */
 export function fileKind(contentType: string, filename = ''): FileKind {
   const ext = filename.toLowerCase().split('.').pop() ?? '';
   if (contentType === 'application/pdf' || ext === 'pdf') return 'pdf';
   if (contentType.startsWith('image/')) return 'img';
-  // Voice notes and screen recordings (Nov 11) are audio and video.
-  if (contentType.startsWith('audio/')) return 'audio';
-  if (contentType.startsWith('video/')) return 'video';
   if (/sheet|excel|csv/.test(contentType) || ['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
     return 'xls';
   }
@@ -40,8 +37,6 @@ export const FILE_KIND_LABEL: Record<FileKind, string> = {
   xls: 'XLS',
   doc: 'DOC',
   img: 'IMG',
-  audio: 'AUDIO',
-  video: 'VIDEO',
   other: 'FILE',
 };
 

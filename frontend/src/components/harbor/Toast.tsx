@@ -14,8 +14,6 @@ interface ToastSpec {
   /** Shown as an Undo button; the toast closes when it runs. */
   undo?: () => void | Promise<void>;
   tone?: 'dark' | 'success' | 'error';
-  /** A second button, e.g. "Open" the task just made. */
-  action?: { label: string; run: () => void };
 }
 
 interface Shown extends ToastSpec {
@@ -47,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     window.clearTimeout(timer.current);
     seq.current += 1;
     setToast({ ...t, id: seq.current });
-    timer.current = window.setTimeout(() => setToast(null), t.undo || t.action ? 7000 : 4500);
+    timer.current = window.setTimeout(() => setToast(null), t.undo ? 7000 : 4500);
   }, []);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -70,19 +68,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 }}
               >
                 Undo
-              </button>
-            )}
-            {toast.action && (
-              <button
-                type="button"
-                className="hb-toast-undo"
-                onClick={() => {
-                  const action = toast.action!;
-                  dismiss();
-                  action.run();
-                }}
-              >
-                {toast.action.label}
               </button>
             )}
             <button type="button" className="hb-toast-x" onClick={dismiss} aria-label="Dismiss">

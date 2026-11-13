@@ -43,4 +43,13 @@ describe('TaskHistory', () => {
       screen.getByText('Added template: Buy Box Recovery (WasiU_BW_262920830)'),
     ).toBeInTheDocument();
   });
+
+  it('shows Alert-assigned, not a person, for an alert task’s own lines', async () => {
+    (api.getTaskHistory as ReturnType<typeof vi.fn>).mockResolvedValue([
+      entry({ field: 'alert', detail: 'a Buy Box Won alert (Wasif - US)', user: null }),
+    ]);
+    render(<TaskHistory taskId={7} version={0} noUserLabel="Alert-assigned" />);
+    expect(await screen.findByText(/Alert-assigned/)).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown user/)).not.toBeInTheDocument();
+  });
 });

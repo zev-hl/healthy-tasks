@@ -97,9 +97,6 @@ stated fallback.
     Parent, Blocked by and Blocks exist today, so the card's type dropdown offers those three.
 11. **Search by person:** the brief's Tasks search matches people too. The search endpoint
     matches title, #number and tags only, so the box says "Search by title, #number or tag".
-12. **Templates by department:** the Templates list is in sections (Nov 11). Sections by the main
-    task's department need it in the template list's data (`TemplateSummaryDto`: the root node's
-    duty department). Until then the sections are Repeating / Used when needed / Paused.
 
 ## Changed from the brief, at the user's request
 
@@ -117,7 +114,7 @@ These replace what the brief says. Don't "fix" them back.
   multi-day bars. The month fits the window without scrolling. Its controls sit in the filter
   row, where Sort is hidden.
 - **Side panels instead of pop-ups:** People (Add, Edit, Merge users), Goals, the Time day editor,
-  and Templates' Use template open in the page's side column.
+  and Templates' Create tasks open in the page's side column.
 - **Other menus instead of pop-ups:** linking a task (a search under the Type + Task dropdowns),
   Send for review (under the Status chip, or the Board card dropped into Review), Duplicate and
   Save as template (under the ⋯ button), New sub-task (an inline row in its card), and the alert
@@ -137,123 +134,20 @@ These replace what the brief says. Don't "fix" them back.
   `#B7CDEE`) so it reads apart from In Progress. High priority is red everywhere (two bars on the
   Board; Urgent has three).
 
-## Decided in the Nov 11 meeting (Lipa, Zev, Shloma)
-
-These replace the brief too.
-
-- **Task page:** the conversation (Activity: Comments | History) is front and center in the main
-  column; the description sits on the right with Files, then Sub-tasks, Linked tasks, Checklist,
-  Recurrence and Reminders. On phones: description and files first, then the conversation.
-- **One Tasks list:** no separate My tasks / All tasks / My team tabs. Whose tasks is the **Owner**
-  filter: Me (the default), My team, Anyone, Unassigned, or a person. The tabs row keeps "Tasks",
-  your saved views and "+ Add view" (it reads "+ Save as view" when the filters differ). The task
-  count shows in the filter row, since no tab carries it any more.
-- **Two ways to make a task:** the header's **New task** opens a quick panel right there (title,
-  due date and time; assigned to you) that saves without leaving the page, with "Open" in the
-  confirmation; **More details** carries what was typed to the full New task page.
-  The Dashboard's own **Quick add** card (brief §6.1) was removed, since this panel does the same
-  from every page.
-- **Expand in place:** an arrow before each task's name (Tasks list; Dashboard's Overdue, Waiting
-  on your review and My tasks) opens its description and details under the row, with "Open task".
-- **Parents and sub-tasks look different:** in the nested Tasks list a parent shows "N sub-tasks"
-  and a sub-task hangs off a connector on a lighter row ("sub-task of #N"); in the Templates editor
-  the main task is a tinted header card and each sub-task shows ↳ and its number.
-- **Plain words:** "Repeats" for recurrence, "task"/"main task" for node/root, "Start date" for the
-  anchor date, "Batch label" for the instance label, "Coming repeat" for ghost occurrences, "Create
-  repeating tasks (days ahead)" for materialize. Every screen's visible text was checked.
-- **Calendar colors by kind:** due (soft blue), starts with no due date (grey, "Starts"), coming
-  repeat (dashed), with a key under the grid; the dot stays the status. Calls and meetings get
-  their own once they exist.
-- **Headers that stay put:** on Tasks and Users (wide screens) the filter row and the column
-  headings stay visible while the list scrolls. The calendar's controls fit on one line (a compact
-  "Show: Month" menu; no task count there).
-- **Alerts on the Dashboard:** one section that folds away (remembered), with All, Mentions,
-  Reminders and Assigned tabs and unread counts. Snoozed tasks join it once snooze exists.
-- **Reminders** are a tab of the task page's Activity card (Comments | History | Reminders), apart
-  from sub-tasks; the separate Reminders card is gone.
-- Recorded for later (each needs the backend): snooze with the due date kept, "Request update"
-  with a required note, drafts, subtasks with their own status and priority,
-  converting between subtask / ticket / project with a three-level limit, due dates changeable
-  only by the creator or a supervisor, company-wide or department templates, removing password
-  sign-in, and no 8-hour logout on trusted devices.
-- **Deleting a task:** a confirmation only. The meeting's 10-second Undo countdown is not needed
-  for HL Central (user decision, Nov 12).
-- **Second round (Nov 12):**
-  - **Group by** on the Tasks list: None / Status / Owner / Department / Due date, a foldable header
-    row per group. Picking one also sorts by it, so groups stay together across pages.
-  - **Templates in sections:** Repeating / Used when needed / Paused (by department after backend
-    job 12).
-  - **Tags and alert chips** moved out of the task header into a Tags card under the Description.
-  - **Parent box:** a sub-task's page shows its parent's status, due date, priority, owner and
-    description at the top of the right column.
-  - **Comment filters:** All / Mentions me / With files.
-  - **Calendar Me / Team / All** switch, in place of the Owner chip.
-  - **Repeats:** Daily / Weekly on the task's day / Monthly / Custom, and a sentence-style form.
-  - **Unread alerts** count on the Dashboard item in the sidebar.
-  - **"Create tasks" is now "Use template"** (the button, the side panel and the help text); the
-    panel's final button still says what it does: "Create 4 tasks".
-- **Lipa's layout vision, applied (Nov 12):**
-  - **Templates open beside the list:** the list stays as a rail on the left (foldable), switching
-    asks first when there is unsaved work; type a name to start a template or add a sub-task.
-  - **Everything folds for room:** the sidebar folds to icons, the task header to its title and one
-    summary line. Both are remembered in the browser.
-  - **Each fact shows once, where it is set (user, Nov 12):** a late task's Due chip turns solid red
-    and says "11 days overdue" (no separate bar or badge). The header's info line no longer repeats
-    the duty; the Done / Canceled / Private flags above the title are gone (the Status and privacy
-    chips say it); "Make private" left the ⋯ menu (the chip does it). "Read-only" moved onto the
-    info line.
-  - **Sub-task rows** show priority and due date beside the status.
-  - **Who made a task** is at the bottom of the ⋯ menu, not in the header.
-  - **White = you can change it, grey = fixed:** checked across the main screens; search boxes are
-    now white. Kept on purpose: status pills are colored by status, and an active filter is tinted.
-  - The Dashboard already had "Done today" (Lipa's "closed today").
-
-## Lipa's system: a reference, not a model (user, Nov 12)
-
-Lipa's ticket system (shared as screenshots) only shows what she meant in the Nov 11 meeting. **The
-brief and the meeting notes decide; her screens are not copied.** A Dashboard built after her
-layout was undone the same day, back to the brief's Dashboard with only the meeting's points:
-
-- **No "Overdue, mine" card:** it repeated My tasks. The Overdue tile filters My tasks, and late
-  rows there have a one-click **Done**.
-- **My tasks shows 8 rows;** "Show all N" opens the rest in place (no long list by default).
-- **Alerts is one line when nothing is unread** ("All caught up"); it opens to look back.
-- **No "coming soon" placeholders** (My activity on both views).
-- Everything else is the brief's: My dashboard / My team with their badges, the Period toggle, the
-  seven tiles, Waiting on your review, the Time tracker, Due in the next 7 days, and My team.
-
-## Tasks list: whose tasks up front, "Not done" (user, Nov 12)
-
-- **Me / My team / Everyone** is a switch beside List / Board / Calendar (My team for Admins and
-  Managers), as the meeting asked for the most-used filter to be up front. It is what the old
-  My tasks / All tasks / Team tabs did. The filter row keeps a **Person** chip for one person or
-  Unassigned. The calendar's own Me / Team / All switch went into this one.
-- **The default status filter is "Not done"** (was "Open", which is also the name of one status).
-  It still means every status not finished: Open, In Progress, On Hold and Review.
-
-## Comment box and status shape (user, Nov 12)
-
-- **Voice note and screen recording** in the comment box (the meeting's "voice note attachments
-  with simple send, delete and re-record", and screen recording). Recorded in the browser and
-  attached as an ordinary audio or video file: no backend change, since audio and video were
-  already allowed. Voice up to 5 minutes; screen (with your voice, if the microphone is allowed) up
-  to 3 minutes so it stays under the 25 MB file limit. "Stop and attach" keeps it, the bin throws
-  it away; stopping the screen share keeps it. The buttons don't show in browsers that can't record.
-  File tiles now say AUDIO or VIDEO.
-- **Status looks different from priority:** status is a tinted tag with square-ish corners and no
-  dot (the task page's Status chip too); priority stays a coloured dot and a word; a person is an
-  avatar. The meeting asked for different shapes for different attributes.
-
-## The preview site
-
-`https://hlcentral-redesign.onrender.com` (the `redesign` branch on the Staging API and data) is for
-reviewing the redesign only. Google sign-in is **not** set up for it (user decision, Nov 12): once
-approved, the redesign moves to the regular Staging site, which already has it. Sign in there with
-a password account.
-
 ## How the older screens were brought in
 
 - **Header band:** Time, Goals, People, Settings, Profile, Templates and Exclusive Alerts use the header band (`PageHeader`), with their sibling pages as tabs inside it.
 - **Style layer:** a shared layer in `harbor.css` restyles the older pieces they still use: view switches, buttons, tables, notices and cards.
 - **Dropdowns and dates:** `NativeEnhancer` opens the Harbor menu and calendar for every remaining browser dropdown and date field, so none of the browser's own popups appear. The page code is unchanged.
 - **Removed pages:** the Notifications and Due Date Performance pages now redirect to the Dashboard. The Queue dashboard card moved from Profile to Settings.
+
+## Rolled back to the brief (user, Nov 13)
+
+Everything built from the Nov 11 meeting transcript (commits `0ea4afc` to `8042c96`) was rolled
+back: the branch is the brief's redesign again (as of `1e7a999`), with staging's own work merged
+in (My Time "copy another day", "Alert-assigned" notifications and creators, the Organization
+duty link, text-change alerts). The meeting work stays in the history.
+
+Next: a reviewed list of proposed changes from the meeting and Lipa's vision, agreed item by item
+before anything is built, including how HL Central Tasks fits with Connect.
+

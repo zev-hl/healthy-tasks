@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useStickyToolbar } from '../lib/useStickyToolbar';
 import {
   ArrowDown,
   ArrowUp,
@@ -71,7 +70,6 @@ export function UsersPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const toolbarRef = useStickyToolbar<HTMLDivElement>();
   const toast = useToast();
   const setNotice = (message: string) => toast({ message, tone: 'success' });
   const [resetLink, setResetLink] = useState<string | null>(null);
@@ -361,7 +359,7 @@ export function UsersPage() {
           </div>
         )}
 
-        <div ref={toolbarRef} className="hb-toolbar is-sticky">
+        <div className="hb-toolbar">
           <span className="hb-count-label">
             {loading ? 'Loading…' : `${total} ${total === 1 ? 'person' : 'people'}`}
           </span>

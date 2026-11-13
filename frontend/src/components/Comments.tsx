@@ -18,7 +18,6 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { TimeStamp } from './ui/TimeStamp';
 import { Paperclip } from 'lucide-react';
-import { Recorder } from './Recorder';
 
 interface Props {
   task: TaskDetailDto;
@@ -42,15 +41,6 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   /** The comment awaiting confirmation, if the delete dialog is open. */
   const [confirmingDelete, setConfirmingDelete] = useState<CommentDto | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Quick filters on a long thread (meeting decision, Nov 11).
-  const [show, setShow] = useState<'all' | 'mentions' | 'files'>('all');
-  const mentionsMe = (c: CommentDto) =>
-    (c.mentionedUsers ?? []).some((u) => u.id === currentUser.id);
-  const hasFiles = (c: CommentDto) => (c.attachments ?? []).length > 0;
-  const shownComments = task.comments.filter((c) =>
-    show === 'mentions' ? mentionsMe(c) : show === 'files' ? hasFiles(c) : true,
-  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
@@ -101,7 +91,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
    * Every rejection is reported, including picking the same file twice —
    * silently dropping it looks exactly like the attach button being broken.
    */
-  function addFiles(picked: FileList | File[] | null) {
+  function addFiles(picked: FileList | null) {
     if (!picked || picked.length === 0) return;
     const next = [...pending];
     const problems: string[] = [];
@@ -279,10 +269,6 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                   <Paperclip size={14} aria-hidden="true" />{' '}
                   {pending.length === 0 ? 'Attach files' : 'Add more files'}
                 </button>
-                <Recorder
-                  disabled={submitting || pending.length >= COMMENT_MAX_ATTACHMENTS}
-                  onFile={(f) => addFiles([f])}
-                />
                 <span className="muted composer-attach-hint">
                   {pending.length}/{COMMENT_MAX_ATTACHMENTS} · up to 25 MB each · Ctrl + Enter posts
                 </span>
@@ -339,42 +325,13 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
         </div>
       )}
 
-      {task.comments.length > 0 && (
-        <div className="hb-cfilter" role="group" aria-label="Show comments">
-          {(
-            [
-              ['all', `All (${task.comments.length})`],
-              ['mentions', `Mentions me (${task.comments.filter(mentionsMe).length})`],
-              ['files', `With files (${task.comments.filter(hasFiles).length})`],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className={show === value ? 'is-on' : undefined}
-              aria-pressed={show === value}
-              onClick={() => setShow(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {task.comments.length === 0 ? (
         <EmptyState compact title="No comments yet">
           Start the conversation — add the first comment above.
         </EmptyState>
-      ) : shownComments.length === 0 ? (
-        <p className="hb-cfilter-none">
-          {show === 'mentions' ? 'No comments mention you.' : 'No comments have files.'}{' '}
-          <button type="button" className="hb-btn hb-btn-link" onClick={() => setShow('all')}>
-            Show all
-          </button>
-        </p>
       ) : (
         <ul className="comment-list">
-          {shownComments.map((c) => (
+          {task.comments.map((c) => (
             <li key={c.id} className="comment">
               <div className="comment-head">
                 <Avatar user={c.author} size="xs" decorative />
@@ -407,32 +364,29 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
               ) : (
                 <>
                   <RichText html={c.body} className="comment-body" />
-                  {/* Attach · Edit · Delete on one quiet row; files list above it. */}
-                  <div className="comment-foot">
-                    <div className="comment-attachments">
-                      <AttachmentSection
-                        attachments={c.attachments}
-                        target={{ kind: 'comment', commentId: c.id }}
-                        canUpload={isAuthor(c)}
-                        currentUser={currentUser}
-                        onChanged={onChanged}
-                      />
-                    </div>
-                    {isAuthor(c) && (
-                      <div className="btn-row comment-actions">
-                        <button type="button" className="secondary" onClick={() => startEdit(c)}>
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => setConfirmingDelete(c)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
+                  <div className="comment-attachments">
+                    <AttachmentSection
+                      attachments={c.attachments}
+                      target={{ kind: 'comment', commentId: c.id }}
+                      canUpload={isAuthor(c)}
+                      currentUser={currentUser}
+                      onChanged={onChanged}
+                    />
                   </div>
+                  {isAuthor(c) && (
+                    <div className="btn-row comment-actions">
+                      <button type="button" className="secondary" onClick={() => startEdit(c)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => setConfirmingDelete(c)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </li>

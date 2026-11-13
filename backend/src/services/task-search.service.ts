@@ -73,7 +73,7 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     statusChangedAt: iso(t.statusChangedAt),
     priority: t.priority,
     assignee: t.assignee ? toUserRef(t.assignee) : null,
-    creator: toUserRef(t.creator),
+    creator: t.creator ? toUserRef(t.creator) : null,
     createdAt: t.createdAt.toISOString(),
     startAt: iso(t.startAt),
     dueAt: iso(t.dueAt),

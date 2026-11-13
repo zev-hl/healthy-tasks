@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useStickyToolbar } from '../lib/useStickyToolbar';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -33,18 +30,16 @@ import { nowContext } from '../lib/taskSearch';
 import { loadTeamScope } from '../lib/teamScope';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { PageBody, PageHeader } from '../components/harbor/PageHeader';
-import { TASK_CREATED_EVENT } from '../components/harbor/QuickTask';
 import { Select, type SelectOption } from '../components/harbor/Select';
 import { DatePicker } from '../components/harbor/DatePicker';
 import { Popover } from '../components/harbor/Popover';
 import { useToast } from '../components/harbor/Toast';
-import { Btn, Card, Empty, Segmented, cx } from '../components/harbor/ui';
+import { Btn, Card, CountBadge, Empty, Segmented, cx } from '../components/harbor/ui';
 import { PRIORITY_OPTIONS, dueIsoFromYmd, statusOptions } from '../components/harbor/taskHelpers';
 import { TaskKanban } from '../components/TaskKanban';
 import { TaskCalendar, type CalendarScale } from '../components/TaskCalendar';
 import { TaskGantt } from '../components/TaskGantt';
 import { TaskTable, OPTIONAL_COLUMNS, type OptionalColumn, type RowEdit } from './tasks/TaskTable';
-import { GROUP_OPTIONS, GROUP_SORT, isGroupBy, type GroupBy } from './tasks/grouping';
 import { MoreFilters } from './tasks/MoreFilters';
 import {
   ALL,
@@ -61,6 +56,7 @@ import {
   sameState,
   sortOf,
   type SavedView,
+  type Scope,
   type TaskView,
   type ViewState,
 } from './tasks/viewState';
@@ -72,6 +68,7 @@ const VIEWS: { value: TaskView; label: string }[] = [
   { value: 'calendar', label: 'Calendar' },
   { value: 'gantt', label: 'Gantt' },
 ];
+const SCOPE_LABEL: Record<Scope, string> = { mine: 'My tasks', all: 'All tasks', team: 'My team' };
 
 /** The keys this page keeps inside the shared `task-search` screen setting. */
 interface Stored {
@@ -81,7 +78,6 @@ interface Stored {
   hbView?: TaskView;
   hbColumns?: OptionalColumn[];
   hbNest?: boolean;
-  hbGroup?: GroupBy;
   hbReadOnly?: boolean;
   hbCalScale?: CalendarScale;
 }
@@ -111,7 +107,6 @@ export function TasksPage() {
   const me = user?.id ?? '';
   const canTeam = user?.role === 'Admin' || user?.role === 'Manager';
   const location = useLocation();
-  const toolbarRef = useStickyToolbar<HTMLDivElement>();
   const toast = useToast();
 
   // --- Reference data --------------------------------------------------------
@@ -125,14 +120,11 @@ export function TasksPage() {
   const [hydrated, setHydrated] = useState(false);
   const stored = useRef<Record<string, unknown>>({});
   const [state, setState] = useState<ViewState>(defaultState('mine'));
-  // 'base' (the one Tasks list) or a saved view's id. Whose tasks is the Owner
-  // filter now (Nov 11: no separate My tasks / All tasks views).
-  const [tab, setTab] = useState<string>('base');
+  const [tab, setTab] = useState<string>('mine'); // a scope or a saved view's id
   const [views, setViews] = useState<SavedView[]>([]);
   const [view, setView] = useState<TaskView>('list');
   const [columns, setColumns] = useState<Set<OptionalColumn>>(new Set());
   const [nest, setNest] = useState(false);
-  const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [includeReadOnly, setIncludeReadOnly] = useState(true);
   const [calScale, setCalScale] = useState<CalendarScale>('month');
   const [calSlot, setCalSlot] = useState<HTMLSpanElement | null>(null);
@@ -144,6 +136,7 @@ export function TasksPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [counts, setCounts] = useState<Partial<Record<Scope, number>>>({});
   const [overdueInScope, setOverdueInScope] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [flash, setFlash] = useState<Set<number>>(new Set());
@@ -177,7 +170,6 @@ export function TasksPage() {
       if (s.hbView) setView(s.hbView);
       if (Array.isArray(s.hbColumns)) setColumns(new Set(s.hbColumns));
       if (typeof s.hbNest === 'boolean') setNest(s.hbNest);
-      if (isGroupBy(s.hbGroup)) setGroupBy(s.hbGroup);
       if (typeof s.hbReadOnly === 'boolean') setIncludeReadOnly(s.hbReadOnly);
       if (s.hbCalScale) setCalScale(s.hbCalScale);
 
@@ -186,21 +178,16 @@ export function TasksPage() {
       if (st?.filters) {
         const v = fromRawFilters(st.filters, user.id);
         setState(v);
-        setTab('base');
+        setTab(v.scope);
       } else {
         const last = readViewState(s.hbState);
         const scopeParam = params.get('scope');
         if (scopeParam === 'mine' || scopeParam === 'all' || scopeParam === 'team') {
           setState(defaultState(scopeParam));
-          setTab('base');
+          setTab(scopeParam);
         } else if (last && (last.scope !== 'team' || user.role !== 'Member')) {
           setState(last);
-          // Old remembered tabs (mine / all / team) are now the one Tasks list.
-          setTab(
-            typeof s.hbTab === 'string' && !['mine', 'all', 'team'].includes(s.hbTab)
-              ? s.hbTab
-              : 'base',
-          );
+          setTab(typeof s.hbTab === 'string' ? s.hbTab : last.scope);
         }
       }
       if (st?.text) setText(st.text);
@@ -224,11 +211,10 @@ export function TasksPage() {
       hbView: view,
       hbColumns: [...columns],
       hbNest: nest,
-      hbGroup: groupBy,
       hbReadOnly: includeReadOnly,
       hbCalScale: calScale,
     }),
-    [state, tab, views, view, columns, nest, groupBy, includeReadOnly, calScale],
+    [state, tab, views, view, columns, nest, includeReadOnly, calScale],
   );
   const debouncedSnapshot = useDebouncedValue(snapshot, 600);
   useEffect(() => {
@@ -304,28 +290,28 @@ export function TasksPage() {
     if (hydrated && (view === 'calendar' || view === 'gantt')) void loadGhosts();
   }, [hydrated, view, loadGhosts]);
 
-  // Overdue for the subtitle, for whoever the Owner filter shows.
+  // Tab counts (open tasks per built-in tab) and overdue for the subtitle.
   const loadCounts = useCallback(async () => {
-    const res = await api.getTaskDashboard({
-      filters: buildFilters({ ...defaultState(state.scope), owner: state.owner }, me, teamIds),
-      includeReadOnly,
-      ...nowContext(),
-    });
-    setOverdueInScope(res.overdue ?? 0);
-  }, [me, teamIds, includeReadOnly, state.scope, state.owner]);
+    const ctx = nowContext();
+    const scopes: Scope[] = canTeam ? ['mine', 'all', 'team'] : ['mine', 'all'];
+    const res = await Promise.all(
+      scopes.map((s) =>
+        api.getTaskDashboard({
+          filters: buildFilters(defaultState(s), me, teamIds),
+          includeReadOnly,
+          ...ctx,
+        }),
+      ),
+    );
+    const c: Partial<Record<Scope, number>> = {};
+    scopes.forEach((s, i) => (c[s] = res[i]!.total));
+    setCounts(c);
+    const cur = res[scopes.indexOf(state.scope)];
+    setOverdueInScope(cur?.overdue ?? 0);
+  }, [canTeam, me, teamIds, includeReadOnly, state.scope]);
   useEffect(() => {
     if (hydrated) void loadCounts().catch(() => {});
   }, [hydrated, loadCounts]);
-
-  // A task made from the header's quick "New task" panel shows up straight away.
-  useEffect(() => {
-    const refresh = () => {
-      void runQuery();
-      void loadCounts().catch(() => {});
-    };
-    window.addEventListener(TASK_CREATED_EVENT, refresh);
-    return () => window.removeEventListener(TASK_CREATED_EVENT, refresh);
-  }, [runQuery, loadCounts]);
 
   // Page and selection reset whenever what is shown changes.
   useEffect(() => {
@@ -353,20 +339,10 @@ export function TasksPage() {
     ],
     [people],
   );
-  // Whose tasks: Me / My team / Anyone, then Unassigned and each person.
-  const ME = '__me';
-  const TEAM = '__team';
-  const ownerValue =
-    state.scope === 'mine'
-      ? ME
-      : state.scope === 'team' && state.owner === ALL
-        ? TEAM
-        : state.owner;
-  function pickOwner(v: string) {
-    if (v === ME) patch({ scope: 'mine', owner: ALL });
-    else if (v === TEAM) patch({ scope: 'team', owner: ALL });
-    else patch({ scope: 'all', owner: v });
-  }
+  const ownerFilterOptions: SelectOption<string>[] = [
+    { value: ALL, label: 'Anyone' },
+    ...ownerOptions,
+  ];
   const deptOptions: SelectOption<string>[] = [
     { value: ALL, label: 'All' },
     ...departments.map((d) => ({ value: d.id, label: d.name, dot: d.color })),
@@ -400,12 +376,12 @@ export function TasksPage() {
 
   // --- Tabs and saved views ------------------------------------------------------
   const activeView = views.find((v) => v.id === tab) ?? null;
-  const tabBase = activeView ? activeView.state : defaultState('mine');
+  const tabBase = activeView ? activeView.state : defaultState(state.scope);
   const changed = !sameState(state, tabBase);
 
-  function pickBase() {
-    setTab('base');
-    setState(defaultState('mine'));
+  function pickScope(s: Scope) {
+    setTab(s);
+    setState(defaultState(s));
   }
   function pickView(v: SavedView) {
     setTab(v.id);
@@ -429,7 +405,7 @@ export function TasksPage() {
   function deleteView(v: SavedView) {
     const before = views;
     setViews((vs) => vs.filter((x) => x.id !== v.id));
-    if (tab === v.id) pickBase();
+    if (tab === v.id) pickScope(v.state.scope);
     toast({ message: `Deleted the view “${v.name}”.`, undo: () => setViews(before) });
   }
 
@@ -541,26 +517,26 @@ export function TasksPage() {
   const scopeSubtitle =
     state.scope === 'mine'
       ? 'Assigned to you'
-      : state.scope === 'team' && state.owner === ALL
+      : state.scope === 'team'
         ? 'Everyone in your departments'
-        : state.owner === UNASSIGNED
-          ? 'Unassigned tasks'
-          : state.owner !== ALL
-            ? `Assigned to ${nameOf(state.owner)}`
-            : user?.role === 'Admin'
-              ? 'Every task'
-              : 'Every task you can see';
+        : user?.role === 'Admin'
+          ? 'Every task'
+          : 'Every task you can see';
 
   const tabs = (
     <nav className="hb-viewtabs" aria-label="Task views">
-      <button
-        type="button"
-        className={cx('hb-vtab', tab === 'base' && 'active')}
-        aria-current={tab === 'base' ? 'page' : undefined}
-        onClick={pickBase}
-      >
-        Tasks
-      </button>
+      {(['mine', 'all', ...(canTeam ? (['team'] as const) : [])] as Scope[]).map((s) => (
+        <button
+          key={s}
+          type="button"
+          className={cx('hb-vtab', tab === s && 'active')}
+          aria-current={tab === s ? 'page' : undefined}
+          onClick={() => pickScope(s)}
+        >
+          {SCOPE_LABEL[s]}
+          {counts[s] !== undefined && <CountBadge n={counts[s]!} />}
+        </button>
+      ))}
       {views.map((v) => (
         <span key={v.id} className={cx('hb-vtab', 'saved', tab === v.id && 'active')}>
           <button
@@ -612,7 +588,7 @@ export function TasksPage() {
         </form>
       ) : (
         <button type="button" className="hb-vtab add" onClick={() => setNaming(true)}>
-          {changed && !activeView ? '+ Save as view' : '+ Add view'}
+          + Add view
         </button>
       )}
     </nav>
@@ -645,31 +621,17 @@ export function TasksPage() {
           <>
             {tabs}
             <span className="hb-grow" />
-            {/* Whose tasks, up front (Nov 11: the most-used filter is never hidden in a
-                  menu). It replaces the old My tasks / All tasks / Team tabs. */}
-            <Segmented
-              small
-              label="Whose tasks"
-              value={ownerValue}
-              options={[
-                { value: ME, label: 'Me' },
-                ...(canTeam ? [{ value: TEAM, label: 'My team' }] : []),
-                { value: ALL, label: 'Everyone' },
-              ]}
-              onChange={pickOwner}
-            />
             <Segmented label="Show as" value={view} options={VIEWS} onChange={setView} small />
           </>
         }
       />
       <PageBody>
-        <div ref={toolbarRef} className="hb-toolbar is-sticky">
+        <div className="hb-toolbar">
           {/* The tab's badge already says how many; only say it here when it
               differs — a search or filters narrow it, or a saved view (no badge). */}
-          {/* The calendar shows the tasks themselves; its row needs the room. */}
-          {!loading && view !== 'calendar' && (
+          {!loading && (activeView || isFiltered(state) || text.trim() !== '') && (
             <span className="hb-count-label">
-              {!isFiltered(state) && !text.trim()
+              {activeView && !isFiltered(state) && !text.trim()
                 ? `${total} ${total === 1 ? 'task' : 'tasks'}`
                 : `${total} match`}
             </span>
@@ -698,17 +660,17 @@ export function TasksPage() {
             active={state.duty !== ALL}
             onChange={(v) => patch({ duty: v })}
           />
-          {/* One person, or nobody: the switch above covers Me / My team / Everyone. */}
-          <Select
-            variant="chip"
-            label="Person"
-            value={[ME, TEAM, ALL].includes(ownerValue) ? null : ownerValue}
-            placeholder=""
-            options={ownerOptions}
-            active={![ME, TEAM, ALL].includes(ownerValue)}
-            searchPlaceholder="Search people…"
-            onChange={pickOwner}
-          />
+          {state.scope !== 'mine' && (
+            <Select
+              variant="chip"
+              label="Owner"
+              value={state.owner}
+              options={ownerFilterOptions}
+              active={state.owner !== ALL}
+              searchPlaceholder="Search people…"
+              onChange={(v) => patch({ owner: v })}
+            />
+          )}
           <Select
             variant="chip"
             label="Priority"
@@ -757,12 +719,16 @@ export function TasksPage() {
               Clear
             </Btn>
           )}
-          {/* Saving a new view lives in the tabs row ("+ Save as view"). */}
-          {changed && activeView && (
-            <Btn kind="link" onClick={updateView}>
-              <Check size={14} aria-hidden="true" /> Update “{activeView.name}”
-            </Btn>
-          )}
+          {changed &&
+            (activeView ? (
+              <Btn kind="link" onClick={updateView}>
+                <Check size={14} aria-hidden="true" /> Update “{activeView.name}”
+              </Btn>
+            ) : (
+              <Btn kind="link" onClick={() => setNaming(true)}>
+                Save as view
+              </Btn>
+            ))}
           <span className="hb-grow" />
           {view === 'calendar' ? (
             // The calendar puts its Today / ‹ › / month / scale controls here
@@ -770,22 +736,6 @@ export function TasksPage() {
             <span ref={setCalSlot} className="hb-tcal-slot" />
           ) : (
             <>
-              {view === 'list' && (
-                <Select
-                  variant="chip"
-                  label="Group"
-                  value={groupBy}
-                  options={GROUP_OPTIONS}
-                  active={groupBy !== 'none'}
-                  // Ungrouped, the chip just says "Group": the toolbar fits a laptop screen.
-                  renderValue={(o) => (groupBy === 'none' ? null : o?.label)}
-                  onChange={(g) => {
-                    setGroupBy(g);
-                    // The list is paged: sorting by the grouping keeps each group together.
-                    if (g !== 'none') patch({ sortField: GROUP_SORT[g], sortDir: 'asc' });
-                  }}
-                />
-              )}
               <Select
                 variant="chip"
                 label="Sort"
@@ -798,17 +748,9 @@ export function TasksPage() {
                 className="hb-sortdir"
                 onClick={() => patch({ sortDir: state.sortDir === 'asc' ? 'desc' : 'asc' })}
                 aria-label={`Sort direction: ${dirLabel(state.sortField, state.sortDir)}. Click to reverse.`}
-                title={`${dirLabel(state.sortField, state.sortDir).replace(/^[↑↓] /, '')}: click to reverse`}
+                title="Reverse the order"
               >
-                {/* Narrower screens show the arrow only; the words are its tooltip. */}
-                {state.sortDir === 'asc' ? (
-                  <ArrowUp size={14} aria-hidden="true" className="hb-sortdir-ic" />
-                ) : (
-                  <ArrowDown size={14} aria-hidden="true" className="hb-sortdir-ic" />
-                )}
-                <span className="hb-sortdir-words">
-                  {dirLabel(state.sortField, state.sortDir).replace(/^[↑↓] /, '')}
-                </span>
+                {dirLabel(state.sortField, state.sortDir)}
               </button>
             </>
           )}
@@ -848,7 +790,6 @@ export function TasksPage() {
             ) : (
               <TaskTable
                 rows={rows}
-                groupBy={groupBy}
                 owners={ownerOptions}
                 selected={selected}
                 onSelect={(id, on) =>

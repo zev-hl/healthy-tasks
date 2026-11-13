@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import {
+  ALERT_ASSIGNED_LABEL,
   DUE_DATE_BUCKETS,
   DUE_DATE_BUCKET_LABELS,
   TASK_STATUS_LABELS,
@@ -47,7 +48,7 @@ export async function buildDueDateReportWorkbook(
       statusChangedAt: toExcelLocalDate(r.statusChangedAt, timeZone),
       priority: r.priority,
       assignee: r.assignee?.email ?? '',
-      creator: r.creator.email,
+      creator: r.creator?.email ?? ALERT_ASSIGNED_LABEL,
       startAt: toExcelLocalDate(r.startAt, timeZone),
       dueAt: toExcelLocalDate(r.dueAt, timeZone),
       duty: exportDutyLabel(r),

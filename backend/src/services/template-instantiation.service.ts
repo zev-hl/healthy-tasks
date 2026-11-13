@@ -71,10 +71,17 @@ export interface GenerateOccurrenceParams {
   anchorStart: Date;
   /** Resolved real assignee per template node id (missing/null ⇒ unassigned). */
   assigneeByNodeId: Map<number, string | null>;
-  /** Creator stamped on every generated task. */
-  creatorId: string;
-  /** Actor that assignment notifications are attributed to. */
-  actorId: string;
+  /**
+   * Creator stamped on every generated task. Null when no person made them (an
+   * Exclusives alert): shown as "Alert-assigned".
+   */
+  creatorId: string | null;
+  /**
+   * Who the history lines and assignment notifications are attributed to. Null
+   * when no person did it (an Exclusives alert): then every assignee is told,
+   * whoever they are.
+   */
+  actorId: string | null;
   /**
    * HLAI-112: tasks made from an Exclusives alert (origin `alert`) carry its
    * group and type as their HLAI-118 attributes, on every task of the tree. Other
@@ -253,15 +260,13 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
     actorId,
   );
 
-  // Assignment notifications post-commit (self-assignments are skipped inside).
-  // A task made from an alert was assigned by no one (its "actor" is just the
-  // Admin who saved the Alert Task Setup), so it notifies everyone, that Admin
-  // included.
+  // Assignment notifications post-commit (self-assignments are skipped inside;
+  // with no actor, from an alert, everyone is told).
   for (const c of result.created) {
     if (c.assigneeId) {
       await createAssignedNotification({
         recipientId: c.assigneeId,
-        actorId: origin === 'alert' ? null : actorId,
+        actorId,
         taskId: c.taskId,
         action: 'added',
       });
@@ -298,7 +303,7 @@ function safeAttachmentName(filename: string): string {
  */
 async function copyTemplateAttachmentsToTasks(
   pairs: { taskId: number; nodeId: number }[],
-  actorId: string,
+  actorId: string | null,
 ): Promise<void> {
   const nodeIds = pairs.map((p) => p.nodeId);
   const defaults = await prisma.taskTemplateNodeAttachment.findMany({
@@ -322,7 +327,9 @@ async function copyTemplateAttachmentsToTasks(
         contentType: a.contentType,
         size: a.size,
         storageKey: destKey,
-        uploadedById: actorId,
+        // With no person making the tasks (an alert), the file stays credited to
+        // whoever put it on the template.
+        uploadedById: actorId ?? a.uploadedById,
         taskId,
       },
     });
