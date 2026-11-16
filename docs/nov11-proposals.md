@@ -90,7 +90,16 @@ something different, this section wins.
 **Converting (⋯ menu)**
 
 - Sub-task → own task; task → sub-task of…; task ↔ project. Each is offered only where the
-  result stays within three levels (rules under F5).
+  result stays within three levels:
+  - Mark as project: only a task that isn't under anything. A project is always at the top.
+  - Unmark project: always allowed. Its tasks stay under it.
+  - Sub-task → own task: always allowed. Its own sub-tasks move with it.
+  - Task → sub-task of…: the picker lists only parents where it and its sub-tasks still fit in
+    three levels. A project can't be moved under anything.
+  - Choices that aren't allowed are greyed out with the reason ("Would make a 4th level").
+- A plain task (not a project, not under one) **can have sub-tasks**.
+- Existing tasks nested deeper than three levels are **left as they are**. Nothing new may go
+  past three levels.
 
 **Tasks list**
 
