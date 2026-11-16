@@ -36,6 +36,71 @@ such places (e.g. her app hides attachments behind a tab and shows the due date 
 
 ---
 
+## Decisions so far (Q&A with Shloma, Nov 13–16)
+
+These answers replace the matching proposals and questions below. Where an item below says
+something different, this section wins.
+
+**Apps and sign-in**
+
+- HL Central replaces auth.brecx.com as the sign-in hub. Connect becomes one more app inside
+  HL Central, like Exclusives Alerts and Tasks.
+- We run our own Connect from its source code and may change it. HL Central connects to it the
+  same way as to Lipa's: a bot key for messages and calls, plus the embed origins we set.
+
+**Tasks**
+
+- **One assignee per task.** So "my" level and the task level are the same thing.
+- **Project** = a task marked as a project. Three levels in all (project, task, sub-task).
+- **Delete** asks for confirmation only (no typing the name).
+- **Overdue:** the due chip turns red and sits in its own place in the task header, easier to
+  see than the other details across the top.
+- **Header chips** (status, owner, dates, priority) work as they do today: click a chip to
+  change it, and it saves at once. No Save bar for them.
+- **Due date:** no default. Left empty when not given.
+
+**Tasks list**
+
+- One multi-select filter dropdown. No quick-filter chips.
+
+**Creating tasks**
+
+- **Quick task:** the assignee is the person creating it, with a dropdown to change it. A Duty
+  dropdown lists that assignee's duties.
+- **Sub-tasks while creating:** a quick way to add sub-tasks in the create form. Each line typed
+  becomes a sub-task of the new task. It is **not** called a checklist. There is also an easy way
+  to add sub-tasks from inside a task.
+  - _Checked Nov 16:_ the recording never scrolls the form down far enough to show this box. It
+    does show the hint under Duty: "Assignee, department and subtasks are filled in from the
+    duty." Lipa's source has the box under Tags and Description, with "Each line becomes a
+    subtask on the ticket."
+
+**Snooze**
+
+- Allowed for the assignee, the creator or their supervisor.
+- Up to 30 days.
+- Others see a "snoozed until" mark on the task.
+- When it wakes, it comes back as a **reminder notification**, shown in Alerts.
+
+**Request update**
+
+- Also sent through Connect, as each person's notification settings choose.
+
+**Templates**
+
+- The button on a template is **"Make tasks now"**.
+- The word "templates" meant two things in the meeting:
+  1. In HL Central: the saved list of tasks that hasn't been made into tasks yet.
+  2. In the talk: a structured SOP document for a department or a duty.
+     These need two different names on screen (see the open question on names).
+
+**Dashboard**
+
+- Tiles: **Unread** (for the assignee only), **Stale** (quiet for 2+ business days) and
+  **Mentions awaiting reply**, alongside the core numbers.
+
+---
+
 ## A. Principles for every screen (Vision)
 
 | #   | Proposal                                                                                                                                                                                                                                                                                                                                                                          | Work |
