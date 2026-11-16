@@ -72,6 +72,26 @@ something different, this section wins.
 - **One sign-in for both:** signed in to HL Central means signed in to Connect, with Google or
   a password.
 
+**Connect**
+
+- All of K1–K7 are in scope: calls and notifications (K2, K3), the chat pop-up and "Discuss in
+  Connect" (K1, K5), Connect calls on our calendar and creating a task from a chat (K4, K6), and
+  HL Central tasks inside Connect (K7). The plan orders them; K2 and K3 need no Connect changes.
+
+**Timer**
+
+- Starting a timer on a task with no duty **asks for a duty** (the assignee's duties), with a
+  way to **skip** and start anyway.
+
+**What's New**
+
+- **Not wanted** (L3 dropped).
+
+**Converting (⋯ menu)**
+
+- Sub-task → own task; task → sub-task of…; task ↔ project. Each is offered only where the
+  result stays within three levels (rules under F5).
+
 **Tasks list**
 
 - One multi-select filter dropdown. No quick-filter chips.
