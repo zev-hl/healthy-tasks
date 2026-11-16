@@ -59,9 +59,23 @@ something different, this section wins.
   change it, and it saves at once. No Save bar for them.
 - **Due date:** no default. Left empty when not given.
 
+- **Due date changes:** only the task's creator or their supervisor can change it. The assignee
+  can ask for a new date but can't change it.
+
+**Drafts**
+
+- A **separate Drafts page**, like Lipa's Planning page. A draft has a title, notes and files.
+  It notifies no one and starts no workflow. "Make task" turns it into a task or project.
+
+**Sign-in**
+
+- **One sign-in for both:** signed in to HL Central means signed in to Connect, with Google or
+  a password.
+
 **Tasks list**
 
 - One multi-select filter dropdown. No quick-filter chips.
+- **Group by:** Status, Assignee, Project, Due (Overdue / Today / This week / Later).
 
 **Creating tasks**
 
