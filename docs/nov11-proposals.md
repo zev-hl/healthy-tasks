@@ -98,12 +98,22 @@ something different, this section wins.
 
 - The new reminders **replace** HL Central's current reminders.
 - Set for an **exact date and time**. The default is two hours from now.
-- The "+" menu's Reminder opens a small pop-up with a **For task** field: type to search, pick a
-  task. Opened from a task page, that task is already filled in.
+- Every reminder **belongs to a task**. Reminders are set from the task, not from the "+" menu.
 
 **"+" create button**
 
-- On every page: a menu with **Task, Reminder, Event**. Task opens the quick task pop-up.
+- On every page: a menu with **Task, Event**. Task opens the quick task pop-up. (Reminder was
+  taken out of it: a reminder always belongs to a task.)
+
+**Duty pages**
+
+- Now, simple: each duty gets its own page with a description, its SOP as rich text, and a
+  video (link or file). **No default sub-tasks** on the duty. Structured SOPs come later.
+
+**Calendar**
+
+- One calendar for task due dates, reminders, events and Connect calls, each its own colour.
+- People's **Google Calendar is shown now, read-only**. Each person connects their own.
 
 **Unsent comments**
 
