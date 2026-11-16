@@ -101,6 +101,26 @@ something different, this section wins.
 - Existing tasks nested deeper than three levels are **left as they are**. Nothing new may go
   past three levels.
 
+**Required when creating a task**
+
+- **Title** and **Assignee** (defaults to you).
+- **Duty:** a choice must be made, and **"No duty"** is one of the choices.
+- Due date stays optional (no default).
+
+**Notifications**
+
+- Per kind of event, per channel: in-app, email, Connect. Plus a **notification sound** (on/off,
+  pick one) and **browser push**, both in this round.
+
+**Comments**
+
+- **Voice notes** (up to 5 minutes) and **screen recording**, both in this round.
+
+**Organization page**
+
+- Add the counts of people **reporting to nobody** and **without a duty**, and **drag a person
+  onto a new manager** to reassign them (with a confirmation).
+
 **Tasks list**
 
 - One multi-select filter dropdown. No quick-filter chips.
