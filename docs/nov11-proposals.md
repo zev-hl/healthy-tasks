@@ -92,7 +92,23 @@ something different, this section wins.
 - The word "templates" meant two things in the meeting:
   1. In HL Central: the saved list of tasks that hasn't been made into tasks yet.
   2. In the talk: a structured SOP document for a department or a duty.
-     These need two different names on screen (see the open question on names).
+     On screen they are called **Task templates** (1) and **SOPs** (2).
+
+**Reminders**
+
+- The new reminders **replace** HL Central's current reminders.
+- Set for an **exact date and time**. The default is two hours from now.
+- The "+" menu's Reminder opens a small pop-up with a **For task** field: type to search, pick a
+  task. Opened from a task page, that task is already filled in.
+
+**"+" create button**
+
+- On every page: a menu with **Task, Reminder, Event**. Task opens the quick task pop-up.
+
+**Unsent comments**
+
+- Kept as a draft **on this browser**. It is there when you come back to the task on the same
+  computer.
 
 **Dashboard**
 
