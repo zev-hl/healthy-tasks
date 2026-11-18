@@ -286,6 +286,16 @@ async function reconcileTree(
 
 // --- CRUD ------------------------------------------------------------------
 
+/** A template's department must exist and not be archived (null = company-wide). */
+async function assertTemplateDepartment(departmentId: string): Promise<void> {
+  const d = await prisma.department.findUnique({
+    where: { id: departmentId },
+    select: { archivedAt: true },
+  });
+  if (!d) throw HttpError.badRequest('That department does not exist');
+  if (d.archivedAt) throw HttpError.badRequest('That department is archived. Pick another one.');
+}
+
 export async function listTemplates(): Promise<TemplateSummaryDto[]> {
   const rows = await prisma.taskTemplate.findMany({
     include: templateSummaryInclude,
@@ -305,11 +315,14 @@ export async function createTemplate(actor: Actor, input: CreateTemplateInput): 
   validateAndOrderTree(input.nodes, input.dependencies ?? []);
   const rec = recurrenceData(input.recurrence);
 
+  if (input.departmentId) await assertTemplateDepartment(input.departmentId);
+
   const id = await prisma.$transaction(async (tx) => {
     const template = await tx.taskTemplate.create({
       data: {
         name: input.name,
         description: input.description ?? null,
+        departmentId: input.departmentId ?? null,
         createdById: actor.id,
         ...rec,
       },
@@ -510,6 +523,7 @@ export async function updateTemplate(
 
   if (input.nodes) validateAndOrderTree(input.nodes, input.dependencies ?? []);
   const rec = input.recurrence !== undefined ? recurrenceData(input.recurrence) : undefined;
+  if (input.departmentId) await assertTemplateDepartment(input.departmentId);
 
   await prisma.$transaction(async (tx) => {
     await tx.taskTemplate.update({
@@ -517,6 +531,7 @@ export async function updateTemplate(
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description ?? null } : {}),
+        ...(input.departmentId !== undefined ? { departmentId: input.departmentId } : {}),
         ...(rec ?? {}),
       },
     });

@@ -83,9 +83,18 @@ const taskRefSelect = { id: true, name: true, status: true } as const;
 export const taskDetailInclude = {
   ...taskInclude,
   parent: { select: taskRefSelect },
-  children: { select: taskRefSelect, orderBy: { id: 'asc' } },
-  blocking: { include: { blocked: { select: taskRefSelect } }, orderBy: { id: 'asc' } },
-  blockedBy: { include: { blocker: { select: taskRefSelect } }, orderBy: { id: 'asc' } },
+  // Soft-deleted tasks (see db/prisma.ts) drop out of these relation lists.
+  children: { where: { deletedAt: null }, select: taskRefSelect, orderBy: { id: 'asc' } },
+  blocking: {
+    where: { blocked: { deletedAt: null } },
+    include: { blocked: { select: taskRefSelect } },
+    orderBy: { id: 'asc' },
+  },
+  blockedBy: {
+    where: { blocker: { deletedAt: null } },
+    include: { blocker: { select: taskRefSelect } },
+    orderBy: { id: 'asc' },
+  },
   // Phase 4: task-level attachments (comment attachments live on the comment).
   // The comment thread is newest-first (most recent comment at the top).
   attachments: { include: attachmentInclude, orderBy: { createdAt: 'asc' } },
@@ -140,6 +149,8 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     statusChangedAt: task.statusChangedAt?.toISOString() ?? null,
     tags: task.tags,
     isPrivate: task.isPrivate,
+    isProject: task.isProject,
+    lastActivityAt: task.lastActivityAt.toISOString(),
     startAt: task.startAt?.toISOString() ?? null,
     dueAt: task.dueAt?.toISOString() ?? null,
     createdAt: task.createdAt.toISOString(),
@@ -182,6 +193,7 @@ export function toTaskRef(
 export interface TaskAccessContext {
   level: TaskAccessLevel;
   canTogglePrivate: boolean;
+  canChangeDue: boolean;
   /** Live visibility test for referenced tasks (parent/children/blocks/blockedBy). */
   canSee: (taskId: number) => boolean;
 }
@@ -193,6 +205,7 @@ export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext)
     ...toTaskDto(task),
     access: access.level,
     canTogglePrivate: access.canTogglePrivate,
+    canChangeDue: access.canChangeDue,
     reminderCount: task._count.reminders,
     parent: task.parent ? ref(task.parent) : null,
     children: task.children.map(ref),

@@ -40,6 +40,8 @@ const duty = (id: string, name: string, over: Partial<DutyDto> = {}): DutyDto =>
   departmentId: 'ful',
   name,
   description: null,
+  sop: null,
+  videoUrl: null,
   archived: false,
   peopleCount: 1,
   openTaskCount: 0,

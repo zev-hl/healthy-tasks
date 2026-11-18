@@ -119,9 +119,9 @@ async function descendantTaskIds(seedIds: number[]): Promise<number[]> {
   if (seedIds.length === 0) return [];
   const rows = await prisma.$queryRaw<{ id: number }[]>`
     WITH RECURSIVE d AS (
-      SELECT id, "isPrivate" FROM "Task" WHERE "parentId" = ANY(${seedIds}::int[])
+      SELECT id, "isPrivate" FROM "Task" WHERE "parentId" = ANY(${seedIds}::int[]) AND "deletedAt" IS NULL
       UNION
-      SELECT t.id, t."isPrivate" FROM "Task" t JOIN d ON t."parentId" = d.id
+      SELECT t.id, t."isPrivate" FROM "Task" t JOIN d ON t."parentId" = d.id WHERE t."deletedAt" IS NULL
     )
     SELECT id FROM d WHERE "isPrivate" = false`;
   return rows.map((r) => r.id);
@@ -146,7 +146,7 @@ async function mentionedTaskIds(actorId: string): Promise<number[]> {
     SELECT DISTINCT c."taskId" FROM "CommentMention" cm
       JOIN "Comment" c ON cm."commentId" = c.id
       JOIN "Task" t ON t.id = c."taskId"
-     WHERE cm."userId" = ${actorId} AND t."isPrivate" = false`;
+     WHERE cm."userId" = ${actorId} AND t."isPrivate" = false AND t."deletedAt" IS NULL`;
   return rows.map((r) => r.taskId);
 }
 
@@ -181,9 +181,9 @@ async function hasUpwardTreeAccess(
 ): Promise<boolean> {
   const rows = await prisma.$queryRaw<{ one: number }[]>`
     WITH RECURSIVE d AS (
-      SELECT id FROM "Task" WHERE "parentId" = ${taskId}
+      SELECT id FROM "Task" WHERE "parentId" = ${taskId} AND "deletedAt" IS NULL
       UNION
-      SELECT t.id FROM "Task" t JOIN d ON t."parentId" = d.id
+      SELECT t.id FROM "Task" t JOIN d ON t."parentId" = d.id WHERE t."deletedAt" IS NULL
     )
     SELECT 1 AS one FROM d JOIN "Task" t ON t.id = d.id
      WHERE t."assigneeId" = ANY(${fullIds}::text[])
@@ -235,7 +235,8 @@ export async function computeTaskAccess(
   const fullIds = [actor.id, ...(await getDownlineIds(actor.id))];
   if (await hasDownwardTreeAccess(fullIds, task.id)) return 'tree';
   if (await hasUpwardTreeAccess(actor.id, fullIds, task.id)) return 'tree';
-  return null;
+  // Everyone may read every non-private task (read-only).
+  return 'view';
 }
 
 /**
@@ -276,6 +277,24 @@ export async function canTogglePrivate(actor: Actor, assigneeId: string | null):
   if (actor.role === 'Admin') return true;
   if (actor.id === assigneeId) return false;
   return isInSupervisorChain(actor.id, assigneeId);
+}
+
+/**
+ * Whether the actor may change the task's due date (Nov 2026 plan, D12): an
+ * Admin, the task's creator, or anyone above the creator in the org chart. A
+ * task with no creator (made from an alert) goes by its assignee's supervisors.
+ * Editing still needs full access first; this narrows it for the due date only.
+ */
+export async function canChangeDueDate(
+  actor: Actor,
+  task: { creatorId: string | null; assigneeId: string | null },
+): Promise<boolean> {
+  if (actor.role === 'Admin') return true;
+  if (task.creatorId) {
+    if (task.creatorId === actor.id) return true;
+    return isInSupervisorChain(actor.id, task.creatorId);
+  }
+  return isInSupervisorChain(actor.id, task.assigneeId);
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +389,8 @@ export interface TaskAccessScope {
   fullTaskIds: Set<number>;
   mentionIds: Set<number>;
   treeIds: Set<number>;
+  /** Every non-private task: readable by anyone (read-only `view` access). */
+  publicIds: Set<number>;
 }
 
 const EMPTY_NUM_SET = (): Set<number> => new Set<number>();
@@ -382,6 +403,7 @@ export async function getTaskAccessScope(actor: Actor): Promise<TaskAccessScope>
       fullTaskIds: EMPTY_NUM_SET(),
       mentionIds: EMPTY_NUM_SET(),
       treeIds: EMPTY_NUM_SET(),
+      publicIds: EMPTY_NUM_SET(),
     };
   }
   const downline = await getDownlineIds(actor.id);
@@ -400,6 +422,11 @@ export async function getTaskAccessScope(actor: Actor): Promise<TaskAccessScope>
   // U: non-private ancestors of every accessible task (upward inheritance).
   const upSeed = [...new Set([...fullTaskIds, ...mentionList, ...down])];
   const up = await ancestorTaskIds(upSeed);
+  // V: every non-private task (read-only for everyone).
+  const publicTasks = await prisma.task.findMany({
+    where: { isPrivate: false },
+    select: { id: true },
+  });
 
   return {
     isAdmin: false,
@@ -407,6 +434,7 @@ export async function getTaskAccessScope(actor: Actor): Promise<TaskAccessScope>
     fullTaskIds: new Set(fullTaskIds),
     mentionIds: new Set(mentionList),
     treeIds: new Set<number>([...down, ...up]),
+    publicIds: new Set(publicTasks.map((t) => t.id)),
   };
 }
 
@@ -423,8 +451,9 @@ export function buildTaskAccessWhere(
   if (scope.isAdmin || scope.fullIds === null) return null;
   const clauses: Prisma.TaskWhereInput[] = [{ assigneeId: { in: [...scope.fullIds] } }];
   if (includeReadOnly) {
-    const readOnly = [...scope.mentionIds, ...scope.treeIds];
-    if (readOnly.length > 0) clauses.push({ id: { in: readOnly } });
+    // Every non-private task is readable. Mention and tree access only ever
+    // reach non-private tasks, so this one predicate covers them too.
+    clauses.push({ isPrivate: false });
   }
   return { OR: clauses };
 }
@@ -435,7 +464,8 @@ export function isTaskVisible(scope: TaskAccessScope, taskId: number): boolean {
     scope.isAdmin ||
     scope.fullTaskIds.has(taskId) ||
     scope.mentionIds.has(taskId) ||
-    scope.treeIds.has(taskId)
+    scope.treeIds.has(taskId) ||
+    scope.publicIds.has(taskId)
   );
 }
 
@@ -448,6 +478,7 @@ export function scopeTaskLevel(scope: TaskAccessScope, taskId: number): TaskAcce
   if (scope.isAdmin || scope.fullTaskIds.has(taskId)) return 'full';
   if (scope.mentionIds.has(taskId)) return 'comment';
   if (scope.treeIds.has(taskId)) return 'tree';
+  if (scope.publicIds.has(taskId)) return 'view';
   return null;
 }
 
@@ -457,14 +488,19 @@ export interface RowAccessFlags {
   mentionOnly: boolean;
   /** Read-only because the actor only reaches it via Parent/Child tree position. */
   treeOnly: boolean;
+  /** Read-only only because every non-private task is readable by everyone. */
+  viewOnly: boolean;
 }
 
 export function classifyRow(scope: TaskAccessScope, taskId: number): RowAccessFlags {
   const full = scope.isAdmin || scope.fullTaskIds.has(taskId);
-  if (full) return { mentionOnly: false, treeOnly: false };
+  if (full) return { mentionOnly: false, treeOnly: false, viewOnly: false };
+  const mentionOnly = scope.mentionIds.has(taskId);
+  const treeOnly = scope.treeIds.has(taskId);
   return {
-    mentionOnly: scope.mentionIds.has(taskId),
-    treeOnly: scope.treeIds.has(taskId),
+    mentionOnly,
+    treeOnly,
+    viewOnly: !mentionOnly && !treeOnly && scope.publicIds.has(taskId),
   };
 }
 

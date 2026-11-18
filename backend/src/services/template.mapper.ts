@@ -6,6 +6,7 @@ import type {
   TemplateOccurrenceDto,
   TemplateOccurrenceOrigin,
   TemplateSummaryDto,
+  TemplateDepartmentRef,
 } from '@healthy-tasks/shared';
 import { toUserRef } from './user.mapper.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
@@ -18,8 +19,19 @@ const userRefSelect = {
  * loaded as each node's outgoing (`blocking`) edges, so every edge appears once.
  * Nodes are sorted for stable output in the mapper (a multi-key `orderBy` array
  * can't live inside an `as const` include without becoming readonly). */
+const departmentRefSelect = {
+  select: { id: true, name: true, color: true, archivedAt: true },
+} as const;
+
+function toDepartmentRef(
+  d: { id: string; name: string; color: string; archivedAt: Date | null } | null,
+): TemplateDepartmentRef | null {
+  return d ? { id: d.id, name: d.name, color: d.color, archived: d.archivedAt !== null } : null;
+}
+
 export const templateInclude = {
   createdBy: userRefSelect,
+  department: departmentRefSelect,
   nodes: {
     include: { blocking: true, duty: dutyRefSelect, _count: { select: { attachments: true } } },
   },
@@ -31,6 +43,7 @@ export type TemplateWithGraph = Prisma.TaskTemplateGetPayload<{ include: typeof 
 /** Lighter include for the management list. */
 export const templateSummaryInclude = {
   createdBy: userRefSelect,
+  department: departmentRefSelect,
   _count: { select: { nodes: true, occurrences: true } },
 } as const;
 
@@ -98,6 +111,7 @@ export function toTemplateDto(t: TemplateWithGraph): TemplateDto {
     id: t.id,
     name: t.name,
     description: t.description,
+    department: toDepartmentRef(t.department),
     createdBy: toUserRef(t.createdBy),
     recurrenceType: t.recurrenceType,
     intervalCount: t.intervalCount,
@@ -123,6 +137,7 @@ export function toTemplateSummaryDto(t: TemplateSummaryRow): TemplateSummaryDto 
     id: t.id,
     name: t.name,
     description: t.description,
+    department: toDepartmentRef(t.department),
     createdBy: toUserRef(t.createdBy),
     recurrenceType: t.recurrenceType,
     isActive: t.isActive,

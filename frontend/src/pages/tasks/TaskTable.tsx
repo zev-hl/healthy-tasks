@@ -104,7 +104,7 @@ export function TaskTable({
   showOwner: boolean;
 }) {
   const allRef = useRef<HTMLInputElement>(null);
-  const editable = rows.filter((r) => !r.mentionOnly && !r.treeOnly);
+  const editable = rows.filter((r) => !r.mentionOnly && !r.treeOnly && !r.viewOnly);
   const all = editable.length > 0 && editable.every((r) => selected.has(r.id));
   const some = editable.some((r) => selected.has(r.id));
   useEffect(() => {
@@ -142,7 +142,7 @@ export function TaskTable({
         </thead>
         <tbody>
           {rows.map((t) => {
-            const ro = t.mentionOnly || t.treeOnly;
+            const ro = t.mentionOnly || t.treeOnly || t.viewOnly;
             const due = dueInfo(t.dueAt, t.status);
             return (
               <tr
@@ -187,7 +187,9 @@ export function TaskTable({
                           title={
                             t.mentionOnly
                               ? 'You were mentioned: read-only'
-                              : 'Visible through its parent: read-only'
+                              : t.treeOnly
+                                ? 'Visible through its parent: read-only'
+                                : 'Not assigned to you or your team: read-only'
                           }
                         >
                           <Lock size={11} aria-hidden="true" /> read-only

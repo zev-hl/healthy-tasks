@@ -24,6 +24,7 @@ import {
   setTaskPrivate,
   updateTask,
 } from '../services/task.service.js';
+import { listDeletedTasks, restoreTask } from '../services/task-delete.service.js';
 import { type Actor, requireTaskAccess } from '../services/access-control.service.js';
 import { getTaskHistory } from '../services/task-history.service.js';
 import {
@@ -214,6 +215,15 @@ export async function removeDependencyController(req: Request, res: Response): P
 export async function deleteTaskController(req: Request, res: Response): Promise<void> {
   // Admin-only; also enforced in the service.
   await deleteTask(actorOf(req), parseTaskId(req));
+  res.status(204).send();
+}
+
+export async function listDeletedTasksController(req: Request, res: Response): Promise<void> {
+  res.json(await listDeletedTasks(actorOf(req)));
+}
+
+export async function restoreTaskController(req: Request, res: Response): Promise<void> {
+  await restoreTask(actorOf(req), parseTaskId(req));
   res.status(204).send();
 }
 

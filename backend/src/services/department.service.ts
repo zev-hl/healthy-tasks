@@ -9,6 +9,7 @@ import {
   type DutyHoldingsDto,
 } from '@healthy-tasks/shared';
 import { prisma } from '../db/prisma.js';
+import { richTextLength, sanitizeAndValidate } from '../utils/rich-text.js';
 import { HttpError } from '../utils/http-error.js';
 import type {
   CreateDepartmentInput,
@@ -72,6 +73,8 @@ export async function listDepartments(): Promise<DepartmentDto[]> {
         departmentId: d.id,
         name: u.name,
         description: u.description,
+        sop: u.sop,
+        videoUrl: u.videoUrl,
         archived: u.archivedAt !== null || d.archivedAt !== null,
         peopleCount: holders.size,
         openTaskCount: openByDuty.get(u.id) ?? 0,
@@ -220,6 +223,13 @@ async function getDutyOr404(id: string) {
 const cleanDescription = (v: string | null | undefined): string | null | undefined =>
   v === undefined ? undefined : v === null ? null : v.trim() || null;
 
+/** A duty's SOP is rich text, sanitized like a task description. */
+function cleanSop(v: string | null | undefined): string | null | undefined {
+  if (v === undefined || v === null) return v;
+  const clean = sanitizeAndValidate(v, { fieldLabel: 'SOP' });
+  return richTextLength(clean) > 0 ? clean : null;
+}
+
 export async function createDuty(departmentId: string, input: CreateDutyInput): Promise<void> {
   const d = await getDepartmentOr404(departmentId);
   if (d.archivedAt) throw HttpError.badRequest('Restore the department before adding duties');
@@ -231,6 +241,8 @@ export async function createDuty(departmentId: string, input: CreateDutyInput): 
       name,
       nameKey: catalogNameKey(name),
       description: cleanDescription(input.description) ?? null,
+      sop: cleanSop(input.sop) ?? null,
+      videoUrl: input.videoUrl ?? null,
     },
   });
 }
@@ -247,6 +259,9 @@ export async function updateDuty(id: string, input: UpdateDutyInput): Promise<vo
   }
   const desc = cleanDescription(input.description);
   if (desc !== undefined) data.description = desc;
+  const sop = cleanSop(input.sop);
+  if (sop !== undefined) data.sop = sop;
+  if (input.videoUrl !== undefined) data.videoUrl = input.videoUrl;
   await prisma.duty.update({ where: { id }, data });
 }
 

@@ -204,7 +204,7 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                 const inReview = task.status === 'Review';
                 // Read-only tasks (mention-only or tree-inherited) can't change
                 // Status, so they don't drag; commenting still works.
-                const readOnly = task.mentionOnly || task.treeOnly;
+                const readOnly = task.mentionOnly || task.treeOnly || task.viewOnly;
                 const locked = inReview || readOnly;
                 const due = dueInfo(task.dueAt, task.status);
                 const done = task.status === 'Completed' || task.status === 'Canceled';
@@ -280,9 +280,11 @@ export function TaskKanban({ rows, loading, onChanged }: Props) {
                         <span
                           className="hb-bcard-flag"
                           title={
-                            task.treeOnly && !task.mentionOnly
-                              ? 'Read-only: you see it through its parent or sub-task'
-                              : 'Read-only: you see it because you were mentioned'
+                            task.mentionOnly
+                              ? 'Read-only: you see it because you were mentioned'
+                              : task.treeOnly
+                                ? 'Read-only: you see it through its parent or sub-task'
+                                : 'Read-only: not assigned to you or your team'
                           }
                         >
                           <Eye size={12} aria-hidden="true" /> View only

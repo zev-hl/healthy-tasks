@@ -108,7 +108,7 @@ Every feature is built the same way, which keeps the codebase predictable:
 - **Two ways in, decided by the address** (`utils/allowed-domain.ts`). With
   `GOOGLE_ALLOWED_DOMAIN` set, a company address (`isCompanyAccount`) signs in with
   Google only — the password form refuses it — and any other address with a password
-  only — the Google door refuses it. `signInMethodFor(email)` (company address *and*
+  only — the Google door refuses it. `signInMethodFor(email)` (company address _and_
   Google sign-in configured → `google`, else `password`) decides which welcome a new
   account gets and what an address change tells the person. A Google sign-in is matched
   by Google's id (`User.googleSub`) first, then by email, and links the account on the
@@ -238,7 +238,7 @@ SMART fields:
 
 - **Specific** (`specific`) — what will be achieved (free text).
 - **Measurable** — `metricType` (`Count | Percentage | Frequency | Currency |
-  Other`) + `targetValue`, plus a free-text `unitLabel` (required for `Other`).
+Other`) + `targetValue`, plus a free-text `unitLabel` (required for `Other`).
 - **Time-bound** — `deadline`. In this phase the deadline alone is the review
   period; there is no separate review-cycle entity.
 - **Risks / Mitigations / Notes** — free text; notes editable throughout the
@@ -246,7 +246,7 @@ SMART fields:
 - **Results** — `resultValue` (same metric/unit as the target), entered by the
   employee while the goal is Active; `resultsFinalizedAt` stamps an early finalize.
 - **Resolution** — `resolution` (`Exceeded | Met | PartiallyMet | Missed |
-  InProgress`) + `supervisorComments`, set by the supervisor at review.
+InProgress`) + `supervisorComments`, set by the supervisor at review.
 - **Audit** — `createdById`, workflow stamps (`submittedAt`, `approvedAt`/`approvedById`,
   `underReviewAt`, `resolvedAt`/`resolvedById`), `rejectionComments`, `createdAt`,
   `updatedAt`.
@@ -293,20 +293,20 @@ Enforced in `goal.service.ts` (route guards are a coarse first gate):
 
 ### Endpoints (`/api/goals`, all require auth)
 
-| Method & path | Purpose | Who |
-| --- | --- | --- |
-| `GET /mine` | the caller's own goals | any |
-| `POST /team` | filtered team goals (`ownerIds`, `statuses`, deadline range) | Admin/Manager |
-| `POST /` | draft a goal (`ownerId` defaults to caller; a supervisor may target a report) | any |
-| `GET /:id` | one goal (owner/supervisor/admin) | scoped |
-| `PATCH /:id` | edit a Draft's SMART fields | creator/owner/admin |
-| `DELETE /:id` | delete a Draft | creator/owner/admin |
-| `PATCH /:id/progress` | update Results/Notes/Risks/Mitigations while Active | owner/admin |
-| `POST /:id/submit` | Draft → PendingApproval | creator/owner/admin |
-| `POST /:id/approve` | PendingApproval → Approved | supervisor/admin |
-| `POST /:id/reject` | PendingApproval → Draft (comments required) | supervisor/admin |
-| `POST /:id/finalize` | Approved → UnderReview (mark results final) | owner/admin |
-| `POST /:id/resolve` | UnderReview → Resolved (resolution + comments) | supervisor/admin |
+| Method & path         | Purpose                                                                       | Who                 |
+| --------------------- | ----------------------------------------------------------------------------- | ------------------- |
+| `GET /mine`           | the caller's own goals                                                        | any                 |
+| `POST /team`          | filtered team goals (`ownerIds`, `statuses`, deadline range)                  | Admin/Manager       |
+| `POST /`              | draft a goal (`ownerId` defaults to caller; a supervisor may target a report) | any                 |
+| `GET /:id`            | one goal (owner/supervisor/admin)                                             | scoped              |
+| `PATCH /:id`          | edit a Draft's SMART fields                                                   | creator/owner/admin |
+| `DELETE /:id`         | delete a Draft                                                                | creator/owner/admin |
+| `PATCH /:id/progress` | update Results/Notes/Risks/Mitigations while Active                           | owner/admin         |
+| `POST /:id/submit`    | Draft → PendingApproval                                                       | creator/owner/admin |
+| `POST /:id/approve`   | PendingApproval → Approved                                                    | supervisor/admin    |
+| `POST /:id/reject`    | PendingApproval → Draft (comments required)                                   | supervisor/admin    |
+| `POST /:id/finalize`  | Approved → UnderReview (mark results final)                                   | owner/admin         |
+| `POST /:id/resolve`   | UnderReview → Resolved (resolution + comments)                                | supervisor/admin    |
 
 ### Scheduler integration
 
@@ -396,20 +396,25 @@ and the Private flag — so access follows reorganisations and edits immediately
 
 - **Full (see + edit)** — Admin, the current Assignee, or **any** supervisor above
   the Assignee in the chain (`isInSupervisorChain`). Equivalently: the Assignee is
-  in the actor's *downline-or-self* set.
+  in the actor's _downline-or-self_ set.
 - **Comment-only (see + comment)** — a user currently `@mentioned` in a non-private
   comment. They may add comments and edit their own, but cannot change any other
   field. Live: dropping the mention (editing it out of the only comment granting it)
   removes access with no reload.
 - **Tree (see, read-only)** — visibility inherited via Parent/Child tree position
-  (see *Tree inheritance* below). Read-only: no field edits, no commenting.
-- **None** — everyone else. The API returns **404** (never 403) for a hidden task,
-  so its existence isn't leaked.
+  (see _Tree inheritance_ below). Read-only: no field edits, no commenting.
+- **View (see, read-only)** — Nov 2026 plan (B1): every active user may read every
+  **non-private** task. Read-only like Tree: no field edits, no commenting.
+- **None** — only a **Private** task can be hidden now: everyone outside {Admin,
+  Assignee, Assignee's chain}. The API returns **404** (never 403) for it, so its
+  existence isn't leaked.
 
 `computeTaskAccess(actor, {id, assigneeId, isPrivate})` returns `'full' | 'comment' |
-'tree' | null`. `TaskDetailDto` carries the caller's `access` level and a
-`canTogglePrivate` flag; `TaskRowDto` carries `mentionOnly` and `treeOnly` flags
-(distinct read-only cues + disabled drag in the multi-task views).
+'tree' | 'view' | null`. `TaskDetailDto` carries the caller's `access` level and the
+`canTogglePrivate` and `canChangeDue` flags; `TaskRowDto` carries `mentionOnly`,
+`treeOnly` and `viewOnly` flags (distinct read-only cues + disabled drag in the
+multi-task views). List queries with `includeReadOnly` add `isPrivate = false` to the
+access predicate; without it they return only full-access tasks.
 
 ### Tree inheritance (Parent/Child, read-only)
 
@@ -418,16 +423,16 @@ per-task model above:
 
 - **Downward** — full access to a task grants read-only visibility into all of its
   descendants (any depth).
-- **Upward** — access to a task (from *any* source, including inherited) grants
+- **Upward** — access to a task (from _any_ source, including inherited) grants
   read-only visibility into its ancestors.
 - **Private overrides inheritance** — a Private task is never exposed via tree
   inheritance; only {Admin, Assignee, Assignee's chain} ever see it. (A Private node
   is omitted individually but does not hide its own non-private descendants.)
 
-Inheritance never affects who can be *assigned*, and does not apply to the separate
+Inheritance never affects who can be _assigned_, and does not apply to the separate
 Dependency (Blocks/Is-Blocked-By) graph. It has no effect on **blocked-status
 enforcement**: `assertStatusAllowedByPredecessors` always evaluates a predecessor's
-real, current status regardless of whether the actor can see it — only the *message*
+real, current status regardless of whether the actor can see it — only the _message_
 hides an unseen blocker's name.
 
 ### List scoping
@@ -449,9 +454,9 @@ treeOnly) and drives the report + relationship-picker search.
   it reflects **live** access, so it updates as visibility changes. This is a
   deliberate tradeoff: a Private/inaccessible task's Id and Status leak through
   cross-references, its Name/Description/Comments do not. One treatment regardless
-  of *why* the task is inaccessible.
+  of _why_ the task is inaccessible.
 - **Linking** — you may create a Parent/Child/Dependency link to any task you can
-  currently *see* (full, mention, or tree). The relationship-picker search is
+  currently _see_ (full, mention, or tree). The relationship-picker search is
   access-scoped, so it never offers an invisible task; `assertCanLinkTo` backstops
   a hand-crafted request. **Removing** a link never requires access to the other
   side (it edits your own task).
@@ -506,14 +511,14 @@ Reuses the full Task Search filter set plus a **Team Hierarchy** filter (assigne
 ids selected from the scoped tree, intersected with the access scope). Bucketing
 (`bucketFor` in `due-date-report.service.ts`), each task in exactly one:
 
-| Bucket | Rule |
-| --- | --- |
-| **On Time** | Completed, and the completion timestamp is **on or before** the Due Date (equality counts as On Time). |
-| **Late** | Completed, and the completion timestamp is after the Due Date. |
-| **Overdue** | Not Completed/Cancelled, has a Due Date that has already passed. |
-| **Not Completed** | Not Completed/Cancelled, has a Due Date that has not yet passed. |
-| **Cancelled** | Status is `Canceled` (decided by status alone). |
-| **No Due Date** | No Due Date set (covers Completed-without-due and active-without-due). |
+| Bucket            | Rule                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------ |
+| **On Time**       | Completed, and the completion timestamp is **on or before** the Due Date (equality counts as On Time). |
+| **Late**          | Completed, and the completion timestamp is after the Due Date.                                         |
+| **Overdue**       | Not Completed/Cancelled, has a Due Date that has already passed.                                       |
+| **Not Completed** | Not Completed/Cancelled, has a Due Date that has not yet passed.                                       |
+| **Cancelled**     | Status is `Canceled` (decided by status alone).                                                        |
+| **No Due Date**   | No Due Date set (covers Completed-without-due and active-without-due).                                 |
 
 On Time / Late rows also carry a whole-day gap (`daysDelta`, positive = early). The
 frontend (`DueDatePerformancePage`) reuses the Search table conventions, adds a
@@ -830,7 +835,7 @@ Render), listing the day's alerts in the same table and linking to them in the
 Alert Log.
 
 - **Screen.** `ExclusivesAlertTasksPage` at `/exclusives/alert-tasks` ("Alert
-  Task Setup" under *E-commerce exclusives*), Admins and Managers. One row per alert type in
+  Task Setup" under _E-commerce exclusives_), Admins and Managers. One row per alert type in
   `EXCLUSIVES_ALERT_TYPES` order: the type's badge, a template `SearchSelect`
   ("— None —" = no task; one template may serve several types), and the Role
   Assignment cell — one line per role of the chosen template (fetched once with
@@ -880,7 +885,7 @@ Alert Log.
   Box Lost alert (Wasif - US)". A group that no longer exists makes nothing.
   `alertLogIds` links the alerts to the top task and marks them handled in the
   same transaction (409 if one already was). Manual creation (`POST
-  /api/templates/:id/instantiate`) passes none of these and is unchanged.
+/api/templates/:id/instantiate`) passes none of these and is unchanged.
 - **Immediate tasks** (`services/exclusives/alert-tasks.service.ts`,
   `makeImmediateAlertTasks`). Run at the end of every Exclusives pass, still
   under the pass lock, and never failing it. Each alert waiting for its task
@@ -982,13 +987,13 @@ retailers, its competitive price; an offer above it may lose the Buy Box. Five
 alert types, after the original twelve, fire when one price **crosses** the other
 (the client's rules of 28 Oct 2026), off for every group until switched on:
 
-| Label | Key | Code | Tone | Fires when |
-|---|---|---|---|---|
-| Competitive Price Below HL Price | `CompetitivePriceBelowOurs` | `CB` | danger | T moves and crosses below P |
-| Competitive Price Above HL Price | `CompetitivePriceAboveOurs` | `CA` | ok | T moves and crosses above P |
-| Competitive Price Change | `CompetitivePriceChanged` | `CH` | warn | T moves, stays on the same side |
-| HL Price Above Competitive Price | `OurPriceAboveCompetitive` | `HA` | danger | P moves and crosses above T |
-| HL Price Below Competitive Price | `OurPriceBelowCompetitive` | `HB` | ok | P moves and crosses below T |
+| Label                            | Key                         | Code | Tone   | Fires when                      |
+| -------------------------------- | --------------------------- | ---- | ------ | ------------------------------- |
+| Competitive Price Below HL Price | `CompetitivePriceBelowOurs` | `CB` | danger | T moves and crosses below P     |
+| Competitive Price Above HL Price | `CompetitivePriceAboveOurs` | `CA` | ok     | T moves and crosses above P     |
+| Competitive Price Change         | `CompetitivePriceChanged`   | `CH` | warn   | T moves, stays on the same side |
+| HL Price Above Competitive Price | `OurPriceAboveCompetitive`  | `HA` | danger | P moves and crosses above T     |
+| HL Price Below Competitive Price | `OurPriceBelowCompetitive`  | `HB` | ok     | P moves and crosses below T     |
 
 T = the competitive price ("CP"), P = our price + shipping ("HL price"). An earlier
 version (23–27 Oct, never in production) had three types, Below / Increased /
@@ -1011,17 +1016,18 @@ Changed, on a "T under P" state; its rows exist on no server.
   adds them again, `false` on every row.
 - **Rules** (`alert-detection.ts`), the client's, as written, strict to the half
   cent; "Prev" is the saved pair, "Curr" the fresh one:
-  - *CB*: HL Prev < CP Prev, HL Curr > CP Curr, CP Prev ≠ CP Curr.
-  - *CA*: HL Prev > CP Prev, HL Curr < CP Curr, CP Prev ≠ CP Curr.
-  - *CH*: CP Prev ≠ CP Curr, and HL on the same side of CP before and now.
-  - *HA*: HL Prev < CP Prev, HL Curr > CP Curr, HL Prev ≠ HL Curr.
-  - *HB*: HL Prev > CP Prev, HL Curr < CP Curr, HL Prev ≠ HL Curr.
+  - _CB_: HL Prev < CP Prev, HL Curr > CP Curr, CP Prev ≠ CP Curr.
+  - _CA_: HL Prev > CP Prev, HL Curr < CP Curr, CP Prev ≠ CP Curr.
+  - _CH_: CP Prev ≠ CP Curr, and HL on the same side of CP before and now.
+  - _HA_: HL Prev < CP Prev, HL Curr > CP Curr, HL Prev ≠ HL Curr.
+  - _HB_: HL Prev > CP Prev, HL Curr < CP Curr, HL Prev ≠ HL Curr.
 
   When both prices move and cross, two fire (CB + HA, or CA + HB). CB, CA and CH
   carry T before and now; HA and HB carry P.
+
 - **A missing T counts as -1** (the client's rule). So Amazon removing T while it
-  was above P fires *CB* (red), while below P *CH*; T coming back above P fires
-  *CA*, below P *CH*; a listing that never had one (most) never fires, whatever P
+  was above P fires _CB_ (red), while below P _CH_; T coming back above P fires
+  _CA_, below P _CH_; a listing that never had one (most) never fires, whatever P
   does. The messages (`alert-message.ts`) never show -1: "Amazon removed its
   competitive price (was $11.00, above our HL price of $10.00).", "Amazon set a
   competitive price of …".
@@ -1042,3 +1048,30 @@ Changed, on a "T under P" state; its rows exist on no server.
   list, the Alert Log filter (its limit is the list's length), Alert Task Setup and
   the task Alert Type attribute. Nothing counts the types by hand. One event can
   fire two alerts, so two tasks when both are on Immediate with templates.
+
+## 18. Projects, task levels, due-date rights and soft delete (Nov 2026 plan, Stage 0)
+
+- **Projects and levels** (`Task.isProject`, `services/task-levels.service.ts`): a
+  project is a top-level task marked as one (a CHECK constraint keeps it top-level).
+  Levels are Project › Task › Sub-task; a top-level task that is not a project holds
+  one level of sub-tasks. Checked when a task is put under another (`setParent`,
+  quick sub-task) and when a task is (un)marked as a project. Trees deeper than this
+  from before the rule are left as they are; template and repeat generation copy
+  their shape and are not checked.
+- **Due date** (`canChangeDueDate`): only an Admin, the task's creator, or someone
+  above the creator may change it (for an alert task with no creator: the assignee's
+  supervisors). Other fields keep the usual full-access rule.
+- **Soft delete** (`Task.deletedAt`, `deletedById`; `services/task-delete.service.ts`):
+  deleting (Admin) stamps the task and its whole sub-tree with the same `deletedAt`;
+  nothing else is removed. The app's Prisma client (`db/prisma.ts`) adds
+  `deletedAt = null` to every top-level Task query, so a deleted task is gone
+  everywhere; relation includes that list tasks (children, dependencies,
+  notifications, reminder email dispatch) filter it explicitly, and raw SQL adds
+  `"deletedAt" IS NULL`. `prismaWithDeleted` reaches deleted rows (the Admin's
+  `GET /api/tasks/deleted` and `POST /api/tasks/:id/restore`, which brings back the
+  sub-tree deleted at the same moment; a sub-task can't come back before its parent).
+- **Last activity** (`Task.lastActivityAt`): set on every history entry
+  (`recordHistory`, via raw SQL so `updatedAt`, the edit-conflict token, is not
+  touched) and on every save. Drives the Dashboard's Stale count.
+- **Duty pages** (`Duty.sop` sanitized rich text, `Duty.videoUrl` http(s) link) and
+  **template departments** (`TaskTemplate.departmentId`, null = company-wide).

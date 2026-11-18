@@ -264,7 +264,7 @@ export function TaskCalendar({
       );
     }
     const t = p.item.task;
-    const readOnly = t.mentionOnly || t.treeOnly;
+    const readOnly = t.mentionOnly || t.treeOnly || t.viewOnly;
     const treeCue = t.treeOnly && !t.mentionOnly;
     const time = timeOf(t.dueAt ?? t.startAt);
     return (

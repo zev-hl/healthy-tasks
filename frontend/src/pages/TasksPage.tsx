@@ -594,7 +594,7 @@ export function TasksPage() {
     </nav>
   );
 
-  const editableShown = rows.filter((r) => !r.mentionOnly && !r.treeOnly);
+  const editableShown = rows.filter((r) => !r.mentionOnly && !r.treeOnly && !r.viewOnly);
 
   return (
     <>

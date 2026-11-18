@@ -466,7 +466,11 @@ export function lateForScheduler(items: OverdueItem[], now: Date, lastRunAt: Dat
  */
 async function nextReminderDueAt(): Promise<Date | null> {
   const rows = await prisma.reminder.findMany({
-    where: { canceledAt: null, emailSentAt: null, task: { startAt: { not: null } } },
+    where: {
+      canceledAt: null,
+      emailSentAt: null,
+      task: { startAt: { not: null }, deletedAt: null },
+    },
     select: { leadMinutes: true, task: { select: { startAt: true } } },
   });
   let min: number | null = null;

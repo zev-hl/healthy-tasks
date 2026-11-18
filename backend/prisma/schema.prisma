@@ -72,6 +72,7 @@ model User {
   // Task relations (Phase 2).
   createdTasks  Task[] @relation("TaskCreator")
   assignedTasks Task[] @relation("TaskAssignee")
+  deletedTasks  Task[] @relation("TaskDeletedBy")
 
   // Phase 10 review workflow: tasks this user sent to Review, and tasks holding
   // this user as their pre-review assignee (restored when review ends).
@@ -200,6 +201,22 @@ model Task {
   // this. See docs/architecture.md "Task-Level Access Control".
   isPrivate Boolean @default(false)
 
+  // --- Nov 2026 plan, Stage 0 ---
+  // A project is a top-level task marked as one: Project › Task › Sub-task.
+  // A task that is not under a project has at most one level of sub-tasks.
+  // CHECK in the migration: a project never has a parent. Depth rules are in
+  // services/task-levels.service.ts (trees deeper than this, from before the
+  // rule, are left as they are).
+  isProject      Boolean   @default(false)
+  // Soft delete: a deleted task is hidden everywhere and an Admin can restore
+  // it. Null = not deleted.
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedBy      User?     @relation("TaskDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  // When anything last happened on the task (an edit, a comment, a file).
+  // Drives the Dashboard's Stale count.
+  lastActivityAt DateTime  @default(now())
+
   // --- Review workflow (Phase 10) ---
   // Populated only while status == Review, cleared when the task leaves Review.
   // reviewInitiator = who sent it to Review (audit/context only). priorAssignee
@@ -310,6 +327,8 @@ model Task {
   // HLAI-118: filter by attribute.
   @@index([alertGroupId])
   @@index([alertType])
+  @@index([deletedAt])
+  @@index([lastActivityAt])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -641,9 +660,13 @@ enum TemplateOccurrenceOrigin {
 // into real tasks. Managed by Admin/Manager only (enforced in the service +
 // route). Recurrence fields are all null/None for a manual-only template.
 model TaskTemplate {
-  id          Int     @id @default(autoincrement())
-  name        String
-  description String?
+  id           Int         @id @default(autoincrement())
+  name         String
+  description  String?
+  // Nov 2026 plan (G1/G2): the department the template belongs to; null means
+  // company-wide. The Templates list is grouped by it.
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
 
   // Author (Admin/Manager). Set at creation, never changes.
   createdById String
@@ -681,6 +704,7 @@ model TaskTemplate {
 
   @@index([createdById])
   @@index([recurrenceType])
+  @@index([departmentId])
 }
 
 // One definition node in a template's tree. Mirrors the real Task parent/child
@@ -1137,7 +1161,8 @@ model Department {
   // Non-null ⇒ archived. Archiving a department archives all of its duties.
   archivedAt DateTime?
 
-  duties Duty[]
+  duties    Duty[]
+  templates TaskTemplate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1153,6 +1178,10 @@ model Duty {
   // Uniqueness key within the department (see Department.nameKey).
   nameKey      String
   description  String?
+  // Nov 2026 plan (I4): the duty's page. SOP is sanitized rich text; video is a
+  // link (or a file's URL) to a training video.
+  sop          String?
+  videoUrl     String?
 
   archivedAt DateTime?
 

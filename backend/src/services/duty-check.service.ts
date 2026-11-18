@@ -76,6 +76,7 @@ export async function mismatchedTaskIds(): Promise<number[]> {
     SELECT t.id
     FROM "Task" t
     WHERE t."dutyId" IS NOT NULL
+      AND t."deletedAt" IS NULL
       AND (CASE WHEN t.status = 'Review' AND t."priorAssigneeId" IS NOT NULL
                 THEN t."priorAssigneeId" ELSE t."assigneeId" END) IS NOT NULL
       AND NOT EXISTS (

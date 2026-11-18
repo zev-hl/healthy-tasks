@@ -26,6 +26,7 @@ import {
   assertAssigneeAllowed,
   assertCanEditTask,
   buildTaskAccessWhere,
+  canChangeDueDate,
   canTogglePrivate,
   computeTaskAccess,
   getMentionCandidateIds,
@@ -54,6 +55,7 @@ import {
 import { toActiveUserDto } from './user.mapper.js';
 import { assertDutyAssignable } from './department.service.js';
 import { assertHoldsDuty } from './duty-check.service.js';
+import { assertCanPlaceUnder, assertCanSetProject } from './task-levels.service.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 
 /** "Department › Duty" for a duty id (history snapshots), or null. */
@@ -122,7 +124,7 @@ async function assertStatusAllowedByPredecessors(
   if (!BLOCKED_RESTRICTED_STATUSES.includes(newStatus)) return;
 
   const deps = await prisma.taskDependency.findMany({
-    where: { blockedId: taskId },
+    where: { blockedId: taskId, blocker: { deletedAt: null } },
     include: { blocker: { select: { id: true, name: true, status: true } } },
   });
   const blocking = deps
@@ -171,6 +173,7 @@ export async function createTask(actor: Actor, input: CreateTaskInput): Promise<
       startAt: input.startAt ?? null,
       dueAt: input.dueAt ?? null,
       dutyId,
+      isProject: input.isProject ?? false,
       // statusChangedAt intentionally left null: it is blank until the first
       // status *change*, and creation is the initial value, not a change.
     },
@@ -198,7 +201,7 @@ export async function createTask(actor: Actor, input: CreateTaskInput): Promise<
  */
 export async function listAllTags(): Promise<string[]> {
   const rows = await prisma.$queryRawUnsafe<{ tag: string }[]>(
-    'SELECT tag FROM (SELECT DISTINCT unnest(tags) AS tag FROM "Task") t ORDER BY lower(tag), tag',
+    'SELECT tag FROM (SELECT DISTINCT unnest(tags) AS tag FROM "Task" WHERE "deletedAt" IS NULL) t ORDER BY lower(tag), tag',
   );
   return rows.map((r) => r.tag).filter((t) => t.length > 0);
 }
@@ -238,9 +241,11 @@ export async function getTaskDetail(id: number, actor: Actor): Promise<TaskDetai
   const level = scopeTaskLevel(scope, task.id);
   if (!level) throw HttpError.notFound('Task not found');
   const toggle = await canTogglePrivate(actor, task.assigneeId);
+  const changeDue = level === 'full' && (await canChangeDueDate(actor, task));
   return toTaskDetailDto(task as unknown as TaskWithDetail, {
     level,
     canTogglePrivate: toggle,
+    canChangeDue: changeDue,
     canSee: (refId) => isTaskVisible(scope, refId),
   });
 }
@@ -286,6 +291,21 @@ export async function updateTask(
       throw HttpError.forbidden('You have read-only (comment-only) access to this task');
     }
   }
+
+  // Due date (Nov 2026 plan, D12): only the creator, their supervisors or an
+  // Admin may move it; the assignee asks for a new date instead.
+  const dueChanging =
+    input.dueAt !== undefined &&
+    (input.dueAt?.getTime() ?? null) !== (existing.dueAt?.getTime() ?? null);
+  if (dueChanging && !opts.allowReviewExit && !(await canChangeDueDate(actor, existing))) {
+    throw HttpError.forbidden(
+      'Only the task’s creator, someone above them, or an Admin can change the due date',
+    );
+  }
+
+  // Project flag (Nov 2026 plan, F1): checked against the task's levels.
+  const projectChanging = input.isProject !== undefined && input.isProject !== existing.isProject;
+  if (projectChanging) await assertCanSetProject(prisma, id, input.isProject!);
 
   const inReview = existing.status === 'Review';
   const enteringReview = input.status === 'Review' && existing.status !== 'Review';
@@ -496,6 +516,8 @@ export async function updateTask(
         ...(alertGroupChanging ? { alertGroupId: input.alertGroupId ?? null } : {}),
         ...(alertTypeChanging ? { alertType: input.alertType ?? null } : {}),
         ...(statusChanged ? { statusChangedAt: new Date() } : {}),
+        ...(projectChanging ? { isProject: input.isProject } : {}),
+        lastActivityAt: new Date(),
         ...reviewData,
         // creatorId, createdAt, and id are never updatable.
       },
@@ -509,6 +531,14 @@ export async function updateTask(
       descriptionChanged,
       statusDetail: opts.statusDetail,
     });
+    if (projectChanging) {
+      entries.push({
+        taskId: id,
+        userId: actorId,
+        field: TASK_HISTORY_FIELDS.project,
+        changeType: input.isProject ? 'added' : 'removed',
+      });
+    }
     if (input.coalesceHistory) {
       // Gantt drag: coalesce Start/Due entries with a recent one; log the rest normally.
       const dateFields: string[] = [TASK_HISTORY_FIELDS.startAt, TASK_HISTORY_FIELDS.dueAt];
@@ -681,45 +711,8 @@ async function resolveAssigneeEmails(ids: (string | null)[]): Promise<Map<string
   return new Map(users.map((u) => [u.id, u.email]));
 }
 
-/**
- * Delete a task. Admin-only (enforced here as well as at the route). Deletes the
- * task row — the DB cascades its comments, attachments, mentions, and
- * mention-event rows — then best-effort removes every associated storage object
- * (both task-level and comment-level attachment files).
- */
-export async function deleteTask(actor: { id: string; role: Role }, id: number): Promise<void> {
-  if (actor.role !== 'Admin') {
-    throw HttpError.forbidden('Only an administrator can delete a task');
-  }
-
-  const task = await prisma.task.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      attachments: { select: { storageKey: true } },
-      comments: { select: { attachments: { select: { storageKey: true } } } },
-    },
-  });
-  if (!task) throw HttpError.notFound('Task not found');
-
-  const storageKeys = [
-    ...task.attachments.map((a) => a.storageKey),
-    ...task.comments.flatMap((c) => c.attachments.map((a) => a.storageKey)),
-  ];
-
-  // No history entry on delete: the task (and its cascading TaskHistory rows) is
-  // being removed entirely, so there is nowhere for a "deleted" entry to live.
-  await prisma.task.delete({ where: { id } });
-
-  const storage = getStorage();
-  for (const key of storageKeys) {
-    try {
-      await storage.deleteObject(key);
-    } catch (err) {
-      console.error('Failed to delete storage object during task delete', key, err);
-    }
-  }
-}
+// Deleting (and restoring) tasks lives in task-delete.service.ts (soft delete).
+export { deleteTask } from './task-delete.service.js';
 
 /** All task ids in the subtree rooted at `rootId` (root first, BFS order). The
  * Parent/Child graph is acyclic, so no cycle guard is needed. */

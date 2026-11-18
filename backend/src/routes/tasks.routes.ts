@@ -36,6 +36,8 @@ import {
   addDependencyController,
   removeDependencyController,
   deleteTaskController,
+  listDeletedTasksController,
+  restoreTaskController,
   duplicateTaskController,
   saveTaskAsTemplateController,
   setTaskPrivateController,
@@ -76,6 +78,8 @@ tasksRouter.post('/', validateBody(createTaskSchema), asyncHandler(createTaskCon
 // `/search`, `/tags`, `/query`, `/export`, `/ghosts` must be declared before `/:id`.
 tasksRouter.get('/search', asyncHandler(searchTasksController));
 tasksRouter.get('/tags', asyncHandler(listTagsController));
+// Soft-deleted tasks (Admin): the list and restore.
+tasksRouter.get('/deleted', asyncHandler(listDeletedTasksController));
 // Phase 11: computed ghost previews of recurring tasks (Gantt/Calendar).
 tasksRouter.get('/ghosts', asyncHandler(taskGhostsController));
 // Task Search screen (Phase 6): POST bodies carry filters/sort/pagination.
@@ -102,8 +106,10 @@ tasksRouter.get('/:id/reviewer-candidates', asyncHandler(reviewerCandidatesContr
 // Review workflow (Phase 10): leave Review via the Reviewed / Recall actions.
 tasksRouter.post('/:id/reviewed', asyncHandler(reviewedController));
 tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));
-// Deleting a task is Admin-only (also enforced in the service).
+// Deleting a task is Admin-only (also enforced in the service). It is a soft
+// delete: an Admin can restore it.
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
+tasksRouter.post('/:id/restore', asyncHandler(restoreTaskController));
 // Duplicate a task, optionally its whole sub-tree.
 tasksRouter.post(
   '/:id/duplicate',

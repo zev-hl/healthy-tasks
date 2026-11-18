@@ -15,6 +15,7 @@ import {
   type PresignAttachmentResponse,
   type Role,
   type TaskDetailDto,
+  isViewOnlyAccess,
 } from '@healthy-tasks/shared';
 
 /** The acting user, as populated on req.user by requireAuth. */
@@ -158,7 +159,7 @@ export async function presignCommentDraftUpload(
   input: UploadInput,
 ): Promise<PresignAttachmentResponse> {
   const access = await requireTaskAccess(actor, taskId);
-  if (access.level === 'tree') {
+  if (isViewOnlyAccess(access.level)) {
     throw HttpError.forbidden('You have read-only access to this task and cannot comment on it');
   }
   assertValidUpload(input.contentType, input.size);

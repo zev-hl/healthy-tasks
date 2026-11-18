@@ -286,10 +286,17 @@ export interface ActiveUserDto extends TaskUserRef {
  *  - `tree`    — read-only visibility inherited via Parent/Child tree position
  *                (down from a full-access ancestor, or up from any accessible
  *                descendant). Suspended when the task is Private.
- * A user with none of these never receives the task at all (404 / absent from
- * lists), so `none` is not a value the API returns. See docs/architecture.md.
+ *  - `view`    — read-only because every active user may read every non-private
+ *                task (Nov 2026 plan, B1). Like `tree`: no editing, no comments.
+ * Only a Private task can be hidden; a user who cannot see it never receives it
+ * (404 / absent from lists), so `none` is not a value the API returns. See
+ * docs/architecture.md.
  */
-export const TASK_ACCESS_LEVELS = ['full', 'comment', 'tree'] as const;
+export const TASK_ACCESS_LEVELS = ['full', 'comment', 'tree', 'view'] as const;
+/** True for the read-only levels that also may not comment. */
+export function isViewOnlyAccess(level: TaskAccessLevel): boolean {
+  return level === 'tree' || level === 'view';
+}
 export type TaskAccessLevel = (typeof TASK_ACCESS_LEVELS)[number];
 
 /**
@@ -324,6 +331,11 @@ export interface TaskDto {
   // Phase 13: while true, mention-only access is suspended and the task is
   // visible only to {Admin, Assignee, Assignee's supervisor chain}.
   isPrivate: boolean;
+  // Nov 2026 plan: a project is a top-level task marked as one
+  // (Project › Task › Sub-task).
+  isProject: boolean;
+  /** When anything last happened on the task (edit, comment, file). ISO-8601. */
+  lastActivityAt: string;
   // Phase 10 review workflow. All null unless the task is currently in Review.
   // reviewInitiator = who sent it to Review (audit/context only).
   // priorAssignee / priorStatus = what to restore when it leaves Review.
@@ -388,6 +400,12 @@ export interface TaskDetailDto extends TaskDto {
    * in the Assignee's supervisor chain, but never the Assignee themselves.
    */
   canTogglePrivate: boolean;
+  /**
+   * Whether the requesting user may change the due date: the task's creator,
+   * someone above the creator in the org chart, or an Admin (Nov 2026 plan).
+   * For a task with no creator (made from an alert), the assignee's supervisors.
+   */
+  canChangeDue: boolean;
   /**
    * Count of reminders on this task across ALL users (Reminders overhaul). The
    * frontend uses it to decide whether to show the "reminders will be removed"
@@ -593,6 +611,23 @@ export const TASK_HISTORY_CHANGE_TYPES = ['updated', 'added', 'removed'] as cons
 export type TaskHistoryChangeType = (typeof TASK_HISTORY_CHANGE_TYPES)[number];
 
 /**
+ * A soft-deleted task in the Admin's Deleted tasks list (Nov 2026 plan, D10).
+ * Deleting a task deletes its sub-tasks with it; the list shows the task that
+ * was deleted, with how many sub-tasks went with it, and restoring brings them
+ * all back.
+ */
+export interface DeletedTaskDto {
+  id: number;
+  name: string;
+  status: TaskStatus;
+  isProject: boolean;
+  deletedAt: string; // ISO-8601
+  deletedBy: TaskUserRef | null;
+  /** Sub-tasks (at any depth) deleted together with it. */
+  subtaskCount: number;
+}
+
+/**
  * Known `field` keys for a history entry. `dependency:*` and `merge` are the
  * non-obvious ones; everything else mirrors a task attribute. The string is
  * open-ended on the wire — these are the values the app produces and formats.
@@ -621,6 +656,9 @@ export const TASK_HISTORY_FIELDS = {
   alertType: 'alertType',
   // HLAI-112: the task was made automatically from an Exclusives alert.
   alert: 'alert',
+  // Nov 2026 plan, Stage 0.
+  project: 'project',
+  deleted: 'deleted',
 } as const;
 
 /** Human-readable label for a history `field` key (falls back to the key). */
@@ -644,6 +682,8 @@ export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
   alertGroup: 'Alert Group',
   alertType: 'Alert Type',
   alert: 'Alert',
+  project: 'Project',
+  deleted: 'Deleted',
 };
 
 /** A single change-history entry for a task, newest-first in listings. */
@@ -937,6 +977,11 @@ export interface TaskRowDto {
    * be both (mentioned AND tree-inherited).
    */
   treeOnly: boolean;
+  /**
+   * True when the row is read-only only because every user may read every
+   * non-private task (no full, mention or tree access). Read-only like the others.
+   */
+  viewOnly: boolean;
   /** Department Duties: the task's duty and the assignee ⇄ duty ⚠ flag. */
   duty: DutyRef | null;
   dutyMismatch: boolean;
@@ -1513,10 +1558,20 @@ export interface TemplateOccurrenceDto {
 }
 
 /** Full template with its tree, dependencies, and a summary of its occurrences. */
+/** The department a task template belongs to (null = company-wide). */
+export interface TemplateDepartmentRef {
+  id: string;
+  name: string;
+  color: string;
+  archived: boolean;
+}
+
 export interface TemplateDto {
   id: number;
   name: string;
   description: string | null;
+  /** Nov 2026 plan (G1): null = company-wide. */
+  department: TemplateDepartmentRef | null;
   createdBy: TaskUserRef;
   recurrenceType: RecurrenceType;
   intervalCount: number | null;
@@ -1543,6 +1598,8 @@ export interface TemplateSummaryDto {
   id: number;
   name: string;
   description: string | null;
+  /** Nov 2026 plan (G1/G2): the list is grouped by this; null = company-wide. */
+  department: TemplateDepartmentRef | null;
   createdBy: TaskUserRef;
   recurrenceType: RecurrenceType;
   isActive: boolean;
@@ -2592,6 +2649,10 @@ export interface DutyDto {
   departmentId: string;
   name: string;
   description: string | null;
+  /** Nov 2026 plan (I4): the duty's SOP, sanitized rich text. */
+  sop: string | null;
+  /** Nov 2026 plan (I4): a link to the duty's training video. */
+  videoUrl: string | null;
   archived: boolean;
   /** Active people who hold this duty. */
   peopleCount: number;

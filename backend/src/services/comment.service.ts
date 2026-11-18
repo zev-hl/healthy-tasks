@@ -17,6 +17,7 @@ import {
   TASK_HISTORY_FIELDS,
   type Role,
   type TaskDetailDto,
+  isViewOnlyAccess,
 } from '@healthy-tasks/shared';
 
 export interface Actor {
@@ -119,7 +120,7 @@ export async function createComment(
   // gets 404 (existence hidden); a purely tree-inherited (read-only) viewer gets
   // 403 — tree visibility is read-only and does not grant commenting.
   const access = await requireTaskAccess(actor, taskId);
-  if (access.level === 'tree') {
+  if (isViewOnlyAccess(access.level)) {
     throw HttpError.forbidden('You have read-only access to this task and cannot comment on it');
   }
 

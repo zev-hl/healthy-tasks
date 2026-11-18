@@ -49,6 +49,10 @@ export async function recordHistory(
       detail: e.detail ?? null,
     })),
   });
+  // Every history entry is activity on its task (Nov 2026 plan: the Stale
+  // count). Raw SQL so the task's updatedAt, the edit-conflict token, stays put.
+  const taskIds = [...new Set(list.map((e) => e.taskId))];
+  await db.$executeRaw`UPDATE "Task" SET "lastActivityAt" = now() WHERE id = ANY(${taskIds}::int[])`;
 }
 
 /** Window (ms) within which a repeated date change coalesces into one entry. */

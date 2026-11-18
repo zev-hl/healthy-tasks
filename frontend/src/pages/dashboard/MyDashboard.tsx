@@ -464,7 +464,7 @@ export function MyDashboard({
                     <span className={cx('hb-due', due?.late && 'late', due?.today && 'today')}>
                       {due?.text ?? 'No due date'}
                     </span>
-                    {t.status === 'Review' || t.mentionOnly || t.treeOnly ? (
+                    {t.status === 'Review' || t.mentionOnly || t.treeOnly || t.viewOnly ? (
                       <StatusPill status={t.status} />
                     ) : (
                       <Select

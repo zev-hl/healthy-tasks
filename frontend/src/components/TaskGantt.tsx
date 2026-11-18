@@ -232,7 +232,7 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
   function onPointerDown(e: React.PointerEvent, task: TaskRowDto, mode: DragMode) {
     e.stopPropagation();
     // Read-only tasks (mention-only OR tree-inherited) can't be dragged to reschedule.
-    if (task.mentionOnly || task.treeOnly) return;
+    if (task.mentionOnly || task.treeOnly || task.viewOnly) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDrag({
       id: task.id,
@@ -539,7 +539,7 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
               {ordered.map(({ task }, i) => {
                 const { startAt, dueAt } = effDates(task);
                 const rowTop = i * ROW_H;
-                const readOnly = task.mentionOnly || task.treeOnly;
+                const readOnly = task.mentionOnly || task.treeOnly || task.viewOnly;
                 const treeCue = task.treeOnly && !task.mentionOnly;
                 const late =
                   !!dueAt &&

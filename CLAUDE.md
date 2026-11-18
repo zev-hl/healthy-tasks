@@ -157,6 +157,14 @@ levels, parent/child tree inheritance, list scoping, assignee restrictions,
 private tasks, and the review workflow. Task queries build their `where` via
 `buildTaskAccessWhere` / access-scope helpers rather than querying `Task`
 directly. Read `docs/architecture.md` §10 before touching task visibility.
+Since the Nov 2026 plan everyone may read every non-private task (`view`, read-only).
+
+### Projects, levels and soft delete (Nov 2026 plan, Stage 0)
+Levels are Project › Task › Sub-task (`services/task-levels.service.ts`); only the
+creator, those above them or an Admin may move a due date. Tasks are soft-deleted:
+the exported `prisma` client hides `deletedAt` rows from every Task query, so raw SQL
+on "Task" must add `"deletedAt" IS NULL`, and only `prismaWithDeleted` (delete, the
+Admin's deleted list, restore) sees them. See `docs/architecture.md` §18.
 
 ### Optimistic concurrency
 Mutable records carry a version; services call `assertNotStale`

@@ -1434,7 +1434,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           <div className="hb-note" role="status">
             {task.access === 'tree'
               ? 'You can see this task because it sits under (or above) a task you have access to. It’s read-only.'
-              : 'You can see this task because you were mentioned in it. It’s read-only, but you can comment.'}
+              : task.access === 'view'
+                ? 'This task isn’t assigned to you or your team, so it’s read-only.'
+                : 'You can see this task because you were mentioned in it. It’s read-only, but you can comment.'}
           </div>
         )}
 

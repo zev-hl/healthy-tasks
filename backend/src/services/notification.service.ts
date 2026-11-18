@@ -119,7 +119,8 @@ export async function createDutyMismatchNotification(params: {
 // --- Reading ---------------------------------------------------------------
 
 function mentionedWhere(userId: string, filter: MentionedFilter) {
-  const base = { userId, type: 'mentioned' as const };
+  // A soft-deleted task's notifications disappear with it (db/prisma.ts).
+  const base = { userId, type: 'mentioned' as const, task: { deletedAt: null } };
   if (filter === 'read') return { ...base, readAt: { not: null } };
   if (filter === 'unread') return { ...base, readAt: null };
   return base;
@@ -164,7 +165,7 @@ export async function listNotifications(
   // The Assigned list also carries Department Duties heads-ups (dutyMismatch),
   // which describe the task's CURRENT assignee and duty.
   const assignedRows = await prisma.notification.findMany({
-    where: { userId, type: { in: ['assigned', 'dutyMismatch'] } },
+    where: { userId, type: { in: ['assigned', 'dutyMismatch'] }, task: { deletedAt: null } },
     include: {
       task: {
         select: {
@@ -198,7 +199,7 @@ export async function listNotifications(
           by: ['blockedId'],
           where: {
             blockedId: { in: taskIds },
-            blocker: { status: { notIn: [...TERMINAL_TASK_STATUSES] } },
+            blocker: { deletedAt: null, status: { notIn: [...TERMINAL_TASK_STATUSES] } },
           },
           _count: { _all: true },
         })
@@ -276,9 +277,16 @@ export async function getUnreadCounts(
 
   const prefs = await getNotificationPreferences(userId);
   const [mentioned, assigned] = await Promise.all([
-    prisma.notification.count({ where: { userId, type: 'mentioned', readAt: null } }),
     prisma.notification.count({
-      where: { userId, type: { in: ['assigned', 'dutyMismatch'] }, readAt: null },
+      where: { userId, type: 'mentioned', readAt: null, task: { deletedAt: null } },
+    }),
+    prisma.notification.count({
+      where: {
+        userId,
+        type: { in: ['assigned', 'dutyMismatch'] },
+        readAt: null,
+        task: { deletedAt: null },
+      },
     }),
   ]);
   let reminders = 0;
@@ -376,7 +384,11 @@ export async function processDueReminderEmails(actor: Actor, now: Date): Promise
  */
 export async function dispatchDueReminderEmails(now: Date): Promise<void> {
   const rows = await prisma.reminder.findMany({
-    where: { canceledAt: null, emailSentAt: null, task: { startAt: { not: null } } },
+    where: {
+      canceledAt: null,
+      emailSentAt: null,
+      task: { startAt: { not: null }, deletedAt: null },
+    },
     select: { userId: true },
     distinct: ['userId'],
   });

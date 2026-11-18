@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
+import { assertCanPlaceUnder } from './task-levels.service.js';
 import { HttpError } from '../utils/http-error.js';
 import { TASK_HISTORY_FIELDS, type DependencyType, type TaskDetailDto, type TaskRef } from '@healthy-tasks/shared';
 import { getTaskDetail } from './task.service.js';
@@ -107,7 +108,9 @@ export async function setParent(
         'Cannot set that parent: it would make the task its own ancestor (circular hierarchy)',
       );
     }
-    await tx.task.update({ where: { id: taskId }, data: { parentId } });
+    // Levels (Project › Task › Sub-task).
+    await assertCanPlaceUnder(tx, taskId, parentId);
+    await tx.task.update({ where: { id: taskId }, data: { parentId, lastActivityAt: new Date() } });
 
     // History: a replaced parent reads as remove-old + add-new; a first parent
     // is just add-new.
@@ -152,6 +155,7 @@ export async function createSubtask(
 ): Promise<TaskDetailDto> {
   await assertCanEditTask(actor, parentId);
   await prisma.$transaction(async (tx) => {
+    await assertCanPlaceUnder(tx, null, parentId);
     const child = await tx.task.create({
       data: { name, creatorId: actor.id, assigneeId: actor.id, tags: [], parentId },
       select: { id: true },

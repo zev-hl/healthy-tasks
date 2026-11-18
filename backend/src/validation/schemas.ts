@@ -227,6 +227,8 @@ export const createTaskSchema = z.object({
   startAt: optionalDateTime,
   dueAt: optionalDateTime,
   dutyId: optionalDutyId,
+  // Nov 2026 plan: create it as a project (a top-level task).
+  isProject: z.boolean().optional(),
 });
 
 // PATCH semantics: every field optional; omitted fields are left unchanged.
@@ -244,6 +246,8 @@ export const updateTaskSchema = z.object({
   // from the service.
   alertGroupId: z.number().int().positive().nullable().optional(),
   alertType: z.enum(EXCLUSIVES_ALERT_TYPES).nullable().optional(),
+  // Nov 2026 plan: mark or unmark as a project (checked against the levels).
+  isProject: z.boolean().optional(),
   // Phase 10: reviewer chosen when sending a task to Review (required by the
   // service only on a transition into Review).
   reviewerId: optionalUserId,
@@ -601,6 +605,8 @@ const templateDependencyInputSchema = z.object({
 export const createTemplateSchema = z.object({
   name: templateName,
   description: optionalText,
+  // Nov 2026 plan (G1): null/omitted = company-wide.
+  departmentId: z.string().uuid().nullable().optional(),
   nodes: z.array(templateNodeInputSchema).min(1, 'A template needs at least one node').max(200),
   dependencies: z.array(templateDependencyInputSchema).max(400).optional(),
   recurrence: recurrenceInputSchema.optional(),
@@ -611,6 +617,7 @@ export const createTemplateSchema = z.object({
 export const updateTemplateSchema = z.object({
   name: templateName.optional(),
   description: optionalText,
+  departmentId: z.string().uuid().nullable().optional(),
   nodes: z.array(templateNodeInputSchema).min(1).max(200).optional(),
   dependencies: z.array(templateDependencyInputSchema).max(400).optional(),
   recurrence: recurrenceInputSchema.optional(),
@@ -948,10 +955,31 @@ export const updateDepartmentSchema = z.object({
   name: departmentName.optional(),
   color: hexColor.optional(),
 });
-export const createDutySchema = z.object({ name: dutyName, description: dutyDescription });
+// Nov 2026 plan (I4): a duty's page holds an SOP (rich text) and a video link.
+const dutyVideoUrl = z
+  .union([
+    z.null(),
+    z.literal(''),
+    z
+      .string()
+      .trim()
+      .max(2000, 'Link is too long')
+      .url('Enter a full link, starting with https://')
+      .refine((v) => /^https?:\/\//i.test(v), 'Enter a link starting with https://'),
+  ])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
+export const createDutySchema = z.object({
+  name: dutyName,
+  description: dutyDescription,
+  sop: richText,
+  videoUrl: dutyVideoUrl,
+});
 export const updateDutySchema = z.object({
   name: dutyName.optional(),
   description: dutyDescription,
+  sop: richText,
+  videoUrl: dutyVideoUrl,
 });
 export type CreateDepartmentInput = z.infer<typeof createDepartmentSchema>;
 export type UpdateDepartmentInput = z.infer<typeof updateDepartmentSchema>;

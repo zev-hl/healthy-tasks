@@ -54,9 +54,9 @@ export const rowInclude = {
   duty: dutyRefSelect,
   // HLAI-118: the special attributes.
   alertGroup: alertGroupRefSelect,
-  _count: { select: { children: true } },
+  _count: { select: { children: { where: { deletedAt: null } } } },
   // Phase 10: the predecessor ids that feed the Gantt view's dependency arrows.
-  blockedBy: { select: { blockerId: true } },
+  blockedBy: { where: { blocker: { deletedAt: null } }, select: { blockerId: true } },
 } as const;
 
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof rowInclude }>;
@@ -153,9 +153,9 @@ function relationWhere(rel: 'parent' | 'child' | 'standalone'): Prisma.TaskWhere
     case 'child':
       return { parentId: { not: null } };
     case 'parent':
-      return { parentId: null, children: { some: {} } };
+      return { parentId: null, children: { some: { deletedAt: null } } };
     case 'standalone':
-      return { parentId: null, children: { none: {} } };
+      return { parentId: null, children: { none: { deletedAt: null } } };
   }
 }
 
@@ -214,7 +214,11 @@ export async function buildWhere(
   if (f.creatorIds && f.creatorIds.length > 0) and.push({ creatorId: { in: f.creatorIds } });
   // "Blocked" = has at least one incomplete blocker (a non-terminal isBlockedBy).
   if (f.blocked) {
-    and.push({ blockedBy: { some: { blocker: { status: { notIn: [...TERMINAL_TASK_STATUSES] } } } } });
+    and.push({
+      blockedBy: {
+        some: { blocker: { deletedAt: null, status: { notIn: [...TERMINAL_TASK_STATUSES] } } },
+      },
+    });
   }
 
   // Template provenance (Phase 11): filter by instance label (partial) or source
