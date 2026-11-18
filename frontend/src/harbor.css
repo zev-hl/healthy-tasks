@@ -8699,3 +8699,49 @@ textarea.hb-tpl-input {
     align-items: center;
   }
 }
+
+/* Comments: search in the filter row, and an unsent draft (Nov 2026 plan). */
+.hb-csearch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 0 10px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+}
+.hb-csearch:focus-within {
+  border-color: var(--accent);
+}
+.hb-csearch input {
+  all: unset;
+  width: 150px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.comment-composer-stub.has-draft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-3);
+}
+.hb-draft-tag {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft);
+  color: var(--warn-deep);
+  font-size: 12px;
+  font-weight: 600;
+}
+.hb-draft-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}

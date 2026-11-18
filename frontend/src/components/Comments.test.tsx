@@ -87,6 +87,7 @@ const settle = () => act(async () => void (await Promise.resolve()));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   createComment.mockResolvedValue(task);
   presign.mockImplementation((_taskId: number, meta: { filename: string }) =>
     Promise.resolve({
@@ -271,5 +272,47 @@ describe('Comments quick filters', () => {
     expect(screen.getByText('No comments have files.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show all' }));
     expect(screen.getByText('Price check done')).toBeInTheDocument();
+  });
+
+  it('searches the comments by their text', () => {
+    renderWithRouter(<Comments task={threaded} currentUser={currentUser} onChanged={() => {}} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search comments' }), {
+      target: { value: 'approve' },
+    });
+    expect(screen.queryByText('Price check done')).toBeNull();
+    expect(screen.getByText('Can you approve?')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search comments' }), {
+      target: { value: 'nothing like this' },
+    });
+    expect(screen.getByText('No comments match your search.')).toBeInTheDocument();
+  });
+});
+
+describe('Comments — unsent drafts', () => {
+  it('keeps an unsent comment on this browser and offers to finish it', () => {
+    const view = renderWithRouter(
+      <Comments task={task} currentUser={currentUser} onChanged={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Write a comment/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'New comment' }), {
+      target: { value: '<p>Half a thought</p>' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as draft' }));
+    expect(screen.getByRole('button', { name: /Finish comment/ })).toHaveTextContent(
+      'Half a thought',
+    );
+    view.unmount();
+    // Back on the task later: still there.
+    renderWithRouter(<Comments task={task} currentUser={currentUser} onChanged={() => {}} />);
+    expect(screen.getByRole('button', { name: /Finish comment/ })).toBeInTheDocument();
+  });
+
+  it('forgets the draft once posted or discarded', async () => {
+    localStorage.setItem('hb-comment-draft:u1:7', '<p>Old idea</p>');
+    renderWithRouter(<Comments task={task} currentUser={currentUser} onChanged={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /Finish comment/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(localStorage.getItem('hb-comment-draft:u1:7')).toBeNull();
+    expect(screen.getByRole('button', { name: /Write a comment/ })).toBeInTheDocument();
   });
 });

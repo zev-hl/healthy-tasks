@@ -18,7 +18,32 @@ import { Avatar, userLabel } from './ui/Avatar';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { TimeStamp } from './ui/TimeStamp';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, Search } from 'lucide-react';
+
+/** The text of a comment's HTML, for search and to tell an empty draft. */
+export function plainText(html: string): string {
+  if (!html) return '';
+  return (new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '').trim();
+}
+
+// An unsent comment is kept on this browser (Nov 2026 plan, D4a): per person
+// and task, text only (files picked for it are not kept).
+const draftKey = (userId: string, taskId: number) => `hb-comment-draft:${userId}:${taskId}`;
+function readDraft(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
+  }
+}
+function writeDraft(key: string, html: string) {
+  try {
+    if (plainText(html)) localStorage.setItem(key, html);
+    else localStorage.removeItem(key);
+  } catch {
+    /* not kept */
+  }
+}
 
 interface Props {
   task: TaskDetailDto;
@@ -30,7 +55,11 @@ interface Props {
 
 export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props) {
   const [composerKey, setComposerKey] = useState(0);
-  const [composerBody, setComposerBody] = useState('');
+  const draftId = draftKey(currentUser.id, task.id);
+  const [composerBody, setComposerBody] = useState(() => readDraft(draftId));
+  // The draft the editor opens with (it takes its starting text once).
+  const [composerStart, setComposerStart] = useState(composerBody);
+  const hasDraft = plainText(composerBody) !== '';
   const [composerOpen, setComposerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +77,15 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   const mentionsMe = (c: CommentDto) =>
     (c.mentionedUsers ?? []).some((u) => u.id === currentUser.id);
   const hasFiles = (c: CommentDto) => (c.attachments ?? []).length > 0;
-  const shownComments = task.comments.filter((c) =>
-    show === 'mentions' ? mentionsMe(c) : show === 'files' ? hasFiles(c) : true,
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const shownComments = task.comments.filter(
+    (c) =>
+      (show === 'mentions' ? mentionsMe(c) : show === 'files' ? hasFiles(c) : true) &&
+      (!q ||
+        plainText(c.body).toLowerCase().includes(q) ||
+        userLabel(c.author).toLowerCase().includes(q) ||
+        (c.attachments ?? []).some((a) => a.filename.toLowerCase().includes(q))),
   );
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,10 +123,8 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   // text has changed) so the page's unsaved-changes guard can include it.
   const editingOriginal =
     editingId !== null ? (task.comments.find((c) => c.id === editingId)?.body ?? '') : '';
-  const commentsDirty =
-    composerBody.trim() !== '' ||
-    pending.length > 0 ||
-    (editingId !== null && editBody !== editingOriginal);
+  // The comment's text is kept on this browser, so only its files and an edit count.
+  const commentsDirty = pending.length > 0 || (editingId !== null && editBody !== editingOriginal);
   useEffect(() => {
     onDirtyChange?.(commentsDirty);
   }, [commentsDirty, onDirtyChange]);
@@ -162,6 +196,8 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
         }),
       );
       setComposerBody('');
+      setComposerStart('');
+      writeDraft(draftId, '');
       setPending([]);
       setComposerKey((k) => k + 1); // remount to clear the editor
       setComposerOpen(false); // collapse back to the single-line prompt
@@ -184,8 +220,18 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
     return staged;
   }
 
-  function cancelComposer() {
+  /** Close the box; its text stays as a draft ("Finish comment"). */
+  function closeComposer() {
+    setComposerStart(composerBody);
+    setPending([]);
+    setComposerKey((k) => k + 1);
+    setComposerOpen(false);
+  }
+
+  function discardDraft() {
     setComposerBody('');
+    setComposerStart('');
+    writeDraft(draftId, '');
     setPending([]);
     setComposerKey((k) => k + 1); // remount to clear the editor
     setComposerOpen(false);
@@ -252,8 +298,11 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
             <>
               <RichTextEditor
                 key={`composer-${composerKey}`}
-                value=""
-                onChange={setComposerBody}
+                value={composerStart}
+                onChange={(html) => {
+                  setComposerBody(html);
+                  writeDraft(draftId, html);
+                }}
                 withMentions
                 mentionFetch={mentionFetch}
                 ariaLabel="New comment"
@@ -317,19 +366,37 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                   type="button"
                   className="secondary"
                   disabled={submitting}
-                  onClick={cancelComposer}
+                  onClick={closeComposer}
+                  title={hasDraft ? 'Kept as a draft on this browser' : undefined}
                 >
-                  Cancel
+                  {hasDraft ? 'Keep as draft' : 'Cancel'}
                 </button>
+                {hasDraft && (
+                  <button
+                    type="button"
+                    className="secondary danger"
+                    disabled={submitting}
+                    onClick={discardDraft}
+                  >
+                    Discard
+                  </button>
+                )}
               </div>
             </>
           ) : (
             <button
               type="button"
-              className="comment-composer-stub"
+              className={`comment-composer-stub${hasDraft ? ' has-draft' : ''}`}
               onClick={() => setComposerOpen(true)}
             >
-              Write a comment… use @ to mention someone
+              {hasDraft ? (
+                <>
+                  <span className="hb-draft-tag">Draft</span> Finish comment:{' '}
+                  <span className="hb-draft-text">{plainText(composerBody)}</span>
+                </>
+              ) : (
+                'Write a comment… use @ to mention someone'
+              )}
             </button>
           )}
         </div>
@@ -354,6 +421,16 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
               {label}
             </button>
           ))}
+          <label className="hb-csearch">
+            <Search size={14} aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search comments"
+              aria-label="Search comments"
+            />
+          </label>
         </div>
       )}
 
@@ -363,8 +440,19 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
         </EmptyState>
       ) : shownComments.length === 0 ? (
         <p className="hb-cfilter-none">
-          {show === 'mentions' ? 'No comments mention you.' : 'No comments have files.'}{' '}
-          <button type="button" className="hb-btn hb-btn-link" onClick={() => setShow('all')}>
+          {q
+            ? 'No comments match your search.'
+            : show === 'mentions'
+              ? 'No comments mention you.'
+              : 'No comments have files.'}{' '}
+          <button
+            type="button"
+            className="hb-btn hb-btn-link"
+            onClick={() => {
+              setShow('all');
+              setQuery('');
+            }}
+          >
             Show all
           </button>
         </p>
