@@ -254,7 +254,7 @@ export function TaskCalendar({
           type="button"
           className="hb-tcal-ev is-ghost"
           style={{ top, left, width }}
-          title={`Upcoming occurrence #${g.seq} of “${g.name}” — click to create it now`}
+          title={`Coming repeat of “${g.name}” (number ${g.seq}): click to create it now`}
           onClick={() => void materializeGhost(g)}
           disabled={materializing === key}
         >

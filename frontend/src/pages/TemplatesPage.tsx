@@ -28,7 +28,6 @@ import {
   X,
 } from 'lucide-react';
 import {
-  RECURRENCE_TYPE_LABELS,
   RECURRENCE_UNIT_LABELS,
   RECURRENCE_UNITS,
   TASK_PRIORITIES,
@@ -379,8 +378,8 @@ export function TemplatesPage() {
           <>
             <Link to="/tasks">Tasks</Link> ›{' '}
             {loading
-              ? 'Reusable task trees'
-              : `${plural(list.length, 'template')} · reusable task trees with relative dates, roles and repeats`}
+              ? 'Reusable sets of tasks'
+              : `${plural(list.length, 'template')} · reusable sets of tasks with their own dates, people and repeats`}
           </>
         }
         newTask={false}
@@ -464,7 +463,7 @@ export function TemplatesPage() {
                         </span>
                       </div>
                       <div className="hb-tpl-facts">
-                        <span title={RECURRENCE_TYPE_LABELS[t.recurrenceType]}>
+                        <span title={REPEAT_LABEL[t.recurrenceType]}>
                           <Pill tone={REC_TONE[t.recurrenceType]}>
                             {REC_SHORT[t.recurrenceType]}
                           </Pill>
@@ -548,7 +547,7 @@ export function TemplatesPage() {
                             {t.name}
                           </button>
                           <span className="hb-sub">
-                            {RECURRENCE_TYPE_LABELS[t.recurrenceType]} ·{' '}
+                            {REPEAT_LABEL[t.recurrenceType]} ·{' '}
                             {t.occurrenceCount
                               ? `made ${plural(t.occurrenceCount, 'time')}`
                               : 'not made yet'}
@@ -569,7 +568,7 @@ export function TemplatesPage() {
                   />
                   <ol className="hb-tpl-how">
                     <li>
-                      <strong>Build a task tree.</strong> Each task can have sub-tasks, a duty, a
+                      <strong>Build the tasks.</strong> Each task can have sub-tasks, a duty, a
                       priority, tags and tasks it waits on.
                     </li>
                     <li>
@@ -929,7 +928,7 @@ function TemplateEditor({
               type="button"
               className={cx('hb-tpl-edit', open && 'is-on')}
               aria-expanded={open}
-              aria-label={`${open ? 'Close' : 'Edit'} details for node ${idx + 1}`}
+              aria-label={`${open ? 'Close' : 'Edit'} details for task ${idx + 1}`}
               onClick={() => setOpen(n.key, !open)}
             >
               {open ? 'Done' : 'Details'}
@@ -938,7 +937,7 @@ function TemplateEditor({
               <button
                 type="button"
                 className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
-                aria-label={`Remove node ${idx + 1}`}
+                aria-label={`Remove task ${idx + 1}`}
                 title="Remove"
                 onClick={() => removeNode(n.key)}
               >
@@ -955,16 +954,16 @@ function TemplateEditor({
                   <RichTextEditor
                     value={n.description}
                     onChange={(html) => patchNode(n.key, { description: html })}
-                    ariaLabel={`Description for node ${idx + 1}`}
+                    ariaLabel={`Description for task ${idx + 1}`}
                   />
                 </div>
                 <div className="hb-tpl-field">
                   <span className="hb-tpl-flabel">Sub-task of</span>
                   {isRoot ? (
-                    <span className="hb-tpl-static">Top of the tree</span>
+                    <span className="hb-tpl-static">The main task (not under another)</span>
                   ) : (
                     <Select
-                      label={`Parent of node ${idx + 1}`}
+                      label={`Task ${idx + 1} is a sub-task of`}
                       value={n.parentKey ?? ''}
                       options={parentOptions(n.key).map((o) => ({
                         value: o.key,
@@ -980,7 +979,7 @@ function TemplateEditor({
                 <div className="hb-tpl-field">
                   <span className="hb-tpl-flabel">Priority</span>
                   <Select
-                    label={`Priority for node ${idx + 1}`}
+                    label={`Priority for task ${idx + 1}`}
                     value={n.defaultPriority}
                     options={priorityOptions}
                     onChange={(v) => patchNode(n.key, { defaultPriority: v })}
@@ -998,7 +997,7 @@ function TemplateEditor({
                 <div className="hb-tpl-field">
                   <span className="hb-tpl-flabel">Department › Duty</span>
                   <Select
-                    label={`Department › Duty for node ${idx + 1}`}
+                    label={`Department › Duty for task ${idx + 1}`}
                     value={n.dutyId}
                     options={dutyOptions(n.dutyId)}
                     searchPlaceholder="Search duties"
@@ -1187,7 +1186,7 @@ function TemplateEditor({
 
   const recTypeOptions: SelectOption<RecurrenceType>[] = (
     ['None', 'Fixed', 'RelativeToCompletion'] as RecurrenceType[]
-  ).map((t) => ({ value: t, label: RECURRENCE_TYPE_LABELS[t] }));
+  ).map((t) => ({ value: t, label: REPEAT_LABEL[t] }));
   const unitOptions: SelectOption<RecurrenceUnit>[] = RECURRENCE_UNITS.map((u) => ({
     value: u,
     label: RECURRENCE_UNIT_LABELS[u],
@@ -1199,8 +1198,8 @@ function TemplateEditor({
       value: 'AfterOccurrences',
       label:
         r.recurrenceType === 'RelativeToCompletion'
-          ? 'Stop after N completions'
-          : 'After N occurrences',
+          ? 'After it’s done a number of times'
+          : 'After a number of times',
     },
   ];
   const showBar = dirty || !!error;
@@ -1267,7 +1266,7 @@ function TemplateEditor({
             <Card className="hb-tpl-tree-card">
               <CardHead
                 icon={<ListTree size={16} aria-hidden="true" />}
-                title="Task tree"
+                title="Tasks and sub-tasks"
                 right={
                   <span className="hb-tpl-tree-tools">
                     <Btn
@@ -1352,9 +1351,9 @@ function TemplateEditor({
                       </div>
                     )}
                     <div className="hb-tpl-field">
-                      <span className="hb-tpl-flabel">Start (anchor) date</span>
+                      <span className="hb-tpl-flabel">Start date</span>
                       <DatePicker
-                        label="Start (anchor) date"
+                        label="Start date"
                         value={r.anchorDate || null}
                         allowClear={false}
                         placeholder="Pick the first Day 0"
@@ -1408,7 +1407,7 @@ function TemplateEditor({
                     <div className="hb-tpl-field">
                       <span className="hb-tpl-flabel">Status</span>
                       <Segmented
-                        label="Recurrence status"
+                        label="Repeat status"
                         value={r.isActive ? 'on' : 'off'}
                         options={[
                           { value: 'on', label: 'Active' },
@@ -1524,8 +1523,9 @@ function TemplateEditor({
           }
         >
           <p className="exc-confirm-sub">
-            This template has {pendingFuture.length} already-created future instance
-            {pendingFuture.length === 1 ? '' : 's'} that haven’t started yet. Update
+            This template has {pendingFuture.length} task
+            {pendingFuture.length === 1 ? ' set' : ' sets'} already created for later dates that
+            haven’t started yet. Update
             {pendingFuture.length === 1 ? ' it' : ' them'} to match your edit? Completed and
             in-progress work is never changed.
           </p>
@@ -1534,6 +1534,13 @@ function TemplateEditor({
     </>
   );
 }
+
+/** Plain words for how a template repeats (the shared labels stay as they are). */
+const REPEAT_LABEL: Record<RecurrenceType, string> = {
+  None: 'Doesn’t repeat (create by hand)',
+  Fixed: 'On a fixed schedule',
+  RelativeToCompletion: 'After the last one is done',
+};
 
 // --- Instantiate panel ("Create tasks"), in the page's side column ------------
 
@@ -1837,7 +1844,7 @@ function InstantiatePanel({
             />
           </div>
           <label className="hb-tpl-field">
-            <span className="hb-tpl-flabel">Instance label (optional)</span>
+            <span className="hb-tpl-flabel">Batch label (optional)</span>
             <input
               className="hb-tpl-input"
               value={label}
