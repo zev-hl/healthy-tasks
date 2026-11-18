@@ -1190,8 +1190,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {/* Header band */}
       <header className={`hb-taskhead${justCompleted ? ' just-completed' : ''}`}>
         <div className="hb-taskhead-main">
-          {(done || task.isPrivate || !canEdit) && (
+          {(done || task.isPrivate || !canEdit || task.isProject) && (
             <div className="hb-flags">
+              {task.isProject && <Pill tone="review">Project</Pill>}
               {done && <Pill tone="green">Done</Pill>}
               {task.status === 'Canceled' && <Pill tone="grey">Canceled</Pill>}
               {task.isPrivate && (
