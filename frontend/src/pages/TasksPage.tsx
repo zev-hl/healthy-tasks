@@ -35,6 +35,7 @@ import { DatePicker } from '../components/harbor/DatePicker';
 import { Popover } from '../components/harbor/Popover';
 import { useToast } from '../components/harbor/Toast';
 import { Btn, Card, CountBadge, Empty, Segmented, cx } from '../components/harbor/ui';
+import { TASK_CREATED_EVENT } from '../components/harbor/QuickTask';
 import { PRIORITY_OPTIONS, dueIsoFromYmd, statusOptions } from '../components/harbor/taskHelpers';
 import { TaskKanban } from '../components/TaskKanban';
 import { TaskCalendar, type CalendarScale } from '../components/TaskCalendar';
@@ -312,6 +313,16 @@ export function TasksPage() {
   useEffect(() => {
     if (hydrated) void loadCounts().catch(() => {});
   }, [hydrated, loadCounts]);
+
+  // A task made from the header's quick "New task" panel shows up straight away.
+  useEffect(() => {
+    const refresh = () => {
+      void runQuery();
+      void loadCounts().catch(() => {});
+    };
+    window.addEventListener(TASK_CREATED_EVENT, refresh);
+    return () => window.removeEventListener(TASK_CREATED_EVENT, refresh);
+  }, [runQuery, loadCounts]);
 
   // Page and selection reset whenever what is shown changes.
   useEffect(() => {

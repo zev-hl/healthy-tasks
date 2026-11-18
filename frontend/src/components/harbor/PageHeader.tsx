@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Plus, Search } from 'lucide-react';
+import { QuickTaskButton } from './QuickTask';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Search } from 'lucide-react';
 import { api } from '../../api/client';
 import { useNotifications } from '../../notifications/NotificationContext';
 import { Popover } from './Popover';
@@ -81,12 +82,7 @@ export function PageHeader({
           </form>
         )}
         {actions}
-        {newTask && (
-          <Link to="/tasks/new" className="hb-btn hb-btn-primary">
-            <Plus size={18} aria-hidden="true" />
-            New task
-          </Link>
-        )}
+        {newTask && <QuickTaskButton />}
         <NotificationBellMenu />
       </div>
       {shownTabs && <div className="hb-tabs-row">{shownTabs}</div>}
