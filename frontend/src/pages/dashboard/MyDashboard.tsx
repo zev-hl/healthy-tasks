@@ -1,4 +1,5 @@
 import { TASK_CREATED_EVENT } from '../../components/harbor/QuickTask';
+import { PeekRow } from '../../components/harbor/TaskPeek';
 import { ActivitySoon } from './ActivitySoon';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -380,7 +381,7 @@ export function MyDashboard({
                 <Empty good>Nothing overdue. Nice.</Empty>
               ) : (
                 overdue.map((t) => (
-                  <div key={t.id} className="hb-row">
+                  <PeekRow key={t.id} id={t.id} name={t.name}>
                     <div className="hb-stack">
                       <Link className="hb-name" to={`/tasks/${t.id}`}>
                         {t.name}
@@ -390,7 +391,7 @@ export function MyDashboard({
                     <Btn kind="ok" onClick={() => setStatus(t, 'Completed')}>
                       <CheckCircle2 size={16} aria-hidden="true" /> Done
                     </Btn>
-                  </div>
+                  </PeekRow>
                 ))
               )}
             </Card>
@@ -407,7 +408,7 @@ export function MyDashboard({
                   <Empty>Nothing is waiting on your review.</Empty>
                 ) : (
                   review.map((t) => (
-                    <div key={t.id} className="hb-row">
+                    <PeekRow key={t.id} id={t.id} name={t.name}>
                       <div className="hb-stack">
                         <Link className="hb-name" to={`/tasks/${t.id}`}>
                           {t.name}
@@ -420,7 +421,7 @@ export function MyDashboard({
                       <Btn kind="ok" onClick={() => markReviewed(t)}>
                         Reviewed
                       </Btn>
-                    </div>
+                    </PeekRow>
                   ))
                 )}
               </Card>
@@ -461,7 +462,7 @@ export function MyDashboard({
               {mine?.map((t) => {
                 const due = dueInfo(t.dueAt, t.status);
                 return (
-                  <div key={t.id} className="hb-row">
+                  <PeekRow key={t.id} id={t.id} name={t.name}>
                     <div className="hb-stack">
                       <Link className="hb-name" to={`/tasks/${t.id}`}>
                         {t.name}
@@ -483,7 +484,7 @@ export function MyDashboard({
                         onChange={(s) => setStatus(t, s)}
                       />
                     )}
-                  </div>
+                  </PeekRow>
                 );
               })}
             </Card>
