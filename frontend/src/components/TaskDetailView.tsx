@@ -84,6 +84,7 @@ import { DutyCrossCheck } from './duties/DutyCrossCheck';
 import { TaskAttributesBar } from './TaskAttributesBar';
 import { TaskAttributeChips } from './TaskAttributeChips';
 import { ExpandIcon } from './ui/ExpandIcon';
+import { ParentBox } from './ParentBox';
 
 type PickerKind = 'parent' | 'child' | DependencyType;
 
@@ -1529,6 +1530,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           </div>
 
           <div className="hb-col hb-tc-desc">
+            {task.parent && <ParentBox parent={task.parent} />}
             <section className="hb-card detail-desc">
               <div className="hb-card-pad">
                 {descHead(false)}
