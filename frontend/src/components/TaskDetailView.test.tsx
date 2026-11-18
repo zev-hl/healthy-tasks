@@ -314,3 +314,53 @@ describe('TaskDetailView — parent box', () => {
     expect(getTask).not.toHaveBeenCalledWith(1);
   });
 });
+
+describe('TaskDetailView — header chips save at once', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  async function renderWith(over: Partial<TaskDetailDto>) {
+    renderWithDataRouter(
+      <TaskDetailView
+        initialTask={{ ...makeTask(null), canChangeDue: true, ...over } as TaskDetailDto}
+        currentUser={me}
+      />,
+      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
+    );
+    await settle();
+  }
+
+  it('saves a priority change straight away, sending only the priority', async () => {
+    await renderWith({});
+    updateTask.mockResolvedValueOnce({ ...makeTask(null), priority: 'High' });
+    fireEvent.click(screen.getByRole('button', { name: /^Priority/ }));
+    fireEvent.click(screen.getByRole('option', { name: /High/ }));
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(7, { priority: 'High' }, '2026-10-21T12:00:00.000Z');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('keeps a title being edited staged while a chip saves', async () => {
+    await renderWith({});
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task title' }), {
+      target: { value: 'Recover the Buy Box today' },
+    });
+    updateTask.mockResolvedValueOnce({ ...makeTask(null), priority: 'Low' });
+    fireEvent.click(screen.getByRole('button', { name: /^Priority/ }));
+    fireEvent.click(screen.getByRole('option', { name: /Low/ }));
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(7, { priority: 'Low' }, expect.any(String));
+    expect(screen.getByRole('textbox', { name: 'Task title' })).toHaveValue(
+      'Recover the Buy Box today',
+    );
+    expect(screen.getByRole('region', { name: 'Unsaved changes' })).toHaveTextContent('title');
+  });
+
+  it('shows the due date in its own place, locked without the right to change it', async () => {
+    await renderWith({ canChangeDue: false, dueAt: '2026-10-01T21:00:00.000Z' });
+    const box = document.querySelector('.hb-taskhead-due')!;
+    expect(box).toHaveClass('is-late');
+    expect(within(box as HTMLElement).getByRole('button', { name: /^Due date/ })).toBeDisabled();
+  });
+});

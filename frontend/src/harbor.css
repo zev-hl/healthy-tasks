@@ -8662,3 +8662,40 @@ textarea.hb-tpl-input {
 .hb-recur-num {
   height: 36px;
 }
+
+/* Task header: the due date in its own place, red once late (Nov 2026 plan). */
+.hb-taskhead-due {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.hb-taskhead-due-k {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hb-taskhead-due .hb-select-chip {
+  height: 36px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.hb-taskhead-due.is-late {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.hb-taskhead-due.is-late .hb-taskhead-due-k {
+  color: var(--danger);
+}
+@media (max-width: 760px) {
+  .hb-taskhead-due {
+    flex-direction: row;
+    align-items: center;
+  }
+}

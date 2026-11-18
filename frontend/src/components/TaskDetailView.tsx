@@ -389,6 +389,88 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setAttrType(t.alertType ?? '');
   }
 
+  // Header chips (status, assignee, dates, priority) save the moment they
+  // change (Nov 2026 plan): no Save bar for them. Only the changed chips are
+  // sent, and only they are refreshed afterwards, so a title, duty or alert
+  // attribute still being edited stays staged for the Save bar. A chip change
+  // waits on the bar only when it needs something first: a duty the new
+  // assignee doesn't hold, or a date that doesn't fit.
+  const [chipTick, setChipTick] = useState(0);
+  const [savingChips, setSavingChips] = useState(false);
+  const chipFromBar = useRef(false);
+  const chipChanges = {
+    ...(assigneeId !== (task.assigneeId ?? '') && {
+      assigneeId: assigneeId === '' ? null : assigneeId,
+    }),
+    ...(priority !== task.priority && { priority }),
+    ...(status !== task.status && { status }),
+    ...((startDate !== persistedStart.date || startTime !== persistedStart.time) && {
+      startAt: stagedStartIso,
+    }),
+    ...((dueDate !== persistedDue.date || dueTime !== persistedDue.time) && {
+      dueAt: stagedDueIso,
+    }),
+  };
+  const chipsDirty = Object.keys(chipChanges).length > 0;
+
+  function syncChips(t: TaskDetailDto) {
+    setAssigneeId(t.assigneeId ?? '');
+    setPriority(t.priority);
+    setStatus(t.status);
+    const s = isoToParts(t.startAt);
+    const d = isoToParts(t.dueAt);
+    setStartDate(s.date);
+    setStartTime(s.time);
+    setDueDate(d.date);
+    setDueTime(d.time);
+  }
+
+  async function saveChips(skipReminderConfirm = false) {
+    if (!chipsDirty || dutyBlocking) return;
+    setFieldsError(null);
+    if ((startTime && !startDate) || (dueTime && !dueDate)) return; // the date comes next
+    if (stagedStartIso && stagedDueIso && new Date(stagedStartIso) >= new Date(stagedDueIso)) {
+      setFieldsError('Start must be earlier than Due');
+      return;
+    }
+    if (status === 'Review' && task.status !== 'Review') {
+      statusChipRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+      setPendingReview(true);
+      return;
+    }
+    const startCleared = !stagedStartIso && task.startAt !== null;
+    const becameCanceled = status === 'Canceled' && task.status !== 'Canceled';
+    if (!skipReminderConfirm && (startCleared || becameCanceled) && task.reminderCount > 0) {
+      chipFromBar.current = true;
+      setPendingReminderRemoval(becameCanceled ? 'task-canceled' : 'start-date-removed');
+      return;
+    }
+    const becameCompleted = status === 'Completed' && task.status !== 'Completed';
+    setSavingChips(true);
+    try {
+      await guard(async () => {
+        const updated = await api.updateTask(task.id, chipChanges, task.updatedAt);
+        applyTask(updated);
+        syncChips(updated);
+        flashSaved();
+        if (becameCompleted) {
+          setJustCompleted(true);
+          window.setTimeout(() => setJustCompleted(false), 1300);
+        }
+      });
+    } catch (err) {
+      setFieldsError(err instanceof ApiError ? err.message : 'Could not save the change');
+    } finally {
+      setSavingChips(false);
+    }
+  }
+  const saveChipsRef = useRef(saveChips);
+  saveChipsRef.current = saveChips;
+  useEffect(() => {
+    if (chipTick > 0) void saveChipsRef.current();
+  }, [chipTick]);
+  const chip = () => setChipTick((n) => n + 1);
+
   // Revert staged fields to the persisted task.
   function discardFields() {
     setFieldsError(null);
@@ -752,6 +834,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     ? task.dutyMismatch && !pairChanged
     : isMismatch(catalog.holdings, doerId, dutyId || null);
   const dutyBlocking = dutyMismatch && pairChanged;
+  // A chip change that waited on a duty mismatch saves once the mismatch is fixed.
+  const wasBlocking = useRef(false);
+  useEffect(() => {
+    if (wasBlocking.current && !dutyBlocking && dutyId === (task.dutyId ?? '')) chip();
+    wasBlocking.current = dutyBlocking;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dutyBlocking]);
   const canGrantDuty =
     !!doerId && (currentUser.role === 'Admin' || isSupervisorAbove(currentUser.id, doerId));
   const doerSupervisor = (() => {
@@ -1012,6 +1101,16 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <span className="hb-live" aria-hidden="true" /> {formatClock(timerElapsed)}
           </span>
         )}
+        {/* Quick actions (D9): Snooze and Request update come in the next stage. */}
+        <Btn
+          onClick={() => {
+            const el = document.getElementById('task-reminders');
+            el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            el?.querySelector<HTMLElement>('button, input')?.focus({ preventScroll: true });
+          }}
+        >
+          <AlarmClock size={15} aria-hidden="true" /> Remind me
+        </Btn>
         {canEdit &&
           !isInReview &&
           (done ? (
@@ -1061,15 +1160,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             >
               <Copy size={16} aria-hidden="true" /> Duplicate task
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/tasks/new');
-              }}
-            >
-              <Plus size={16} aria-hidden="true" /> New task
-            </button>
             {canSaveAsTemplate && (
               <button
                 type="button"
@@ -1079,19 +1169,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 }}
               >
                 <FileStack size={16} aria-hidden="true" /> Save as template
-              </button>
-            )}
-            {task.canTogglePrivate && (
-              <button
-                type="button"
-                disabled={privacyBusy}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void togglePrivate();
-                }}
-              >
-                <Lock size={16} aria-hidden="true" />{' '}
-                {task.isPrivate ? 'Make visible to the team' : 'Make private'}
               </button>
             )}
             {currentUser.role === 'Admin' && (
@@ -1187,7 +1264,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                       {o?.label}
                     </>
                   )}
-                  onChange={(v) => setStatus(v)}
+                  onChange={(v) => {
+                    setStatus(v);
+                    chip();
+                  }}
                 />
               </span>
             )}
@@ -1221,27 +1301,12 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     {assigneeUser ? userLabel(assigneeUser) : 'Unassigned'}
                   </>
                 )}
-                onChange={(v) => setAssigneeId(v)}
+                onChange={(v) => {
+                  setAssigneeId(v);
+                  chip();
+                }}
               />
             )}
-
-            <DatePicker
-              variant="chip"
-              className={`hb-prop${stagedDue?.late ? ' is-late' : ''}${dueDate !== persistedDue.date || dueTime !== persistedDue.time ? ' is-dirty' : ''}`}
-              label="Due date"
-              value={dueDate || null}
-              placeholder="Due date"
-              disabled={!canEdit}
-              time={dueTime}
-              onTimeChange={setDueTime}
-              overdueNote={stagedDue?.late ? `Currently ${stagedDue.text}` : undefined}
-              renderValue={() =>
-                stagedDue
-                  ? `${stagedDue.late ? '' : 'Due '}${stagedDue.text}${dueTime ? ` · ${dueTime}` : ''}`
-                  : 'No due date'
-              }
-              onChange={(v) => handleDueDate(v ?? '')}
-            />
 
             <DatePicker
               variant="chip"
@@ -1251,13 +1316,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               placeholder="Start date"
               disabled={!canEdit}
               time={startTime}
-              onTimeChange={setStartTime}
+              onTimeChange={(t) => {
+                setStartTime(t);
+                chip();
+              }}
               renderValue={(v) =>
                 v
                   ? `Starts ${formatShortDay(v)}${startTime ? ` · ${startTime}` : ''}`
                   : 'No start date'
               }
-              onChange={(v) => handleStartDate(v ?? '')}
+              onChange={(v) => {
+                handleStartDate(v ?? '');
+                chip();
+              }}
             />
 
             {canEdit ? (
@@ -1278,7 +1349,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                     {priority} priority
                   </>
                 )}
-                onChange={(v) => setPriority(v)}
+                onChange={(v) => {
+                  setPriority(v);
+                  chip();
+                }}
               />
             ) : (
               <span className="hb-chip static">
@@ -1358,6 +1432,39 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               onClearDuty={() => setDutyId('')}
             />
           )}
+        </div>
+        {/* The due date in its own place, red once it's late (Nov 2026 plan). */}
+        <div className={`hb-taskhead-due${stagedDue?.late ? ' is-late' : ''}`}>
+          <span className="hb-taskhead-due-k">Due</span>
+          <span
+            title={
+              canEdit && !task.canChangeDue
+                ? 'Only the task’s creator, someone above them, or an Admin can change the due date'
+                : undefined
+            }
+          >
+            <DatePicker
+              variant="chip"
+              className={`hb-prop${stagedDue?.late ? ' is-late' : ''}${dueDate !== persistedDue.date || dueTime !== persistedDue.time ? ' is-dirty' : ''}`}
+              label="Due date"
+              value={dueDate || null}
+              placeholder="Due date"
+              disabled={!canEdit || !task.canChangeDue}
+              time={dueTime}
+              onTimeChange={(t) => {
+                setDueTime(t);
+                chip();
+              }}
+              overdueNote={stagedDue?.late ? `Currently ${stagedDue.text}` : undefined}
+              renderValue={() =>
+                stagedDue ? `${stagedDue.text}${dueTime ? ` · ${dueTime}` : ''}` : 'No due date'
+              }
+              onChange={(v) => {
+                handleDueDate(v ?? '');
+                chip();
+              }}
+            />
+          </span>
         </div>
         <TimeBlock
           task={{
@@ -1766,7 +1873,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
             </section>
 
-            <section className="hb-card">
+            <section className="hb-card" id="task-reminders">
               <div className="hb-card-head">
                 <span className="hb-ic tone-blue">
                   <AlarmClock size={16} aria-hidden="true" />
@@ -1785,7 +1892,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       </div>
 
       {/* One Save for the task's own fields */}
-      {canEdit && (fieldsDirty || conflict || fieldsError) && (
+      {canEdit && ((fieldsDirty && !savingChips) || conflict || fieldsError) && (
         <div className="hb-savebar" role="region" aria-label="Unsaved changes">
           <span className="hb-savebar-dot" aria-hidden="true" />
           <strong>
@@ -1852,7 +1959,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           taskName={task.name}
           currentAssignee={task.assignee ? userLabel(task.assignee) : null}
           returnStatus={TASK_STATUS_LABELS[task.status]}
-          onClose={() => setPendingReview(false)}
+          onClose={() => {
+            setPendingReview(false);
+            setStatus(task.status);
+          }}
           onPick={(reviewerId) => saveReview(reviewerId)}
         />
       )}
@@ -1888,10 +1998,19 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           confirmLabel="Save"
           cancelLabel="Keep editing"
           busy={savingFields}
-          onCancel={() => setPendingReminderRemoval(null)}
+          onCancel={() => {
+            setPendingReminderRemoval(null);
+            if (chipFromBar.current) {
+              chipFromBar.current = false;
+              syncChips(task);
+            }
+          }}
           onConfirm={() => {
             setPendingReminderRemoval(null);
-            void saveFields(true);
+            if (chipFromBar.current) {
+              chipFromBar.current = false;
+              void saveChips(true);
+            } else void saveFields(true);
           }}
         />
       )}
