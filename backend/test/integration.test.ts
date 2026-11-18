@@ -1212,7 +1212,8 @@ describe('task hierarchy (parent/child)', () => {
 
   it('rejects setting a parent to one of its own descendants (transitive cycle)', async () => {
     const tok = await adminToken();
-    const a = await makeTask(tok, 'Task A');
+    // A project, so the chain may be three levels deep (Nov 2026 plan).
+    const a = await makeTask(tok, 'Task A', { isProject: true });
     const b = await makeTask(tok, 'Task B');
     const c = await makeTask(tok, 'Task C');
     // Build a → b → c (b's parent a, c's parent b).
@@ -2154,7 +2155,7 @@ describe('comment @mentions and mention events (Phase 4)', () => {
 });
 
 describe('task deletion (Phase 4, admin-only)', () => {
-  it('forbids non-admins; admin deletes, cascading rows and removing storage objects', async () => {
+  it('forbids non-admins; admin deletes, hiding the task but keeping its rows and files', async () => {
     const admin = await adminToken();
     await seedUser({ email: 'nd@test.local', role: 'Member', password: MEMBER_PASSWORD });
     const memberTok = await login('nd@test.local', MEMBER_PASSWORD);
@@ -2181,18 +2182,16 @@ describe('task deletion (Phase 4, admin-only)', () => {
     let res = await request(app).delete(`/api/tasks/${t.id}`).set(auth(memberTok));
     assert.equal(res.status, 403);
 
-    // Admin deletes; both storage objects removed, rows cascaded.
+    // Admin deletes. Since the Nov 2026 plan it is a soft delete: the task is
+    // gone from the app, but its comments and files stay so it can be restored.
     const before = memoryStorage.__deleted.length;
     res = await request(app).delete(`/api/tasks/${t.id}`).set(auth(admin));
     assert.equal(res.status, 204);
 
     res = await request(app).get(`/api/tasks/${t.id}`).set(auth(admin));
     assert.equal(res.status, 404);
-    assert.ok(
-      memoryStorage.__deleted.length - before >= 2,
-      'both attachment objects should be deleted from storage',
-    );
-    assert.equal(await prisma.comment.count({ where: { taskId: t.id } }), 0);
+    assert.equal(memoryStorage.__deleted.length, before, 'files are kept for a restore');
+    assert.equal(await prisma.comment.count({ where: { taskId: t.id } }), 1);
   });
 });
 
@@ -3038,7 +3037,8 @@ describe('task search dashboard (Phase 7)', () => {
 
   it('partitions parent / child / standalone so they sum to the total', async () => {
     const tok = await adminToken();
-    const p = await makeTask(tok, 'Parent');
+    // A project, so it may hold a grandchild (Nov 2026 plan).
+    const p = await makeTask(tok, 'Parent', { isProject: true });
     const c = await makeTask(tok, 'Child');
     const g = await makeTask(tok, 'Grandchild');
     await makeTask(tok, 'Standalone');
@@ -5309,7 +5309,7 @@ describe('Phase 13: task-level access control', () => {
   const addComment = (token: string, id: number, body: string) =>
     request(app).post(`/api/tasks/${id}/comments`).set(auth(token)).send({ body });
 
-  it('full access = Admin, current Assignee, or a supervisor above them; others 404', async () => {
+  it('full access = Admin, current Assignee, or a supervisor above them; others read-only (view)', async () => {
     const admin = await adminToken();
     const mgr = await seedUser({ email: 'fa-mgr@test.local', role: 'Manager', password: PW });
     const emp = await seedUser({
@@ -5327,7 +5327,10 @@ describe('Phase 13: task-level access control', () => {
     assert.equal((await getTask(empTok, t.id)).status, 200, 'assignee sees it');
     assert.equal((await getTask(mgrTok, t.id)).status, 200, 'supervisor sees it');
     assert.equal((await getTask(admin, t.id)).status, 200, 'admin sees it');
-    assert.equal((await getTask(outTok, t.id)).status, 404, 'unrelated member cannot');
+    // Since the Nov 2026 plan everyone may read a non-private task, read-only.
+    const out = await getTask(outTok, t.id);
+    assert.equal(out.status, 200, 'unrelated member can read it');
+    assert.equal(out.body.access, 'view', 'but only read-only');
   });
 
   it('recomputes access LIVE when the assignee supervisor changes', async () => {
@@ -5344,8 +5347,12 @@ describe('Phase 13: task-level access control', () => {
     const bTok = await login('lv-b@test.local', PW);
     const t = await makeTask(admin, 'Live task', { assigneeId: emp.id });
 
-    assert.equal((await getTask(aTok, t.id)).status, 200, 'original supervisor sees it');
-    assert.equal((await getTask(bTok, t.id)).status, 404, 'the other manager does not');
+    assert.equal((await getTask(aTok, t.id)).body.access, 'full', 'original supervisor edits it');
+    assert.equal(
+      (await getTask(bTok, t.id)).body.access,
+      'view',
+      'the other manager only reads it',
+    );
 
     // Re-parent the employee under mgrB - nothing else changes.
     const moved = await request(app)
@@ -5354,8 +5361,8 @@ describe('Phase 13: task-level access control', () => {
       .send({ supervisorId: mgrB.id });
     assert.equal(moved.status, 200);
 
-    assert.equal((await getTask(aTok, t.id)).status, 404, 'former supervisor lost access');
-    assert.equal((await getTask(bTok, t.id)).status, 200, 'new supervisor gained access');
+    assert.equal((await getTask(aTok, t.id)).body.access, 'view', 'former supervisor lost edit');
+    assert.equal((await getTask(bTok, t.id)).body.access, 'full', 'new supervisor gained edit');
   });
 
   it('mention-only access is live: added on mention, removed when the mention is edited out', async () => {
@@ -5366,8 +5373,8 @@ describe('Phase 13: task-level access control', () => {
     const outTok = await login('mo-out@test.local', PW);
     const t = await makeTask(admin, 'Mention task', { assigneeId: emp.id });
 
-    // Before any mention, the outsider cannot see it.
-    assert.equal((await getTask(outTok, t.id)).status, 404);
+    // Before any mention, the outsider can only read it.
+    assert.equal((await getTask(outTok, t.id)).body.access, 'view');
 
     // The assignee mentions the outsider -> comment-level access.
     const added = await addComment(empTok, t.id, `<p>hi ${mentionSpan(out.id, 'out')}</p>`);
@@ -5391,9 +5398,9 @@ describe('Phase 13: task-level access control', () => {
       .send({ body: '<p>no more mention</p>' });
     assert.equal(edited.status, 200);
     assert.equal(
-      (await getTask(outTok, t.id)).status,
-      404,
-      'access removed when mention edited out',
+      (await getTask(outTok, t.id)).body.access,
+      'view',
+      'comment access removed when mention edited out (read-only remains)',
     );
   });
 
@@ -5853,7 +5860,8 @@ describe('Parent/Child tree access inheritance', () => {
   it('downward: full access to a parent grants READ-ONLY visibility to descendants at any depth', async () => {
     const t = await team();
     // P (emp → mgr full) → C1 (outsider) → C2 (outsider), a 3-deep chain.
-    const p = await makeTask(t.admin, 'Par', { assigneeId: t.emp.id });
+    // A project, so the chain may be three levels deep (Nov 2026 plan).
+    const p = await makeTask(t.admin, 'Par', { assigneeId: t.emp.id, isProject: true });
     const c1 = await makeTask(t.admin, 'C1', { assigneeId: t.out.id });
     const c2 = await makeTask(t.admin, 'C2', { assigneeId: t.out.id });
     await setParent(t.admin, c1.id, p.id);
@@ -5888,7 +5896,7 @@ describe('Parent/Child tree access inheritance', () => {
   it('a user with INDEPENDENT full access to a descendant keeps full edit there (not downgraded)', async () => {
     const t = await team();
     // P (emp) → C1 (emp, also full) → C2 (outsider, tree-only for mgr).
-    const p = await makeTask(t.admin, 'IP', { assigneeId: t.emp.id });
+    const p = await makeTask(t.admin, 'IP', { assigneeId: t.emp.id, isProject: true });
     const c1 = await makeTask(t.admin, 'IC1', { assigneeId: t.emp.id });
     const c2 = await makeTask(t.admin, 'IC2', { assigneeId: t.out.id });
     await setParent(t.admin, c1.id, p.id);
@@ -5941,6 +5949,11 @@ describe('Parent/Child tree access inheritance', () => {
     // inherit — so mgr cannot see X and the reference degrades.
     const task = await makeTask(t.admin, 'DEP-T', { assigneeId: t.emp.id });
     const x = await makeTask(t.admin, 'SecretBlocker', { assigneeId: t.out.id });
+    // Private: since the Nov 2026 plan only a private task can be hidden.
+    await request(app)
+      .patch(`/api/tasks/${x.id}/private`)
+      .set(auth(t.admin))
+      .send({ isPrivate: true });
     await request(app)
       .post(`/api/tasks/${task.id}/dependencies`)
       .set(auth(t.admin))
@@ -5968,6 +5981,10 @@ describe('Parent/Child tree access inheritance', () => {
     const task = await makeTask(t.admin, 'BLK-T', { assigneeId: t.emp.id });
     const x = await makeTask(t.admin, 'HiddenPred', { assigneeId: t.out.id, status: 'InProgress' });
     await request(app)
+      .patch(`/api/tasks/${x.id}/private`)
+      .set(auth(t.admin))
+      .send({ isPrivate: true });
+    await request(app)
       .post(`/api/tasks/${task.id}/dependencies`)
       .set(auth(t.admin))
       .send({ type: 'blockedBy', otherTaskId: x.id });
@@ -5987,6 +6004,10 @@ describe('Parent/Child tree access inheritance', () => {
     const t = await team();
     const mine = await makeTask(t.admin, 'PickMine', { assigneeId: t.emp.id });
     const secret = await makeTask(t.admin, 'PickSecret', { assigneeId: t.out.id });
+    await request(app)
+      .patch(`/api/tasks/${secret.id}/private`)
+      .set(auth(t.admin))
+      .send({ isPrivate: true });
 
     const pick = await request(app).get('/api/tasks/search?q=Pick').set(auth(t.empTok));
     const ids = (pick.body as { id: number }[]).map((r) => r.id);
@@ -5999,7 +6020,11 @@ describe('Parent/Child tree access inheritance', () => {
       .post(`/api/tasks/${mine.id}/dependencies`)
       .set(auth(t.empTok))
       .send({ type: 'blockedBy', otherTaskId: dep.id });
-    await patch(t.admin, dep.id, { assigneeId: t.out.id }); // now invisible to emp
+    await patch(t.admin, dep.id, { assigneeId: t.out.id });
+    await request(app)
+      .patch(`/api/tasks/${dep.id}/private`)
+      .set(auth(t.admin))
+      .send({ isPrivate: true }); // now invisible to emp
     assert.equal((await getTask(t.empTok, dep.id)).status, 404, 'the linked task is now invisible');
     const removed = await request(app)
       .delete(`/api/tasks/${mine.id}/dependencies`)
@@ -6276,7 +6301,7 @@ describe('task -> template conversion (follow-up)', () => {
       .send({ name: 'Nope', includeDescendants: false, includeAttachments: false });
     assert.equal(roleBlocked.status, 403, 'a Member cannot convert even with full access');
 
-    // A Manager with NO relationship to an admin-owned task has no access at all.
+    // A Manager with NO relationship to an admin-owned task can only read it.
     const strangerMgr = await seedUser({
       email: 'conv-stranger@test.local',
       role: 'Manager',
@@ -6289,7 +6314,7 @@ describe('task -> template conversion (follow-up)', () => {
       .post(`/api/tasks/${adminTask.id}/save-as-template`)
       .set(auth(strangerTok))
       .send({ name: 'Nope', includeDescendants: false, includeAttachments: false });
-    assert.equal(accessBlocked.status, 404, 'no full edit access → cannot snapshot the task');
+    assert.equal(accessBlocked.status, 403, 'read-only (view) access → cannot snapshot the task');
 
     // The admin (full access + role) succeeds and does NOT alter the source task.
     const ok = await request(app)
@@ -6306,6 +6331,7 @@ describe('task -> template conversion (follow-up)', () => {
     const admin = await adminToken();
     // Day 0 = the root's Start (Aug 1). Mixed dates across the tree.
     const root = await makeTask(admin, 'Root', {
+      isProject: true, // three levels below need a project on top (Nov 2026 plan)
       startAt: '2026-08-01T00:00:00.000Z',
       dueAt: '2026-08-03T00:00:00.000Z',
     });
@@ -6558,6 +6584,11 @@ describe('Reminders overhaul (A/B/C/D)', () => {
       assigneeId: t.emp.id,
       startAt: futureStart(),
     });
+    // Private: since the Nov 2026 plan only a private task can be out of reach.
+    await request(app)
+      .patch(`/api/tasks/${task.id}/private`)
+      .set(auth(admin))
+      .send({ isPrivate: true });
 
     // The unrelated member can't even see the task, so adding a reminder 404s
     // (indistinguishable from missing — no metadata leaks).
@@ -6583,6 +6614,11 @@ describe('Reminders overhaul (A/B/C/D)', () => {
       assigneeId: emp.id,
       startAt: futureStart(),
     });
+    // Private: since the Nov 2026 plan only a private task can be out of reach.
+    await request(app)
+      .patch(`/api/tasks/${task.id}/private`)
+      .set(auth(admin))
+      .send({ isPrivate: true });
 
     // mgrA (supervisor of the assignee) adds a due reminder and sees it.
     assert.equal((await addReminder(mgrATok, task.id, 60)).status, 201);
@@ -6681,6 +6717,11 @@ describe('Reminders overhaul (A/B/C/D)', () => {
       assigneeId: emp.id,
       startAt: futureStart(),
     });
+    // Private: since the Nov 2026 plan only a private task can be out of reach.
+    await request(app)
+      .patch(`/api/tasks/${task.id}/private`)
+      .set(auth(admin))
+      .send({ isPrivate: true });
 
     assert.equal((await addReminder(empTok, task.id, 60)).status, 201);
     assert.equal((await addReminder(mgrTok, task.id, 60)).status, 201);

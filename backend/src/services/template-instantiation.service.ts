@@ -151,6 +151,20 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
     });
 
     const ordered = orderParentsFirst(nodes as NodeForGen[]);
+    // Levels (Nov 2026 plan, F1): made tasks follow the same rule as any task.
+    // Three levels make the top task a project; more (a template saved before
+    // the rule) is refused until the template is edited.
+    const depthOf = new Map<number, number>();
+    for (const n of ordered) {
+      depthOf.set(n.id, n.parentNodeId == null ? 0 : (depthOf.get(n.parentNodeId) ?? 0) + 1);
+    }
+    const deepest = Math.max(...depthOf.values());
+    if (deepest > 2) {
+      throw HttpError.badRequest(
+        `"${template.name}" has more than three levels. Edit it to a project, its tasks and their sub-tasks before making tasks from it.`,
+      );
+    }
+    const rootIsProject = deepest === 2;
     const nodeIdToTaskId = new Map<number, number>();
     const created: { taskId: number; assigneeId: string | null; nodeId: number }[] = [];
     let rootTaskId: number | null = null;
@@ -184,6 +198,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           startAt,
           dueAt,
           parentId: parentTaskId,
+          isProject: isRoot && rootIsProject,
           instanceLabel,
           templateId,
           templateNodeId: node.id,

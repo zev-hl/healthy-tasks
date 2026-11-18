@@ -12,8 +12,9 @@ import { HttpError } from '../utils/http-error.js';
  * Checked whenever a task is placed under another one or (un)marked as a
  * project. Trees deeper than this from before the rule are left as they are;
  * only a change that would make (or keep making) a tree too deep is refused.
- * Tasks made from a template or a repeat are not checked here: they copy a
- * shape someone already set up.
+ * Templates follow the same rule: one holds at most three levels
+ * (template.service.ts), and tasks made from a three-level template get a
+ * project on top (template-instantiation.service.ts).
  */
 
 type Db = Prisma.TransactionClient | typeof prisma;

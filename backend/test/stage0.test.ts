@@ -211,6 +211,88 @@ describe('Stage 0: task levels (Project › Task › Sub-task)', () => {
   });
 });
 
+describe('Stage 0: task levels in templates', () => {
+  const node = (key: string, parentKey: string | null) => ({ key, parentKey, name: `Node ${key}` });
+
+  it('a template holds at most three levels', async () => {
+    const admin = await login(ADMIN);
+    const res = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({
+        name: 'Too deep',
+        nodes: [node('a', null), node('b', 'a'), node('c', 'b'), node('d', 'c')],
+      });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /three levels/);
+  });
+
+  it('tasks made from a three-level template have a project on top', async () => {
+    const admin = await login(ADMIN);
+    const made = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({ name: 'Launch', nodes: [node('a', null), node('b', 'a'), node('c', 'b')] });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const inst = await request(app)
+      .post(`/api/templates/${made.body.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2027-02-01' });
+    assert.equal(inst.status, 201, JSON.stringify(inst.body));
+    const tasks = await prisma.task.findMany({ orderBy: { id: 'asc' } });
+    assert.equal(tasks.length, 3);
+    assert.deepEqual(
+      tasks.map((t) => t.isProject),
+      [true, false, false],
+    );
+
+    const flat = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({ name: 'Flat', nodes: [node('a', null), node('b', 'a')] });
+    await request(app)
+      .post(`/api/templates/${flat.body.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2027-02-01' });
+    const top = await prisma.task.findFirstOrThrow({ where: { name: 'Node a', isProject: false } });
+    assert.equal(top.parentId, null, 'a two-level template makes a plain task');
+  });
+
+  it('a template saved before the rule with four levels makes nothing until edited', async () => {
+    const admin = await login(ADMIN);
+    const made = await request(app)
+      .post('/api/templates')
+      .set(auth(admin))
+      .send({ name: 'Old', nodes: [node('a', null), node('b', 'a'), node('c', 'b')] });
+    const tpl = await prisma.taskTemplate.findUniqueOrThrow({
+      where: { id: made.body.id },
+      include: { nodes: true },
+    });
+    const c = tpl.nodes.find((n) => n.name === 'Node c')!;
+    await prisma.taskTemplateNode.create({
+      data: { templateId: tpl.id, parentNodeId: c.id, name: 'Node d', orderIndex: 0 },
+    });
+    const inst = await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2027-02-01' });
+    assert.equal(inst.status, 400);
+    assert.equal(await prisma.task.count(), 0);
+  });
+
+  it('a duplicate of a project is a project', async () => {
+    const admin = await login(ADMIN);
+    const p = await makeTask(admin, 'Proj', { isProject: true });
+    const dup = await request(app)
+      .post(`/api/tasks/${p.id}/duplicate`)
+      .set(auth(admin))
+      .send({ includeDescendants: true });
+    assert.ok(dup.status === 200 || dup.status === 201, JSON.stringify(dup.body));
+    const copies = await prisma.task.findMany({ where: { isProject: true } });
+    assert.equal(copies.length, 2);
+  });
+});
+
 describe('Stage 0: due date rights', () => {
   it('the creator, those above them, and an Admin may move it; the assignee may not', async () => {
     const boss = await seedUser('boss@test.local', 'Manager');

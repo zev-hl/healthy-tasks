@@ -1056,8 +1056,10 @@ Changed, on a "T under P" state; its rows exist on no server.
   Levels are Project › Task › Sub-task; a top-level task that is not a project holds
   one level of sub-tasks. Checked when a task is put under another (`setParent`,
   quick sub-task) and when a task is (un)marked as a project. Trees deeper than this
-  from before the rule are left as they are; template and repeat generation copy
-  their shape and are not checked.
+  from before the rule are left as they are.
+  Templates follow the same rule: a template holds at most three levels, tasks made
+  from a three-level template get a project on top, and a template saved earlier
+  with more levels makes nothing until edited. A duplicate of a project is a project.
 - **Due date** (`canChangeDueDate`): only an Admin, the task's creator, or someone
   above the creator may change it (for an alert task with no creator: the assignee's
   supervisors). Other fields keep the usual full-access rule.

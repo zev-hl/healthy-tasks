@@ -833,6 +833,8 @@ export async function duplicateTask(
           alertGroupId: o.alertGroupId,
           alertType: o.alertType,
           parentId,
+          // A copy of a project is a project (only a top task can be one).
+          isProject: oid === rootId && o.isProject,
           // status/statusChangedAt reset to the defaults: a copy is fresh work.
         },
         select: { id: true },

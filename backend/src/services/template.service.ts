@@ -83,6 +83,9 @@ function toRecurrenceConfig(t: {
 
 // --- Tree payload validation ----------------------------------------------
 
+/** Deepest level a template may use: 0 = top, 1 = task, 2 = sub-task. */
+const TEMPLATE_MAX_DEPTH = 2;
+
 /**
  * Validate the node/dependency payload and return the nodes in parent-first
  * order. Enforces: unique keys, exactly one root, every parent/dependency
@@ -123,6 +126,18 @@ function validateAndOrderTree(
   walk(null);
   if (ordered.length !== nodes.length) {
     throw HttpError.badRequest('Template hierarchy has a cycle or an unreachable node');
+  }
+
+  // Levels (Nov 2026 plan, F1): like real tasks, a template holds at most three
+  // levels. Tasks made from a three-level template get a project on top.
+  const depthOf = new Map<string, number>();
+  for (const n of ordered) {
+    depthOf.set(n.key, n.parentKey === null ? 0 : depthOf.get(n.parentKey)! + 1);
+  }
+  if (Math.max(...depthOf.values()) > TEMPLATE_MAX_DEPTH) {
+    throw HttpError.badRequest(
+      'A template can hold three levels: a project, its tasks, and their sub-tasks',
+    );
   }
 
   // Dependencies.
