@@ -2,6 +2,11 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import {
+  alertComparison,
+  EXCLUSIVES_ALERT_TYPE_LABELS,
+  type ExclusivesAlertType,
+} from '@healthy-tasks/shared';
 
 // Every email as a page to open in a browser (HLAI-135), to see how it looks
 // without sending anything. The app's own email functions run with sample
@@ -26,6 +31,174 @@ process.env.EMAIL_DELIVERY = 'direct';
 const TO = 'someone@example.com';
 /** A task name with characters HTML would read, to see they show as typed. */
 const TASK = 'Check the price <before> & after the "Buy Box" change';
+
+/** One sample alert of each type: its saved before/now and the message the app writes. */
+const ALERTS: {
+  type: ExclusivesAlertType;
+  code: string;
+  prev: string | null;
+  now: string | null;
+  message: string;
+}[] = [
+  {
+    type: 'TitleChanged',
+    code: 'TC',
+    prev: 'Organic Green Tea, 100 Bags',
+    now: 'Organic Green Tea with Mint, 100 Bags',
+    message: 'Title changed.',
+  },
+  {
+    type: 'BulletPointsChanged',
+    code: 'BP',
+    prev: '2. Brewed in five minutes\n4. Sealed for freshness',
+    now: '2. Steeped in three minutes\n4. (none)',
+    message: 'Bullets changed.',
+  },
+  {
+    type: 'DescriptionChanged',
+    code: 'DC',
+    prev:
+      'Our tea is picked by hand and made for busy mornings, brewed in five minutes with water ' +
+      'just off the boil. Each bag is sealed for freshness and packed in a recyclable box.',
+    now:
+      'Our tea is picked by hand and made for busy mornings, steeped in three minutes with water ' +
+      'just off the boil. Each bag is sealed and compostable, packed in a recyclable box.',
+    message: 'Description changed.',
+  },
+  {
+    type: 'MainImageChanged',
+    code: 'IC',
+    prev: 'https://placehold.co/400x400/png?text=Old+image',
+    now: 'https://placehold.co/400x400/0f7b6c/ffffff/png?text=New+image',
+    message: 'Main image changed.',
+  },
+  { type: 'BrandChanged', code: 'BC', prev: 'Acme Naturals', now: null, message: 'Brand changed.' },
+  {
+    type: 'CategoryChanged',
+    code: 'CC',
+    prev: 'Grocery > Tea > Green',
+    now: 'Grocery > Tea > Herbal',
+    message: 'Category changed.',
+  },
+  {
+    type: 'DimensionsChanged',
+    code: 'DM',
+    prev: '10in x 5in x 2in',
+    now: '10in x 6in',
+    message: 'Dimensions changed.',
+  },
+  { type: 'PriceChanged', code: 'PC', prev: '34.99', now: '31.49', message: 'Price changed.' },
+  { type: 'NumberOfSellersChanged', code: 'SC', prev: '3', now: '4', message: 'Offers changed.' },
+  {
+    type: 'CompetitivePriceChanged',
+    code: 'CH',
+    prev: '7.14',
+    now: '7.86',
+    message: "Amazon's competitive price changed from $7.14 to $7.86 (our HL price: $14.99).",
+  },
+  {
+    type: 'CompetitivePriceBelowOurs',
+    code: 'CB',
+    prev: '15.5',
+    now: '7.86',
+    message:
+      "Amazon's competitive price went from $15.50 to $7.86, now below our HL price of $14.99 " +
+      '(price + shipping): the Buy Box is at risk.',
+  },
+  {
+    type: 'CompetitivePriceAboveOurs',
+    code: 'CA',
+    prev: '12.5',
+    now: '19.99',
+    message:
+      "Amazon's competitive price went from $12.50 to $19.99, now above our HL price of $14.99.",
+  },
+  {
+    type: 'OurPriceAboveCompetitive',
+    code: 'HA',
+    prev: '11',
+    now: '13.5',
+    message:
+      "Our HL price (price + shipping) went from $11.00 to $13.50, now above Amazon's competitive " +
+      'price of $12.00: the Buy Box is at risk.',
+  },
+  {
+    type: 'OurPriceBelowCompetitive',
+    code: 'HB',
+    prev: '13.5',
+    now: '11',
+    message:
+      "Our HL price (price + shipping) went from $13.50 to $11.00, now below Amazon's competitive " +
+      'price of $12.00.',
+  },
+  {
+    type: 'BuyBoxLost',
+    code: 'BL',
+    prev: 'A1',
+    now: 'B2',
+    message: 'Buy Box lost to a competitor at $33.99 (we were at $34.99).',
+  },
+];
+
+/**
+ * An Immediate assignment email for each alert type, and a Daily one carrying
+ * several alerts, their boxes made as the app makes them.
+ */
+function alertSamples(
+  notices: typeof import('../src/utils/notification-emails.js'),
+  link: string,
+): [string, () => import('../src/utils/mailer.js').Email][] {
+  const at = 'Nov 12, 2026, 8:42 AM EST (New York)';
+  const shown = (a: (typeof ALERTS)[number], asin = 'B0ABC12345') => ({
+    asin,
+    marketplace: 'USA',
+    title: 'Organic Green Tea, 100 Bags',
+    message: a.message,
+    at,
+    comparison: alertComparison(
+      { alertType: a.type, previousValue: a.prev, newValue: a.now, message: a.message },
+      { excerpts: true },
+    ),
+  });
+  const email = (a: (typeof ALERTS)[number], alerts: ReturnType<typeof shown>[]) =>
+    notices.assignmentEmail({
+      to: TO,
+      action: 'added',
+      taskId: 42,
+      taskName: `WasiU_${a.code}_263160842: Review`,
+      link,
+      alert: {
+        typeLabel: EXCLUSIVES_ALERT_TYPE_LABELS[a.type],
+        groupName: 'Wasif - US',
+        alerts,
+        more: 0,
+      },
+    });
+  const daily = ALERTS.find((a) => a.type === 'CompetitivePriceChanged')!;
+  return [
+    ...ALERTS.map((a): [string, () => import('../src/utils/mailer.js').Email] => [
+      `alert-immediate-${a.code}`,
+      () => email(a, [shown(a)]),
+    ]),
+    [
+      'alert-daily-CH',
+      () =>
+        email(daily, [
+          shown(daily, 'B0ABC12345'),
+          shown(
+            {
+              ...daily,
+              prev: '21',
+              now: '19.5',
+              message: daily.message.replace('$14.99', '$24.99'),
+            },
+            'B0ABC67890',
+          ),
+          shown({ ...daily, prev: null, now: '9.99' }, 'B0ABC24680'),
+        ]),
+    ],
+  ];
+}
 
 async function main() {
   const folder = path.resolve(process.argv[2] ?? path.join(tmpdir(), 'hl-central-email-previews'));
@@ -116,65 +289,7 @@ async function main() {
           link: taskLink,
         }),
     ],
-    [
-      'assignment-from-description-alert',
-      () =>
-        notices.assignmentEmail({
-          to: TO,
-          action: 'added',
-          taskId: 42,
-          taskName: 'WasiU_DC_263160842: Review the description change',
-          link: taskLink,
-          alert: {
-            typeLabel: 'Description Changed',
-            groupName: 'Wasif - US',
-            alerts: [
-              {
-                asin: 'B0ABC12345',
-                marketplace: 'USA',
-                title: 'Organic Green Tea, 100 Bags',
-                message: '',
-                at: 'Nov 12, 2026, 8:42 AM EST (New York)',
-                compare: {
-                  label: 'Description',
-                  before:
-                    '...for busy mornings, brewed in five minutes with water just off the boil. ' +
-                    'Each bag is sealed for freshness and...',
-                  after:
-                    '...for busy mornings, steeped in three minutes with water just off the ' +
-                    'boil. Each bag is sealed and compostable for...',
-                },
-              },
-            ],
-            more: 0,
-          },
-        }),
-    ],
-    [
-      'assignment-from-alert',
-      () =>
-        notices.assignmentEmail({
-          to: TO,
-          action: 'added',
-          taskId: 42,
-          taskName: 'WasiU_PC_263160842: Review the price change',
-          link: taskLink,
-          alert: {
-            typeLabel: 'Price Changed',
-            groupName: 'Wasif - US',
-            alerts: [
-              {
-                asin: 'B0ABC12345',
-                marketplace: 'USA',
-                title: 'Organic Green Tea, 100 Bags',
-                message: 'Price went from $34.99 to $31.49 (-10.0%).',
-                at: 'Nov 12, 2026, 8:42 AM EST (New York)',
-              },
-            ],
-            more: 0,
-          },
-        }),
-    ],
+    ...alertSamples(notices, taskLink),
     [
       'assignment-removed',
       () =>

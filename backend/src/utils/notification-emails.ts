@@ -1,4 +1,4 @@
-import type { AssignAction } from '@healthy-tasks/shared';
+import type { AlertComparison, AssignAction } from '@healthy-tasks/shared';
 import { renderEmail, type EmailBlock } from './email-content.js';
 import type { Email } from './mailer.js';
 
@@ -47,10 +47,10 @@ export interface AssignmentAlertDetails {
     /** When it was alerted, written out in the reader's time zone. */
     at: string;
     /**
-     * A text change (title, description, bullet points): what it said and says,
-     * shown side by side in place of the message. `label` names the text.
+     * Its before and now as two boxes (`alertComparison`), shown in place of the
+     * message; none for alerts with nothing to compare (Buy Box, suppressed).
      */
-    compare?: { label: string; before: string; after: string } | null;
+    comparison?: AlertComparison | null;
   }[];
   /** How many more alerts the task has beyond `alerts`. */
   more: number;
@@ -76,16 +76,17 @@ export function assignmentEmail(o: {
         n === 1 ? 'alert' : 'alerts'
       } in ${a.groupName}.`,
     });
+    // Every alert in the same order: product name, ASIN, when it was alerted,
+    // what changed, then its Before and Now boxes (or its message, for alerts
+    // with nothing to compare).
     for (const x of a.alerts) {
-      if (x.compare) {
-        blocks.push({
-          text: `${x.title}\nASIN ${x.asin} · ${x.marketplace}\nAlerted ${x.at}\n${x.compare.label} changed:`,
-        });
-        blocks.push({ compare: { before: x.compare.before, after: x.compare.after } });
+      const header = `${x.title}\nASIN ${x.asin} · ${x.marketplace}\nAlerted ${x.at}`;
+      const c = x.comparison;
+      if (c) {
+        blocks.push({ text: `${header}\n${c.heading}` });
+        blocks.push({ compare: { boxes: c.boxes, footer: c.footer } });
       } else {
-        blocks.push({
-          text: `${x.title}\nASIN ${x.asin} · ${x.marketplace}\n${x.message}\nAlerted ${x.at}`,
-        });
+        blocks.push({ text: `${header}\n${x.message}` });
       }
     }
     if (a.more > 0) {

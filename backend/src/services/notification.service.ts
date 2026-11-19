@@ -9,7 +9,7 @@ import {
 } from '../utils/notification-emails.js';
 import { queueEmail } from '../queue/email-queue.js';
 import { env } from '../config/env.js';
-import { alertCompare, alertLogMessage } from './exclusives/alert-message.js';
+import { alertLogMessage } from './exclusives/alert-message.js';
 import { toUserRef } from './user.mapper.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import {
@@ -30,6 +30,7 @@ import {
   type EventKind,
   type EventNoticeType,
   type EventNotificationDto,
+  alertComparison,
   EXCLUSIVES_ALERT_TYPE_LABELS,
   TERMINAL_TASK_STATUSES,
   type ActivityNotificationDto,
@@ -676,7 +677,17 @@ async function alertDetailsFor(
       title: r.title,
       message: alertLogMessage(r),
       at: formatBusinessTimestamp(r.createdAt, timeZone ?? undefined),
-      compare: alertCompare(r),
+      // The whole message is passed too: for the price alerts it names the
+      // other price (ours, or Amazon's) that the row itself does not carry.
+      comparison: alertComparison(
+        {
+          alertType: r.alertType,
+          previousValue: r.previousValue,
+          newValue: r.newValue,
+          message: r.message,
+        },
+        { excerpts: true },
+      ),
     })),
     more: total - rows.length,
   };
