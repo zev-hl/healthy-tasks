@@ -7,8 +7,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { UnreadCountDto } from '@healthy-tasks/shared';
+import type { NotificationSound, UnreadCountDto } from '@healthy-tasks/shared';
 import { api } from '../api/client';
+import { playNotificationSound } from '../lib/notificationSound';
 import {
   createBroadcastChannel,
   createWebLocksElection,
@@ -88,9 +89,34 @@ export function NotificationProvider({ children, election, channel }: Props) {
   const lastActivityRef = useRef<number>(Date.now());
   const lastActivityPostRef = useRef<number>(0);
 
+  // The notification sound (Nov 2026 plan, E7): played by the tab that polls
+  // (one per browser), when the unread total goes up and the person wants it.
+  const soundRef = useRef<{ on: boolean; name: NotificationSound } | null>(null);
+  const lastTotalRef = useRef<number | null>(null);
+  useEffect(() => {
+    const load = api.getNotificationPreferences as
+      (() => Promise<{ soundOn: boolean; sound: NotificationSound }>) | undefined;
+    if (typeof load === 'function') {
+      load()
+        .then((p) => (soundRef.current = { on: p.soundOn, name: p.sound }))
+        .catch(() => {});
+    }
+    const onPrefs = (e: Event) => {
+      const p = (e as CustomEvent<{ soundOn: boolean; sound: NotificationSound }>).detail;
+      if (p) soundRef.current = { on: p.soundOn, name: p.sound };
+    };
+    window.addEventListener('hb:notification-prefs', onPrefs);
+    return () => window.removeEventListener('hb:notification-prefs', onPrefs);
+  }, []);
+
   const fetchAndShare = useCallback(async (): Promise<void> => {
     try {
       const counts = await api.getUnreadCount();
+      const before = lastTotalRef.current;
+      lastTotalRef.current = counts.total;
+      if (before !== null && counts.total > before && soundRef.current?.on) {
+        playNotificationSound(soundRef.current.name);
+      }
       setUnread(counts);
       ch.post({ type: 'counts', counts });
     } catch {
@@ -178,9 +204,12 @@ export function NotificationProvider({ children, election, channel }: Props) {
 
     const schedule = (): void => {
       if (cancelled) return;
-      handle = window.setTimeout(() => {
-        void tick();
-      }, pollDelayMs(Date.now() - lastActivityRef.current));
+      handle = window.setTimeout(
+        () => {
+          void tick();
+        },
+        pollDelayMs(Date.now() - lastActivityRef.current),
+      );
     };
     const tick = async (): Promise<void> => {
       if (cancelled) return;

@@ -57,6 +57,7 @@ import { assertDutyAssignable } from './department.service.js';
 import { assertHoldsDuty } from './duty-check.service.js';
 import { assertCanPlaceUnder, assertCanSetProject, levelInfo } from './task-levels.service.js';
 import { canSnoozeTask } from './task-snooze.service.js';
+import { nameOf, notifyTaskEvent } from './task-events.service.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 
 /** "Department › Duty" for a duty id (history snapshots), or null. */
@@ -589,6 +590,19 @@ export async function updateTask(
         action: 'added',
       });
     }
+  }
+
+  // Stage 2 (E7): the creator and the assignee hear of a status change.
+  if (input.status !== undefined && input.status !== existing.status) {
+    const label = TASK_STATUS_LABELS[input.status];
+    await notifyTaskEvent({
+      type: 'statusChanged',
+      taskId: id,
+      to: [existing.creatorId, afterAssigneeId ?? existing.assigneeId],
+      actorId,
+      what: `${await nameOf(actorId)} moved “${existing.name}” to ${label}`,
+      detail: label,
+    });
   }
 
   return toTaskDto(task as TaskWithRefs);

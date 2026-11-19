@@ -5,6 +5,7 @@ import { formatBusinessTimestamp } from '../utils/business-time.js';
 import { isInSupervisorChain, type Actor } from './access-control.service.js';
 import { recordHistory } from './task-history.service.js';
 import { invalidateUnread } from './unread-cache.js';
+import { nameOf, notifyTaskEvent } from './task-events.service.js';
 
 /**
  * Snooze (Nov 2026 plan, E1, E2). A snoozed task leaves the active lists until
@@ -84,6 +85,17 @@ export async function snoozeTask(actor: Actor, id: number, until: Date): Promise
     });
   });
   people.forEach(invalidateUnread);
+  // Stage 2 (E7): the creator and the assignee hear of someone else's snooze.
+  const t = await prisma.task.findUnique({ where: { id }, select: { name: true } });
+  const when = formatBusinessTimestamp(until);
+  await notifyTaskEvent({
+    type: 'snoozed',
+    taskId: id,
+    to: [task.creatorId, task.assigneeId],
+    actorId: actor.id,
+    what: `${await nameOf(actor.id)} snoozed “${t?.name ?? `#${id}`}” until ${when}`,
+    detail: when,
+  });
 }
 
 /** Bring a snoozed task back now. */

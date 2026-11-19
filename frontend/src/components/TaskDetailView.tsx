@@ -30,6 +30,7 @@ import { ReviewerPicker } from './ReviewerPicker';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
 import { SnoozeButton, snoozeLabel } from './SnoozeButton';
+import { RequestUpdateButton } from './RequestUpdateButton';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { Avatar, userLabel } from './ui/Avatar';
 import {
@@ -1183,6 +1184,9 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           <AlarmClock size={15} aria-hidden="true" /> Remind me
         </Btn>
         {task.canSnooze && <SnoozeButton task={task} onChanged={applyTask} />}
+        {task.assignee && task.assigneeId !== currentUser.id && (
+          <RequestUpdateButton task={task} onSent={() => setHistoryVersion((v) => v + 1)} />
+        )}
         {canEdit &&
           !isInReview &&
           (done ? (

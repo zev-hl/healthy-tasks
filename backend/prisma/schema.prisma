@@ -70,10 +70,11 @@ model User {
   passwordResetTokens PasswordResetToken[]
 
   // Task relations (Phase 2).
-  createdTasks  Task[] @relation("TaskCreator")
-  assignedTasks Task[] @relation("TaskAssignee")
-  deletedTasks  Task[] @relation("TaskDeletedBy")
-  snoozedTasks  Task[] @relation("TaskSnoozedBy")
+  createdTasks      Task[]             @relation("TaskCreator")
+  assignedTasks     Task[]             @relation("TaskAssignee")
+  deletedTasks      Task[]             @relation("TaskDeletedBy")
+  snoozedTasks      Task[]             @relation("TaskSnoozedBy")
+  pushSubscriptions PushSubscription[]
 
   // Phase 10 review workflow: tasks this user sent to Review, and tasks holding
   // this user as their pre-review assignee (restored when review ends).
@@ -224,6 +225,11 @@ model Task {
   snoozedUntil DateTime?
   snoozedById  String?
   snoozedBy    User?     @relation("TaskSnoozedBy", fields: [snoozedById], references: [id], onDelete: SetNull)
+
+  // Due soon / overdue notices (E7): the due date each was last sent for, so a
+  // notice goes once per due date (a new due date sends again).
+  dueSoonNoticeFor DateTime?
+  overdueNoticeFor DateTime?
 
   // --- Review workflow (Phase 10) ---
   // Populated only while status == Review, cleared when the task leaves Review.
@@ -530,6 +536,14 @@ enum NotificationType {
   // its duty. Sent to the template owner / recurring task's creator and shown in
   // the Assigned list.
   dutyMismatch
+  // Nov 2026 plan, Stage 2 (E3, E7): the rest of the task events, each behind
+  // its own per-person setting. Shown in the Activity list.
+  updateRequested
+  statusChanged
+  commented
+  dueSoon
+  overdue
+  snoozed
 }
 
 // For an `assigned` notification: whether the recipient was added or removed as
@@ -559,6 +573,11 @@ model Notification {
 
   // `assigned` only: whether the user was added or removed as assignee.
   assignAction AssignAction?
+
+  // Stage 2: what the event says beyond its type — a request-update note, or
+  // the new status / snooze time as text.
+  note   String?
+  detail String?
 
   // The user who caused this notification (the assigner). Stored as a plain id
   // and resolved to a display ref when the list is built; null for older rows.
@@ -627,6 +646,29 @@ model NotificationPreference {
   remindersEmail Boolean @default(false)
   assignedInApp  Boolean @default(true)
   assignedEmail  Boolean @default(false)
+
+  // Nov 2026 plan (E7): the other events per channel, as
+  // { "<event>": { "inApp": bool, "email": bool, "connect": bool } }. The three
+  // lists above keep their own columns; their Connect choice lives here too.
+  channels Json    @default("{}")
+  // A sound when a new alert arrives, and which one.
+  soundOn  Boolean @default(false)
+  sound    String  @default("chime")
+  // Browser push (on this person's subscribed browsers, PushSubscription).
+  pushOn   Boolean @default(false)
+}
+
+// A browser that may receive push notifications for a person (E7).
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ---------------------------------------------------------------------------

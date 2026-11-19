@@ -127,6 +127,27 @@ export function reminderEmail(o: {
 }
 
 /**
+ * One of the Stage 2 task events (E3, E7): status changed, a new comment, an
+ * update requested, due soon, overdue, snoozed. `what` says it in a sentence;
+ * `note` is shown under it (a request's note, a comment's opening words).
+ */
+export function taskEventEmail(o: {
+  to: string;
+  subject: string;
+  what: string;
+  note?: string | null;
+  link: string;
+}): Email {
+  return {
+    to: o.to,
+    subject: o.subject,
+    ...renderEmail({
+      blocks: [{ text: o.note ? `${o.what}\n${o.note}` : o.what }, openTask(o.link)],
+    }),
+  };
+}
+
+/**
  * To an Admin when the scheduler is unwell. `lines` as written for the text: an
  * empty one between paragraphs.
  */

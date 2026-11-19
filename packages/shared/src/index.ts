@@ -1306,6 +1306,8 @@ export interface NotificationsDto {
   mentioned: MentionedNotificationDto[];
   reminders: ReminderNotificationDto[];
   assigned: AssignedNotificationDto[];
+  /** Stage 2: status changes, comments, update requests, due / overdue, snoozes. */
+  activity: ActivityNotificationDto[];
 }
 
 /** Unread tallies used by the bell badge (total) and, if useful, per list. */
@@ -1314,6 +1316,7 @@ export interface UnreadCountDto {
   mentioned: number;
   reminders: number;
   assigned: number;
+  activity: number;
   /**
    * Phase 11: true when the recurrence background timer has gone stale (stopped
    * ticking). Surfaced on the heartbeat every client already polls so the app
@@ -1406,9 +1409,116 @@ export interface NotificationPreferencesDto {
   remindersEmail: boolean;
   assignedInApp: boolean;
   assignedEmail: boolean;
+  /**
+   * Nov 2026 plan (E7): every kind of event per channel. `mention`, `reminder`
+   * and `assigned` mirror the six flags above (same setting, two shapes).
+   */
+  matrix: Record<NotifyEvent, ChannelPrefs>;
+  /** A sound when a new alert arrives, and which one. */
+  soundOn: boolean;
+  sound: NotificationSound;
+  /** Browser push, on this person's subscribed browsers. */
+  pushOn: boolean;
 }
 
-export type UpdateNotificationPreferencesRequest = Partial<NotificationPreferencesDto>;
+export type UpdateNotificationPreferencesRequest = Partial<
+  Omit<NotificationPreferencesDto, 'matrix'>
+> & {
+  matrix?: Partial<Record<NotifyEvent, Partial<ChannelPrefs>>>;
+};
+
+// --- Notification settings per event and channel (Nov 2026 plan, E7) -------
+
+export const NOTIFY_EVENTS = [
+  'assigned',
+  'status',
+  'comment',
+  'mention',
+  'updateRequested',
+  'due',
+  'overdue',
+  'snooze',
+  'reminder',
+] as const;
+export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
+
+export const NOTIFY_EVENT_LABELS: Record<NotifyEvent, string> = {
+  assigned: 'Assigned to me (or taken off)',
+  status: 'Status changed on my task',
+  comment: 'New comment on my task',
+  mention: 'Mentioned in a comment',
+  updateRequested: 'Asked for an update',
+  due: 'Due soon (the day before)',
+  overdue: 'Became overdue',
+  snooze: 'Someone snoozed my task',
+  reminder: 'My reminders, and snoozed tasks coming back',
+};
+
+/** Connect messages come with our Connect (Stage 4); the choice is kept until then. */
+export const NOTIFY_CHANNELS = ['inApp', 'email', 'connect'] as const;
+export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
+export const NOTIFY_CHANNEL_LABELS: Record<NotifyChannel, string> = {
+  inApp: 'In the app',
+  email: 'Email',
+  connect: 'Connect',
+};
+export type ChannelPrefs = Record<NotifyChannel, boolean>;
+
+/** Everything in the app; email only for being asked for an update. */
+export const DEFAULT_NOTIFY_MATRIX: Record<NotifyEvent, ChannelPrefs> = {
+  assigned: { inApp: true, email: false, connect: false },
+  status: { inApp: true, email: false, connect: false },
+  comment: { inApp: true, email: false, connect: false },
+  mention: { inApp: true, email: false, connect: false },
+  updateRequested: { inApp: true, email: true, connect: false },
+  due: { inApp: true, email: false, connect: false },
+  overdue: { inApp: true, email: false, connect: false },
+  snooze: { inApp: true, email: false, connect: false },
+  reminder: { inApp: true, email: false, connect: false },
+};
+
+export const NOTIFICATION_SOUNDS = ['chime', 'ping', 'pop'] as const;
+export type NotificationSound = (typeof NOTIFICATION_SOUNDS)[number];
+export const NOTIFICATION_SOUND_LABELS: Record<NotificationSound, string> = {
+  chime: 'Chime',
+  ping: 'Ping',
+  pop: 'Pop',
+};
+
+/** Browser push: the server's public key (null when push isn't set up). */
+export interface PushConfigDto {
+  publicKey: string | null;
+}
+
+export interface PushSubscriptionRequest {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+/** The Activity list: the task events other than mentions, reminders and assignments. */
+export const ACTIVITY_TYPES = [
+  'updateRequested',
+  'statusChanged',
+  'commented',
+  'dueSoon',
+  'overdue',
+  'snoozed',
+] as const;
+export type ActivityType = (typeof ACTIVITY_TYPES)[number];
+
+export interface ActivityNotificationDto {
+  id: string;
+  type: ActivityType;
+  taskId: number;
+  taskName: string;
+  actor: TaskUserRef | null;
+  /** A request-update note, or the comment's opening words. */
+  note: string | null;
+  /** The new status, or the snooze time, as text. */
+  detail: string | null;
+  createdAt: string; // ISO
+  read: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Task templates & recurring tasks (Phase 11)

@@ -33,6 +33,8 @@ import {
   TIME_DAY_MAX_MINUTES,
   TIME_DAY_NOTE_MAX,
   REMINDER_NOTE_MAX,
+  NOTIFY_EVENTS,
+  NOTIFICATION_SOUNDS,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -197,7 +199,9 @@ function businessCalendarDate(resolveCalendarDate: (date: string) => Date) {
 }
 
 /** The day a series starts, resolved at the default start hour. */
-const businessAnchorDate = businessCalendarDate((date) => fromBusinessDate(date, DEFAULT_START_HOUR));
+const businessAnchorDate = businessCalendarDate((date) =>
+  fromBusinessDate(date, DEFAULT_START_HOUR),
+);
 
 /**
  * The day a series ends, INCLUSIVE: "ends on Oct 31" admits an occurrence
@@ -397,10 +401,7 @@ const taskFiltersSchema = z.object({
   // Special attribute filters (HLAI-118): chosen values, plus "(not set)".
   alertGroupIds: z.array(z.number().int().positive()).max(500).optional(),
   includeNoAlertGroup: z.boolean().optional(),
-  alertTypes: z
-    .array(z.enum(EXCLUSIVES_ALERT_TYPES))
-    .max(EXCLUSIVES_ALERT_TYPES.length)
-    .optional(),
+  alertTypes: z.array(z.enum(EXCLUSIVES_ALERT_TYPES)).max(EXCLUSIVES_ALERT_TYPES.length).optional(),
   includeNoAlertType: z.boolean().optional(),
 });
 
@@ -496,6 +497,20 @@ export const snoozeTaskSchema = z.object({
 });
 export type SnoozeTaskInput = z.infer<typeof snoozeTaskSchema>;
 
+// Request update (E3): an optional note to the assignee.
+export const requestUpdateSchema = z.object({
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+export type RequestUpdateInput = z.infer<typeof requestUpdateSchema>;
+
+// Browser push (E7): a browser's subscription, as PushManager gives it.
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.string().url().max(2000),
+  keys: z.object({ p256dh: z.string().min(1).max(500), auth: z.string().min(1).max(500) }),
+});
+export type PushSubscriptionInput = z.infer<typeof pushSubscriptionSchema>;
+export const pushUnsubscribeSchema = z.object({ endpoint: z.string().url().max(2000) });
+
 // Snooze duration in minutes from now; capped at ~1 week.
 export const snoozeReminderSchema = z.object({
   minutes: z.number().int().min(1).max(10080),
@@ -509,6 +524,22 @@ export const updateNotificationPreferencesSchema = z
     remindersEmail: z.boolean().optional(),
     assignedInApp: z.boolean().optional(),
     assignedEmail: z.boolean().optional(),
+    // Nov 2026 plan (E7): any event, any channel.
+    matrix: z
+      .record(
+        z.enum(NOTIFY_EVENTS),
+        z
+          .object({
+            inApp: z.boolean().optional(),
+            email: z.boolean().optional(),
+            connect: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    soundOn: z.boolean().optional(),
+    sound: z.enum(NOTIFICATION_SOUNDS).optional(),
+    pushOn: z.boolean().optional(),
   })
   .strict();
 
@@ -962,7 +993,10 @@ const dutyDescription = z
   .nullable()
   .transform((v) => (v === undefined ? undefined : v === '' ? null : v));
 
-export const createDepartmentSchema = z.object({ name: departmentName, color: hexColor.optional() });
+export const createDepartmentSchema = z.object({
+  name: departmentName,
+  color: hexColor.optional(),
+});
 export const updateDepartmentSchema = z.object({
   name: departmentName.optional(),
   color: hexColor.optional(),

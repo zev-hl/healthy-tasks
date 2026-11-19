@@ -11,6 +11,7 @@ import {
   type ConfirmInput,
 } from './attachment.service.js';
 import { createMentionNotifications } from './notification.service.js';
+import { excerpt, nameOf, notifyTaskEvent } from './task-events.service.js';
 import { getMentionCandidateIds, requireTaskAccess } from './access-control.service.js';
 import {
   MENTION_EVENT_DEBOUNCE_MINUTES,
@@ -185,6 +186,22 @@ export async function createComment(
 
   // Notifications (+ any "also email me" emails) are a post-commit side effect.
   await createMentionNotifications(taskId, commentId, fired, actor.id);
+  // Stage 2 (E7): the creator and the assignee hear of a new comment, unless
+  // it mentions them (that has its own notice).
+  const about = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { name: true, creatorId: true, assigneeId: true },
+  });
+  if (about) {
+    await notifyTaskEvent({
+      type: 'commented',
+      taskId,
+      to: [about.creatorId, about.assigneeId].filter((id) => !id || !fired.includes(id)),
+      actorId: actor.id,
+      what: `${await nameOf(actor.id)} commented on “${about.name}”`,
+      note: clean ? excerpt(clean) || null : null,
+    });
+  }
   return getTaskDetail(taskId, actor);
 }
 

@@ -18,6 +18,7 @@ import { materializeDueTaskRecurrences } from './task-recurrence.service.js';
 import { runGoalReviewPass } from './goal.service.js';
 import { appSettingsChangedAt, getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
+import { dispatchDueNotices, nextDueNoticeAt } from './task-events.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
 import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
@@ -502,6 +503,9 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
   const reminder = await nextReminderDueAt();
   consider(reminder?.getTime());
 
+  // Due soon / overdue notices (Nov 2026 plan, E7).
+  consider((await nextDueNoticeAt(now))?.getTime());
+
   // Goal review: the next Approved goal to pass its deadline.
   const goal = await prisma.goal.findFirst({
     where: { status: 'Approved', deadline: { gt: now } },
@@ -638,6 +642,14 @@ export async function runScheduler(now: Date): Promise<number> {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('scheduler: reminder dispatch failed', err);
+  }
+
+  // Due soon / overdue notices (Nov 2026 plan, E7).
+  try {
+    await dispatchDueNotices(now);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('scheduler: due notices failed', err);
   }
 
   // HLAI-112: the Daily alert tasks of every day that has ended, including any

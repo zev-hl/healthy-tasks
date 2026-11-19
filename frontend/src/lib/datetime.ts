@@ -172,7 +172,11 @@ export function formatDue(
   }
   if (dayDiff === 1) return { primary: `Tomorrow, ${timeStr(d)}`, secondary, tone: 'normal' };
   if (dayDiff < 7)
-    return { primary: d.toLocaleDateString(undefined, { weekday: 'long' }), secondary, tone: 'normal' };
+    return {
+      primary: d.toLocaleDateString(undefined, { weekday: 'long' }),
+      secondary,
+      tone: 'normal',
+    };
   if (dayDiff < 14)
     return {
       primary: `Next ${d.toLocaleDateString(undefined, { weekday: 'long' })}`,

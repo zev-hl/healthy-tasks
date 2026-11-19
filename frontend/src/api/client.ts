@@ -1,5 +1,7 @@
 import type {
   ActiveUserDto,
+  PushConfigDto,
+  PushSubscriptionRequest,
   AdminResetLinkResponse,
   AppSettingsDto,
   UpdateAppSettingsRequest,
@@ -415,6 +417,24 @@ export const api = {
       body: JSON.stringify({ type, otherTaskId }),
     }),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
+  /** Request update (E3): ask the assignee how it's going. */
+  requestUpdate: (id: number, note: string | null) =>
+    request<{ askedAt: string }>(`/api/tasks/${id}/request-update`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  // Browser push (E7).
+  getPushConfig: () => request<PushConfigDto>('/api/notifications/push-config'),
+  savePushSubscription: (sub: PushSubscriptionRequest) =>
+    request<void>('/api/notifications/push-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify(sub),
+    }),
+  removePushSubscription: (endpoint: string) =>
+    request<void>('/api/notifications/push-subscriptions', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    }),
   /** Snooze (E1): park the task until `until` (ISO, at most 30 days ahead). */
   snoozeTask: (id: number, until: string) =>
     request<TaskDetailDto>(`/api/tasks/${id}/snooze`, {

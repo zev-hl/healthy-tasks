@@ -110,6 +110,15 @@ export const env = {
     allowedDomain: optional('GOOGLE_ALLOWED_DOMAIN', '').trim().toLowerCase(),
   },
 
+  // Browser push (Nov 2026 plan, E7). Off until both keys are set: make a pair
+  // once with `npx web-push generate-vapid-keys`. The subject is a mailto: or
+  // https: address push services may use to reach whoever runs the server.
+  push: {
+    publicKey: optional('VAPID_PUBLIC_KEY', ''),
+    privateKey: optional('VAPID_PRIVATE_KEY', ''),
+    subject: optional('VAPID_SUBJECT', 'https://hlcentral.app'),
+  },
+
   // Amazon SP-API (Exclusives). Undefined until Amazon is wired up so the app
   // still boots; merchantToken is the own-seller id used for Buy Box detection.
   amazon: {

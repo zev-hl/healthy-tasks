@@ -1,3 +1,5 @@
+import { requestUpdate } from '../services/task-update-request.service.js';
+import type { RequestUpdateInput } from '../validation/schemas.js';
 import { snoozeTask, unsnoozeTask } from '../services/task-snooze.service.js';
 import type { SnoozeTaskInput } from '../validation/schemas.js';
 import type { Request, Response } from 'express';
@@ -237,6 +239,12 @@ export async function snoozeTaskController(req: Request, res: Response): Promise
   const id = parseTaskId(req);
   await snoozeTask(actor, id, until);
   res.json((await getTaskDetail(id, actor)) satisfies TaskDetailDto);
+}
+
+/** POST /api/tasks/:id/request-update — ask the assignee how it's going (E3). */
+export async function requestUpdateController(req: Request, res: Response): Promise<void> {
+  const { note } = req.body as RequestUpdateInput;
+  res.json(await requestUpdate(actorOf(req), parseTaskId(req), note ?? null));
 }
 
 /** DELETE /api/tasks/:id/snooze — bring it back now; returns the task. */

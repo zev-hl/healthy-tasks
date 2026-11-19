@@ -13,6 +13,7 @@ export type EmailKind =
   | 'mention'
   | 'assignment'
   | 'reminder'
+  | 'task-event'
   | 'admin-alert'
   | 'email-changed'
   | 'email-change-notice'

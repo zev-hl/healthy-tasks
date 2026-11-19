@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   createTaskSchema,
   snoozeTaskSchema,
+  requestUpdateSchema,
   updateTaskSchema,
   duplicateTaskSchema,
   saveTaskAsTemplateSchema,
@@ -40,6 +41,7 @@ import {
   listDeletedTasksController,
   restoreTaskController,
   snoozeTaskController,
+  requestUpdateController,
   unsnoozeTaskController,
   duplicateTaskController,
   saveTaskAsTemplateController,
@@ -115,6 +117,11 @@ tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
 tasksRouter.post('/:id/restore', asyncHandler(restoreTaskController));
 tasksRouter.post('/:id/snooze', validateBody(snoozeTaskSchema), asyncHandler(snoozeTaskController));
 tasksRouter.delete('/:id/snooze', asyncHandler(unsnoozeTaskController));
+tasksRouter.post(
+  '/:id/request-update',
+  validateBody(requestUpdateSchema),
+  asyncHandler(requestUpdateController),
+);
 // Duplicate a task, optionally its whole sub-tree.
 tasksRouter.post(
   '/:id/duplicate',

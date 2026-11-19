@@ -1,4 +1,4 @@
-import type { NotificationsDto, TaskUserRef } from '@healthy-tasks/shared';
+import type { ActivityNotificationDto, NotificationsDto, TaskUserRef } from '@healthy-tasks/shared';
 import { api } from '../../api/client';
 import { userLabel } from '../ui/Avatar';
 
@@ -6,7 +6,7 @@ import { userLabel } from '../ui/Avatar';
 export interface FeedItem {
   key: string;
   id: string;
-  list: 'mentioned' | 'reminders' | 'assigned';
+  list: 'mentioned' | 'reminders' | 'assigned' | 'activity';
   taskId: number;
   taskName: string;
   who: TaskUserRef | null;
@@ -14,6 +14,25 @@ export interface FeedItem {
   text: string;
   at: string | null;
   read: boolean;
+}
+
+/** What an Activity alert says (E3, E7). */
+export function activityText(a: ActivityNotificationDto): string {
+  const who = a.actor ? userLabel(a.actor) : 'Someone';
+  switch (a.type) {
+    case 'updateRequested':
+      return a.note ? `${who} asked for an update: ${a.note}` : `${who} asked for an update`;
+    case 'statusChanged':
+      return `${who} moved it to ${a.detail ?? 'a new status'}`;
+    case 'commented':
+      return a.note ? `${who} commented: ${a.note}` : `${who} commented`;
+    case 'dueSoon':
+      return 'Due soon';
+    case 'overdue':
+      return 'Overdue now';
+    case 'snoozed':
+      return `${who} snoozed it${a.detail ? ` until ${a.detail}` : ''}`;
+  }
 }
 
 export function toFeed(n: NotificationsDto): FeedItem[] {
@@ -62,6 +81,17 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
               : 'Reminder',
       at: r.canceledAt ?? r.remindAt,
       read: r.read,
+    })),
+    ...(n.activity ?? []).map((a) => ({
+      key: `x-${a.id}`,
+      id: a.id,
+      list: 'activity' as const,
+      taskId: a.taskId,
+      taskName: a.taskName,
+      who: a.actor,
+      text: activityText(a),
+      at: a.createdAt,
+      read: a.read,
     })),
   ];
   return items.sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));

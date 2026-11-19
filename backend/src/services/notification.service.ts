@@ -21,8 +21,11 @@ import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cac
 import { formatBusinessTimestamp } from '../utils/business-time.js';
 import type { Actor } from './access-control.service.js';
 import {
+  ACTIVITY_TYPES,
   EXCLUSIVES_ALERT_TYPE_LABELS,
   TERMINAL_TASK_STATUSES,
+  type ActivityNotificationDto,
+  type ActivityType,
   type ExclusivesAlertType,
   type AssignAction,
   type AssignedNotificationDto,
@@ -263,7 +266,37 @@ export async function listNotifications(
     }));
   }
 
-  return { mentioned, reminders, assigned };
+  // Stage 2 (E7): the other task events, newest first. Each was written only
+  // for those who wanted it in the app, so no setting is checked here.
+  const activityRows = await prisma.notification.findMany({
+    where: { userId, type: { in: [...ACTIVITY_TYPES] }, task: { deletedAt: null } },
+    include: { task: { select: { name: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 200,
+  });
+  const activityActorIds = [
+    ...new Set(activityRows.map((r) => r.actorId).filter((x): x is string => !!x)),
+  ];
+  const activityActors = activityActorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: activityActorIds } },
+        select: { id: true, email: true, firstName: true, lastName: true, title: true },
+      })
+    : [];
+  const activityActorById = new Map(activityActors.map((u) => [u.id, toUserRef(u)]));
+  const activity: ActivityNotificationDto[] = activityRows.map((r) => ({
+    id: r.id,
+    type: r.type as ActivityType,
+    taskId: r.taskId,
+    taskName: r.task.name,
+    actor: r.actorId ? (activityActorById.get(r.actorId) ?? null) : null,
+    note: r.note,
+    detail: r.detail,
+    createdAt: r.createdAt.toISOString(),
+    read: r.readAt !== null,
+  }));
+
+  return { mentioned, reminders, assigned, activity };
 }
 
 /** Unread tallies for the bell badge. `schedulerDown` is layered on by the
@@ -279,7 +312,7 @@ export async function getUnreadCounts(
   if (cached) return cached;
 
   const prefs = await getNotificationPreferences(userId);
-  const [mentioned, assigned] = await Promise.all([
+  const [mentioned, assigned, activity] = await Promise.all([
     prisma.notification.count({
       where: { userId, type: 'mentioned', readAt: null, task: { deletedAt: null } },
     }),
@@ -291,6 +324,9 @@ export async function getUnreadCounts(
         task: { deletedAt: null },
       },
     }),
+    prisma.notification.count({
+      where: { userId, type: { in: [...ACTIVITY_TYPES] }, readAt: null, task: { deletedAt: null } },
+    }),
   ]);
   let reminders = 0;
   if (prefs.remindersInApp) {
@@ -298,7 +334,13 @@ export async function getUnreadCounts(
     const due = await listDueReminders(actor, new Date());
     reminders = due.filter((r) => r.readAt === null).length;
   }
-  const counts = { total: mentioned + assigned + reminders, mentioned, reminders, assigned };
+  const counts = {
+    total: mentioned + assigned + reminders + activity,
+    mentioned,
+    reminders,
+    assigned,
+    activity,
+  };
   setCachedUnread(userId, counts);
   return counts;
 }

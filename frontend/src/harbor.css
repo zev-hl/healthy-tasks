@@ -9094,3 +9094,58 @@ textarea.hb-tpl-input {
   color: var(--accent-deep);
   white-space: nowrap;
 }
+
+/* Notification settings (E7): events × channels, sound, push. */
+.hb-notify {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hb-notify-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.hb-notify-table th,
+.hb-notify-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.hb-notify-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+.hb-notify-table tbody th {
+  font-weight: 500;
+  color: var(--ink);
+}
+.hb-notify-table td {
+  width: 96px;
+}
+.hb-notify-soon {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  font-size: 10.5px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.hb-notify-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.hb-notify-row .hb-select {
+  min-width: 140px;
+}
+@media (max-width: 640px) {
+  .hb-notify-table td {
+    width: auto;
+  }
+}

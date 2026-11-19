@@ -194,3 +194,139 @@ describe('Stage 2: snooze (E1, E2)', () => {
     );
   });
 });
+
+const activity = async (token: string) =>
+  (await request(app).get('/api/notifications').set(auth(token))).body.activity as {
+    type: string;
+    taskId: number;
+    note: string | null;
+    detail: string | null;
+    actor: { email: string } | null;
+  }[];
+const prefs = (token: string, body: Record<string, unknown>) =>
+  request(app).put('/api/notifications/preferences').set(auth(token)).send(body);
+
+describe('Stage 2: request update (E3)', () => {
+  it('asks the assignee with a note, logs it, and waits 5 minutes before the next', async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('upd@test.local', 'Member');
+    const workerTok = await login('upd@test.local');
+    const t = await makeTask(admin, 'How is it going', { assigneeId: worker.id });
+    const ask = (tok: string, note?: string) =>
+      request(app).post(`/api/tasks/${t.id}/request-update`).set(auth(tok)).send({ note });
+
+    const first = await ask(admin, 'Need it for the 3pm call');
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    const feed = await activity(workerTok);
+    assert.equal(feed.length, 1);
+    assert.equal(feed[0]!.type, 'updateRequested');
+    assert.equal(feed[0]!.note, 'Need it for the 3pm call');
+    assert.equal(feed[0]!.actor?.email, ADMIN);
+    const logged = await prisma.taskHistory.findFirst({
+      where: { taskId: t.id, field: 'updateRequested' },
+    });
+    assert.equal(logged?.detail, 'Need it for the 3pm call');
+
+    const again = await ask(admin);
+    assert.equal(again.status, 429);
+    assert.match(again.body.error, /minute/);
+    assert.equal((await ask(workerTok)).status, 400, 'not of yourself');
+    // An assignee-less task has no one to ask.
+    const none = await makeTask(admin, 'Nobody on it');
+    const r = await request(app)
+      .post(`/api/tasks/${none.id}/request-update`)
+      .set(auth(admin))
+      .send({});
+    assert.equal(r.status, 400);
+  });
+});
+
+describe('Stage 2: notification settings per event and channel (E7)', () => {
+  it('reads and saves the table; the first three events keep their old columns', async () => {
+    const admin = await login(ADMIN);
+    const got = await request(app).get('/api/notifications/preferences').set(auth(admin));
+    assert.deepEqual(got.body.matrix.updateRequested, { inApp: true, email: true, connect: false });
+    assert.equal(got.body.soundOn, false);
+    const saved = await prefs(admin, {
+      matrix: { mention: { email: true, connect: true }, status: { inApp: false } },
+      soundOn: true,
+      sound: 'ping',
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.mentionedEmail, true);
+    assert.deepEqual(saved.body.matrix.mention, { inApp: true, email: true, connect: true });
+    assert.equal(saved.body.matrix.status.inApp, false);
+    assert.equal(saved.body.sound, 'ping');
+    assert.equal((await prefs(admin, { sound: 'trumpet' })).status, 400);
+  });
+
+  it('status changes and comments reach the creator and the assignee, not the one who did it', async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('ev@test.local', 'Member');
+    const workerTok = await login('ev@test.local');
+    const t = await makeTask(admin, 'Eventful', { assigneeId: worker.id });
+    assert.equal((await patch(workerTok, t.id, { status: 'InProgress' })).status, 200);
+    const mine = await activity(admin);
+    assert.equal(mine[0]?.type, 'statusChanged');
+    assert.equal(mine[0]?.detail, 'In Progress');
+    assert.equal((await activity(workerTok)).length, 0, 'not to the one who changed it');
+
+    await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>Looks <b>good</b> so far</p>' });
+    const theirs = await activity(workerTok);
+    assert.equal(theirs[0]?.type, 'commented');
+    assert.equal(theirs[0]?.note, 'Looks good so far');
+
+    // Switched off in the app: nothing written.
+    await prefs(admin, { matrix: { status: { inApp: false } } });
+    await patch(workerTok, t.id, { status: 'OnHold' });
+    assert.equal((await activity(admin)).filter((a) => a.type === 'statusChanged').length, 1);
+  });
+
+  it('due soon goes once a day before, overdue once when it passes', async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('due@test.local', 'Member');
+    const workerTok = await login('due@test.local');
+    const soon = await makeTask(admin, 'Due soon', {
+      assigneeId: worker.id,
+      dueAt: new Date(Date.now() + 5 * 3_600_000).toISOString(),
+    });
+    const late = await makeTask(admin, 'Just late', { assigneeId: worker.id });
+    await prisma.task.update({
+      where: { id: late.id },
+      data: { dueAt: new Date(Date.now() - 3_600_000) },
+    });
+    const { dispatchDueNotices } = await import('../src/services/task-events.service.js');
+    await dispatchDueNotices(new Date());
+    await dispatchDueNotices(new Date());
+    const feed = await activity(workerTok);
+    assert.deepEqual(
+      feed.map((a) => [a.type, a.taskId]).sort(),
+      [
+        ['dueSoon', soon.id],
+        ['overdue', late.id],
+      ].sort(),
+    );
+    // The creator hears of overdue too.
+    assert.ok((await activity(admin)).some((a) => a.type === 'overdue' && a.taskId === late.id));
+  });
+
+  it('sends a browser push to people who switched it on', async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('push@test.local', 'Member');
+    const workerTok = await login('push@test.local');
+    await prefs(workerTok, { pushOn: true });
+    const t = await makeTask(admin, 'Push it', { assigneeId: worker.id });
+    const { sentPushes } = await import('../src/services/push.service.js');
+    sentPushes.length = 0;
+    await request(app).post(`/api/tasks/${t.id}/request-update`).set(auth(admin)).send({});
+    assert.equal(sentPushes.length, 1);
+    assert.equal(sentPushes[0]!.userId, worker.id);
+    assert.match(sentPushes[0]!.body, /asked you for an update/);
+    const cfg = await request(app).get('/api/notifications/push-config').set(auth(workerTok));
+    assert.equal(cfg.status, 200);
+    assert.equal(cfg.body.publicKey, null, 'no keys on this server');
+  });
+});
