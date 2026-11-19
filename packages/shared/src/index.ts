@@ -1021,6 +1021,11 @@ export interface TaskRowDto {
    * `name` is empty when the reader can't see that task.
    */
   top: { id: number; name: string; isProject: boolean } | null;
+  /**
+   * Whether the reader may move this row's due date (Admin, the creator, or
+   * someone above them). False on rows from an export or report.
+   */
+  canChangeDue: boolean;
 }
 
 // ---------------------------------------------------------------------------

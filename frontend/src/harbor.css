@@ -8915,3 +8915,44 @@ textarea.hb-tpl-input {
   color: var(--ink-3);
   padding: 4px 0 8px;
 }
+
+/* Tasks list on wide screens (Nov 2026 plan, A6): the table scrolls in its
+   own window-high box, so the column headings stay at its top and the
+   sideways scrollbar sits at the bottom of the window; the checkbox and task
+   name columns stay put while the rest scrolls sideways. */
+@media (min-width: 1100px) {
+  .hb-table-card .hb-table-wrap.hb-tasks-scroll {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+  .hb-tasks-scroll .hb-table thead th {
+    top: 0;
+  }
+  .hb-tasks-scroll .hb-table .hb-check,
+  .hb-tasks-scroll .hb-table .hb-col-task {
+    position: sticky;
+    z-index: 2;
+    background: var(--surface);
+  }
+  .hb-tasks-scroll .hb-table .hb-check {
+    left: 0;
+  }
+  .hb-tasks-scroll .hb-table .hb-col-task {
+    left: 52px;
+    min-width: 320px;
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .hb-tasks-scroll .hb-table thead .hb-check,
+  .hb-tasks-scroll .hb-table thead .hb-col-task {
+    z-index: 6;
+    background: var(--surface-sunk);
+  }
+  .hb-tasks-scroll .hb-table tbody tr:hover > td.hb-check,
+  .hb-tasks-scroll .hb-table tbody tr:hover > td.hb-col-task {
+    background: #f8fafc;
+  }
+  .hb-tasks-scroll .hb-table tbody tr.selected > td.hb-check,
+  .hb-tasks-scroll .hb-table tbody tr.selected > td.hb-col-task {
+    background: #e9f1fc;
+  }
+}

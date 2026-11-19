@@ -23,6 +23,7 @@ import {
   type TaskAccessScope,
   buildTaskAccessWhere,
   classifyRow,
+  getDownlineIds,
   getTaskAccessScope,
   isTaskVisible,
 } from './access-control.service.js';
@@ -94,6 +95,7 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     repeats: t.recurrence != null || t.recurrenceSourceId != null,
     isProject: t.isProject,
     top: null, // filled by attachTops
+    canChangeDue: false, // filled by finishRows
   };
 }
 
@@ -101,6 +103,27 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
  * Fill each row's `top`: the top of its tree when it sits under another task.
  * One recursive query for the whole page.
  */
+/**
+ * A page's rows, finished for the Tasks list: each row's top task and whether
+ * the reader may move its due date (the same rule as the task page).
+ */
+async function finishRows(
+  rows: TaskRowDto[],
+  scope: TaskAccessScope,
+  actor: Actor,
+): Promise<TaskRowDto[]> {
+  const below = actor.role === 'Admin' ? null : new Set(await getDownlineIds(actor.id));
+  const withTops = await attachTops(rows, scope);
+  return withTops.map((r) => {
+    const full = !r.mentionOnly && !r.treeOnly && !r.viewOnly;
+    const ruler = r.creator?.id ?? r.assignee?.id ?? null;
+    const canChangeDue =
+      full &&
+      (below === null || r.creator?.id === actor.id || (ruler !== null && below.has(ruler)));
+    return { ...r, canChangeDue };
+  });
+}
+
 export async function attachTops(
   rows: TaskRowDto[],
   scope: TaskAccessScope,
@@ -399,7 +422,7 @@ export async function searchTasks(
   const page = input.page ?? 1;
   const pageSize = input.pageSize ?? DEFAULT_PAGE_SIZE;
 
-  if (input.nest) return nestedPage(where, orderBy, page, pageSize, scope);
+  if (input.nest) return nestedPage(where, orderBy, page, pageSize, scope, actor);
 
   const [rows, total] = await prisma.$transaction([
     prisma.task.findMany({
@@ -413,9 +436,10 @@ export async function searchTasks(
   ]);
 
   return {
-    rows: await attachTops(
+    rows: await finishRows(
       rows.map((r) => toTaskRowDto(r, scope)),
       scope,
+      actor,
     ),
     total,
     page,
@@ -436,6 +460,7 @@ async function nestedPage(
   page: number,
   pageSize: number,
   scope: TaskAccessScope,
+  actor: Actor,
 ): Promise<PaginatedResult<TaskRowDto>> {
   const all = await prisma.task.findMany({
     where,
@@ -446,7 +471,7 @@ async function nestedPage(
   const nested = buildNestedOrder(all.map((r) => toTaskRowDto(r, scope)));
   const start = (page - 1) * pageSize;
   return {
-    rows: await attachTops(nested.slice(start, start + pageSize), scope),
+    rows: await finishRows(nested.slice(start, start + pageSize), scope, actor),
     total: nested.length,
     page,
     pageSize,

@@ -233,6 +233,8 @@ export function TaskGantt({ rows, loading, onChanged, ghosts = [] }: Props) {
     e.stopPropagation();
     // Read-only tasks (mention-only OR tree-inherited) can't be dragged to reschedule.
     if (task.mentionOnly || task.treeOnly || task.viewOnly) return;
+    // Moving the bar or its end moves the due date: only for those who may.
+    if (mode !== 'start' && task.canChangeDue === false) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setDrag({
       id: task.id,

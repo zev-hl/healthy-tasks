@@ -591,4 +591,29 @@ describe('Stage 1: the Tasks list (My team, top task, repeat mark)', () => {
     assert.equal(by.get(s.id)!.repeats, true);
     assert.equal(by.get(t.id)!.repeats, false);
   });
+
+  it('each row says whether the reader may move its due date', async () => {
+    const admin = await login(ADMIN);
+    const boss = await seedUser('boss@test.local', 'Manager');
+    const worker = await seedUser('worker2@test.local', 'Member', boss.id);
+    const bossTok = await login('boss@test.local');
+    const workerTok = await login('worker2@test.local');
+    const fromBoss = await makeTask(bossTok, 'Boss made it', { assigneeId: worker.id });
+    const fromWorker = await makeTask(workerTok, 'Worker made it', { assigneeId: worker.id });
+    const rights = async (tok: string) =>
+      new Map(
+        ((await query(tok, {})).body.rows as { id: number; canChangeDue: boolean }[]).map((r) => [
+          r.id,
+          r.canChangeDue,
+        ]),
+      );
+    const w = await rights(workerTok);
+    assert.equal(w.get(fromBoss.id), false);
+    assert.equal(w.get(fromWorker.id), true);
+    const b = await rights(bossTok);
+    assert.equal(b.get(fromBoss.id), true);
+    assert.equal(b.get(fromWorker.id), true); // above the creator
+    const a = await rights(admin);
+    assert.equal(a.get(fromBoss.id), true);
+  });
 });

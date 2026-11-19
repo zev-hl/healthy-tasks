@@ -136,8 +136,33 @@ export function TaskTable({
     ['start', 'created', 'tags', 'attributes'].filter((c) => columns.has(c as OptionalColumn))
       .length;
 
+  // On wide screens the table scrolls in a box that ends at the window's
+  // bottom (less room for the pager), so its sideways scrollbar is always in
+  // view. The box's height follows where it starts.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof window.matchMedia !== 'function') return;
+    const wide = window.matchMedia('(min-width: 1100px)');
+    const fit = () => {
+      if (!wide.matches) {
+        el.style.maxHeight = '';
+        return;
+      }
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      el.style.maxHeight = `${Math.max(320, window.innerHeight - top - 72)}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    wide.addEventListener?.('change', fit);
+    return () => {
+      window.removeEventListener('resize', fit);
+      wide.removeEventListener?.('change', fit);
+    };
+  }, []);
+
   return (
-    <div className="hb-table-wrap">
+    <div ref={wrapRef} className="hb-table-wrap hb-tasks-scroll">
       <table className="hb-table">
         <thead>
           <tr>
@@ -301,8 +326,15 @@ export function TaskTable({
                           </td>
                         )}
                         <td>
-                          {ro ? (
-                            <span className={cx('hb-due-cell', due?.late && 'late')}>
+                          {ro || t.canChangeDue === false ? (
+                            <span
+                              className={cx('hb-due-cell', due?.late && 'late')}
+                              title={
+                                ro
+                                  ? undefined
+                                  : 'Only the task’s creator, someone above them, or an Admin can change the due date'
+                              }
+                            >
                               {due?.text ?? '—'}
                             </span>
                           ) : (
