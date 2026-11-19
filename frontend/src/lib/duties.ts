@@ -225,3 +225,33 @@ export function useDutyCatalog(): {
   const duties = useMemo(() => indexDuties(departments), [departments]);
   return { departments, duties, holdings, loading, error, reload, grantLocally };
 }
+
+/** The "No duty" choice: a duty must be picked when creating, and this is one. */
+export const NO_DUTY = '__no_duty';
+
+/**
+ * Creating a task (Nov 2026 plan, C5): the assignee comes first, then a duty
+ * from the ones they hold (each labelled with its department), with "No duty"
+ * as a real choice. `value` '' means nothing picked yet.
+ */
+export function heldDutyOptions(
+  catalog: { departments: DepartmentDto[]; holdings: DutyHoldingsDto },
+  userId: string | null,
+): { value: string; label: string; dot?: string }[] {
+  const held = new Set(userId ? (catalog.holdings[userId] ?? []) : []);
+  const opts: { value: string; label: string; dot?: string }[] = [
+    { value: NO_DUTY, label: 'No duty' },
+  ];
+  for (const d of catalog.departments) {
+    if (d.archived) continue;
+    for (const x of d.duties) {
+      if (!x.archived && held.has(x.id))
+        opts.push({ value: x.id, label: `${d.name} › ${x.name}`, dot: d.color });
+    }
+  }
+  return opts;
+}
+
+/** The duty id to send for a picked choice ('' or "No duty" → null). */
+export const dutyIdOf = (choice: string): string | null =>
+  choice && choice !== NO_DUTY ? choice : null;

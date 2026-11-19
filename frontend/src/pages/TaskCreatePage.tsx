@@ -13,7 +13,10 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { isMismatch, useDutyCatalog } from '../lib/duties';
+import { useToast } from '../components/harbor/Toast';
+import { dutyIdOf, heldDutyOptions, isMismatch, useDutyCatalog } from '../lib/duties';
+import type { NewTaskCarry } from '../components/harbor/QuickTask';
+import { TASK_CREATED_EVENT } from '../components/harbor/QuickTask';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
 import { DEFAULT_DUE_HOUR, DEFAULT_START_HOUR, defaultTime, partsToIso } from '../lib/datetime';
 import { RichTextEditor } from '../components/RichTextEditor';
@@ -32,17 +35,17 @@ import { PRIORITY_OPTIONS, dueInfo } from '../components/harbor/taskHelpers';
 export function TaskCreatePage() {
   const navigate = useNavigate();
   const { user: me } = useAuth();
+  const toast = useToast();
   const titleRef = useRef<HTMLInputElement>(null);
 
   // What the quick "New task" panel carried over ("More details").
-  const carried = (useLocation().state ?? {}) as {
-    name?: string;
-    dueDate?: string;
-    dueTime?: string;
-  };
+  const carried = (useLocation().state ?? {}) as NewTaskCarry;
   const [name, setName] = useState(carried.name ?? '');
   const [description, setDescription] = useState('');
-  const [assigneeId, setAssigneeId] = useState(me?.id ?? '');
+  const [assigneeId, setAssigneeId] = useState(carried.assigneeId ?? me?.id ?? '');
+  const [isProject, setIsProject] = useState(!!carried.isProject);
+  // Each line becomes a sub-task (a project's: a task) once this is created.
+  const [subLines, setSubLines] = useState('');
   const [priority, setPriority] = useState<TaskPriority>(DEFAULT_TASK_PRIORITY);
   // Review is entered by sending an existing task to a reviewer, never at creation.
   const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS);
@@ -52,7 +55,9 @@ export function TaskCreatePage() {
   const [startTime, setStartTime] = useState('');
   const [dueDate, setDueDate] = useState(carried.dueDate ?? '');
   const [dueTime, setDueTime] = useState(carried.dueTime ?? '');
-  const [dutyId, setDutyId] = useState('');
+  // '' = not picked yet; a duty must be picked, "No duty" being one choice.
+  const [dutyChoice, setDutyChoice] = useState(carried.dutyChoice ?? '');
+  const dutyId = dutyIdOf(dutyChoice) ?? '';
   const [users, setUsers] = useState<ActiveUserDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -73,7 +78,8 @@ export function TaskCreatePage() {
     tags.length > 0 ||
     !!dueDate ||
     !!startDate ||
-    !!dutyId;
+    !!dutyId ||
+    subLines.trim() !== '';
   useUnsavedChangesWarning(dirty && !submitting);
 
   const doerId = assigneeId || null;
@@ -118,6 +124,14 @@ export function TaskCreatePage() {
       titleRef.current?.focus();
       return;
     }
+    if (!assigneeId) {
+      setError('Pick who it’s for.');
+      return;
+    }
+    if (!dutyChoice) {
+      setError('Pick a duty, or “No duty”.');
+      return;
+    }
     const startAt = partsToIso(startDate, startTime, DEFAULT_START_HOUR);
     const dueAt = partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR);
     if (startAt && dueAt && new Date(startAt) >= new Date(dueAt)) {
@@ -137,7 +151,27 @@ export function TaskCreatePage() {
         startAt,
         dueAt,
         dutyId: dutyId || null,
+        ...(isProject && { isProject: true }),
       });
+      // Each line typed becomes a sub-task of the new task.
+      const lines = subLines
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length >= TASK_NAME_MIN_LENGTH);
+      let failed = 0;
+      for (const line of lines) {
+        try {
+          await api.createSubtask(created.id, line);
+        } catch {
+          failed += 1;
+        }
+      }
+      window.dispatchEvent(new CustomEvent(TASK_CREATED_EVENT, { detail: { id: created.id } }));
+      if (failed)
+        toast({
+          message: `${failed} of the ${lines.length} sub-tasks couldn’t be added.`,
+          tone: 'error',
+        });
       navigate(`/tasks/${created.id}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the task');
@@ -165,8 +199,8 @@ export function TaskCreatePage() {
       dot: STATUS_DOT[s],
     }),
   );
+  // Required: whoever it's for (you by default). No "Unassigned" here.
   const assigneeChoices: SelectOption<string>[] = [
-    { value: '', label: 'Unassigned', lead: <span className="hb-unassigned">?</span> },
     ...[...users]
       .sort((a, b) => userLabel(a).localeCompare(userLabel(b)))
       .map((u) => ({
@@ -179,24 +213,13 @@ export function TaskCreatePage() {
             : undefined,
       })),
   ];
-  const dutyChoices: SelectOption<string>[] = [
-    { value: '', label: 'No duty' },
-    ...catalog.departments
-      .filter((d) => !d.archived)
-      .flatMap((d) =>
-        d.duties
-          .filter((x) => !x.archived)
-          .map((x) => ({
-            value: x.id,
-            label: `${d.name} › ${x.name}`,
-            dot: d.color,
-            hint:
-              doerId && !catalog.loading && isMismatch(catalog.holdings, doerId, x.id)
-                ? 'not held'
-                : undefined,
-          })),
-      ),
-  ];
+  // The assignee comes first; then a duty from the ones they hold.
+  const dutyChoices: SelectOption<string>[] = heldDutyOptions(catalog, doerId);
+  function pickAssignee(id: string) {
+    setAssigneeId(id);
+    if (dutyChoice && !heldDutyOptions(catalog, id).some((o) => o.value === dutyChoice))
+      setDutyChoice('');
+  }
   const due = dueInfo(partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR), status);
   const assignee = users.find((u) => u.id === assigneeId) ?? null;
 
@@ -222,14 +245,23 @@ export function TaskCreatePage() {
         <div className="hb-taskhead-main">
           <div className="hb-flags">
             <Pill tone="blue">New, not saved yet</Pill>
+            <label className="hb-switch">
+              <input
+                type="checkbox"
+                checked={isProject}
+                onChange={(e) => setIsProject(e.target.checked)}
+              />
+              <span className="hb-switch-track" aria-hidden="true" />
+              Project
+            </label>
           </div>
           <input
             ref={titleRef}
             className="hb-title-input is-new"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Task title"
-            aria-label="Task title"
+            placeholder={isProject ? 'Project name' : 'Task title'}
+            aria-label={isProject ? 'Project name' : 'Task title'}
             maxLength={300}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -239,7 +271,7 @@ export function TaskCreatePage() {
             }}
           />
           <p className="hb-meta">
-            Fill in what you know; everything but the title can change later.
+            A title, who it’s for and a duty (or “No duty”) are needed; the rest can come later.
           </p>
           <div className="hb-chips">
             <Select
@@ -279,7 +311,23 @@ export function TaskCreatePage() {
                   {assignee ? userLabel(assignee) : 'Unassigned'}
                 </>
               )}
-              onChange={setAssigneeId}
+              onChange={pickAssignee}
+            />
+            <Select
+              variant="chip"
+              hideLabel
+              className={`hb-prop${mismatch ? ' is-bad' : ''}`}
+              label="Duty"
+              value={dutyChoice}
+              options={dutyChoices}
+              renderValue={() =>
+                duty
+                  ? `${duty.departmentName} › ${duty.name}`
+                  : dutyChoice
+                    ? 'No duty'
+                    : 'Pick a duty'
+              }
+              onChange={setDutyChoice}
             />
             <DatePicker
               variant="chip"
@@ -336,17 +384,6 @@ export function TaskCreatePage() {
               )}
               onChange={setPriority}
             />
-            <Select
-              variant="chip"
-              hideLabel
-              className={`hb-prop${mismatch ? ' is-bad' : ''}`}
-              label="Duty"
-              value={dutyId}
-              options={dutyChoices}
-              searchPlaceholder="Search duties…"
-              renderValue={() => (duty ? `${duty.departmentName} › ${duty.name}` : '+ Duty')}
-              onChange={setDutyId}
-            />
             {tags.map((t) => (
               <span key={t} className="hb-chip hb-tagchip">
                 {t}
@@ -386,7 +423,7 @@ export function TaskCreatePage() {
               granting={granting}
               onGrant={() => void grant()}
               onPickAssignee={() => undefined}
-              onClearDuty={() => setDutyId('')}
+              onClearDuty={() => setDutyChoice('')}
             />
           )}
         </div>
@@ -412,6 +449,26 @@ export function TaskCreatePage() {
                 />
               </div>
             </section>
+            <section className="hb-card">
+              <div className="hb-card-head">
+                <h3>{isProject ? 'Tasks' : 'Sub-tasks'}</h3>
+                <span className="hb-small">One per line</span>
+              </div>
+              <div className="hb-card-pad">
+                <textarea
+                  className="hb-sublines"
+                  value={subLines}
+                  onChange={(e) => setSubLines(e.target.value)}
+                  rows={4}
+                  placeholder={
+                    isProject
+                      ? 'Each line becomes a task in the project'
+                      : 'Each line becomes a sub-task of this task'
+                  }
+                  aria-label={isProject ? 'Tasks, one per line' : 'Sub-tasks, one per line'}
+                />
+              </div>
+            </section>
           </div>
           <div className="hb-col">
             <section className="hb-card hb-soon-card">
@@ -422,8 +479,8 @@ export function TaskCreatePage() {
                 <h3>Activity</h3>
               </div>
               <p className="hb-soon-text">
-                <Paperclip size={13} aria-hidden="true" /> Comments, files, sub-tasks and links can
-                be added as soon as the task is created.
+                <Paperclip size={13} aria-hidden="true" /> Comments, files and links can be added as
+                soon as it is created.
               </p>
             </section>
           </div>
@@ -432,7 +489,7 @@ export function TaskCreatePage() {
 
       <div className="hb-savebar" role="region" aria-label="New task">
         <span className="hb-savebar-dot" aria-hidden="true" />
-        <strong>New task</strong>
+        <strong>{isProject ? 'New project' : 'New task'}</strong>
         <span className="hb-savebar-what">Not created yet</span>
         {mismatch && <span className="hb-savebar-err">Fix the duty mismatch to create it.</span>}
         <span className="hb-grow" />
@@ -448,10 +505,11 @@ export function TaskCreatePage() {
         <button
           type="button"
           className="hb-savebar-save"
-          disabled={submitting || mismatch}
+          disabled={submitting || mismatch || !dutyChoice || !assigneeId}
+          title={!dutyChoice ? 'Pick a duty, or “No duty”' : undefined}
           onClick={() => void create()}
         >
-          {submitting ? 'Creating…' : 'Create task'}
+          {submitting ? 'Creating…' : isProject ? 'Create project' : 'Create task'}
         </button>
       </div>
     </div>

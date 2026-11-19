@@ -8968,3 +8968,31 @@ textarea.hb-tpl-input {
 .hb-pop .hb-actions-menu button svg {
   flex: none;
 }
+
+/* "+ New": the Task / Project menu, then the quick panel with its switch. */
+.hb-newmenu {
+  padding: 6px;
+}
+.hb-quicktask-head.is-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.hb-quicktask .hb-select-field,
+.hb-quicktask .hb-select {
+  width: 100%;
+}
+.hb-sublines {
+  width: 100%;
+  min-height: 92px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.hb-flags .hb-switch {
+  margin-left: auto;
+}
