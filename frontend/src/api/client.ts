@@ -216,21 +216,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   // --- Auth ---
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, remember = false) =>
     request<LoginResponse>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, remember }),
     }),
   /**
    * Sign in with the token Google handed the browser. The server verifies it
    * and answers with the same session a password login returns — from here on
    * the two ways in are indistinguishable.
    */
-  googleLogin: (idToken: string) =>
+  googleLogin: (idToken: string, remember = false) =>
     request<LoginResponse>('/api/auth/google', {
       method: 'POST',
-      body: JSON.stringify({ idToken }),
+      body: JSON.stringify({ idToken, remember }),
     }),
+  /** Ends every sign-in of mine, on every device, this one too. */
+  signOutEverywhere: () => request<void>('/api/auth/sign-out-everywhere', { method: 'POST' }),
   me: () => request<UserDto>('/api/auth/me'),
   updateMe: (body: UpdateMyProfileRequest) =>
     request<UserDto>('/api/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),

@@ -12,6 +12,7 @@ import { assertCanSignInWithGoogle, assertCanUsePassword } from '../utils/allowe
 export async function login(
   email: string,
   password: string,
+  remember = false,
 ): Promise<{ user: User; token: string }> {
   // Company accounts do not use this door at all. Checked first, before the
   // password is even looked at, so someone typing a password that IS correct is
@@ -37,6 +38,7 @@ export async function login(
     email: user.email,
     role: user.role,
     tv: user.tokenVersion,
+    ...(remember && { rm: true as const }),
   });
   return { user, token };
 }
@@ -53,7 +55,10 @@ export async function login(
  * successful sign-in records that id, so a reused email address can never give
  * a new hire a leaver's account.
  */
-export async function loginWithGoogle(idToken: string): Promise<{ user: User; token: string }> {
+export async function loginWithGoogle(
+  idToken: string,
+  remember = false,
+): Promise<{ user: User; token: string }> {
   const identity = await verifyGoogleIdToken(idToken);
 
   // An unverified address proves nothing about who holds it.
@@ -99,6 +104,7 @@ export async function loginWithGoogle(idToken: string): Promise<{ user: User; to
     email: user.email,
     role: user.role,
     tv: user.tokenVersion,
+    ...(remember && { rm: true as const }),
   });
   return { user, token };
 }
@@ -172,4 +178,15 @@ export async function resetPassword(rawToken: string, newPassword: string): Prom
       data: { usedAt: new Date() },
     }),
   ]);
+}
+
+/**
+ * "Sign out everywhere": every sign-in of this person ends at once, on every
+ * device and browser, this one included (bumps tokenVersion).
+ */
+export async function signOutEverywhere(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { tokenVersion: { increment: 1 } },
+  });
 }

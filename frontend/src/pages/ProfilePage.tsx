@@ -6,6 +6,7 @@ import { Avatar, userLabel } from '../components/ui/Avatar';
 import { PageHeader } from '../components/harbor/PageHeader';
 import { NotificationSettings } from '../components/NotificationSettings';
 import { GoogleCalendarCard } from '../components/calendar/GoogleCalendarCard';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 
 const DEVICE_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -28,6 +29,8 @@ export function ProfilePage() {
   const [tzSaving, setTzSaving] = useState(false);
   const [tzError, setTzError] = useState<string | null>(null);
   const tzOptions = useMemo(timeZoneOptions, []);
+  const [confirmEverywhere, setConfirmEverywhere] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   const saveTimeZone = async (timeZone: string | null) => {
     setTzSaving(true);
@@ -144,7 +147,35 @@ export function ProfilePage() {
               >
                 Log out
               </button>
+              <button
+                type="button"
+                className="secondary"
+                title="Ends every sign-in of yours, on every computer and phone, this one too"
+                onClick={() => setConfirmEverywhere(true)}
+              >
+                Sign out everywhere
+              </button>
             </div>
+            {confirmEverywhere && (
+              <ConfirmDialog
+                title="Sign out everywhere?"
+                message="Every sign-in of yours ends now, on every computer and phone, this one too. Devices kept signed in will have to sign in again."
+                confirmLabel="Sign out everywhere"
+                tone="warn"
+                busy={signingOut}
+                onCancel={() => setConfirmEverywhere(false)}
+                onConfirm={() => {
+                  setSigningOut(true);
+                  void api
+                    .signOutEverywhere()
+                    .catch(() => undefined)
+                    .then(() => {
+                      logout();
+                      navigate('/login');
+                    });
+                }}
+              />
+            )}
           </div>
 
           {/* The right-hand column: preferences, then the queue link under them. */}

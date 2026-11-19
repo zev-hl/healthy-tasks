@@ -7,6 +7,7 @@ import {
   createPasswordReset,
   findResettableUserByEmail,
   resetPassword,
+  signOutEverywhere,
 } from '../services/auth.service.js';
 import { getUserById, updateMyProfile } from '../services/user.service.js';
 import { assertCanRecoverPassword } from '../utils/allowed-domain.js';
@@ -22,8 +23,8 @@ import type {
 } from '../validation/schemas.js';
 
 export async function loginController(req: Request, res: Response): Promise<void> {
-  const { email, password } = req.body as LoginInput;
-  const { user, token } = await login(email, password);
+  const { email, password, remember } = req.body as LoginInput;
+  const { user, token } = await login(email, password, remember === true);
   const body: LoginResponse = { token, user: toUserDto(user) };
   res.json(body);
 }
@@ -33,8 +34,8 @@ export async function loginController(req: Request, res: Response): Promise<void
  * discards the token. This endpoint exists for symmetry and future-proofing.
  */
 export async function googleLoginController(req: Request, res: Response): Promise<void> {
-  const { idToken } = req.body as GoogleLoginInput;
-  const { user, token } = await loginWithGoogle(idToken);
+  const { idToken, remember } = req.body as GoogleLoginInput;
+  const { user, token } = await loginWithGoogle(idToken, remember === true);
   res.json({ token, user: toUserDto(user) } satisfies LoginResponse);
 }
 
@@ -81,4 +82,10 @@ export async function resetPasswordController(req: Request, res: Response): Prom
   const { token, newPassword } = req.body as ResetPasswordInput;
   await resetPassword(token, newPassword);
   res.json({ message: 'Your password has been updated. You can now log in.' });
+}
+
+/** POST /api/auth/sign-out-everywhere — ends every sign-in of the caller, this one too. */
+export async function signOutEverywhereController(req: Request, res: Response): Promise<void> {
+  await signOutEverywhere(req.user!.id);
+  res.status(204).send();
 }

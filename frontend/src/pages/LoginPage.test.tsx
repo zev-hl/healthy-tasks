@@ -78,7 +78,7 @@ describe('LoginPage', () => {
   it('signs in with the token Google hands back, then goes to the dashboard', async () => {
     renderWithRouter(<LoginPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
-    await waitFor(() => expect(loginWithGoogle).toHaveBeenCalledWith('token-from-google'));
+    await waitFor(() => expect(loginWithGoogle).toHaveBeenCalledWith('token-from-google', false));
     expect(navigate).toHaveBeenCalledWith('/');
     expect(login).not.toHaveBeenCalled();
   });
@@ -93,7 +93,7 @@ describe('LoginPage', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    await waitFor(() => expect(login).toHaveBeenCalledWith('me@healthlifeny.com', 'secret'));
+    await waitFor(() => expect(login).toHaveBeenCalledWith('me@healthlifeny.com', 'secret', false));
     expect(navigate).toHaveBeenCalledWith('/');
     expect(loginWithGoogle).not.toHaveBeenCalled();
   });
@@ -116,5 +116,18 @@ describe('LoginPage', () => {
 
     expect(screen.getByText(/did not complete/i)).toBeInTheDocument();
     expect(loginWithGoogle).not.toHaveBeenCalled();
+  });
+
+  it('keeps you signed in on this device only when ticked, either way in', async () => {
+    renderWithRouter(<LoginPage />);
+    const box = screen.getByRole('checkbox', { name: /Keep me signed in on this device/ });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with Google' }));
+    await waitFor(() => expect(loginWithGoogle).toHaveBeenCalledWith('token-from-google', true));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@b.c' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() => expect(login).toHaveBeenCalledWith('a@b.c', 'pw', true));
   });
 });

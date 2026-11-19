@@ -20,9 +20,10 @@ interface AuthState {
   expiryWarning: boolean;
   /** Renew the session (resets the idle clock) and dismiss the warning. */
   extendSession: () => Promise<void>;
-  login: (email: string, password: string) => Promise<UserDto>;
+  /** `remember`: "Keep me signed in on this device". */
+  login: (email: string, password: string, remember?: boolean) => Promise<UserDto>;
   /** Sign in with a Google ID token. Lands in the same session as `login`. */
-  loginWithGoogle: (idToken: string) => Promise<UserDto>;
+  loginWithGoogle: (idToken: string, remember?: boolean) => Promise<UserDto>;
   logout: () => void;
   /** Save self-service profile fields and adopt the returned user. */
   updateMe: (body: UpdateMyProfileRequest) => Promise<UserDto>;
@@ -125,16 +126,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionExpired,
       expiryWarning,
       extendSession,
-      async login(email, password) {
-        const res = await api.login(email, password);
+      async login(email, password, remember) {
+        const res = await api.login(email, password, remember);
         setToken(res.token);
         setUser(res.user);
         setSessionExpired(false);
         setExpiryWarning(false);
         return res.user;
       },
-      async loginWithGoogle(idToken) {
-        const res = await api.googleLogin(idToken);
+      async loginWithGoogle(idToken, remember) {
+        const res = await api.googleLogin(idToken, remember);
         setToken(res.token);
         setUser(res.user);
         setSessionExpired(false);

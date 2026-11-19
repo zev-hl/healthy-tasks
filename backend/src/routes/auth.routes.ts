@@ -13,6 +13,7 @@ import {
   loginController,
   googleLoginController,
   logoutController,
+  signOutEverywhereController,
   meController,
   updateMeController,
   forgotPasswordController,
@@ -26,6 +27,7 @@ authRouter.post('/login', validateBody(loginSchema), asyncHandler(loginControlle
 // supported, and either issues the same session token.
 authRouter.post('/google', validateBody(googleLoginSchema), asyncHandler(googleLoginController));
 authRouter.post('/logout', asyncHandler(logoutController));
+authRouter.post('/sign-out-everywhere', requireAuth, asyncHandler(signOutEverywhereController));
 authRouter.get('/me', requireAuth, asyncHandler(meController));
 authRouter.patch(
   '/me',

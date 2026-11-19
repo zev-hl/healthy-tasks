@@ -62,6 +62,11 @@ export const env = {
 
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: optional('JWT_EXPIRES_IN', '15m'),
+  // "Keep me signed in on this device" (Nov 2026 plan, Stage 5): how many days
+  // of no use such a sign-in lasts. It still slides with use, and is still
+  // ended at once by deactivation, a password reset or "Sign out everywhere".
+  // 0 turns the choice off (every sign-in gets JWT_EXPIRES_IN).
+  keepSignedInDays: Math.max(0, Number(optional('KEEP_SIGNED_IN_DAYS', '30')) || 0),
   passwordResetExpiresIn: optional('PASSWORD_RESET_EXPIRES_IN', '60m'),
 
   frontendUrl: optional('FRONTEND_URL', 'http://localhost:5173'),

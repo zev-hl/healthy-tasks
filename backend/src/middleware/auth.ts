@@ -55,6 +55,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       email: user.email,
       role: user.role,
       tv: user.tokenVersion,
+      // A "keep me signed in" sign-in stays one as it slides.
+      ...(payload.rm === true && { rm: true as const }),
     });
     res.setHeader(REFRESHED_TOKEN_HEADER, refreshed);
 

@@ -66,6 +66,8 @@ export interface UserDto {
 export interface LoginRequest {
   email: string;
   password: string;
+  /** "Keep me signed in on this device": a long idle window instead of the short one. */
+  remember?: boolean;
 }
 
 /**
@@ -74,6 +76,8 @@ export interface LoginRequest {
  */
 export interface GoogleLoginRequest {
   idToken: string;
+  /** As on LoginRequest. */
+  remember?: boolean;
 }
 
 export interface LoginResponse {

@@ -10,11 +10,17 @@ export interface AccessTokenPayload {
   // Token version at issue time; compared against the user's current
   // tokenVersion so we can invalidate tokens after deactivation / reset.
   tv: number;
+  /** Signed in with "Keep me signed in on this device" (KEEP_SIGNED_IN_DAYS). */
+  rm?: true;
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {
-  const options: SignOptions = { expiresIn: env.jwtExpiresIn as SignOptions['expiresIn'] };
-  return jwt.sign(payload, env.jwtSecret, options);
+  const keep = payload.rm === true && env.keepSignedInDays > 0;
+  const { rm: _rm, ...rest } = payload;
+  const options: SignOptions = {
+    expiresIn: keep ? `${env.keepSignedInDays}d` : (env.jwtExpiresIn as SignOptions['expiresIn']),
+  };
+  return jwt.sign(keep ? { ...rest, rm: true } : rest, env.jwtSecret, options);
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {

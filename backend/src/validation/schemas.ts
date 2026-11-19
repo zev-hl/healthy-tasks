@@ -62,11 +62,13 @@ const password = z
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, 'Password is required'),
+  remember: z.boolean().optional(),
 });
 
 /** The signed statement from Google; everything inside it is verified server-side. */
 export const googleLoginSchema = z.object({
   idToken: z.string().min(1, 'idToken is required').max(8192),
+  remember: z.boolean().optional(),
 });
 
 export const forgotPasswordSchema = z.object({

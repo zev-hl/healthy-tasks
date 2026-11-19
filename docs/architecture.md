@@ -1291,3 +1291,21 @@ are matched by email both ways.
 - `GET /api/connect` tells the browser whether Connect is linked and where; the
   buttons, the Connect column of the settings and the calendar layer follow it
   (`lib/connect.ts`, `useConnect`).
+
+## 23. Keep me signed in, and sign out everywhere (Nov 2026 plan, Stage 5)
+
+Stage 5's HL Central-only part; the rest of Stage 5 (one sign-in for Connect)
+waits for our Connect.
+
+- **Keep me signed in on this device**: a checkbox on the sign-in page, off by
+  default, for both ways in (`remember` on `POST /api/auth/login` and
+  `/api/auth/google`). Such a sign-in's token carries `rm: true` and lasts
+  `KEEP_SIGNED_IN_DAYS` (default 30) of no use instead of `JWT_EXPIRES_IN`. It
+  still slides: `requireAuth` re-issues it with `rm` kept, so a short sign-in
+  never becomes a long one and a long one stays long. `0` turns the choice off.
+  Everything that ends a session still ends it at once (the per-request
+  `isActive` / `tokenVersion` checks), so a long sign-in is no harder to revoke.
+- **Sign out everywhere** (profile): `POST /api/auth/sign-out-everywhere` bumps
+  the caller's `tokenVersion`, ending every sign-in of theirs on every device,
+  this one included; the page then goes to sign-in.
+

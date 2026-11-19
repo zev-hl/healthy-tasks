@@ -13,6 +13,8 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Off unless ticked: a shared computer must not stay signed in.
+  const [remember, setRemember] = useState(false);
 
   /**
    * Both doors lead to the same place: the server returns the same session
@@ -22,7 +24,7 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await loginWithGoogle(idToken);
+      await loginWithGoogle(idToken, remember);
       navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Google sign-in failed');
@@ -36,7 +38,7 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, remember);
       navigate('/');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed');
@@ -63,6 +65,18 @@ export function LoginPage() {
         </div>
       )}
       {error && <div className="alert error">{error}</div>}
+
+      {/* Before both ways in, since it applies to either. */}
+      <label className="auth-remember">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        <span>
+          Keep me signed in on this device
+          <small>
+            Only on your own computer or phone. You stay signed in unless you sign out or don’t use
+            it for a month.
+          </small>
+        </span>
+      </label>
 
       {googleSignInAvailable && (
         <>

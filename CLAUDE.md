@@ -141,8 +141,11 @@ carries a freshly signed token in the `X-Refreshed-Token` header (CORS-exposed);
 the frontend API client swaps it into `localStorage` on each response. So the
 `JWT_EXPIRES_IN` window (default `15m` in `env.ts`) is measured from the *last*
 request — continuous use never logs you out, but a full idle window with no
-requests expires the session and the SPA bounces to login. No self-registration
-— Admins create users.
+requests expires the session and the SPA bounces to login. Ticking "Keep me
+signed in on this device" at sign-in gives a `KEEP_SIGNED_IN_DAYS` window
+instead (default 30; the token carries `rm`, kept as it slides), and "Sign out
+everywhere" on the profile bumps `tokenVersion` (Stage 5, `docs/architecture.md`
+§23). No self-registration — Admins create users.
 
 The address decides the way in: with `GOOGLE_ALLOWED_DOMAIN` set, a company
 address signs in with Google only and any other with a password only
@@ -316,7 +319,7 @@ enforces `roles`.
 
 Backend config is centralized and validated in `backend/src/config/env.ts`
 (missing required vars throw at boot). Copy `.env.example` → `.env`. Notable
-vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN` (one
+vars: `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `KEEP_SIGNED_IN_DAYS`, `CORS_ORIGIN` (one
 origin, or several comma-separated — every site that calls this API; also the
 sites the queue dashboard's button is accepted from), `EMAIL_PROVIDER`
 (`console` dev / `smtp`), `EMAIL_DELIVERY` (`direct` / `queue`),
