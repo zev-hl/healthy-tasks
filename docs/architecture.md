@@ -566,7 +566,13 @@ uses native HTML5 drag from a per-node handle; the pure helper
 `moveTemplateNode(nodes, dragKey, targetKey, pos)` (in `packages/shared`) relocates
 the dragged node **together with its entire subtree as one contiguous block** and
 updates its `parentKey`, refusing to drop a node into its own descendants or to
-move the root. Nodes can be collapsed/expanded individually plus **Collapse
+put the only main task under another. **A template may have several main
+tasks** (Nov 2026): each becomes its own task tree, a project when its own tree
+has three levels; the first is the occurrence's own (`rootTaskId`: alerts link
+to it, the occurrence lists show it), each main task gets the "made from"
+history line, and "repeat after completion" waits for all of them (the clock
+starts at the last to finish). The editor's "Add main task" adds one, and any
+task's "Sub-task of" can be "None: a main task". Nodes can be collapsed/expanded individually plus **Collapse
 all/Expand all**; collapsing is display-only (a collapsed node stays fully
 draggable and moves its hidden subtree intact). Sibling order persists via each
 node's `orderIndex`. Template nodes also gained a `tags` array (round-tripped

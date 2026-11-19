@@ -1804,8 +1804,9 @@ export function templateSubtreeKeys<T extends TemplateTreeNode>(
  * Move a node — together with its entire subtree, as one contiguous block — to a
  * new position, updating the moved node's `parentKey`. Returns a NEW array. The
  * move is a no-op (returns the input unchanged) when it is invalid: dropping a
- * node onto itself, onto one of its own descendants, or moving the root (the
- * single node whose parentKey is null). Descendants always follow their parent
+ * node onto itself, onto one of its own descendants, or putting the only main
+ * task (parentKey null) under another — a template keeps at least one, and may
+ * have several. Descendants always follow their parent
  * because their parentKey links are preserved and the whole block is relocated
  * intact — collapsing a node never affects this (it is a display-only concern).
  */
@@ -1819,13 +1820,19 @@ export function moveTemplateNode<T extends TemplateTreeNode>(
   const drag = nodes.find((n) => n.key === dragKey);
   const target = nodes.find((n) => n.key === targetKey);
   if (!drag || !target) return nodes.slice();
-  // The root cannot be moved.
-  if (drag.parentKey === null) return nodes.slice();
   const subtree = templateSubtreeKeys(nodes, dragKey);
   // Never drop a node into its own subtree.
   if (subtree.has(targetKey)) return nodes.slice();
 
   const newParentKey = pos === 'inside' ? targetKey : target.parentKey;
+  // The only main task stays one.
+  if (
+    drag.parentKey === null &&
+    newParentKey !== null &&
+    !nodes.some((n) => n.parentKey === null && n.key !== dragKey)
+  ) {
+    return nodes.slice();
+  }
   const block = nodes
     .filter((n) => subtree.has(n.key))
     .map((n) => (n.key === dragKey ? { ...n, parentKey: newParentKey } : n));

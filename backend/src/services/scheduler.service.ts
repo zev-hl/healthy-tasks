@@ -237,7 +237,7 @@ async function relativeNextAnchor(
   const latest = await prisma.templateOccurrence.findFirst({
     where: { templateId: t.id, seq: { not: null } },
     orderBy: { seq: 'desc' },
-    include: { rootTask: { select: { status: true, statusChangedAt: true } } },
+    select: { id: true, seq: true },
   });
 
   if (!latest) {
@@ -247,16 +247,16 @@ async function relativeNextAnchor(
       ? { seq: 1, anchor: cfg.anchorDate, completedAt: null }
       : null;
   }
-  // Subsequent occurrence: only once the prior root is Completed.
-  if (
-    !latest.rootTask ||
-    latest.rootTask.status !== 'Completed' ||
-    !cfg.intervalUnit ||
-    !cfg.intervalCount
-  ) {
-    return null;
-  }
-  const completedAt = latest.rootTask.statusChangedAt ?? now;
+  // Subsequent occurrence: only once the prior occurrence's main task is
+  // Completed — every one of them, when the template has several (the clock
+  // starts at the last to finish).
+  if (!cfg.intervalUnit || !cfg.intervalCount) return null;
+  const tops = await prisma.task.findMany({
+    where: { templateOccurrenceId: latest.id, templateNode: { parentNodeId: null } },
+    select: { status: true, statusChangedAt: true },
+  });
+  if (tops.length === 0 || tops.some((t) => t.status !== 'Completed')) return null;
+  const completedAt = new Date(Math.max(...tops.map((t) => (t.statusChangedAt ?? now).getTime())));
   const nextSeq = (latest.seq as number) + 1;
   const nextAnchor = addInterval(completedAt, cfg.intervalUnit, cfg.intervalCount);
   return seqAllowed(cfg, nextSeq, nextAnchor)

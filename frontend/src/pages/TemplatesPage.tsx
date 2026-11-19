@@ -906,6 +906,12 @@ function TemplateEditor({
     revealUnder(parent);
     setOpen(key, true);
   }
+  /** Another main task: made beside the others, as its own task tree. */
+  function addMainTask() {
+    const key = nextKey();
+    patch({ nodes: [...editor.nodes, blankNode(key, null)] });
+    setOpen(key, true);
+  }
   function quickAdd() {
     const name = quickName.trim();
     if (!name) return;
@@ -947,7 +953,9 @@ function TemplateEditor({
   };
 
   // --- Tree structure (derived from parentKey, so a Parent change auto-nests) ---
-  const rootNode = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
+  // A template may have several main tasks; each becomes its own task tree.
+  const mainNodes = editor.nodes.filter((n) => n.parentKey === null);
+  const severalMain = mainNodes.length > 1;
   const childrenOf = (key: string) => editor.nodes.filter((n) => n.parentKey === key);
   const hasChildren = (key: string) => editor.nodes.some((n) => n.parentKey === key);
 
@@ -1037,6 +1045,8 @@ function TemplateEditor({
   const renderNode = (n: EditorNode, depth: number) => {
     const idx = editor.nodes.findIndex((x) => x.key === n.key);
     const isRoot = n.parentKey === null;
+    // With several main tasks, they too can be dragged, removed or put under another.
+    const movable = !isRoot || severalMain;
     const kids = childrenOf(n.key);
     const nodeCollapsed = isCollapsed(n.key);
     const hiddenCount = nodeCollapsed ? templateSubtreeKeys(editor.nodes, n.key).size - 1 : 0;
@@ -1075,7 +1085,7 @@ function TemplateEditor({
           onDragEnd={onNodeDragEnd}
         >
           <div className="hb-tpl-node-row">
-            {isRoot ? (
+            {!movable ? (
               <span className="hb-tpl-grip is-blank" aria-hidden="true" />
             ) : (
               <span
@@ -1166,7 +1176,7 @@ function TemplateEditor({
             >
               {open ? 'Done' : 'Details'}
             </button>
-            {!isRoot && (
+            {movable && (
               <button
                 type="button"
                 className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
@@ -1192,19 +1202,24 @@ function TemplateEditor({
                 </div>
                 <div className="hb-tpl-field">
                   <span className="hb-tpl-flabel">Sub-task of</span>
-                  {isRoot ? (
-                    <span className="hb-tpl-static">The main task (not under another)</span>
+                  {!movable ? (
+                    <span className="hb-tpl-static">A main task (not under another)</span>
                   ) : (
                     <Select
                       label={`Task ${idx + 1} is a sub-task of`}
                       value={n.parentKey ?? ''}
-                      options={parentOptions(n.key).map((o) => ({
-                        value: o.key,
-                        label: nodeDisplay(o.key),
-                      }))}
+                      options={[
+                        { value: '', label: 'None: a main task' },
+                        ...parentOptions(n.key).map((o) => ({
+                          value: o.key,
+                          label: nodeDisplay(o.key),
+                        })),
+                      ]}
                       onChange={(v) => {
-                        patchNode(n.key, { parentKey: v });
-                        revealUnder(v);
+                        // The only main task can't go under another.
+                        if (v && isRoot && !severalMain) return;
+                        patchNode(n.key, { parentKey: v || null });
+                        if (v) revealUnder(v);
                       }}
                     />
                   )}
@@ -1537,14 +1552,18 @@ function TemplateEditor({
                     <Btn className="hb-btn-sm" onClick={() => addNode()}>
                       <Plus size={15} aria-hidden="true" /> Add task
                     </Btn>
+                    <Btn className="hb-btn-sm" onClick={addMainTask}>
+                      <Plus size={15} aria-hidden="true" /> Add main task
+                    </Btn>
                   </span>
                 }
               />
               <p className="hb-tpl-tree-hint">
-                The first task is the main one; the rest are its sub-tasks. Drag a row by its handle
-                to reorder it among its siblings; “Sub-task of” moves it elsewhere.
+                Each main task becomes its own task with its sub-tasks; most templates have one.
+                “Add main task” adds another beside it. Drag a row by its handle to reorder it;
+                “Sub-task of” moves it elsewhere.
               </p>
-              <div className="hb-tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
+              <div className="hb-tpl-tree">{mainNodes.map((m) => renderNode(m, 0))}</div>
               <label className="hb-tpl-quickadd">
                 <Plus size={15} aria-hidden="true" />
                 <input

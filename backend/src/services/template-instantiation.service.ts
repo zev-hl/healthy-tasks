@@ -113,9 +113,19 @@ export interface GeneratedOccurrence {
  * links + dependency edges + a provenance history entry), then fire assignment
  * notifications post-commit. Returns the new occurrence + generated task ids.
  */
-export async function generateOccurrence(params: GenerateOccurrenceParams): Promise<GeneratedOccurrence> {
-  const { templateId, seq, origin, instanceLabel, anchorStart, assigneeByNodeId, creatorId, actorId } =
-    params;
+export async function generateOccurrence(
+  params: GenerateOccurrenceParams,
+): Promise<GeneratedOccurrence> {
+  const {
+    templateId,
+    seq,
+    origin,
+    instanceLabel,
+    anchorStart,
+    assigneeByNodeId,
+    creatorId,
+    actorId,
+  } = params;
   const alertGroupId = params.alertGroupId ?? null;
   const alertType = params.alertType ?? null;
 
@@ -159,18 +169,28 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       depthOf.set(n.id, n.parentNodeId == null ? 0 : (depthOf.get(n.parentNodeId) ?? 0) + 1);
     }
     const deepest = Math.max(...depthOf.values());
+    // A template may have several main tasks (each its own tree): each is a
+    // project when its own tree reaches three levels.
+    const topOf = new Map<number, number>();
+    const treeDepth = new Map<number, number>();
+    for (const n of ordered) {
+      const top = n.parentNodeId == null ? n.id : topOf.get(n.parentNodeId)!;
+      topOf.set(n.id, top);
+      treeDepth.set(top, Math.max(treeDepth.get(top) ?? 0, depthOf.get(n.id)!));
+    }
     if (deepest > 2) {
       throw HttpError.badRequest(
         `"${template.name}" has more than three levels. Edit it to a project, its tasks and their sub-tasks before making tasks from it.`,
       );
     }
-    const rootIsProject = deepest === 2;
     const nodeIdToTaskId = new Map<number, number>();
     const created: { taskId: number; assigneeId: string | null; nodeId: number }[] = [];
     let rootTaskId: number | null = null;
 
     for (const node of ordered) {
-      const parentTaskId = node.parentNodeId ? (nodeIdToTaskId.get(node.parentNodeId) ?? null) : null;
+      const parentTaskId = node.parentNodeId
+        ? (nodeIdToTaskId.get(node.parentNodeId) ?? null)
+        : null;
       const assigneeId = assigneeByNodeId.get(node.id) ?? null;
       // Business-zone calendar days, then the default hour — so offsets 0 and 1
       // land on consecutive days at 7:00 AM / 7:00 PM, not at midnight UTC
@@ -184,7 +204,10 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           ? offsetFromAnchor(anchorStart, node.dueOffsetDays, DEFAULT_DUE_HOUR)
           : null;
 
-      const isRoot = node.parentNodeId === null && rootTaskId === null;
+      const isTop = node.parentNodeId === null;
+      // The first main task is the occurrence's own (alerts link to it, and the
+      // occurrence lists show it); later ones are made beside it.
+      const isRoot = isTop && rootTaskId === null;
       const description = isRoot ? rootDesc(node.description) : cleanDesc(node.description);
       // Typed here: `rootTaskId` (read above) is set from it below, in this loop.
       const task: { id: number } = await tx.task.create({
@@ -198,7 +221,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
           startAt,
           dueAt,
           parentId: parentTaskId,
-          isProject: isRoot && rootIsProject,
+          isProject: isTop && treeDepth.get(node.id) === 2,
           instanceLabel,
           templateId,
           templateNodeId: node.id,
@@ -214,7 +237,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       if (isRoot) rootTaskId = task.id;
     }
 
-    if (rootTaskId === null) throw HttpError.badRequest('This template has no top task');
+    if (rootTaskId === null) throw HttpError.badRequest('This template has no main task');
 
     // Carry the template's between-node dependencies into real task edges.
     for (const d of deps) {
@@ -238,16 +261,22 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       }
     }
 
-    // Provenance entry on the root task (History treats the past as immutable, so
-    // this records only that the task was generated from a template).
+    // Provenance entry on each main task (History treats the past as immutable,
+    // so this records only that the task was generated from a template).
     const labelPart = instanceLabel ? ` (${instanceLabel})` : seq != null ? ` (#${seq})` : '';
-    await recordHistory(tx, {
-      taskId: rootTaskId,
-      userId: actorId,
-      field: TASK_HISTORY_FIELDS.template,
-      changeType: 'added',
-      detail: `${template.name}${labelPart}`,
-    });
+    const topNodeIds = new Set(ordered.filter((n) => n.parentNodeId == null).map((n) => n.id));
+    await recordHistory(
+      tx,
+      created
+        .filter((c) => topNodeIds.has(c.nodeId))
+        .map((c) => ({
+          taskId: c.taskId,
+          userId: actorId,
+          field: TASK_HISTORY_FIELDS.template,
+          changeType: 'added' as const,
+          detail: `${template.name}${labelPart}`,
+        })),
+    );
 
     // HLAI-112: every task made from an alert says so, so nobody takes it for one
     // its creator made by hand.
@@ -358,7 +387,9 @@ async function copyTemplateAttachmentsToTasks(
  * that same node last time. Returns an empty map when there is no prior
  * occurrence (the first scheduled fire is unassigned unless manually seeded).
  */
-export async function carryForwardAssignees(templateId: number): Promise<Map<number, string | null>> {
+export async function carryForwardAssignees(
+  templateId: number,
+): Promise<Map<number, string | null>> {
   const prior = await prisma.templateOccurrence.findFirst({
     // Tasks made from alerts have their own people (the Alert Task Setup), so a
     // schedule never takes its people from them.

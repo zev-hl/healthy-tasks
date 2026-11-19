@@ -40,7 +40,13 @@ import {
   toTemplateSummaryDto,
 } from './template.mapper.js';
 import { offsetFromAnchor } from '../utils/business-time.js';
-import { fixedAnchorForSeq, isWithinLeadTime, seqAllowed, upcomingFixedSeqs, type RecurrenceConfig } from './recurrence.js';
+import {
+  fixedAnchorForSeq,
+  isWithinLeadTime,
+  seqAllowed,
+  upcomingFixedSeqs,
+  type RecurrenceConfig,
+} from './recurrence.js';
 import { carryForwardAssignees, generateOccurrence } from './template-instantiation.service.js';
 import { getMaterializeLeadDays } from './app-settings.service.js';
 import {
@@ -88,7 +94,8 @@ const TEMPLATE_MAX_DEPTH = 2;
 
 /**
  * Validate the node/dependency payload and return the nodes in parent-first
- * order. Enforces: unique keys, exactly one root, every parent/dependency
+ * order. Enforces: unique keys, at least one top task (several are allowed: each
+ * becomes its own task tree), every parent/dependency
  * reference resolvable, no hierarchy cycle, no self/duplicate dependency, and no
  * dependency cycle. Throws HttpError.badRequest on any violation.
  */
@@ -97,15 +104,18 @@ function validateAndOrderTree(
   dependencies: DependencyInput[],
 ): TemplateNodeInputParsed[] {
   const byKey = new Map(nodes.map((n) => [n.key, n]));
-  if (byKey.size !== nodes.length) throw HttpError.badRequest('Two tasks in the template share the same key');
+  if (byKey.size !== nodes.length)
+    throw HttpError.badRequest('Two tasks in the template share the same key');
 
   const roots = nodes.filter((n) => n.parentKey === null);
-  if (roots.length !== 1) {
-    throw HttpError.badRequest('A template must have exactly one top task');
+  if (roots.length === 0) {
+    throw HttpError.badRequest('A template needs at least one main task');
   }
   for (const n of nodes) {
     if (n.parentKey !== null && !byKey.has(n.parentKey)) {
-      throw HttpError.badRequest(`Node "${n.name}" references a parent that is not in the template`);
+      throw HttpError.badRequest(
+        `Node "${n.name}" references a parent that is not in the template`,
+      );
     }
   }
 
@@ -125,7 +135,9 @@ function validateAndOrderTree(
   };
   walk(null);
   if (ordered.length !== nodes.length) {
-    throw HttpError.badRequest('The template’s tasks loop back on themselves, or one isn’t connected to the rest');
+    throw HttpError.badRequest(
+      'The template’s tasks loop back on themselves, or one isn’t connected to the rest',
+    );
   }
 
   // Levels (Nov 2026 plan, F1): like real tasks, a template holds at most three
@@ -236,7 +248,8 @@ async function reconcileTree(
   const existingIds = new Set(existing.map((n) => n.id));
   const payloadIds = new Set(nodesInput.filter((n) => n.id != null).map((n) => n.id as number));
   for (const id of payloadIds) {
-    if (!existingIds.has(id)) throw HttpError.badRequest(`Node ${id} does not belong to this template`);
+    if (!existingIds.has(id))
+      throw HttpError.badRequest(`Node ${id} does not belong to this template`);
   }
 
   // Department Duties: a duty newly put on a node must be active. A node that
@@ -287,9 +300,13 @@ async function reconcileTree(
   // Rebuild dependency edges from the (now fully-resolved) key→id map.
   await tx.taskTemplateDependency.deleteMany({ where: { blockerNode: { templateId } } });
   const edges = dependencies
-    .map((d) => ({ blockerNodeId: keyToId.get(d.blockerKey), blockedNodeId: keyToId.get(d.blockedKey) }))
-    .filter((e): e is { blockerNodeId: number; blockedNodeId: number } =>
-      e.blockerNodeId != null && e.blockedNodeId != null && e.blockerNodeId !== e.blockedNodeId,
+    .map((d) => ({
+      blockerNodeId: keyToId.get(d.blockerKey),
+      blockedNodeId: keyToId.get(d.blockedKey),
+    }))
+    .filter(
+      (e): e is { blockerNodeId: number; blockedNodeId: number } =>
+        e.blockerNodeId != null && e.blockedNodeId != null && e.blockerNodeId !== e.blockedNodeId,
     );
   // Dedup (validation already rejects true dupes, but guard the unique index).
   const uniq = new Map(edges.map((e) => [`${e.blockerNodeId}->${e.blockedNodeId}`, e]));
@@ -325,7 +342,10 @@ export async function getTemplate(id: number): Promise<TemplateDto> {
   return toTemplateDto(t);
 }
 
-export async function createTemplate(actor: Actor, input: CreateTemplateInput): Promise<TemplateDto> {
+export async function createTemplate(
+  actor: Actor,
+  input: CreateTemplateInput,
+): Promise<TemplateDto> {
   assertTemplateManager(actor);
   validateAndOrderTree(input.nodes, input.dependencies ?? []);
   const rec = recurrenceData(input.recurrence);
@@ -462,7 +482,9 @@ export async function saveTaskAsTemplate(
       dueAt: true,
       assignee: { select: { firstName: true, lastName: true, email: true } },
       // An archived duty isn't carried into a new template (it can't be picked).
-      duty: { select: { id: true, archivedAt: true, department: { select: { archivedAt: true } } } },
+      duty: {
+        select: { id: true, archivedAt: true, department: { select: { archivedAt: true } } },
+      },
     },
   });
   const byId = new Map(tasks.map((t) => [t.id, t]));
@@ -482,10 +504,16 @@ export async function saveTaskAsTemplate(
     // The converting user may override the root's role label; else seed from the
     // task's current assignee's name (each descendant seeds from its own assignee).
     const role =
-      isRoot && input.rootRoleLabel !== undefined ? input.rootRoleLabel : assigneeRoleSeed(t.assignee);
+      isRoot && input.rootRoleLabel !== undefined
+        ? input.rootRoleLabel
+        : assigneeRoleSeed(t.assignee);
     return {
       key: keyOf(id),
-      parentKey: isRoot ? null : t.parentId != null && idSet.has(t.parentId) ? keyOf(t.parentId) : null,
+      parentKey: isRoot
+        ? null
+        : t.parentId != null && idSet.has(t.parentId)
+          ? keyOf(t.parentId)
+          : null,
       name: t.name,
       description: t.description,
       defaultPriority: t.priority,
@@ -506,14 +534,22 @@ export async function saveTaskAsTemplate(
           select: { blockerId: true, blockedId: true },
         })
       : [];
-  const dependencies = edges.map((e) => ({ blockerKey: keyOf(e.blockerId), blockedKey: keyOf(e.blockedId) }));
+  const dependencies = edges.map((e) => ({
+    blockerKey: keyOf(e.blockerId),
+    blockedKey: keyOf(e.blockedId),
+  }));
 
   // Structural validation (single root, resolvable parents/deps, no cycles).
   validateAndOrderTree(nodes, dependencies);
 
   const { templateId, keyToNodeId } = await prisma.$transaction(async (tx) => {
     const template = await tx.taskTemplate.create({
-      data: { name: input.name, description: null, createdById: actor.id, ...recurrenceData(undefined) },
+      data: {
+        name: input.name,
+        description: null,
+        createdById: actor.id,
+        ...recurrenceData(undefined),
+      },
       select: { id: true },
     });
     const map = await reconcileTree(tx, template.id, nodes, dependencies);
@@ -580,7 +616,10 @@ async function loadTemplateForGeneration(id: number) {
 }
 
 async function assertAssigneeActive(assigneeId: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: assigneeId }, select: { isActive: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: assigneeId },
+    select: { isActive: true },
+  });
   if (!user) throw HttpError.badRequest('Selected assignee does not exist');
   if (!user.isActive) throw HttpError.badRequest('Selected assignee is inactive');
 }
@@ -619,7 +658,10 @@ export async function instantiateTemplate(
 
   const assigneeByNodeId = new Map<number, string | null>();
   for (const node of template.nodes) {
-    assigneeByNodeId.set(node.id, node.assigneeRole ? (roleMap.get(node.assigneeRole) ?? null) : null);
+    assigneeByNodeId.set(
+      node.id,
+      node.assigneeRole ? (roleMap.get(node.assigneeRole) ?? null) : null,
+    );
   }
 
   const gen = await generateOccurrence({
@@ -689,7 +731,11 @@ async function loadInstantiateResult(gen: {
 }): Promise<InstantiateResultDto> {
   const occ = await prisma.templateOccurrence.findUnique({ where: { id: gen.occurrenceId } });
   if (!occ) throw HttpError.notFound('Occurrence not found');
-  return { occurrence: toTemplateOccurrenceDto(occ), rootTaskId: gen.rootTaskId, taskIds: gen.taskIds };
+  return {
+    occurrence: toTemplateOccurrenceDto(occ),
+    rootTaskId: gen.rootTaskId,
+    taskIds: gen.taskIds,
+  };
 }
 
 /**
@@ -697,7 +743,11 @@ async function loadInstantiateResult(gen: {
  * click-through path. Assignees carry forward from the prior occurrence, exactly
  * like a scheduled fire.
  */
-export async function materializeGhost(actor: Actor, id: number, seq: number): Promise<InstantiateResultDto> {
+export async function materializeGhost(
+  actor: Actor,
+  id: number,
+  seq: number,
+): Promise<InstantiateResultDto> {
   assertTemplateManager(actor);
   const template = await prisma.taskTemplate.findUnique({ where: { id } });
   if (!template) throw HttpError.notFound('Template not found');
@@ -735,7 +785,10 @@ export async function materializeGhost(actor: Actor, id: number, seq: number): P
  * has no computable future date until the prior instance completes).
  */
 export async function getTemplateGhosts(id: number, now: Date): Promise<GhostOccurrenceDto[]> {
-  const template = await prisma.taskTemplate.findUnique({ where: { id }, include: { nodes: true } });
+  const template = await prisma.taskTemplate.findUnique({
+    where: { id },
+    include: { nodes: true },
+  });
   if (!template) throw HttpError.notFound('Template not found');
   if (template.recurrenceType !== 'Fixed' || !template.isActive) return [];
 
@@ -844,7 +897,10 @@ export async function applyTemplateToOccurrences(
   occurrenceIds: number[],
 ): Promise<ApplyToFutureResultDto> {
   assertTemplateManager(actor);
-  const template = await prisma.taskTemplate.findUnique({ where: { id }, include: { nodes: true } });
+  const template = await prisma.taskTemplate.findUnique({
+    where: { id },
+    include: { nodes: true },
+  });
   if (!template) throw HttpError.notFound('Template not found');
   const nodeById = new Map(template.nodes.map((n) => [n.id, n]));
 
@@ -874,7 +930,10 @@ export async function applyTemplateToOccurrences(
   const dutyIds = new Set<string>();
   for (const n of template.nodes) if (n.dutyId) dutyIds.add(n.dutyId);
   for (const o of occurrences) for (const t of o.tasks) if (t.dutyId) dutyIds.add(t.dutyId);
-  const dutyRows = await prisma.duty.findMany({ where: { id: { in: [...dutyIds] } }, ...dutyRefSelect });
+  const dutyRows = await prisma.duty.findMany({
+    where: { id: { in: [...dutyIds] } },
+    ...dutyRefSelect,
+  });
   const dutyLabels = new Map(dutyRows.map((d) => [d.id, dutyLabel(toDutyRef(d))]));
   const labelOf = (dutyId: string | null): string | null =>
     dutyId ? (dutyLabels.get(dutyId) ?? null) : null;
@@ -948,7 +1007,13 @@ export async function applyTemplateToOccurrences(
         };
         await recordHistory(
           tx,
-          buildTaskFieldEntries({ actorId: actor.id, taskId: task.id, before, after, descriptionChanged }),
+          buildTaskFieldEntries({
+            actorId: actor.id,
+            taskId: task.id,
+            before,
+            after,
+            descriptionChanged,
+          }),
         );
         updatedTasks += 1;
         touchedThisOccurrence = true;

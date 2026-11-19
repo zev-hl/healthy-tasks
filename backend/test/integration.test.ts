@@ -3969,19 +3969,19 @@ describe('task templates / recurring tasks (Phase 11)', () => {
     assert.equal(root.defaultPriority, 'High');
   });
 
-  it('rejects an invalid tree (two roots, and a dependency cycle)', async () => {
+  it('rejects an invalid tree (no main task, and a dependency cycle)', async () => {
     const admin = await adminToken();
-    const twoRoots = await request(app)
+    const noRoot = await request(app)
       .post('/api/templates')
       .set(auth(admin))
       .send({
         name: 'bad',
         nodes: [
-          { key: 'a', parentKey: null, name: 'A' },
-          { key: 'b', parentKey: null, name: 'B' },
+          { key: 'a', parentKey: 'b', name: 'A' },
+          { key: 'b', parentKey: 'a', name: 'B' },
         ],
       });
-    assert.equal(twoRoots.status, 400);
+    assert.equal(noRoot.status, 400);
 
     const cycle = await request(app)
       .post('/api/templates')
@@ -3998,6 +3998,44 @@ describe('task templates / recurring tasks (Phase 11)', () => {
         ],
       });
     assert.equal(cycle.status, 400);
+  });
+
+  it('a template may have several main tasks: each becomes its own tree', async () => {
+    const admin = await adminToken();
+    const tpl = await createTemplate(admin, {
+      name: 'Two main tasks',
+      nodes: [
+        { key: 'p', parentKey: null, name: 'Launch' },
+        { key: 'p1', parentKey: 'p', name: 'Listing' },
+        { key: 'p1a', parentKey: 'p1', name: 'Photos' },
+        { key: 'q', parentKey: null, name: 'Follow-up' },
+        { key: 'q1', parentKey: 'q', name: 'Call supplier' },
+      ],
+      dependencies: [{ blockerKey: 'p', blockedKey: 'q' }],
+    });
+    const res = await request(app)
+      .post(`/api/templates/${tpl.id}/instantiate`)
+      .set(auth(admin))
+      .send({ anchorStart: '2026-08-10' });
+    assert.equal(res.status, 201, res.text);
+    const made = await prisma.task.findMany({ where: { id: { in: res.body.taskIds } } });
+    assert.equal(made.length, 5);
+    const by = (n: string) => made.find((t) => t.name === n)!;
+    assert.equal(by('Launch').parentId, null);
+    assert.equal(by('Follow-up').parentId, null);
+    assert.equal(res.body.rootTaskId, by('Launch').id, 'the first main task is the occurrence’s');
+    // Each is a project only when its own tree has three levels.
+    assert.equal(by('Launch').isProject, true);
+    assert.equal(by('Follow-up').isProject, false);
+    assert.equal(by('Call supplier').parentId, by('Follow-up').id);
+    // Both main tasks say where they came from.
+    const hist = await prisma.taskHistory.findMany({
+      where: { taskId: { in: [by('Launch').id, by('Follow-up').id] }, field: 'template' },
+    });
+    assert.equal(hist.length, 2);
+    // A dependency between main tasks is carried over.
+    const dep = await prisma.taskDependency.findFirst({ where: { blockedId: by('Follow-up').id } });
+    assert.equal(dep?.blockerId, by('Launch').id);
   });
 
   it('manually instantiates a real, independent tree with the label prefixed + filterable', async () => {
@@ -4135,6 +4173,51 @@ describe('task templates / recurring tasks (Phase 11)', () => {
       2,
       'the next occurrence is scheduled only after completion',
     );
+  });
+
+  it('relative-to-completion with several main tasks waits for all of them', async () => {
+    const admin = await adminToken();
+    await setLeadDays(0);
+    const tpl = await createTemplate(admin, {
+      name: 'Two-part series',
+      nodes: [
+        { key: 'a', parentKey: null, name: 'Part A', dueOffsetDays: 1 },
+        { key: 'b', parentKey: null, name: 'Part B', dueOffsetDays: 1 },
+      ],
+      recurrence: {
+        recurrenceType: 'RelativeToCompletion',
+        intervalCount: 3,
+        intervalUnit: 'Day',
+        anchorDate: '2026-08-01T00:00:00.000Z',
+        endType: 'Never',
+      },
+    });
+    const scheduledCount = () =>
+      prisma.templateOccurrence.count({ where: { templateId: tpl.id, origin: 'scheduled' } });
+    await runScheduler(new Date('2026-08-01T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 1);
+    const first = await prisma.templateOccurrence.findFirstOrThrow({
+      where: { templateId: tpl.id, seq: 1 },
+      select: { id: true },
+    });
+    const tops = await prisma.task.findMany({
+      where: { templateOccurrenceId: first.id },
+      orderBy: { id: 'asc' },
+    });
+    assert.equal(tops.length, 2);
+    const done = (id: number, at: string) =>
+      prisma.task.update({
+        where: { id },
+        data: { status: 'Completed', statusChangedAt: new Date(at) },
+      });
+    await done(tops[0]!.id, '2026-08-02T12:00:00.000Z');
+    await runScheduler(new Date('2026-08-20T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 1, 'one main task still open: no next one');
+    await done(tops[1]!.id, '2026-08-21T12:00:00.000Z');
+    await runScheduler(new Date('2026-08-23T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 1, 'the clock starts at the last to finish');
+    await runScheduler(new Date('2026-08-25T00:00:00.000Z'));
+    assert.equal(await scheduledCount(), 2);
   });
 
   it('scheduled occurrences auto-assign the same person(s) as the previous instance', async () => {
@@ -6262,7 +6345,7 @@ describe('template tree editor: subtree drag helpers (follow-up)', () => {
     }
   });
 
-  it('never drops a node into its own descendant, and never moves the root', () => {
+  it('never drops a node into its own descendant, and never puts the only main task under another', () => {
     assert.deepEqual(
       moveTemplateNode(tree(), 'A', 'A1', 'inside'),
       tree(),
@@ -6271,8 +6354,22 @@ describe('template tree editor: subtree drag helpers (follow-up)', () => {
     assert.deepEqual(
       moveTemplateNode(tree(), 'root', 'A', 'after'),
       tree(),
-      'root cannot be moved',
+      'the only main task stays one',
     );
+  });
+
+  it('with several main tasks, they reorder, and one can go under another', () => {
+    const two = [...tree(), { key: 'other', parentKey: null }];
+    const reordered = moveTemplateNode(two, 'other', 'root', 'before');
+    assert.deepEqual(
+      reordered.filter((n) => n.parentKey === null).map((n) => n.key),
+      ['other', 'root'],
+    );
+    const nested = moveTemplateNode(two, 'other', 'root', 'inside');
+    assert.equal(nested.find((n) => n.key === 'other')!.parentKey, 'root');
+    // A sub-task dropped beside a main task becomes a main task.
+    const lifted = moveTemplateNode(two, 'B', 'other', 'after');
+    assert.equal(lifted.find((n) => n.key === 'B')!.parentKey, null);
   });
 });
 
