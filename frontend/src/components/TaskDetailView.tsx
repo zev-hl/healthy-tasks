@@ -1339,12 +1339,6 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 {' '}
                 · Duty: {task.duty.departmentName} › {task.duty.name}
               </>
-            )}
-            {task.parent && (
-              <>
-                {' '}
-                · Sub-task of <TaskRefLink task={task.parent} />
-              </>
             )}{' '}
             · created by {task.creator ? userLabel(task.creator) : ALERT_ASSIGNED_LABEL} on{' '}
             {new Date(task.createdAt).toLocaleDateString(undefined, {
@@ -1547,47 +1541,49 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             />
           )}
         </div>
-        {/* The due date in its own place, red once it's late (Nov 2026 plan). */}
-        <div className={`hb-taskhead-due${stagedDue?.late ? ' is-late' : ''}`}>
-          <span className="hb-taskhead-due-k">Due</span>
-          <span
-            title={
-              canEdit && !task.canChangeDue
-                ? 'Only the task’s creator, someone above them, or an Admin can change the due date'
-                : undefined
-            }
-          >
-            <DatePicker
-              variant="chip"
-              className={`hb-prop${stagedDue?.late ? ' is-late' : ''}${dueDate !== persistedDue.date || dueTime !== persistedDue.time ? ' is-dirty' : ''}`}
-              label="Due date"
-              value={dueDate || null}
-              placeholder="Due date"
-              disabled={!canEdit || !task.canChangeDue}
-              time={dueTime}
-              onTimeChange={(t) => {
-                setDueTime(t);
-                chip();
-              }}
-              overdueNote={stagedDue?.late ? `Currently ${stagedDue.text}` : undefined}
-              renderValue={() =>
-                stagedDue ? `${stagedDue.text}${dueTime ? ` · ${dueTime}` : ''}` : 'No due date'
+        <div className="hb-taskhead-side">
+          {/* The due date in its own place, red once it's late (Nov 2026 plan). */}
+          <div className={`hb-taskhead-due${stagedDue?.late ? ' is-late' : ''}`}>
+            <span className="hb-taskhead-due-k">Due</span>
+            <span
+              title={
+                canEdit && !task.canChangeDue
+                  ? 'Only the task’s creator, someone above them, or an Admin can change the due date'
+                  : undefined
               }
-              onChange={(v) => {
-                handleDueDate(v ?? '');
-                chip();
-              }}
-            />
-          </span>
+            >
+              <DatePicker
+                variant="chip"
+                className={`hb-prop${stagedDue?.late ? ' is-late' : ''}${dueDate !== persistedDue.date || dueTime !== persistedDue.time ? ' is-dirty' : ''}`}
+                label="Due date"
+                value={dueDate || null}
+                placeholder="Due date"
+                disabled={!canEdit || !task.canChangeDue}
+                time={dueTime}
+                onTimeChange={(t) => {
+                  setDueTime(t);
+                  chip();
+                }}
+                overdueNote={stagedDue?.late ? `Currently ${stagedDue.text}` : undefined}
+                renderValue={() =>
+                  stagedDue ? `${stagedDue.text}${dueTime ? ` · ${dueTime}` : ''}` : 'No due date'
+                }
+                onChange={(v) => {
+                  handleDueDate(v ?? '');
+                  chip();
+                }}
+              />
+            </span>
+          </div>
+          <TimeBlock
+            task={{
+              id: task.id,
+              name: task.name,
+              dutyId: task.dutyId,
+              dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
+            }}
+          />
         </div>
-        <TimeBlock
-          task={{
-            id: task.id,
-            name: task.name,
-            dutyId: task.dutyId,
-            dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
-          }}
-        />
       </header>
 
       <div className="hb-task-body">

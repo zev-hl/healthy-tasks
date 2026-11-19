@@ -8663,12 +8663,22 @@ textarea.hb-tpl-input {
   height: 36px;
 }
 
-/* Task header: the due date in its own place, red once late (Nov 2026 plan). */
-.hb-taskhead-due {
+/* Task header: the due date in its own place, red once late (Nov 2026 plan),
+   above the timer in the header's right-hand column. */
+.hb-taskhead-side {
   flex: none;
+  width: 340px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+}
+.hb-taskhead-side .hb-timeblock {
+  width: auto;
+}
+.hb-taskhead-due {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -8693,10 +8703,9 @@ textarea.hb-tpl-input {
 .hb-taskhead-due.is-late .hb-taskhead-due-k {
   color: var(--danger);
 }
-@media (max-width: 760px) {
-  .hb-taskhead-due {
-    flex-direction: row;
-    align-items: center;
+@media (max-width: 979px) {
+  .hb-taskhead-side {
+    width: 100%;
   }
 }
 
@@ -8955,4 +8964,7 @@ textarea.hb-tpl-input {
   .hb-tasks-scroll .hb-table tbody tr.selected > td.hb-col-task {
     background: #e9f1fc;
   }
+}
+.hb-pop .hb-actions-menu button svg {
+  flex: none;
 }
