@@ -10,10 +10,13 @@ to set and how to check it worked.
 and `docs/architecture.md` §22 (HL Central's side, built and switched off).
 
 **About the facts here.** This repo does not contain Connect's source. What this
-plan says about Connect comes from its documentation as relayed to us. Anything
-we could not see for ourselves is marked **⚠ check in Connect** — look it up in
-the Connect source or its `docs/` before you rely on it. They are all collected
-in §13.
+plan says about Connect comes from its source and docs as read in another session
+(`render.yaml`, `docs/deploy-render.md`, `docs/migrate-neon-region.md`,
+`apps/api/src/env.ts`, `services/sessions.ts`, `services/rtc/provider.ts`,
+`tenancy/entitlements.ts`, `services/seed.ts`, migration
+`packages/db/drizzle/0077_platform_core.sql`). Anything nobody has checked is
+marked **⚠ check in Connect** — look it up before you rely on it. They are all
+collected in §13.
 
 ---
 
@@ -61,7 +64,7 @@ Settle these first; the steps below refer to them by number.
 | D8 | First owner account: name, email, a temporary password | The owner's **HL Central address** (people are matched by email) |
 | D9 | Custom domain, and who controls its DNS | Yes, both apps on one domain: e.g. `app.<domain>` + `connect.<domain>` (§8) |
 | D10 | Calls: set up LiveKit now or later | Later is fine; decide before switching HL Central's link on (§7) |
-| D11 | Workspace name shown in Connect (`WORKSPACE_NAME`) | e.g. `Health Life` |
+| D11 | Workspace name shown in Connect (`WORKSPACE_NAME`) | e.g. `HL Central` |
 | D12 | Who keeps the secrets (password manager / vault) | A shared vault the owner controls; `DATA_ENCRYPTION_KEY` above all |
 
 ---
@@ -72,7 +75,12 @@ Render deploys from a Git repository. Connect's source is **not** on GitHub
 anywhere this account can see — only a local copy existed in another session.
 So the first job is to put it in a private repo we own.
 
-**The owner must provide the source (D1).** Without it nothing below can start.
+**The owner must provide the source (D1).** The owner has a local copy of the
+full source (a pnpm monorepo with `pnpm-lock.yaml` and its own `render.yaml`).
+Without it nothing below can start.
+
+**Never put Connect's source in `zev-hl/healthy-tasks`.** That repo is public;
+Connect's code is not ours to publish. It goes only in its own **private** repo.
 
 1. **GitHub → New repository.** Owner `zev-hl`, name `connect` (D2),
    **Private**, no README / .gitignore / licence (the source brings its own).
@@ -115,15 +123,29 @@ Connect needs one Postgres database. Two ways to get it on our Neon account:
 | Cost | Roughly the same compute-hours (one always-on endpoint either way); saves at most the ~$2 HL Central spends now | One always-on 0.25 CU endpoint: ~$20–26/month (§12) |
 | Admin | One project | One more project on the same Neon account and bill |
 
+**Never put Connect's tables in HL Central's database.** Connect has its own
+tables (`users`, `sessions`, `reminders`, `workspaces`, …) and Drizzle's own
+migrations table; HL Central's Prisma tables (`"User"`, `"Reminder"`, …) differ
+only by case and quoting and live in the same `public` schema. Sharing one
+database invites confusion and makes either app's restore roll back the other.
+So the minimum is a **separate database with its own role**; the question is
+only whether it sits in HL Central's Neon project (A) or its own (B).
+
 **Recommendation: B, a separate Neon project.** The money is about equal, and B
-keeps HL Central's database, its savings and its restores to itself.
+gives Connect its own compute (scaling with Connect's load, not HL Central's),
+its own bill line, its own branches and restores, and keeps HL Central's
+scale-to-zero savings intact.
 
 ### 3.2 Create it
 
 1. **Neon console → New project.**
    - Name: `connect`.
    - Region: **AWS US East 1 (N. Virginia)** — the same as HL Central's Neon and
-     the Render service. Region cannot be changed later.
+     the Render service. Region cannot be changed later. This matters a lot:
+     Connect's team measured Render-Oregon → Neon-Ohio at about **614 ms per
+     `select 1`** and message delivery p95 around 1 s, against a target under
+     300 ms (Connect's `docs/migrate-neon-region.md`). Render Virginia + Neon
+     N. Virginia, both chosen at creation, is what avoids that.
    - Postgres version: the version Connect is tested with. **⚠ check in Connect**
      (its docs or CI); if it says nothing, use the newest Neon offers.
    - Database name: `connect`. Neon also creates an owner role (e.g.
@@ -222,9 +244,16 @@ which.
 
 **Do not set `PORT` or `HOST`.** Render injects them.
 
-**Socket.IO and more instances.** Keep 1 instance. Running 2+ needs Socket.IO to
-share events between instances (usually a Redis adapter). **⚠ check in Connect**
-before ever scaling out.
+**One instance, no autoscaling, no Redis.** The socket bus, presence, socket
+tickets and rate limits are all held in the process today, so one instance needs
+no Redis — and a second instance would split them. Redis (and code to use it)
+must come before ever running two.
+
+**Deploys drop open connections.** With one instance, every deploy closes all
+WebSockets; clients reconnect and catch up, showing a "Reconnecting…" banner.
+Deploy when the team is quiet. The migrations run during the build, while the
+old version is still serving — so a migration must not break the running
+version.
 
 ### 4.3 Environment variables
 
@@ -250,7 +279,7 @@ secrets: generate, put in the vault (D12), then paste.
 | `WEB_ORIGIN` | `https://hlcentral-connect.onrender.com` (the CSRF allowlist — if wrong, **every write returns 403**) |
 | `APP_URL` | the same address |
 | `PUBLIC_APP_URL` | the same address (used in email links) |
-| `WORKSPACE_NAME` | D11 |
+| `WORKSPACE_NAME` | D11, e.g. `HL Central`. Whether it renames the built-in workspace (slug `brecx`, name "Brecx") or only the name shown: **⚠ check in Connect** |
 | `DATA_ENCRYPTION_KEY` 🔒 | see §4.4 |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` 🔒, `SMTP_FROM` | §5.2 |
 | `SMTP_SECURE`, `SMTP_REQUIRE_TLS`, `SMTP_REPLY_TO` | as the provider needs (Gmail: port 465 + `SMTP_SECURE=true`, or 587 + `SMTP_REQUIRE_TLS=true`). Exact meaning **⚠ check in Connect** |
@@ -265,7 +294,7 @@ build command installs dev dependencies on purpose (`--prod=false`).
 | Key(s) | What it is | Why off |
 |---|---|---|
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Calls | Until §7. **All three or none** — the API refuses to boot on a partial set |
-| `PLATFORM_INTERNAL_URL`, `CONNECT_TO_PLATFORM_KEY_ID`, `CONNECT_TO_PLATFORM_SECRET`, `PLATFORM_ORIGIN`, `PLATFORM_ADMIN_*`, `PLATFORM_LINK_SWEEP`, `CONNECT_PROVISION_SECRET` | The Brecx Platform link (plans, billing, provisioning) | We have no Platform; without it the workspace is the built-in one, which "has everything, unlimited" |
+| `PLATFORM_INTERNAL_URL`, `CONNECT_TO_PLATFORM_KEY_ID`, `CONNECT_TO_PLATFORM_SECRET`, `PLATFORM_ORIGIN`, `PLATFORM_ADMIN_*`, `PLATFORM_LINK_SWEEP`, `CONNECT_PROVISION_SECRET` | The Brecx Platform link (plans, billing, provisioning) | We have no Platform. Without it everyone is in the built-in **internal** workspace, which has every feature on and every limit unlimited (§9.2) |
 | `APNS_*`, `FIREBASE_SERVICE_ACCOUNT`, `IOS_NOTIFICATION_FILTERING_FROM` | Mobile push | No mobile app of ours yet |
 | `TICKET_BRECX_*`, `TICKET_LINKS`, `TICKET_SYNC_INTERVAL_MS` | The ticket app | Not ours |
 | `WORKTRACK_*`, `CONNECT_TO_WORKTRACK_*` | WorkTrack | HL Central replaces it |
@@ -273,7 +302,7 @@ build command installs dev dependencies on purpose (`--prod=false`).
 | `KLIPY_API_KEY` | GIF picker | Optional; add later if wanted |
 | `GOOGLE_CALENDAR_API`, `GMAIL_API` | Google integrations | **⚠ check in Connect** what they enable |
 | `CENTRAL_SIGNIN`, `CENTRAL_SIGNIN_ALLOW`, `CENTRAL_SIGNIN_URL`, `CENTRAL_AUTH_URL`, `CENTRAL_INVITES` | Central sign-in | Stage 5 (§9.6) |
-| `SEED_ON_BOOT`, `SEED_USERS`, `SEED_RESET_PASSWORD` | Extra seeding | **Keep `SEED_RESET_PASSWORD` unset** (it may reset the owner's password on every boot — **⚠ check in Connect**). Whether `SEED_ON_BOOT=true` is needed for `SEED_OWNER_*` to take effect: **⚠ check in Connect** |
+| `SEED_ON_BOOT`, `SEED_USERS`, `SEED_RESET_PASSWORD` | Extra seeding | **Keep `SEED_RESET_PASSWORD` unset** (it may reset the owner's password on every boot — **⚠ check in Connect**). `SEED_OWNER_*` alone seeds the owner on our deploy (the log says `seeded owner <email>`, §4.5); if it doesn't, check `SEED_ON_BOOT` in `services/seed.ts` |
 | `R2_INCLUDED_GB`, `R2_USD_PER_GB_MONTH` | Storage cost figures (likely for usage display) | Defaults are fine |
 | `COOKIE_NAME`, `SESSION_TTL_DAYS`, `INVITE_TTL_DAYS`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_MINUTES`, `MEETING_TOKEN_TTL_SECONDS`, `API_LOG` | Tuning | Defaults |
 | `REMINDER_SWEEP`, `SCHEDULED_CALL_SWEEP`, `MEETING_SWEEP`, `WORKSPACE_PURGE_SWEEP` | Background sweeps | Defaults; **⚠ check in Connect** that they default to on in production |
@@ -315,15 +344,30 @@ Click **Deploy** (or *Manual Deploy → Deploy latest commit*). Watch the log:
      current name and price) is the fix.
 2. The service starts and the health check passes.
 
-**Checks**
+**Checks** (from Connect's `docs/deploy-render.md`, plus ours)
 
 - Service *Settings* shows **Region: Virginia**. If not: delete it and recreate
   (§4.2) — it cannot be moved.
-- `curl -s https://hlcentral-connect.onrender.com/health` → OK.
-- Logs show **no** "data encryption key not set" warning and no SMTP/R2/LiveKit
-  start-up error.
+- The deploy log shows `[mail] SMTP ready at …`, `seeded owner <email>` and
+  `Server listening at http://0.0.0.0:10000`.
+- `curl -s https://hlcentral-connect.onrender.com/health` → `{"ok":true}`.
+- `curl -s https://hlcentral-connect.onrender.com/api/v1/auth/me` →
+  `{"user":null}` (the API answers and the database is reachable).
+- Logs show **no** "data encryption key not set" warning.
 - Neon → project `connect` → *Tables* shows Connect's tables.
 - The address opens Connect's sign-in page.
+
+**Troubleshooting** (Connect's `docs/deploy-render.md`)
+
+| Symptom | Cause |
+|---|---|
+| Sign-in succeeds, then you are signed straight out | `COOKIE_SECURE` is not `true` |
+| Reads work, every write is 403 | `WEB_ORIGIN` does not match the address in the browser |
+| Dead links in invitation emails | `PUBLIC_APP_URL` |
+| `drizzle-kit: not found` in the build | dev dependencies not installed — the build command must keep `--prod=false` |
+| The migrate step fails | `DATABASE_URL` unset or unreachable |
+| Lockfile error (`--frozen-lockfile`) | run `pnpm install` locally and commit `pnpm-lock.yaml` |
+| Slow after being idle | a Free instance, or Neon scale-to-zero left on |
 
 ---
 
@@ -374,15 +418,19 @@ enrolment refuses to start without mail**, and invitations are the only way in
 
 ## 6. First sign-in and the workspace
 
+The fresh database holds one built-in workspace (made by migration
+`0077_platform_core.sql`: slug `brecx`, plan `internal`, billing-exempt, never
+suspended). The seeded owner and everyone invited go into it. Sign-up is closed
+(`signup.open = false`), so invitations are the only way in.
+
 1. Open `https://hlcentral-connect.onrender.com`, sign in with
    `SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD`. If the account does not exist,
    see the `SEED_ON_BOOT` note in §4.3.
-2. Change the password; turn on 2FA (also proves email works).
-3. **Render → Environment: delete `SEED_OWNER_PASSWORD`** (and the other two
-   `SEED_OWNER_*`; seeding is idempotent, so keeping the email/name is harmless,
-   but the password must go). Save → redeploy.
-4. **Settings:** confirm the workspace name, and look for the features HL
-   Central needs: **bots / API access** and **scheduled calls**. See §9.2.
+2. Send yourself (another address) an invitation — proves email and
+   `PUBLIC_APP_URL`. Change the password; turn on 2FA.
+3. **Render → Environment: delete all three `SEED_OWNER_*`.** Save → redeploy.
+4. **Settings:** confirm the workspace name, and that **API access** and
+   **scheduled calls** show (they should — §9.2).
 5. **Invite people with their HL Central email addresses** — exactly the same
    address, because both apps match people by email. A typo means HL Central's
    notices and calls never reach that person. A practical way: export the
@@ -397,20 +445,21 @@ and an attachment.
 
 ### 7.1 What works without it
 
-- Chat, groups, attachments, notifications: **all work**.
-- Calls inside Connect: **do not work**.
-- From HL Central (K2 "Call on a task"): HL Central asks Connect to ring or to
-  book a call. What Connect does without LiveKit is **⚠ check in Connect**:
-  - If Connect **refuses**, HL Central already copes: it keeps the event as a
-    meeting and shows Connect's reason.
-  - If Connect **books it anyway** (a scheduled call is only a record until
-    someone joins), people get an invitation they cannot join.
-  HL Central has no separate switch to hide "Call" while chat is on: once
-  `CONNECT_URL` is set the button shows. So either set LiveKit up before §9, or
-  tell people "calls are coming; don't use Call yet".
-- `MEETINGS_PROVIDER` used to select `agora`. It is not in `env.ts`'s list, so it
-  is probably a workspace or database setting. Its values, and that it must say
-  LiveKit, **⚠ check in Connect**.
+Every live call in Connect runs on LiveKit (`services/rtc/provider.ts`), and
+LiveKit counts as set up only when all three `LIVEKIT_*` are set. (The old
+`MEETINGS_PROVIDER` switch is obsolete; ignore it.)
+
+- Chat, groups, attachments, notifications, scheduled-call cards and their
+  reminders: **all work**.
+- **Joining** a call: **fails** until LiveKit exists.
+- From HL Central (K2 "Call on a task"): booking at a time succeeds — the call's
+  card appears in Connect and HL Central's event gets the join link — but nobody
+  can join it. HL Central has no separate switch to hide "Call" while chat is
+  on: once `CONNECT_URL` is set the button shows.
+
+**So:** do LiveKit as its own phase **after the first deploy and before HL
+Central's Call button is announced**. If HL Central is linked earlier (for
+notices and chat), tell people "calls are coming; don't use Call yet".
 
 ### 7.2 Setting it up (Connect's checklist)
 
@@ -451,13 +500,14 @@ HL Central's chat pop-up (K1) puts Connect in a frame on HL Central's page.
   and `hlcentral-connect.onrender.com` are **different sites**, as unrelated as
   two companies' domains.
 - Inside the frame, Connect's session cookie is then a **third-party cookie**. It
-  is only sent if it is `SameSite=None; Secure`. Connect is said to set that in
-  production, but its own docs also call the cookie `SameSite=Lax` — which it
-  really is **⚠ check in Connect** (look where the cookie is set in `apps/api`).
-- Even with `SameSite=None`, **Safari blocks third-party cookies in frames**,
-  Firefox partitions them, and Chrome users or company policies can block them.
-  Those people would see the frame ask them to sign in, or fail to sign in.
-  "Open in Connect" (a new tab) always works.
+  is only sent if it is `SameSite=None; Secure`. Connect does set that when
+  `COOKIE_SECURE=true` (and `Lax` on plain HTTP; `services/sessions.ts`), so
+  framing from another site **can** work.
+- But **Safari, Brave and private/incognito windows block third-party cookies**
+  in frames (Firefox partitions them; Chrome users or company policies may block
+  them). Those people would see the frame ask them to sign in, or fail to sign
+  in. "Open in Connect" (a new tab) always works. The same-site custom domain
+  below is the lasting fix.
 
 ### 8.3 The fix: both apps on one domain (recommended)
 
@@ -536,23 +586,22 @@ is not enough: K4 reads people's calendars.)
 
 HL Central's notices (K3) go out as the HL Central bot, and "Call on a task" with
 a time (K2) books a scheduled call; booking returns **403** if the workspace's
-plan lacks either. With no Platform link the workspace is the built-in one,
-which is said to "have everything, unlimited".
+plan lacks either. With no Platform link everyone is in the built-in workspace,
+plan `internal`, and an internal workspace has **every feature on and every
+limit unlimited** (`tenancy/entitlements.ts`). So bots, API keys and scheduled
+calls are available out of the box. Confirm it anyway:
 
-1. In Connect's Settings, check that **bots** (or API access) and **scheduled
-   calls** are available and switched on. Whether they are on by default for the
-   built-in workspace: **⚠ check in Connect**.
+1. In Connect's Settings, **API access** and **scheduled calls** are there.
 2. Test directly with the key:
    ```bash
    curl -s -H "Authorization: Bearer $CONNECT_API_KEY" \
      https://hlcentral-connect.onrender.com/api/v1/bots/convenes
    ```
    A JSON answer (even an empty list) is good; **403** means not allowed.
-3. **If not available:** look in Connect for a workspace feature switch (Settings,
-   or the workspace's row in the database). If it is a plan entitlement with no
-   Platform to grant it, find in the Connect source how the built-in/internal
-   workspace gets its entitlements and fix it there (a small Connect change).
-   Do **not** link the Platform just for this.
+3. **If it is 403 anyway:** check the workspace row in the database
+   (`plan = 'internal'`, `is_internal = true` for id
+   `00000000-0000-7000-8000-000000000001`) — something has changed it. Do
+   **not** link the Platform to fix this.
 
 ### 9.3 Set HL Central's side
 
@@ -641,7 +690,7 @@ leave them unset. It is one more reason to put both apps on one domain (§8.3).
 | 7 | §4.5 first deploy | `/health`, tables in Neon, no warnings | Fix and redeploy |
 | 8 | §5.2 `mail:test`, §6 owner, 2FA, delete seed password, invite 1 person | Two people chat with an attachment | — |
 | 9 | §8.4 Connect `EMBED_EXCEPTIONS` commit | Pop-up frame loads (once linked) | Revert the commit |
-| 10 | §7 LiveKit (optional, any time) | A real two-person call | Unset all three `LIVEKIT_*` together; power off droplet |
+| 10 | §7 LiveKit — after the first deploy, before Call is announced | A real two-person call | Unset all three `LIVEKIT_*` together; power off droplet |
 | 11 | §9.1–9.2 key, bots, scheduled calls | `curl …/bots/convenes` is not 403 | Revoke the key |
 | 12 | §9.3 HL Central env | The checks in §9.3 | **Unset `CONNECT_URL` and `CONNECT_API_KEY`** on `hlcentral-api` → every Connect feature in HL Central switches off; calls already booked stay as meetings |
 | 13 | §9.4 Connect env | — | Unset |
@@ -714,20 +763,23 @@ Render build minutes may add a little if the larger build pipeline is needed
 2. Whether migrations need a direct (non-pooled) URL, and if a variable exists
    for it (§3.2).
 3. Whether Render's build needs `corepack enable` for pnpm (§4.2).
-4. Socket.IO across more than one instance (§4.2).
-5. `SMTP_SECURE` / `SMTP_REQUIRE_TLS` / `SMTP_REPLY_TO` exact meaning (§4.3).
-6. `SEED_ON_BOOT` needed for `SEED_OWNER_*`? What `SEED_RESET_PASSWORD` does (§4.3).
+4. `SMTP_SECURE` / `SMTP_REQUIRE_TLS` / `SMTP_REPLY_TO` exact meaning (§4.3).
+5. Whether `SEED_ON_BOOT` matters for `SEED_OWNER_*`; what `SEED_RESET_PASSWORD`
+   does (§4.3).
+6. Whether `WORKSPACE_NAME` renames the built-in workspace or only the name
+   shown (§4.3).
 7. What `GOOGLE_CALENDAR_API` and `GMAIL_API` enable (§4.3).
 8. The sweeps' defaults in production (§4.3).
 9. Whether `DATA_ENCRYPTION_KEY` can be rotated (§4.4).
-10. What Connect does with a ring or a booking when LiveKit is not set (§7.1).
-11. `MEETINGS_PROVIDER`: where it is set and its values (§7.1).
-12. The session cookie: `SameSite=None` or `Lax` in production (§8.2).
-13. Whether `WEB_ORIGIN` accepts several origins (§8.3).
-14. Whether the built-in workspace has bots and scheduled calls on by default,
-    and where to switch them on (§9.2).
-15. That `HLCENTRAL_URL` / `HLCENTRAL_KEY` are the names the K6/K7 code will
+10. Whether `WEB_ORIGIN` accepts several origins (§8.3).
+11. That `HLCENTRAL_URL` / `HLCENTRAL_KEY` are the names the K6/K7 code will
     read (§9.4).
+
+Settled from the source since the first draft: one instance needs no Redis;
+calls are LiveKit only (`MEETINGS_PROVIDER` is obsolete); a booking without
+LiveKit succeeds but can't be joined; the cookie is `SameSite=None` with
+`COOKIE_SECURE=true`; the internal workspace has bots, API keys and scheduled
+calls.
 
 ---
 
@@ -744,7 +796,8 @@ Render build minutes may add a little if the larger build pipeline is needed
 - [ ] `NODE_ENV`, `SERVE_WEB`, `COOKIE_SECURE`, `LOG_LEVEL`, `NODE_OPTIONS` set; `PORT`/`HOST` **not** set
 - [ ] `WEB_ORIGIN` = `APP_URL` = `PUBLIC_APP_URL` = the public address
 - [ ] First deploy green; tables in Neon; no encryption warning
-- [ ] Owner signed in, 2FA on, `SEED_OWNER_PASSWORD` deleted
+- [ ] Deploy log shows `SMTP ready`, `seeded owner`, `Server listening`; `/health` → `{"ok":true}`; `/api/v1/auth/me` → `{"user":null}`
+- [ ] Owner signed in, invite to self received, 2FA on, all `SEED_OWNER_*` deleted
 - [ ] Render `connect` project's production environment **Protected**
 - [ ] `EMBED_EXCEPTIONS` includes HL Central's address (Connect commit deployed)
 - [ ] Bots and scheduled calls available (`/api/v1/bots/convenes` not 403)
@@ -753,7 +806,8 @@ Render build minutes may add a little if the larger build pipeline is needed
 - [ ] `HLCENTRAL_URL`, `HLCENTRAL_KEY` on Connect
 - [ ] §9.3 checks pass (notice, Discuss, inbound curl; Call if LiveKit is up)
 - [ ] Everyone invited with their **HL Central** email address
-- [ ] LiveKit decided: set up and tested, or people told calls come later
+- [ ] LiveKit set up and tested **before** HL Central's Call button is announced
+- [ ] One instance only; autoscaling off; deploys timed for quiet hours
 - [ ] Custom domain decided (D9) and scheduled
 - [ ] `render.yaml` (HL Central) gets `CONNECT_*` as `sync: false` in a follow-up
 - [ ] Connect's own `render.yaml` updated to match what was created
