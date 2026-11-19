@@ -8996,3 +8996,33 @@ textarea.hb-tpl-input {
 .hb-flags .hb-switch {
   margin-left: auto;
 }
+.hb-csearch-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.hb-csearch-nav button {
+  all: unset;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.hb-csearch-nav button:hover {
+  background: var(--canvas);
+}
+::highlight(hb-csearch) {
+  background-color: #fff0b3;
+}
+::highlight(hb-csearch-now) {
+  background-color: #ffc94d;
+  color: var(--ink);
+}
+.hb-pad-tight .hb-seg {
+  margin-top: 8px;
+}

@@ -18,7 +18,7 @@ import { Avatar, userLabel } from './ui/Avatar';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { TimeStamp } from './ui/TimeStamp';
-import { Paperclip, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, Paperclip, Search } from 'lucide-react';
 
 /** The text of a comment's HTML, for search and to tell an empty draft. */
 export function plainText(html: string): string {
@@ -118,6 +118,53 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   );
 
   const isAuthor = (c: CommentDto) => c.author.id === currentUser.id;
+
+  // Search (D3): the matches are highlighted in the comments, and ‹ › step
+  // between them. Done with the browser's highlight API, so the comments'
+  // own HTML is never rewritten; without it, the matching comments still show.
+  const listRef = useRef<HTMLUListElement>(null);
+  const [matches, setMatches] = useState<Range[]>([]);
+  const [hit, setHit] = useState(0);
+  useEffect(() => {
+    const root = listRef.current;
+    const found: Range[] = [];
+    if (root && q) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const text = (n.textContent ?? '').toLowerCase();
+        for (let i = text.indexOf(q); i !== -1; i = text.indexOf(q, i + q.length)) {
+          const r = document.createRange();
+          r.setStart(n, i);
+          r.setEnd(n, i + q.length);
+          found.push(r);
+        }
+      }
+    }
+    setMatches(found);
+    setHit(0);
+  }, [q, task.comments, show]);
+  useEffect(() => {
+    const reg = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
+    const H = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+    if (!reg || !H) return;
+    if (matches.length === 0) {
+      reg.delete('hb-csearch');
+      reg.delete('hb-csearch-now');
+      return;
+    }
+    reg.set('hb-csearch', new H(...matches));
+    const now = matches[hit];
+    if (now) {
+      reg.set('hb-csearch-now', new H(now));
+      now.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    return () => {
+      reg.delete('hb-csearch');
+      reg.delete('hb-csearch-now');
+    };
+  }, [matches, hit]);
+  const step = (d: 1 | -1) =>
+    setHit((h) => (matches.length ? (h + d + matches.length) % matches.length : 0));
 
   // Report an in-progress draft (a new comment being written, or an edit whose
   // text has changed) so the page's unsaved-changes guard can include it.
@@ -429,7 +476,26 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search comments"
               aria-label="Search comments"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  step(e.shiftKey ? -1 : 1);
+                }
+              }}
             />
+            {q && matches.length > 0 && (
+              <span className="hb-csearch-nav">
+                <span aria-live="polite">
+                  {hit + 1} of {matches.length}
+                </span>
+                <button type="button" aria-label="Previous match" onClick={() => step(-1)}>
+                  <ChevronUp size={14} aria-hidden="true" />
+                </button>
+                <button type="button" aria-label="Next match" onClick={() => step(1)}>
+                  <ChevronDown size={14} aria-hidden="true" />
+                </button>
+              </span>
+            )}
           </label>
         </div>
       )}
@@ -457,7 +523,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
           </button>
         </p>
       ) : (
-        <ul className="comment-list">
+        <ul className="comment-list" ref={listRef}>
           {shownComments.map((c) => (
             <li key={c.id} className="comment">
               <div className="comment-head">

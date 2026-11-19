@@ -189,6 +189,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Save-as-Template (task -> template conversion) modal state.
   // "New" sub-task prompt: just a name; the server creates it under this task.
   const [newSubOpen, setNewSubOpen] = useState(false);
+  // The Sub-tasks group's filter (F4): All / Open / Done.
+  const [subShow, setSubShow] = useState<'all' | 'open' | 'done'>('all');
   const [newSubName, setNewSubName] = useState('');
   const [newSubError, setNewSubError] = useState<string | null>(null);
   const [creatingSub, setCreatingSub] = useState(false);
@@ -826,6 +828,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Once a parent is set, "Parent" leaves the type list: fall back to Blocked by.
   const addType = linkType === 'parent' && task.parent ? 'blockedBy' : linkType;
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
+  const isClosed = (st: TaskStatus) => st === 'Completed' || st === 'Canceled';
+  const shownChildren = task.children.filter((c) =>
+    subShow === 'open' ? !isClosed(c.status) : subShow === 'done' ? isClosed(c.status) : true,
+  );
 
   // Project › Task › Sub-task (Nov 2026 plan): what this task may still hold,
   // and which convert choices fit. A choice that doesn't fit is shown greyed
@@ -1816,6 +1822,23 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               {task.children.length > 0 && (
                 <div className="hb-pad hb-pad-tight">
                   <Bar value={doneChildren} max={task.children.length} tone="green" />
+                  <Segmented
+                    small
+                    label={`Show ${childWord}s`}
+                    value={subShow}
+                    onChange={setSubShow}
+                    options={[
+                      { value: 'all', label: `All (${task.children.length})` },
+                      {
+                        value: 'open',
+                        label: `Open (${task.children.filter((c) => !isClosed(c.status)).length})`,
+                      },
+                      {
+                        value: 'done',
+                        label: `Done (${task.children.filter((c) => isClosed(c.status)).length})`,
+                      },
+                    ]}
+                  />
                 </div>
               )}
               {newSubOpen && (
@@ -1862,7 +1885,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               ) : task.children.length === 0 ? (
                 <Empty>No {childWord}s yet.</Empty>
               ) : (
-                task.children.map((c) =>
+                shownChildren.map((c) =>
                   c.accessible ? (
                     <Link
                       key={c.id}
@@ -1873,6 +1896,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                         <span className="hb-name">{c.name}</span>
                         <span className="hb-sub">#{c.id}</span>
                       </span>
+                      {c.priority && <PriorityMark priority={c.priority} />}
                       <StatusPill status={c.status} />
                     </Link>
                   ) : (

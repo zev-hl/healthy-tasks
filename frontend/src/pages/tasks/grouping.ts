@@ -73,8 +73,9 @@ function keyOf(t: TaskRowDto, by: Exclude<GroupBy, 'none'>, now: Date) {
         ? { key: t.assignee.id, label: userLabel(t.assignee) }
         : { key: '', label: 'Unassigned' };
     case 'project': {
-      // A project's own row and everything under it go in the project's group.
-      const p = t.isProject ? { id: t.id, name: t.name } : t.top?.isProject ? t.top : null;
+      // Each top item (a project, or a plain task with sub-tasks) is a group,
+      // with everything under it; tasks with neither are Standalone.
+      const p = t.top ?? (t.isProject || t.childrenCount > 0 ? { id: t.id, name: t.name } : null);
       return p
         ? { key: `p${p.id}`, label: p.name || `#${p.id}` }
         : { key: '', label: 'Standalone' };

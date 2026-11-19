@@ -389,12 +389,17 @@ export interface TaskLevelsDto {
   below: number;
 }
 
+/** A sub-task in its parent's Sub-tasks group: a ref plus its priority. */
+export interface TaskChildRef extends TaskRef {
+  priority: TaskPriority;
+}
+
 export interface TaskDetailDto extends TaskDto {
   levels: TaskLevelsDto;
   /** The requesting user's unread @mentions on this task. */
   unreadMentions: number;
   parent: TaskRef | null;
-  children: TaskRef[];
+  children: TaskChildRef[];
   blocks: TaskRef[];
   isBlockedBy: TaskRef[];
   // Phase 4: files attached to the task, and its comment thread (newest last).

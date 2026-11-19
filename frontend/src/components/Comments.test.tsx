@@ -286,6 +286,22 @@ describe('Comments quick filters', () => {
     });
     expect(screen.getByText('No comments match your search.')).toBeInTheDocument();
   });
+
+  it('counts the matches and steps between them', () => {
+    renderWithRouter(<Comments task={threaded} currentUser={currentUser} onChanged={() => {}} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search comments' }), {
+      target: { value: 'c' },
+    });
+    const nav = screen.getByText(/of \d+/);
+    const total = Number(nav.textContent!.split(' of ')[1]);
+    expect(total).toBeGreaterThan(1);
+    expect(nav).toHaveTextContent(`1 of ${total}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Next match' }));
+    expect(screen.getByText(/of \d+/)).toHaveTextContent(`2 of ${total}`);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous match' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous match' }));
+    expect(screen.getByText(/of \d+/)).toHaveTextContent(`${total} of ${total}`);
+  });
 });
 
 describe('Comments — unsent drafts', () => {

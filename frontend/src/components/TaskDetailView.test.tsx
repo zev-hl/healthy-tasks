@@ -437,3 +437,40 @@ describe('TaskDetailView — convert choices follow the three levels', () => {
     expect(within(card).getByText(/can’t have sub-tasks of its own/)).toBeInTheDocument();
   });
 });
+
+describe('TaskDetailView — the Sub-tasks group', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  it('filters All / Open / Done and shows each priority', async () => {
+    renderWithDataRouter(
+      <TaskDetailView
+        initialTask={{
+          ...makeTask(null),
+          children: [
+            { id: 11, name: 'Count shelf', status: 'Open', accessible: true, priority: 'High' },
+            {
+              id: 12,
+              name: 'Order labels',
+              status: 'Completed',
+              accessible: true,
+              priority: 'Low',
+            },
+          ],
+        }}
+        currentUser={me}
+      />,
+      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
+    );
+    await settle();
+    const card = screen.getByRole('heading', { name: 'Sub-tasks' }).closest('section')!;
+    expect(within(card).getByText('Count shelf')).toBeInTheDocument();
+    expect(within(card).getByText('Order labels')).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Open (1)' }));
+    expect(within(card).queryByText('Order labels')).toBeNull();
+    fireEvent.click(within(card).getByRole('button', { name: 'Done (1)' }));
+    expect(within(card).queryByText('Count shelf')).toBeNull();
+    expect(within(card).getByText('Low')).toBeInTheDocument();
+  });
+});

@@ -84,7 +84,11 @@ export const taskDetailInclude = {
   ...taskInclude,
   parent: { select: taskRefSelect },
   // Soft-deleted tasks (see db/prisma.ts) drop out of these relation lists.
-  children: { where: { deletedAt: null }, select: taskRefSelect, orderBy: { id: 'asc' } },
+  children: {
+    where: { deletedAt: null },
+    select: { ...taskRefSelect, priority: true },
+    orderBy: { id: 'asc' },
+  },
   blocking: {
     where: { blocked: { deletedAt: null } },
     include: { blocked: { select: taskRefSelect } },
@@ -108,7 +112,7 @@ export const taskDetailInclude = {
 
 export type TaskWithDetail = TaskWithRefs & {
   parent: TaskRef | null;
-  children: TaskRef[];
+  children: (TaskRef & { priority: Task['priority'] })[];
   blocking: { blocked: TaskRef }[];
   blockedBy: { blocker: TaskRef }[];
   attachments: AttachmentWithUploader[];
@@ -209,7 +213,7 @@ export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext)
     unreadMentions: access.unreadMentions,
     reminderCount: task._count.reminders,
     parent: task.parent ? ref(task.parent) : null,
-    children: task.children.map(ref),
+    children: task.children.map((c) => ({ ...ref(c), priority: c.priority })),
     // `blocking` edges → the tasks this one blocks; `blockedBy` edges → predecessors.
     blocks: task.blocking.map((d) => ref(d.blocked)),
     isBlockedBy: task.blockedBy.map((d) => ref(d.blocker)),
