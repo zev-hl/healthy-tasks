@@ -23,5 +23,8 @@ export function toAttachmentDto(a: AttachmentWithUploader): AttachmentDto {
     createdAt: a.createdAt.toISOString(),
     taskId: a.taskId,
     commentId: a.commentId,
+    recording: a.recording === 'voice' || a.recording === 'screen' ? a.recording : null,
+    durationMs: a.durationMs,
+    transcript: a.transcript,
   };
 }

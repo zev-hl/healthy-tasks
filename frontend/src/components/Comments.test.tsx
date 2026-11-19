@@ -8,6 +8,7 @@ vi.mock('../api/client', () => ({
     deleteComment: vi.fn(),
     presignCommentDraftAttachment: vi.fn(),
     getMentionCandidates: vi.fn().mockResolvedValue([]),
+    getAttachmentDownloadUrl: vi.fn().mockResolvedValue({ url: 'https://x/a', filename: 'a' }),
   },
   uploadToStorage: vi.fn(),
   ApiError: class ApiError extends Error {
@@ -330,5 +331,56 @@ describe('Comments — unsent drafts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(localStorage.getItem('hb-comment-draft:u1:7')).toBeNull();
     expect(screen.getByRole('button', { name: /Write a comment/ })).toBeInTheDocument();
+  });
+});
+
+describe('Comments — recordings', () => {
+  it('finds a voice note by its transcript', () => {
+    (api.getAttachmentDownloadUrl as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      url: 'https://x/a',
+      filename: 'a',
+    });
+    const withVoice = {
+      id: 7,
+      access: 'full',
+      comments: [
+        {
+          id: 'c9',
+          body: '<p></p>',
+          author: { id: 'u2', email: 'bea@test.local' },
+          createdAt: '2026-10-03T10:00:00.000Z',
+          editedAt: null,
+          attachments: [
+            {
+              id: 'a1',
+              filename: 'Voice note.webm',
+              contentType: 'audio/webm',
+              size: 10,
+              recording: 'voice',
+              durationMs: 4000,
+              transcript: 'the pallet arrives Thursday',
+              uploadedBy: { id: 'u2', email: 'bea@test.local' },
+              createdAt: '2026-10-03T10:00:00.000Z',
+              taskId: null,
+              commentId: 'c9',
+            },
+          ],
+        },
+        {
+          id: 'c10',
+          body: '<p>Unrelated</p>',
+          author: { id: 'u2', email: 'bea@test.local' },
+          createdAt: '2026-10-04T10:00:00.000Z',
+          editedAt: null,
+          attachments: [],
+        },
+      ],
+    } as unknown as TaskDetailDto;
+    renderWithRouter(<Comments task={withVoice} currentUser={currentUser} onChanged={() => {}} />);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search comments' }), {
+      target: { value: 'pallet' },
+    });
+    expect(screen.queryByText('Unrelated')).toBeNull();
+    expect(screen.getByRole('button', { name: 'View transcript' })).toBeInTheDocument();
   });
 });

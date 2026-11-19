@@ -32,6 +32,10 @@ export interface UploadInput {
 
 export interface ConfirmInput extends UploadInput {
   storageKey: string;
+  /** D4: set for a recording made in the comment box. */
+  recording?: 'voice' | 'screen';
+  durationMs?: number;
+  transcript?: string | null;
 }
 
 // --- Validation & helpers --------------------------------------------------
@@ -174,6 +178,9 @@ export interface PreparedAttachment {
   contentType: string;
   size: number;
   storageKey: string;
+  recording?: string | null;
+  durationMs?: number | null;
+  transcript?: string | null;
 }
 
 /**
@@ -232,11 +239,20 @@ export async function prepareCommentAttachments(
     }
     const contentType = head.contentType || input.contentType;
     assertValidUpload(contentType, head.size);
+    // D4: a recording keeps its kind, length and (voice) transcript; a
+    // transcript only on an audio voice note.
+    const recording = input.recording ?? null;
     prepared.push({
       filename: input.filename.slice(0, 255),
       contentType,
       size: head.size,
       storageKey: input.storageKey,
+      recording,
+      durationMs: recording ? (input.durationMs ?? null) : null,
+      transcript:
+        recording === 'voice' && contentType.startsWith('audio/')
+          ? input.transcript?.trim() || null
+          : null,
     });
   }
   return prepared;

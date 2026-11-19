@@ -35,6 +35,8 @@ import {
   REMINDER_NOTE_MAX,
   NOTIFY_EVENTS,
   NOTIFICATION_SOUNDS,
+  RECORDING_KINDS,
+  TRANSCRIPT_MAX,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -311,6 +313,16 @@ export const presignAttachmentSchema = z.object({
 
 export const confirmAttachmentSchema = presignAttachmentSchema.extend({
   storageKey: z.string().min(1, 'storageKey is required').max(1024),
+  // Nov 2026 plan (D4): a voice note or screen recording, with its length and
+  // (voice) the transcript.
+  recording: z.enum(RECORDING_KINDS).optional(),
+  durationMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(11 * 60_000)
+    .optional(),
+  transcript: z.string().trim().max(TRANSCRIPT_MAX).nullable().optional(),
 });
 
 const commentBody = z

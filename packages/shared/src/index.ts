@@ -568,7 +568,22 @@ export interface AttachmentDto {
   // Exactly one of these is set.
   taskId: number | null;
   commentId: string | null;
+  /** D4: a voice note or screen recording made in the comment box. */
+  recording: RecordingKind | null;
+  durationMs: number | null;
+  /** A voice note's transcript (Chrome/Edge), as corrected before posting. */
+  transcript: string | null;
 }
+
+/** Comment recordings (Nov 2026 plan, D4): a voice note or the screen. */
+export const RECORDING_KINDS = ['voice', 'screen'] as const;
+export type RecordingKind = (typeof RECORDING_KINDS)[number];
+/** Longest recordings: 5 minutes of voice, 10 of screen. */
+export const RECORDING_MAX_MS: Record<RecordingKind, number> = {
+  voice: 5 * 60_000,
+  screen: 10 * 60_000,
+};
+export const TRANSCRIPT_MAX = 20_000;
 
 /** A comment on a task: rich-text body, author, timestamps, mentions, files. */
 export interface CommentDto {
@@ -602,6 +617,10 @@ export interface ConfirmAttachmentRequest {
   contentType: string;
   size: number;
   storageKey: string;
+  /** D4: set for a recording made in the comment box. */
+  recording?: RecordingKind;
+  durationMs?: number;
+  transcript?: string | null;
 }
 
 /** A fresh pre-signed GET URL for downloading an attachment. */

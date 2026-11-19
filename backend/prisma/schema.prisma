@@ -387,6 +387,13 @@ model Attachment {
   commentId String?
   comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
+  // Nov 2026 plan (D4): a voice note or screen recording made in the comment
+  // box — what kind, how long, and (voice, Chrome/Edge) what the browser heard,
+  // as corrected by whoever recorded it.
+  recording  String?
+  durationMs Int?
+  transcript String?
+
   createdAt DateTime @default(now())
 
   @@index([taskId])

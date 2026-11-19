@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   COMMENT_MAX_ATTACHMENTS,
+  type AttachmentDto,
   type CommentDto,
+  type RecordingKind,
   type ConfirmAttachmentRequest,
   type TaskDetailDto,
   type TaskUserRef,
@@ -19,6 +21,30 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { EmptyState } from './ui/EmptyState';
 import { TimeStamp } from './ui/TimeStamp';
 import { ChevronDown, ChevronUp, Paperclip, Search } from 'lucide-react';
+import { CommentRecorder, RecordingPlayer, type Recording } from './CommentRecorder';
+
+/** A posted recording: fetches its link, then the player (D4). */
+function PostedRecording({ attachment: a }: { attachment: AttachmentDto }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api
+      .getAttachmentDownloadUrl(a.id)
+      .then((r) => alive && setUrl(r.url))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [a.id]);
+  return (
+    <RecordingPlayer
+      url={url}
+      kind={a.recording!}
+      transcript={a.transcript}
+      durationMs={a.durationMs}
+    />
+  );
+}
 
 /** The text of a comment's HTML, for search and to tell an empty draft. */
 export function plainText(html: string): string {
@@ -66,6 +92,10 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   // Files chosen for the comment being written. They are not uploaded until
   // Comment is pressed, so backing out leaves nothing behind in storage.
   const [pending, setPending] = useState<File[]>([]);
+  // D4: what a recorded file is (voice / screen), its length and transcript.
+  const [recMeta, setRecMeta] = useState<
+    Map<File, { kind: RecordingKind; durationMs: number; transcript: string | null }>
+  >(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /** The comment awaiting confirmation, if the delete dialog is open. */
@@ -85,7 +115,10 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       (!q ||
         plainText(c.body).toLowerCase().includes(q) ||
         userLabel(c.author).toLowerCase().includes(q) ||
-        (c.attachments ?? []).some((a) => a.filename.toLowerCase().includes(q))),
+        (c.attachments ?? []).some(
+          (a) =>
+            a.filename.toLowerCase().includes(q) || (a.transcript ?? '').toLowerCase().includes(q),
+        )),
   );
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -208,6 +241,29 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
 
   function removeFile(file: File) {
     setPending((current) => current.filter((f) => !sameFile(f, file)));
+    setRecMeta((m) => {
+      const n = new Map(m);
+      n.delete(file);
+      return n;
+    });
+  }
+
+  /** A voice note or screen recording from the comment box (D4). */
+  function addRecording(r: Recording) {
+    const problem = attachmentProblem(r.file);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    if (pending.length >= COMMENT_MAX_ATTACHMENTS) {
+      setError(`A comment can carry at most ${COMMENT_MAX_ATTACHMENTS} files.`);
+      return;
+    }
+    setPending((p) => [...p, r.file]);
+    setRecMeta((m) =>
+      new Map(m).set(r.file, { kind: r.kind, durationMs: r.durationMs, transcript: r.transcript }),
+    );
+    setError(null);
   }
 
   /**
@@ -246,6 +302,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       setComposerStart('');
       writeDraft(draftId, '');
       setPending([]);
+      setRecMeta(new Map());
       setComposerKey((k) => k + 1); // remount to clear the editor
       setComposerOpen(false); // collapse back to the single-line prompt
     } catch (err) {
@@ -262,7 +319,16 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       const meta = { filename: file.name, contentType: file.type, size: file.size };
       const { uploadUrl, storageKey } = await api.presignCommentDraftAttachment(task.id, meta);
       await uploadToStorage(uploadUrl, file);
-      staged.push({ ...meta, storageKey });
+      const rec = recMeta.get(file);
+      staged.push({
+        ...meta,
+        storageKey,
+        ...(rec && {
+          recording: rec.kind,
+          durationMs: Math.round(rec.durationMs),
+          transcript: rec.transcript?.trim() || null,
+        }),
+      });
     }
     return staged;
   }
@@ -375,6 +441,11 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                   <Paperclip size={14} aria-hidden="true" />{' '}
                   {pending.length === 0 ? 'Attach files' : 'Add more files'}
                 </button>
+                <CommentRecorder
+                  disabled={submitting || pending.length >= COMMENT_MAX_ATTACHMENTS}
+                  onDone={addRecording}
+                  onError={setError}
+                />
                 <span className="muted composer-attach-hint">
                   {pending.length}/{COMMENT_MAX_ATTACHMENTS} · up to 25 MB each · Ctrl + Enter posts
                 </span>
@@ -396,6 +467,22 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                       >
                         ×
                       </button>
+                      {recMeta.get(file)?.kind === 'voice' && (
+                        <textarea
+                          className="hb-sublines hb-rec-edit"
+                          rows={2}
+                          value={recMeta.get(file)?.transcript ?? ''}
+                          placeholder="No transcript (only Chrome and Edge write one). You can type one."
+                          aria-label={`Transcript of ${file.name}`}
+                          onChange={(e) => {
+                            const text = e.target.value;
+                            setRecMeta((m) => {
+                              const cur = m.get(file);
+                              return cur ? new Map(m).set(file, { ...cur, transcript: text }) : m;
+                            });
+                          }}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -557,6 +644,11 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
               ) : (
                 <>
                   <RichText html={c.body} className="comment-body" />
+                  {c.attachments
+                    .filter((a) => a.recording)
+                    .map((a) => (
+                      <PostedRecording key={a.id} attachment={a} />
+                    ))}
                   <div className="comment-attachments">
                     <AttachmentSection
                       attachments={c.attachments}

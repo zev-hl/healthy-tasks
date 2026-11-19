@@ -9149,3 +9149,89 @@ textarea.hb-tpl-input {
     width: auto;
   }
 }
+
+/* Voice notes and screen recordings in comments (D4). */
+.hb-rec-buttons {
+  display: inline-flex;
+  gap: 6px;
+}
+.hb-rec-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--danger-soft);
+  color: var(--ink);
+  font-size: 13px;
+  width: 100%;
+}
+.hb-rec-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+.hb-rec-heard {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-style: italic;
+}
+.hb-rec-edit {
+  flex-basis: 100%;
+  min-height: 52px;
+  margin-top: 6px;
+}
+.composer-files li {
+  flex-wrap: wrap;
+}
+.hb-rec-player {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 6px 0;
+}
+.hb-rec-voice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+}
+.hb-rec-voice audio {
+  height: 34px;
+  max-width: 100%;
+}
+.hb-rec-player video {
+  width: 100%;
+  max-width: 520px;
+  border-radius: 10px;
+  background: #000;
+}
+.hb-rec-speed {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.hb-rec-speed button {
+  all: unset;
+  padding: 2px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.hb-rec-speed button.is-on {
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+.hb-rec-transcript {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-sunk);
+  font-size: 13px;
+  white-space: pre-wrap;
+}

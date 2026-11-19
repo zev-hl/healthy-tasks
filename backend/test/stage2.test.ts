@@ -186,7 +186,7 @@ describe('Stage 2: snooze (E1, E2)', () => {
     assert.equal(await prisma.reminder.count({ where: { taskId: t.id, kind: 'snooze' } }), 0);
     const history = await prisma.taskHistory.findMany({
       where: { taskId: t.id, field: 'snooze' },
-      orderBy: { id: 'asc' },
+      orderBy: { changedAt: 'asc' },
     });
     assert.deepEqual(
       history.map((h) => h.changeType),
@@ -328,5 +328,48 @@ describe('Stage 2: notification settings per event and channel (E7)', () => {
     const cfg = await request(app).get('/api/notifications/push-config').set(auth(workerTok));
     assert.equal(cfg.status, 200);
     assert.equal(cfg.body.publicKey, null, 'no keys on this server');
+  });
+});
+
+describe('Stage 2: voice notes and screen recordings (D4)', () => {
+  async function staged(token: string, taskId: number, filename: string, contentType: string) {
+    const meta = { filename, contentType, size: 4096 };
+    const res = await request(app)
+      .post(`/api/tasks/${taskId}/comments/attachments/presign`)
+      .set(auth(token))
+      .send(meta);
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    memoryStorage.__put(res.body.storageKey, { size: meta.size, contentType });
+    return { ...meta, storageKey: res.body.storageKey as string };
+  }
+
+  it('keeps a voice note with its length and transcript; a screen recording takes no transcript', async () => {
+    const admin = await login(ADMIN);
+    const t = await makeTask(admin, 'Recorded');
+    const voice = await staged(admin, t.id, 'Voice note.webm', 'audio/webm');
+    const screen = await staged(admin, t.id, 'Screen recording.webm', 'video/webm');
+    const res = await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({
+        attachments: [
+          { ...voice, recording: 'voice', durationMs: 42_000, transcript: ' Ship it today ' },
+          { ...screen, recording: 'screen', durationMs: 90_000, transcript: 'ignored' },
+        ],
+      });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    const files = res.body.comments[0].attachments as {
+      recording: string;
+      durationMs: number;
+      transcript: string | null;
+    }[];
+    const byKind = new Map(files.map((f) => [f.recording, f]));
+    assert.deepEqual(byKind.get('voice'), {
+      ...byKind.get('voice')!,
+      durationMs: 42_000,
+      transcript: 'Ship it today',
+    });
+    assert.equal(byKind.get('screen')!.transcript, null);
+    assert.equal(byKind.get('screen')!.durationMs, 90_000);
   });
 });
