@@ -75,6 +75,7 @@ export async function listDepartments(): Promise<DepartmentDto[]> {
         description: u.description,
         sop: u.sop,
         videoUrl: u.videoUrl,
+        videoFile: u.videoKey ? (u.videoName ?? 'video') : null,
         archived: u.archivedAt !== null || d.archivedAt !== null,
         peopleCount: holders.size,
         openTaskCount: openByDuty.get(u.id) ?? 0,

@@ -442,3 +442,97 @@ describe('Stage 2: the Dashboard numbers (H1)', () => {
     assert.equal((await attention(tok)).mentionsAwaiting.count, 0);
   });
 });
+
+describe('Stage 2: drafts (I1)', () => {
+  it('only the owner sees a draft; Make task moves its files onto the task and the draft goes', async () => {
+    const admin = await login(ADMIN);
+    await seedUser('peek@test.local', 'Member');
+    const other = await login('peek@test.local');
+    const made = await request(app)
+      .post('/api/drafts')
+      .set(auth(admin))
+      .send({ title: 'New supplier idea', notes: '<p>Ask <b>Acme</b><script>x</script></p>' });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = made.body.id as string;
+    assert.ok(!made.body.notes.includes('script'));
+    assert.equal((await request(app).get('/api/drafts').set(auth(other))).body.length, 0);
+    assert.equal(
+      (await request(app).patch(`/api/drafts/${id}`).set(auth(other)).send({ title: 'x' })).status,
+      404,
+    );
+
+    const pre = await request(app)
+      .post(`/api/drafts/${id}/files/presign`)
+      .set(auth(admin))
+      .send({ filename: 'quote.pdf', contentType: 'application/pdf', size: 1000 });
+    assert.equal(pre.status, 201);
+    memoryStorage.__put(pre.body.storageKey, { size: 1000, contentType: 'application/pdf' });
+    const withFile = await request(app).post(`/api/drafts/${id}/files`).set(auth(admin)).send({
+      filename: 'quote.pdf',
+      contentType: 'application/pdf',
+      size: 1000,
+      storageKey: pre.body.storageKey,
+    });
+    assert.equal(withFile.body.files.length, 1);
+
+    const t = await makeTask(admin, 'New supplier idea');
+    const fin = await request(app)
+      .post(`/api/drafts/${id}/finish`)
+      .set(auth(admin))
+      .send({ taskId: t.id });
+    assert.equal(fin.status, 204, JSON.stringify(fin.body));
+    const task = await getTask(admin, t.id);
+    assert.deepEqual(
+      (task.body.attachments as { filename: string }[]).map((a) => a.filename),
+      ['quote.pdf'],
+    );
+    assert.equal((await request(app).get('/api/drafts').set(auth(admin))).body.length, 0);
+    assert.equal(await prisma.draftFile.count(), 0);
+  });
+});
+
+describe('Stage 2: a duty video as a file (I4)', () => {
+  it('an Admin uploads it and everyone may watch', async () => {
+    const admin = await login(ADMIN);
+    await seedUser('watch@test.local', 'Member');
+    const member = await login('watch@test.local');
+    const dep = await prisma.department.create({
+      data: { name: 'Ops', nameKey: 'ops', color: '#3366cc' },
+    });
+    const duty = await prisma.duty.create({
+      data: { departmentId: dep.id, name: 'Receiving', nameKey: 'receiving' },
+    });
+    const meta = { filename: 'howto.mp4', contentType: 'video/mp4', size: 5000 };
+    assert.equal(
+      (
+        await request(app)
+          .post(`/api/departments/duties/${duty.id}/video/presign`)
+          .set(auth(member))
+          .send(meta)
+      ).status,
+      403,
+    );
+    const pre = await request(app)
+      .post(`/api/departments/duties/${duty.id}/video/presign`)
+      .set(auth(admin))
+      .send(meta);
+    assert.equal(pre.status, 201, JSON.stringify(pre.body));
+    memoryStorage.__put(pre.body.storageKey, { size: 5000, contentType: 'video/mp4' });
+    assert.equal(
+      (
+        await request(app)
+          .put(`/api/departments/duties/${duty.id}/video`)
+          .set(auth(admin))
+          .send({ ...meta, storageKey: pre.body.storageKey })
+      ).status,
+      204,
+    );
+    const deps = (await request(app).get('/api/departments').set(auth(member))).body;
+    assert.equal(deps[0].duties[0].videoFile, 'howto.mp4');
+    const watch = await request(app)
+      .get(`/api/departments/duties/${duty.id}/video`)
+      .set(auth(member));
+    assert.equal(watch.status, 200);
+    assert.ok(watch.body.url);
+  });
+});

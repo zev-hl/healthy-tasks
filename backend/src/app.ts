@@ -1,3 +1,4 @@
+import { draftsRouter } from './routes/drafts.routes.js';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -72,6 +73,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/departments', departmentsRouter);
   app.use('/api/org', orgRouter);
   app.use('/api/time', timeRouter);
+  app.use('/api/drafts', draftsRouter);
 
   const dashboard = options.queueDashboard;
   if (dashboard) {

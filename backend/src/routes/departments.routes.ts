@@ -1,9 +1,17 @@
+import {
+  clearDutyVideo,
+  dutyVideoUrl,
+  presignDutyVideo,
+  setDutyVideo,
+} from '../services/duty-video.service.js';
 import { Router } from 'express';
 import { asyncHandler } from '../utils/async-handler.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import {
+  confirmAttachmentSchema,
   createDepartmentSchema,
+  presignAttachmentSchema,
   createDutySchema,
   updateDepartmentSchema,
   updateDutySchema,
@@ -46,6 +54,38 @@ departmentsRouter.patch(
   requireAdmin,
   validateBody(updateDutySchema),
   asyncHandler(updateDutyController),
+);
+// A duty's video as a file (Nov 2026 plan, I4): an Admin uploads, everyone watches.
+departmentsRouter.post(
+  '/duties/:id/video/presign',
+  requireAdmin,
+  validateBody(presignAttachmentSchema),
+  asyncHandler(async (req, res) => {
+    res.status(201).json(await presignDutyVideo((req.params as { id: string }).id, req.body));
+  }),
+);
+departmentsRouter.put(
+  '/duties/:id/video',
+  requireAdmin,
+  validateBody(confirmAttachmentSchema),
+  asyncHandler(async (req, res) => {
+    await setDutyVideo((req.params as { id: string }).id, req.body);
+    res.status(204).send();
+  }),
+);
+departmentsRouter.delete(
+  '/duties/:id/video',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    await clearDutyVideo((req.params as { id: string }).id);
+    res.status(204).send();
+  }),
+);
+departmentsRouter.get(
+  '/duties/:id/video',
+  asyncHandler(async (req, res) => {
+    res.json({ url: await dutyVideoUrl((req.params as { id: string }).id) });
+  }),
 );
 departmentsRouter.post('/duties/:id/archive', requireAdmin, asyncHandler(archiveDutyController));
 departmentsRouter.post('/duties/:id/restore', requireAdmin, asyncHandler(restoreDutyController));

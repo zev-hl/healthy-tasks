@@ -40,7 +40,7 @@ export interface ConfirmInput extends UploadInput {
 
 // --- Validation & helpers --------------------------------------------------
 
-function assertValidUpload(contentType: string, size: number): void {
+export function assertValidUpload(contentType: string, size: number): void {
   if (!isAllowedAttachmentType(contentType)) {
     throw HttpError.badRequest(
       `File type "${contentType}" is not allowed. Allowed types: images, documents, audio, and video.`,
@@ -56,7 +56,7 @@ function assertValidUpload(contentType: string, size: number): void {
 }
 
 /** A filesystem/URL-safe basename for the storage key (the DB keeps the original). */
-function safeName(filename: string): string {
+export function safeName(filename: string): string {
   const base = filename.split(/[\\/]/).pop() ?? 'file';
   return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file';
 }

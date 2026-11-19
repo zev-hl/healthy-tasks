@@ -1071,6 +1071,38 @@ export interface TaskRowDto {
   canChangeDue: boolean;
 }
 
+// --- Drafts (Nov 2026 plan, I1) ---------------------------------------------
+
+/** A file kept with a draft. */
+export interface DraftFileDto {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  createdAt: string;
+}
+
+/**
+ * An idea kept by one person: a title, notes and files. It notifies no one and
+ * starts no workflow; "Make task" turns it into a task or project.
+ */
+export interface DraftDto {
+  id: string;
+  title: string;
+  /** Sanitized rich text. */
+  notes: string | null;
+  files: DraftFileDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveDraftRequest {
+  title: string;
+  notes?: string | null;
+}
+
+export const DRAFT_MAX_FILES = 10;
+
 /** The Dashboard's "needs you" numbers (Nov 2026 plan, H1), each with its tasks. */
 export interface DashboardAttentionDto {
   /** My open tasks with activity since I last opened them. */
@@ -2842,6 +2874,8 @@ export interface DutyDto {
   sop: string | null;
   /** Nov 2026 plan (I4): a link to the duty's training video. */
   videoUrl: string | null;
+  /** Or an uploaded video file's name (fetch it with the duty video link). */
+  videoFile: string | null;
   archived: boolean;
   /** Active people who hold this duty. */
   peopleCount: number;

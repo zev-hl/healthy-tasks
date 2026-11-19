@@ -76,6 +76,7 @@ model User {
   snoozedTasks      Task[]             @relation("TaskSnoozedBy")
   pushSubscriptions PushSubscription[]
   seenTasks         TaskSeen[]
+  drafts            Draft[]            @relation("DraftOwner")
 
   // Phase 10 review workflow: tasks this user sent to Review, and tasks holding
   // this user as their pre-review assignee (restored when review ends).
@@ -665,6 +666,37 @@ model NotificationPreference {
   sound    String  @default("chime")
   // Browser push (on this person's subscribed browsers, PushSubscription).
   pushOn   Boolean @default(false)
+}
+
+// A draft (Nov 2026 plan, I1): an idea kept by one person — a title, notes and
+// files — that notifies no one and starts no workflow until "Make task" turns
+// it into a task or project. Only its owner sees it.
+model Draft {
+  id        String      @id @default(uuid())
+  ownerId   String
+  owner     User        @relation("DraftOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  title     String
+  // Sanitized rich text, like a task description.
+  notes     String?
+  files     DraftFile[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([ownerId])
+}
+
+// A file kept with a draft; on "Make task" it becomes the task's attachment.
+model DraftFile {
+  id          String   @id @default(uuid())
+  draftId     String
+  draft       Draft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  filename    String
+  contentType String
+  size        Int
+  storageKey  String   @unique
+  createdAt   DateTime @default(now())
+
+  @@index([draftId])
 }
 
 // When a person last opened a task (Nov 2026 plan, H1): drives the Dashboard's
@@ -1260,6 +1292,9 @@ model Duty {
   // link (or a file's URL) to a training video.
   sop          String?
   videoUrl     String?
+  // Or an uploaded video file (I4): its storage key and name.
+  videoKey     String?
+  videoName    String?
 
   archivedAt DateTime?
 
