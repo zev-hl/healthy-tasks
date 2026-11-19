@@ -109,7 +109,7 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
  * A page's rows, finished for the Tasks list: each row's top task and whether
  * the reader may move its due date (the same rule as the task page).
  */
-async function finishRows(
+export async function finishRows(
   rows: TaskRowDto[],
   scope: TaskAccessScope,
   actor: Actor,

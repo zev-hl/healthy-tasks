@@ -18,6 +18,8 @@ import type {
   TaskRowDto,
   TaskSearchFilters,
   TaskStatus,
+  TaskPriority,
+  DashboardAttentionDto,
 } from '@healthy-tasks/shared';
 import { TASK_STATUS_LABELS } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
@@ -50,6 +52,7 @@ import {
   ACTIVE_STATUSES,
   dueInfo,
   dueIsoFromYmd,
+  PRIORITY_OPTIONS,
   periodRange,
   statusOptions,
   taskSub,
@@ -57,7 +60,36 @@ import {
 } from '../../components/harbor/taskHelpers';
 import { TimeTrackerCard } from './TimeTrackerCard';
 
-type TileKey = 'open' | 'overdue' | 'due' | 'inProgress' | 'onHold' | 'review' | 'done';
+type TileKey =
+  | 'open'
+  | 'overdue'
+  | 'due'
+  | 'inProgress'
+  | 'onHold'
+  | 'review'
+  | 'done'
+  // Nov 2026 plan (H1): what needs you, listed in place.
+  | 'unread'
+  | 'stale'
+  | 'mentions';
+type AttentionKey = 'unread' | 'stale' | 'mentions';
+const isAttention = (k: TileKey | null): k is AttentionKey =>
+  k === 'unread' || k === 'stale' || k === 'mentions';
+const ATTENTION_FIELD = {
+  unread: 'unread',
+  stale: 'stale',
+  mentions: 'mentionsAwaiting',
+} as const;
+
+/** The Alerts group's kinds (E5). */
+type AlertKind = 'all' | 'mentioned' | 'reminders' | 'assigned' | 'activity';
+const ALERT_KINDS: { value: AlertKind; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'mentioned', label: 'Mentions' },
+  { value: 'reminders', label: 'Reminders' },
+  { value: 'assigned', label: 'Assigned' },
+  { value: 'activity', label: 'Activity' },
+];
 
 interface Counts {
   open: number;
@@ -107,6 +139,9 @@ export function MyDashboard({
   const [feed, setFeed] = useState<FeedItem[] | null>(null);
   const [perf, setPerf] = useState<DueDateBucketTotals | null>(null);
   const [tile, setTile] = useState<TileKey | null>(null);
+  const [attention, setAttention] = useState<DashboardAttentionDto | null>(null);
+  const [alertKind, setAlertKind] = useState<AlertKind>('all');
+  const [allFeed, setAllFeed] = useState<FeedItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flashReview, setFlashReview] = useState(false);
   const reviewRef = useRef<HTMLDivElement>(null);
@@ -205,7 +240,20 @@ export function MyDashboard({
     setNext7(nx.rows);
   }, [base]);
 
+  const loadAttention = useCallback(async () => {
+    const a = await api.getDashboardAttention();
+    setAttention(a);
+    return a;
+  }, []);
+
   const loadMine = useCallback(async () => {
+    if (isAttention(tile)) {
+      const a = await loadAttention();
+      const part = a[ATTENTION_FIELD[tile]];
+      setMine(part.rows);
+      setMineTotal(part.count);
+      return;
+    }
     const res = await api.queryTasks({
       filters: tileFilters(tile),
       sort: [{ field: 'dueAt', dir: 'asc' }],
@@ -215,7 +263,7 @@ export function MyDashboard({
     });
     setMine(res.rows);
     setMineTotal(res.total);
-  }, [tile, tileFilters]);
+  }, [tile, tileFilters, loadAttention]);
 
   const loadSide = useCallback(async () => {
     const [n, report] = await Promise.all([
@@ -230,14 +278,18 @@ export function MyDashboard({
         ...nowContext(),
       }),
     ]);
-    setFeed(toFeed(n).slice(0, 6));
+    const all = toFeed(n);
+    setAllFeed(all);
+    setFeed(all.slice(0, 6));
     setPerf(report.bucketTotals);
   }, [me, range]);
 
   const reloadAll = useCallback(() => {
     setError(null);
-    Promise.all([loadCounts(), loadLists(), loadMine()]).catch((e) => setError(errorText(e)));
-  }, [loadCounts, loadLists, loadMine]);
+    Promise.all([loadCounts(), loadLists(), loadMine(), loadAttention()]).catch((e) =>
+      setError(errorText(e)),
+    );
+  }, [loadCounts, loadLists, loadMine, loadAttention]);
 
   // A task made from the header's quick "New task" panel shows up straight away.
   useEffect(() => {
@@ -247,13 +299,33 @@ export function MyDashboard({
 
   useEffect(() => {
     if (!me) return;
-    Promise.all([loadCounts(), loadLists(), loadSide()]).catch((e) => setError(errorText(e)));
-  }, [me, loadCounts, loadLists, loadSide]);
+    Promise.all([loadCounts(), loadLists(), loadSide(), loadAttention()]).catch((e) =>
+      setError(errorText(e)),
+    );
+  }, [me, loadCounts, loadLists, loadSide, loadAttention]);
 
   useEffect(() => {
     if (!me) return;
     loadMine().catch((e) => setError(errorText(e)));
   }, [me, loadMine]);
+
+  // Rows edit in place (B8), with the task page's rules.
+  async function setDue(t: TaskRowDto, ymd: string | null) {
+    try {
+      await api.updateTask(t.id, { dueAt: dueIsoFromYmd(ymd) });
+      reloadAll();
+    } catch (e) {
+      toast({ message: errorText(e), tone: 'error' });
+    }
+  }
+  async function setPriority(t: TaskRowDto, priority: TaskPriority) {
+    try {
+      await api.updateTask(t.id, { priority });
+      reloadAll();
+    } catch (e) {
+      toast({ message: errorText(e), tone: 'error' });
+    }
+  }
 
   async function setStatus(t: TaskRowDto, status: TaskStatus) {
     const before = t.status;
@@ -340,7 +412,33 @@ export function MyDashboard({
     },
   ];
 
-  const tileLabel = tiles.find((x) => x.key === tile)?.label;
+  // What needs you (H1), after the core numbers.
+  const needs: typeof tiles = [
+    {
+      key: 'unread',
+      label: 'Unread',
+      value: attention?.unread.count,
+      hint: 'New on your tasks',
+      tone: attention && attention.unread.count > 0 ? 'blue' : undefined,
+    },
+    {
+      key: 'stale',
+      label: 'Stale',
+      value: attention?.stale.count,
+      hint: 'Quiet 2+ business days',
+      tone: attention && attention.stale.count > 0 ? 'amber' : undefined,
+    },
+    {
+      key: 'mentions',
+      label: 'Mentions awaiting reply',
+      value: attention?.mentionsAwaiting.count,
+      hint: 'You were asked',
+      tone: attention && attention.mentionsAwaiting.count > 0 ? 'review' : undefined,
+    },
+  ];
+  const tileLabel = [...tiles, ...needs].find((x) => x.key === tile)?.label;
+  const shownFeed =
+    alertKind === 'all' ? feed : (allFeed ?? []).filter((f) => f.list === alertKind).slice(0, 8);
 
   return (
     <>
@@ -351,6 +449,19 @@ export function MyDashboard({
       )}
       <div className="hb-tiles">
         {tiles.map((x) => (
+          <Tile
+            key={x.key}
+            label={x.label}
+            value={x.value ?? '–'}
+            hint={x.hint}
+            tone={x.tone}
+            pressed={tile === x.key}
+            onClick={() => pickTile(x.key)}
+          />
+        ))}
+      </div>
+      <div className="hb-tiles hb-tiles-needs" role="group" aria-label="Needs you">
+        {needs.map((x) => (
           <Tile
             key={x.key}
             label={x.label}
@@ -469,9 +580,31 @@ export function MyDashboard({
                       </Link>
                       <span className="hb-sub">{taskSub(t)}</span>
                     </div>
-                    <span className={cx('hb-due', due?.late && 'late', due?.today && 'today')}>
-                      {due?.text ?? 'No due date'}
-                    </span>
+                    {t.canChangeDue && !t.mentionOnly && !t.treeOnly && !t.viewOnly ? (
+                      <DatePicker
+                        variant="plain"
+                        label={`Due date of ${t.name}`}
+                        value={t.dueAt ? toYmd(new Date(t.dueAt)) : null}
+                        placeholder="No due date"
+                        className={cx('hb-due', due?.late && 'late', due?.today && 'today')}
+                        renderValue={() => due?.text ?? 'No due date'}
+                        onChange={(v) => void setDue(t, v)}
+                      />
+                    ) : (
+                      <span className={cx('hb-due', due?.late && 'late', due?.today && 'today')}>
+                        {due?.text ?? 'No due date'}
+                      </span>
+                    )}
+                    {!t.mentionOnly && !t.treeOnly && !t.viewOnly && (
+                      <Select
+                        variant="pill"
+                        className={`hb-prio prio-${t.priority.toLowerCase()}`}
+                        label={`Priority of ${t.name}`}
+                        value={t.priority}
+                        options={PRIORITY_OPTIONS}
+                        onChange={(p) => void setPriority(t, p)}
+                      />
+                    )}
                     {t.status === 'Review' || t.mentionOnly || t.treeOnly || t.viewOnly ? (
                       <StatusPill status={t.status} />
                     ) : (
@@ -496,16 +629,29 @@ export function MyDashboard({
           <Card>
             <CardHead
               icon={<Bell size={16} />}
-              title="Notifications"
+              title="Alerts"
               right={
                 feed && feed.some((f) => !f.read) ? (
                   <span className="hb-small">{feed.filter((f) => !f.read).length} unread</span>
                 ) : undefined
               }
             />
-            {feed === null && <Empty>Loading…</Empty>}
-            {feed?.length === 0 && <Empty>You are all caught up.</Empty>}
-            {feed?.map((it) => (
+            <div className="hb-cfilter hb-alert-kinds" role="group" aria-label="Show alerts">
+              {ALERT_KINDS.map((k) => (
+                <button
+                  key={k.value}
+                  type="button"
+                  className={alertKind === k.value ? 'is-on' : undefined}
+                  aria-pressed={alertKind === k.value}
+                  onClick={() => setAlertKind(k.value)}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+            {shownFeed === null && <Empty>Loading…</Empty>}
+            {shownFeed?.length === 0 && <Empty>You are all caught up.</Empty>}
+            {shownFeed?.map((it) => (
               <button
                 key={it.key}
                 type="button"

@@ -75,6 +75,7 @@ model User {
   deletedTasks      Task[]             @relation("TaskDeletedBy")
   snoozedTasks      Task[]             @relation("TaskSnoozedBy")
   pushSubscriptions PushSubscription[]
+  seenTasks         TaskSeen[]
 
   // Phase 10 review workflow: tasks this user sent to Review, and tasks holding
   // this user as their pre-review assignee (restored when review ends).
@@ -228,6 +229,7 @@ model Task {
 
   // Due soon / overdue notices (E7): the due date each was last sent for, so a
   // notice goes once per due date (a new due date sends again).
+  seenBy           TaskSeen[]
   dueSoonNoticeFor DateTime?
   overdueNoticeFor DateTime?
 
@@ -663,6 +665,19 @@ model NotificationPreference {
   sound    String  @default("chime")
   // Browser push (on this person's subscribed browsers, PushSubscription).
   pushOn   Boolean @default(false)
+}
+
+// When a person last opened a task (Nov 2026 plan, H1): drives the Dashboard's
+// Unread count — an assignee's task with activity since they last looked.
+model TaskSeen {
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId Int
+  task   Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  seenAt DateTime @default(now())
+
+  @@id([userId, taskId])
+  @@index([taskId])
 }
 
 // A browser that may receive push notifications for a person (E7).

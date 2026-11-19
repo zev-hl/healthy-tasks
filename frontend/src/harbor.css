@@ -9235,3 +9235,26 @@ textarea.hb-tpl-input {
   font-size: 13px;
   white-space: pre-wrap;
 }
+
+/* Dashboard (H1, E5): what needs you, under the core numbers; the Alerts kinds. */
+.hb-tiles-needs {
+  margin-top: -4px;
+  margin-bottom: 4px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.hb-alert-kinds {
+  margin: 0;
+  padding: 8px 14px 4px;
+}
+.hb-notify-table tbody th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+  background: transparent;
+  color: var(--ink);
+}
+.hb-notify-row > .hb-select,
+.hb-notify-row .hb-select-field {
+  width: auto;
+  flex: 0 0 160px;
+}

@@ -1069,6 +1069,16 @@ export interface TaskRowDto {
   canChangeDue: boolean;
 }
 
+/** The Dashboard's "needs you" numbers (Nov 2026 plan, H1), each with its tasks. */
+export interface DashboardAttentionDto {
+  /** My open tasks with activity since I last opened them. */
+  unread: { count: number; rows: TaskRowDto[] };
+  /** My open tasks quiet for 2+ business days. */
+  stale: { count: number; rows: TaskRowDto[] };
+  /** Tasks where I was mentioned and haven't commented since. */
+  mentionsAwaiting: { count: number; rows: TaskRowDto[] };
+}
+
 // ---------------------------------------------------------------------------
 // Due Date Performance Report (Phase 13)
 // ---------------------------------------------------------------------------

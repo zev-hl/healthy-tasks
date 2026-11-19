@@ -1,6 +1,7 @@
 import type {
   ActiveUserDto,
   PushConfigDto,
+  DashboardAttentionDto,
   PushSubscriptionRequest,
   AdminResetLinkResponse,
   AppSettingsDto,
@@ -417,6 +418,8 @@ export const api = {
       body: JSON.stringify({ type, otherTaskId }),
     }),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
+  /** The Dashboard's Unread, Stale and Mentions awaiting reply (H1). */
+  getDashboardAttention: () => request<DashboardAttentionDto>('/api/tasks/attention'),
   /** Request update (E3): ask the assignee how it's going. */
   requestUpdate: (id: number, note: string | null) =>
     request<{ askedAt: string }>(`/api/tasks/${id}/request-update`, {

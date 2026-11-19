@@ -57,6 +57,7 @@ import { assertDutyAssignable } from './department.service.js';
 import { assertHoldsDuty } from './duty-check.service.js';
 import { assertCanPlaceUnder, assertCanSetProject, levelInfo } from './task-levels.service.js';
 import { canSnoozeTask } from './task-snooze.service.js';
+import { markTaskSeen } from './dashboard-attention.service.js';
 import { nameOf, notifyTaskEvent } from './task-events.service.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 
@@ -251,6 +252,8 @@ export async function getTaskDetail(id: number, actor: Actor): Promise<TaskDetai
     }),
   ]);
   const snooze = await canSnoozeTask(actor, task);
+  // H1: the assignee opening their task marks it seen (the Dashboard's Unread).
+  if (task.assigneeId === actor.id) await markTaskSeen(actor.id, task.id);
   return toTaskDetailDto(task as unknown as TaskWithDetail, {
     canSnooze: snooze,
     level,

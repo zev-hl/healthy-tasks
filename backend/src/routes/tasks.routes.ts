@@ -1,3 +1,4 @@
+import { getDashboardAttention } from '../services/dashboard-attention.service.js';
 import { Router } from 'express';
 import { asyncHandler } from '../utils/async-handler.js';
 import { validateBody } from '../middleware/validate.js';
@@ -85,6 +86,13 @@ tasksRouter.get('/search', asyncHandler(searchTasksController));
 tasksRouter.get('/tags', asyncHandler(listTagsController));
 // Soft-deleted tasks (Admin): the list and restore.
 tasksRouter.get('/deleted', asyncHandler(listDeletedTasksController));
+// The Dashboard's Unread / Stale / Mentions awaiting reply (Nov 2026 plan, H1).
+tasksRouter.get(
+  '/attention',
+  asyncHandler(async (req, res) => {
+    res.json(await getDashboardAttention({ id: req.user!.id, role: req.user!.role }));
+  }),
+);
 // Phase 11: computed ghost previews of recurring tasks (Gantt/Calendar).
 tasksRouter.get('/ghosts', asyncHandler(taskGhostsController));
 // Task Search screen (Phase 6): POST bodies carry filters/sort/pagination.

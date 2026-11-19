@@ -373,3 +373,72 @@ describe('Stage 2: voice notes and screen recordings (D4)', () => {
     assert.equal(byKind.get('screen')!.durationMs, 90_000);
   });
 });
+
+describe('Stage 2: the Dashboard numbers (H1)', () => {
+  const attention = async (tok: string) =>
+    (await request(app).get('/api/tasks/attention').set(auth(tok))).body as {
+      unread: { count: number; rows: { id: number }[] };
+      stale: { count: number; rows: { id: number }[] };
+      mentionsAwaiting: { count: number; rows: { id: number }[] };
+    };
+
+  it('Unread: my task with something new since I last opened it', async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('unread@test.local', 'Member');
+    const tok = await login('unread@test.local');
+    const t = await makeTask(admin, 'For you', { assigneeId: worker.id });
+    assert.deepEqual(
+      (await attention(tok)).unread.rows.map((r) => r.id),
+      [t.id],
+      'never opened',
+    );
+    await getTask(tok, t.id);
+    assert.equal((await attention(tok)).unread.count, 0, 'opened');
+    await new Promise((r) => setTimeout(r, 20));
+    await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({ body: '<p>One more thing</p>' });
+    assert.equal((await attention(tok)).unread.count, 1, 'new comment since');
+  });
+
+  it('Stale: my open task quiet for 2+ business days', async () => {
+    const admin = await login(ADMIN);
+    const quiet = await makeTask(admin, 'Quiet one', {
+      assigneeId: (await prisma.user.findFirstOrThrow({ where: { email: ADMIN } })).id,
+    });
+    await makeTask(admin, 'Fresh one');
+    await prisma.task.update({
+      where: { id: quiet.id },
+      data: { lastActivityAt: new Date(Date.now() - 6 * 86_400_000) },
+    });
+    const a = await attention(admin);
+    assert.deepEqual(
+      a.stale.rows.map((r) => r.id),
+      [quiet.id],
+    );
+  });
+
+  it('Mentions awaiting reply: mentioned and not commented since', async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('ment@test.local', 'Member');
+    const tok = await login('ment@test.local');
+    const t = await makeTask(admin, 'Your view?');
+    await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(admin))
+      .send({
+        body: `<p>What do you think <span data-type="mention" data-id="${worker.id}" data-label="w">@w</span>?</p>`,
+      });
+    assert.deepEqual(
+      (await attention(tok)).mentionsAwaiting.rows.map((r) => r.id),
+      [t.id],
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    await request(app)
+      .post(`/api/tasks/${t.id}/comments`)
+      .set(auth(tok))
+      .send({ body: '<p>Yes</p>' });
+    assert.equal((await attention(tok)).mentionsAwaiting.count, 0);
+  });
+});
