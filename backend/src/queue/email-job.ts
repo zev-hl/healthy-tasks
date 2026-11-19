@@ -14,6 +14,7 @@ export type EmailKind =
   | 'assignment'
   | 'reminder'
   | 'task-event'
+  | 'event'
   | 'admin-alert'
   | 'email-changed'
   | 'email-change-notice'

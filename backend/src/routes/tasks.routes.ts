@@ -43,6 +43,7 @@ import {
   restoreTaskController,
   snoozeTaskController,
   getTaskTimeController,
+  listTaskEventsController,
   requestUpdateController,
   unsnoozeTaskController,
   duplicateTaskController,
@@ -127,6 +128,7 @@ tasksRouter.post('/:id/restore', asyncHandler(restoreTaskController));
 tasksRouter.post('/:id/snooze', validateBody(snoozeTaskSchema), asyncHandler(snoozeTaskController));
 tasksRouter.delete('/:id/snooze', asyncHandler(unsnoozeTaskController));
 tasksRouter.get('/:id/time', asyncHandler(getTaskTimeController));
+tasksRouter.get('/:id/events', asyncHandler(listTaskEventsController));
 tasksRouter.post(
   '/:id/request-update',
   validateBody(requestUpdateSchema),

@@ -188,3 +188,23 @@ export function testEmail(to: string, queuedAt: string): Email {
     }),
   };
 }
+
+/** An event's notice (Stage 3): added to it, moved, or canceled. */
+export function eventEmail(o: {
+  to: string;
+  subject: string;
+  what: string;
+  note?: string | null;
+  link: string;
+}): Email {
+  return {
+    to: o.to,
+    subject: o.subject,
+    ...renderEmail({
+      blocks: [
+        { text: o.note ? `${o.what}\n${o.note}` : o.what },
+        { button: { label: 'Open the calendar', url: o.link, lead: 'Open it in HL Central:' } },
+      ],
+    }),
+  };
+}

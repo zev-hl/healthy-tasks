@@ -21,7 +21,7 @@ const assigned = (over: Partial<AssignedNotificationDto>): AssignedNotificationD
   ...over,
 });
 const feed = (rows: AssignedNotificationDto[]) =>
-  toFeed({ mentioned: [], reminders: [], assigned: rows, activity: [] } as NotificationsDto);
+  toFeed({ mentioned: [], reminders: [], assigned: rows, activity: [], events: [] } as NotificationsDto);
 
 describe('toFeed — who assigned it', () => {
   it('says "Alert-assigned" for a task made from an alert', () => {

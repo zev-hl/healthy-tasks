@@ -1371,6 +1371,24 @@ export interface NotificationsDto {
   assigned: AssignedNotificationDto[];
   /** Stage 2: status changes, comments, update requests, due / overdue, snoozes. */
   activity: ActivityNotificationDto[];
+  /** Stage 3: added to an event, an event moved or canceled. */
+  events: EventNotificationDto[];
+}
+
+export const EVENT_NOTICE_TYPES = ['eventInvited', 'eventChanged', 'eventCanceled'] as const;
+export type EventNoticeType = (typeof EVENT_NOTICE_TYPES)[number];
+
+export interface EventNotificationDto {
+  id: string;
+  type: EventNoticeType;
+  eventId: string;
+  title: string;
+  kind: EventKind;
+  startAt: string; // ISO
+  allDay: boolean;
+  actor: TaskUserRef | null;
+  createdAt: string; // ISO
+  read: boolean;
 }
 
 /** Unread tallies used by the bell badge (total) and, if useful, per list. */
@@ -1380,6 +1398,7 @@ export interface UnreadCountDto {
   reminders: number;
   assigned: number;
   activity: number;
+  events: number;
   /**
    * Phase 11: true when the recurrence background timer has gone stale (stopped
    * ticking). Surfaced on the heartbeat every client already polls so the app
@@ -1503,6 +1522,7 @@ export const NOTIFY_EVENTS = [
   'snooze',
   'reminder',
   'timer',
+  'event',
 ] as const;
 export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
 
@@ -1517,6 +1537,7 @@ export const NOTIFY_EVENT_LABELS: Record<NotifyEvent, string> = {
   snooze: 'Someone snoozed my task',
   reminder: 'My reminders, and snoozed tasks coming back',
   timer: 'My timer: “Still working?”, and stopped when I didn’t answer',
+  event: 'Added to an event, or one I’m in moved or canceled',
 };
 
 /** Connect messages come with our Connect (Stage 4); the choice is kept until then. */
@@ -1541,6 +1562,7 @@ export const DEFAULT_NOTIFY_MATRIX: Record<NotifyEvent, ChannelPrefs> = {
   snooze: { inApp: true, email: false, connect: false },
   reminder: { inApp: true, email: false, connect: false },
   timer: { inApp: true, email: false, connect: false },
+  event: { inApp: true, email: true, connect: false },
 };
 
 export const NOTIFICATION_SOUNDS = ['chime', 'ping', 'pop'] as const;
@@ -3383,4 +3405,102 @@ export function diffWords(
     before: mergeDiffParts(left.map(unmarkSpaces)),
     after: mergeDiffParts(right.map(unmarkSpaces)),
   };
+}
+
+// --- Calendar (Nov 2026 plan, Stage 3) ----------------------------------------
+
+/** What an event is (H4): each its own colour on the calendar. */
+export const EVENT_KINDS = ['meeting', 'call', 'deadline', 'other'] as const;
+export type EventKind = (typeof EVENT_KINDS)[number];
+export const EVENT_KIND_LABELS: Record<EventKind, string> = {
+  meeting: 'Meeting',
+  call: 'Call',
+  deadline: 'Deadline',
+  other: 'Event',
+};
+export const EVENT_TITLE_MAX = 200;
+export const EVENT_LOCATION_MAX = 500;
+export const EVENT_NOTES_MAX = 5000;
+export const EVENT_ATTENDEES_MAX = 50;
+/** The longest one event may last. */
+export const EVENT_MAX_DAYS = 31;
+
+export interface EventDto {
+  id: string;
+  kind: EventKind;
+  title: string;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  /** A whole day (or days): startAt is the first day's midnight, endAt the last day's. */
+  allDay: boolean;
+  location: string | null;
+  notes: string | null;
+  isPrivate: boolean;
+  task: { id: number; name: string } | null;
+  createdBy: TaskUserRef;
+  attendees: TaskUserRef[];
+  /** The reader may change or delete it (its creator, or an Admin). */
+  canEdit: boolean;
+  updatedAt: string; // ISO
+}
+
+export interface SaveEventRequest {
+  kind: EventKind;
+  title: string;
+  startAt: string;
+  endAt: string;
+  allDay?: boolean;
+  location?: string | null;
+  notes?: string | null;
+  isPrivate?: boolean;
+  taskId?: number | null;
+  attendeeIds?: string[];
+  /** Optimistic concurrency on edit: the `updatedAt` it was read at. */
+  expectedUpdatedAt?: string;
+}
+
+/** Whose calendar: yours (events you made or are in, your reminders) or your team's. */
+export type CalendarScope = 'me' | 'team';
+
+/** A reminder of the reader's, on the calendar (only ever their own). */
+export interface CalendarReminderDto {
+  id: string;
+  taskId: number;
+  taskName: string;
+  remindAt: string; // ISO
+  note: string | null;
+  kind: 'reminder' | 'snooze';
+}
+
+/** GET /api/calendar: events and reminders between `from` and `to`. */
+export interface CalendarDto {
+  events: EventDto[];
+  reminders: CalendarReminderDto[];
+}
+
+/** An event from the reader's own Google Calendar (H6), shown read-only. */
+export interface GoogleEventDto {
+  id: string;
+  title: string;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  allDay: boolean;
+  location: string | null;
+  /** Opens it in Google Calendar. */
+  link: string | null;
+}
+
+export interface GoogleCalendarStatusDto {
+  /** The server is set up for it (client secret and token key present). */
+  available: boolean;
+  connected: boolean;
+  email: string | null;
+  /** Reading it failed last time (e.g. access was taken away): connect again. */
+  problem: string | null;
+}
+
+export interface GoogleEventsDto {
+  connected: boolean;
+  events: GoogleEventDto[];
+  problem: string | null;
 }

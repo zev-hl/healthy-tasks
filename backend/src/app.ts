@@ -1,3 +1,4 @@
+import { calendarRouter, eventsRouter } from './routes/calendar.routes.js';
 import { timerRouter } from './routes/timer.routes.js';
 import { draftsRouter } from './routes/drafts.routes.js';
 import express from 'express';
@@ -76,6 +77,8 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/time', timeRouter);
   app.use('/api/drafts', draftsRouter);
   app.use('/api/timer', timerRouter);
+  app.use('/api/calendar', calendarRouter);
+  app.use('/api/events', eventsRouter);
 
   const dashboard = options.queueDashboard;
   if (dashboard) {

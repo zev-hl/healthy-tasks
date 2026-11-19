@@ -1,3 +1,4 @@
+import { listTaskEvents } from '../services/event.service.js';
 import { getTaskTime } from '../services/task-time.service.js';
 import { requestUpdate } from '../services/task-update-request.service.js';
 import type { RequestUpdateInput } from '../validation/schemas.js';
@@ -279,4 +280,9 @@ export async function saveTaskAsTemplateController(req: Request, res: Response):
 /** GET /api/tasks/:id/time — the task's timed hours, in total and per person (L2). */
 export async function getTaskTimeController(req: Request, res: Response): Promise<void> {
   res.json(await getTaskTime(actorOf(req), parseTaskId(req)));
+}
+
+/** GET /api/tasks/:id/events — the coming events linked to the task (H4a). */
+export async function listTaskEventsController(req: Request, res: Response): Promise<void> {
+  res.json(await listTaskEvents(actorOf(req), parseTaskId(req)));
 }

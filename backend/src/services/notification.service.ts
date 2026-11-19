@@ -22,6 +22,10 @@ import { formatBusinessTimestamp } from '../utils/business-time.js';
 import type { Actor } from './access-control.service.js';
 import {
   ACTIVITY_TYPES,
+  EVENT_NOTICE_TYPES,
+  type EventKind,
+  type EventNoticeType,
+  type EventNotificationDto,
   EXCLUSIVES_ALERT_TYPE_LABELS,
   TERMINAL_TASK_STATUSES,
   type ActivityNotificationDto,
@@ -35,6 +39,16 @@ import {
   type ReminderNotificationDto,
   type UnreadCountDto,
 } from '@healthy-tasks/shared';
+
+/**
+ * A notice about a task (all but an event's, Stage 3, which carry `eventId`).
+ * The task lists below only ever ask for task notices; this tells TypeScript.
+ */
+function onTask<T extends { taskId: number | null; task: unknown }>(
+  r: T,
+): r is T & { taskId: number; task: NonNullable<T['task']> } {
+  return r.taskId !== null && r.task !== null;
+}
 
 function iso(d: Date | null): string | null {
   return d ? d.toISOString() : null;
@@ -139,22 +153,24 @@ export async function listNotifications(
   const userId = actor.id;
   const prefs = await getNotificationPreferences(userId);
 
-  const mentionedRows = await prisma.notification.findMany({
-    where: mentionedWhere(userId, filter),
-    include: {
-      task: { select: { name: true } },
-      comment: {
-        select: {
-          createdAt: true,
-          body: true,
-          author: {
-            select: { id: true, email: true, firstName: true, lastName: true, title: true },
+  const mentionedRows = (
+    await prisma.notification.findMany({
+      where: mentionedWhere(userId, filter),
+      include: {
+        task: { select: { name: true } },
+        comment: {
+          select: {
+            createdAt: true,
+            body: true,
+            author: {
+              select: { id: true, email: true, firstName: true, lastName: true, title: true },
+            },
           },
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: { createdAt: 'desc' },
+    })
+  ).filter(onTask);
   const mentioned: MentionedNotificationDto[] = mentionedRows
     .filter((r) => r.comment !== null)
     .map((r) => ({
@@ -169,25 +185,27 @@ export async function listNotifications(
 
   // The Assigned list also carries Department Duties heads-ups (dutyMismatch),
   // which describe the task's CURRENT assignee and duty.
-  const assignedRows = await prisma.notification.findMany({
-    where: { userId, type: { in: ['assigned', 'dutyMismatch'] }, task: { deletedAt: null } },
-    include: {
-      task: {
-        select: {
-          name: true,
-          startAt: true,
-          dueAt: true,
-          priority: true,
-          templateOccurrence: { select: { origin: true } },
-          assignee: {
-            select: { id: true, email: true, firstName: true, lastName: true, title: true },
+  const assignedRows = (
+    await prisma.notification.findMany({
+      where: { userId, type: { in: ['assigned', 'dutyMismatch'] }, task: { deletedAt: null } },
+      include: {
+        task: {
+          select: {
+            name: true,
+            startAt: true,
+            dueAt: true,
+            priority: true,
+            templateOccurrence: { select: { origin: true } },
+            assignee: {
+              select: { id: true, email: true, firstName: true, lastName: true, title: true },
+            },
+            duty: dutyRefSelect,
           },
-          duty: dutyRefSelect,
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: { createdAt: 'desc' },
+    })
+  ).filter(onTask);
 
   // Resolve actors (assigners) and count each task's open blockers in one pass.
   const actorIds = [...new Set(assignedRows.map((r) => r.actorId).filter((x): x is string => !!x))];
@@ -268,12 +286,14 @@ export async function listNotifications(
 
   // Stage 2 (E7): the other task events, newest first. Each was written only
   // for those who wanted it in the app, so no setting is checked here.
-  const activityRows = await prisma.notification.findMany({
-    where: { userId, type: { in: [...ACTIVITY_TYPES] }, task: { deletedAt: null } },
-    include: { task: { select: { name: true } } },
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-  });
+  const activityRows = (
+    await prisma.notification.findMany({
+      where: { userId, type: { in: [...ACTIVITY_TYPES] }, task: { deletedAt: null } },
+      include: { task: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    })
+  ).filter(onTask);
   const activityActorIds = [
     ...new Set(activityRows.map((r) => r.actorId).filter((x): x is string => !!x)),
   ];
@@ -296,7 +316,45 @@ export async function listNotifications(
     read: r.readAt !== null,
   }));
 
-  return { mentioned, reminders, assigned, activity };
+  // Stage 3: an event's notices (added, moved, canceled), newest first.
+  const eventRows = await prisma.notification.findMany({
+    where: { userId, type: { in: [...EVENT_NOTICE_TYPES] }, eventId: { not: null } },
+    include: {
+      event: { select: { id: true, title: true, kind: true, startAt: true, allDay: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  const eventActorIds = [
+    ...new Set(eventRows.map((r) => r.actorId).filter((x): x is string => !!x)),
+  ];
+  const eventActors = eventActorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: eventActorIds } },
+        select: { id: true, email: true, firstName: true, lastName: true, title: true },
+      })
+    : [];
+  const eventActorById = new Map(eventActors.map((u) => [u.id, toUserRef(u)]));
+  const events: EventNotificationDto[] = eventRows.flatMap((r) =>
+    r.event
+      ? [
+          {
+            id: r.id,
+            type: r.type as EventNoticeType,
+            eventId: r.event.id,
+            title: r.event.title,
+            kind: r.event.kind as EventKind,
+            startAt: r.event.startAt.toISOString(),
+            allDay: r.event.allDay,
+            actor: r.actorId ? (eventActorById.get(r.actorId) ?? null) : null,
+            createdAt: r.createdAt.toISOString(),
+            read: r.readAt !== null,
+          },
+        ]
+      : [],
+  );
+
+  return { mentioned, reminders, assigned, activity, events };
 }
 
 /** Unread tallies for the bell badge. `schedulerDown` is layered on by the
@@ -312,7 +370,7 @@ export async function getUnreadCounts(
   if (cached) return cached;
 
   const prefs = await getNotificationPreferences(userId);
-  const [mentioned, assigned, activity] = await Promise.all([
+  const [mentioned, assigned, activity, events] = await Promise.all([
     prisma.notification.count({
       where: { userId, type: 'mentioned', readAt: null, task: { deletedAt: null } },
     }),
@@ -327,6 +385,9 @@ export async function getUnreadCounts(
     prisma.notification.count({
       where: { userId, type: { in: [...ACTIVITY_TYPES] }, readAt: null, task: { deletedAt: null } },
     }),
+    prisma.notification.count({
+      where: { userId, type: { in: [...EVENT_NOTICE_TYPES] }, readAt: null },
+    }),
   ]);
   let reminders = 0;
   if (prefs.remindersInApp) {
@@ -335,11 +396,12 @@ export async function getUnreadCounts(
     reminders = due.filter((r) => r.readAt === null).length;
   }
   const counts = {
-    total: mentioned + assigned + reminders + activity,
+    total: mentioned + assigned + reminders + activity + events,
     mentioned,
     reminders,
     assigned,
     activity,
+    events,
   };
   setCachedUnread(userId, counts);
   return counts;

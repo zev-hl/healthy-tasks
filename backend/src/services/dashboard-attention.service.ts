@@ -76,7 +76,7 @@ export async function getDashboardAttention(
   const latestMention = new Map<number, Date>();
   for (const m of mentions) {
     const at = m.comment?.createdAt;
-    if (!at) continue;
+    if (!at || m.taskId === null) continue;
     const cur = latestMention.get(m.taskId);
     if (!cur || at > cur) latestMention.set(m.taskId, at);
   }

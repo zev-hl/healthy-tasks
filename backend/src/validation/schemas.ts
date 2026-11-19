@@ -19,6 +19,11 @@ import {
   GOAL_RESOLUTIONS,
   GOAL_SPECIFIC_MIN_LENGTH,
   MATERIALIZE_LEAD_DAYS_MIN,
+  EVENT_ATTENDEES_MAX,
+  EVENT_KINDS,
+  EVENT_LOCATION_MAX,
+  EVENT_NOTES_MAX,
+  EVENT_TITLE_MAX,
   TIMER_CHECK_IN_GRACE_MAX,
   TIMER_CHECK_IN_GRACE_MIN,
   TIMER_CHECK_IN_HOURS_MAX,
@@ -1142,4 +1147,19 @@ export const keepTimerSchema = z.object({ taskId: z.number().int().positive() })
 export const stopTimerSchema = z.object({
   taskId: z.number().int().positive(),
   date: calendarDate,
+});
+
+// Stage 3 (H4a): an event, as the form sends it.
+export const saveEventSchema = z.object({
+  kind: z.enum(EVENT_KINDS),
+  title: z.string().trim().min(1, 'Give it a title').max(EVENT_TITLE_MAX),
+  startAt: z.string().datetime({ offset: true }),
+  endAt: z.string().datetime({ offset: true }),
+  allDay: z.boolean().optional(),
+  location: z.string().trim().max(EVENT_LOCATION_MAX).nullable().optional(),
+  notes: z.string().trim().max(EVENT_NOTES_MAX).nullable().optional(),
+  isPrivate: z.boolean().optional(),
+  taskId: z.number().int().positive().nullable().optional(),
+  attendeeIds: z.array(z.string().min(1)).max(EVENT_ATTENDEES_MAX).optional(),
+  expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
 });
