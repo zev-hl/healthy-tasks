@@ -56,7 +56,10 @@ export function Popover({
       const h = p?.offsetHeight ?? 0;
       const roomBelow = window.innerHeight - a.bottom;
       const above = h > 0 && roomBelow < h + 12 && a.top > roomBelow;
-      const left = Math.max(8, Math.min(a.left, window.innerWidth - width - 8));
+      // Keep it on screen by its real width once measured (content can be wider
+      // than the minimum).
+      const shown = Math.max(width, p?.offsetWidth ?? 0);
+      const left = Math.max(8, Math.min(a.left, window.innerWidth - shown - 8));
       const top = above ? a.top - h - 6 : a.bottom + 6;
       setPos({ top, left, width, above });
     }
