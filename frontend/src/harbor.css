@@ -9593,3 +9593,8 @@ a.hb-origin-chip:hover {
 .hb-dp2-timed .hb-dp2-grp-h svg {
   vertical-align: -2px;
 }
+
+/* Organization (L4): the two counts in the toolbar, filters too. */
+.hb-org-flag {
+  gap: 6px;
+}

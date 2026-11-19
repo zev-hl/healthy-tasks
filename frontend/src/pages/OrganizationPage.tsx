@@ -12,6 +12,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { Avatar } from '../components/ui/Avatar';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Swatch } from '../components/duties/DutyTag';
 import { isStaleWriteError } from '../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
@@ -103,6 +104,10 @@ export function OrganizationPage() {
   const [pdOpen, setPdOpen] = useState<Map<string, boolean>>(new Map());
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; ok: boolean } | null>(null);
+  // A drop asks first (L4): who moves under whom.
+  const [pendingMove, setPendingMove] = useState<{ subject: string; target: string } | null>(null);
+  // The two counts in the toolbar (L4) filter the list to those people.
+  const [flagFilter, setFlagFilter] = useState<'none' | 'nosup' | 'noduty'>('none');
   const [saving, setSaving] = useState(false);
   const { showToast } = useShowToast();
   const panelRef = useRef<HTMLElement>(null);
@@ -202,8 +207,11 @@ export function OrganizationPage() {
       (p.title ?? '').toLowerCase().includes(query) ||
       activeDutiesOf(p.id).some((u) => dutyIndex.get(u)!.name.toLowerCase().includes(query))) &&
     (deptFilter === ALL || deptsOf(p.id).some((d) => d.id === deptFilter)) &&
-    (roleFilter === ALL || p.role === roleFilter);
-  const filtered = query !== '' || deptFilter !== ALL || roleFilter !== ALL;
+    (roleFilter === ALL || p.role === roleFilter) &&
+    (flagFilter === 'none' ||
+      (flagFilter === 'nosup' ? noSupervisor.includes(p) : noDuties.includes(p)));
+  const filtered =
+    query !== '' || deptFilter !== ALL || roleFilter !== ALL || flagFilter !== 'none';
   const shownCount = people.filter(matches).length;
 
   // --- Reporting-line sections: who reports to whom, top down ------------------
@@ -280,7 +288,11 @@ export function OrganizationPage() {
     onDragLeave: () => setDropTarget((t) => (t?.id === target ? null : t)),
     onDrop: (e: DragEvent) => {
       e.preventDefault();
-      if (dragId) moveTo(dragId, target);
+      // A move that can't happen explains itself at once; one that can asks first.
+      if (dragId && (draft.sup[dragId] ?? null) !== (target === '__root' ? null : target)) {
+        if (canDropOn(target, dragId)) setPendingMove({ subject: dragId, target });
+        else moveTo(dragId, target);
+      }
       setDragId(null);
       setDropTarget(null);
     },
@@ -673,11 +685,37 @@ export function OrganizationPage() {
                 setQ('');
                 setDeptFilter(ALL);
                 setRoleFilter(ALL);
+                setFlagFilter('none');
               }}
             >
               Reset
             </Btn>
           )}
+          {org?.scope === 'all' && (
+            <button
+              type="button"
+              className={cx(
+                'hb-select hb-select-chip hb-org-flag',
+                flagFilter === 'nosup' && 'is-active',
+              )}
+              aria-pressed={flagFilter === 'nosup'}
+              onClick={() => setFlagFilter((f) => (f === 'nosup' ? 'none' : 'nosup'))}
+            >
+              Reporting to nobody{' '}
+              <CountBadge n={noSupervisor.length} red={noSupervisor.length > 0} />
+            </button>
+          )}
+          <button
+            type="button"
+            className={cx(
+              'hb-select hb-select-chip hb-org-flag',
+              flagFilter === 'noduty' && 'is-active',
+            )}
+            aria-pressed={flagFilter === 'noduty'}
+            onClick={() => setFlagFilter((f) => (f === 'noduty' ? 'none' : 'noduty'))}
+          >
+            Without a duty <CountBadge n={noDuties.length} red={noDuties.length > 0} />
+          </button>
           <span className="hb-grow" />
           <span className="hb-small hb-org-tip">
             <GripVertical size={14} aria-hidden="true" /> Drag a card onto a supervisor to move it
@@ -727,6 +765,32 @@ export function OrganizationPage() {
           </aside>
         </div>
       </PageBody>
+
+      {pendingMove &&
+        (() => {
+          const who = P.get(pendingMove.subject);
+          const to = pendingMove.target === '__root' ? null : P.get(pendingMove.target);
+          const from = draft.sup[pendingMove.subject]
+            ? P.get(draft.sup[pendingMove.subject]!)
+            : null;
+          return (
+            <ConfirmDialog
+              title="Change who they report to?"
+              message={
+                to
+                  ? `${who ? pname(who) : 'This person'} will report to ${pname(to)}${from ? ` instead of ${pname(from)}` : ''}. It is saved when you press Save changes.`
+                  : `${who ? pname(who) : 'This person'} will report to nobody${from ? ` (now ${pname(from)})` : ''}. It is saved when you press Save changes.`
+              }
+              confirmLabel="Move"
+              tone="accent"
+              onConfirm={() => {
+                moveTo(pendingMove.subject, pendingMove.target);
+                setPendingMove(null);
+              }}
+              onCancel={() => setPendingMove(null)}
+            />
+          );
+        })()}
 
       {/* The one Save bar: changes are staged and saved together. */}
       {dirty.any && (

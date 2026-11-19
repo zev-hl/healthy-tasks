@@ -198,3 +198,52 @@ describe('OrganizationPage — duties Alert Task Setup needs', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('OrganizationPage — counts and moving someone (L4)', () => {
+  const mo = ana({
+    id: 'u-mo',
+    firstName: 'Mo',
+    lastName: 'Manager',
+    role: 'Manager',
+    dutyIds: ['d-pm'],
+    alertTaskPicks: [],
+  });
+  const bo = ana({
+    id: 'u-bo',
+    firstName: 'Bo',
+    lastName: 'Brown',
+    supervisorId: 'u-mo',
+    dutyIds: [],
+    alertTaskPicks: [],
+  });
+  const people = () => [mo, bo, ana({ alertTaskPicks: [] })];
+
+  it('counts people reporting to nobody and without a duty, and filters to them', async () => {
+    await renderPage({ people: people(), scope: 'all' });
+    const nosup = screen.getByRole('button', { name: /Reporting to nobody/ });
+    const noduty = screen.getByRole('button', { name: /Without a duty/ });
+    expect(nosup).toHaveTextContent('2');
+    expect(noduty).toHaveTextContent('1');
+    fireEvent.click(noduty);
+    expect(noduty).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(/1 of 3 people/)).toBeInTheDocument();
+  });
+
+  it('asks before a drop moves someone under a new manager', async () => {
+    await renderPage({ people: people(), scope: 'all' });
+    const anaCard = [...document.querySelectorAll<HTMLElement>('[draggable="true"]')].find((el) =>
+      el.textContent?.includes('Ana Khan'),
+    )!;
+    const target = screen
+      .getByRole('heading', { name: 'Reports to Mo Manager' })
+      .closest('section')!;
+    fireEvent.dragStart(anaCard, { dataTransfer: { setData: () => {}, effectAllowed: 'move' } });
+    fireEvent.dragOver(target);
+    fireEvent.drop(target);
+    expect(screen.getByText('Change who they report to?')).toBeInTheDocument();
+    expect(screen.getByText(/Ana Khan will report to Mo Manager/)).toBeInTheDocument();
+    expect(saveButton()).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Move' }));
+    expect(saveButton()).not.toBeNull();
+  });
+});
