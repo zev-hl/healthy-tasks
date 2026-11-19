@@ -8,6 +8,7 @@ import {
   testEmail,
 } from '../../src/utils/notification-emails.js';
 import type { Email } from '../../src/utils/mailer.js';
+import { alertComparison, type ComparableAlert } from '@healthy-tasks/shared';
 
 // HLAI-135: the mention, assignment, reminder, Admin alert and test emails, in
 // HTML with their text version.
@@ -72,7 +73,7 @@ describe('the task emails', () => {
     looksRight(removed, { button: 'Open the task' });
   });
 
-  it('assignment from an alert: which alert(s), and what each said', () => {
+  it('assignment from an alert with nothing to compare: name, ASIN, time, then its message', () => {
     const one = (asin: string, title = 'Widget') => ({
       asin,
       marketplace: 'USA',
@@ -99,10 +100,10 @@ describe('the task emails', () => {
       [
         'You were assigned to task #42 (“WasiU_PC_263160842: Review”). It was made ' +
           'automatically from 5 Price Changed alerts in Wasif - US.',
-        'Tea <Green> & "Mint"\nASIN B0AAA00001 · USA\nPrice went from $34.99 to $31.49 (-10.0%).' +
-          '\nAlerted Nov 12, 2026, 8:42 AM EST (New York)',
-        'Widget\nASIN B0AAA00002 · USA\nPrice went from $34.99 to $31.49 (-10.0%).' +
-          '\nAlerted Nov 12, 2026, 8:42 AM EST (New York)',
+        'Tea <Green> & "Mint"\nASIN B0AAA00001 · USA\nAlerted Nov 12, 2026, 8:42 AM EST (New York)' +
+          '\nPrice went from $34.99 to $31.49 (-10.0%).',
+        'Widget\nASIN B0AAA00002 · USA\nAlerted Nov 12, 2026, 8:42 AM EST (New York)' +
+          '\nPrice went from $34.99 to $31.49 (-10.0%).',
         'And 3 more alerts: the task lists them all.',
         `Open the task:\n${LINK}`,
       ].join('\n\n'),
@@ -167,54 +168,134 @@ describe('the queue test email', () => {
   });
 });
 
-describe('assignment from a text-change alert', () => {
-  const email = () =>
+describe('assignment from an alert: Before and Now boxes', () => {
+  const AT = 'Nov 12, 2026, 8:42 AM EST (New York)';
+  /** The assignment email for one alert, its boxes made as the app makes them. */
+  const email = (row: ComparableAlert, typeLabel = 'Some Alert') =>
     assignmentEmail({
       to: 'a@b.test',
       action: 'added',
       taskId: 42,
-      taskName: 'WasiU_DC_263160842: Review',
+      taskName: 'WasiU_XX_263160842: Review',
       link: LINK,
       alert: {
-        typeLabel: 'Description Changed',
+        typeLabel,
         groupName: 'Wasif - US',
         alerts: [
           {
             asin: 'B0AAA00001',
             marketplace: 'USA',
             title: 'Tea',
-            message: 'Description changed from "..." to "...".',
-            at: 'Nov 12, 2026, 8:42 AM EST (New York)',
-            compare: {
-              label: 'Description',
-              before: '...for busy mornings, brewed <fast> in five...',
-              after: '...for busy mornings, steeped <fast> in three...',
-            },
+            message: row.message,
+            at: AT,
+            comparison: alertComparison(row, { excerpts: true }),
           },
         ],
         more: 0,
       },
     });
-
-  it('shows Before and Now side by side, the changed words marked', () => {
-    const html = looksRight(email(), { button: 'Open the task' });
+  /** The two boxes' cells in the HTML. */
+  const cells = (html: string) => {
     const table = /<table[^>]*table-layout:fixed[^>]*><tr>(.*?)<\/tr><\/table>/s.exec(html)?.[1];
     assert.ok(table, 'a two-column table');
-    const cells = table!.split('<td width="50%"').slice(1);
-    assert.equal(cells.length, 2);
-    assert.match(cells[0]!, />Before</);
-    assert.match(cells[1]!, />Now</);
-    assert.match(cells[0]!, /line-through;[^>]*>brewed<\/span>/);
-    assert.match(cells[1]!, /background:#e2f0e6;[^>]*>steeped<\/span>/);
-    assert.ok(cells[0]!.includes('&lt;fast&gt;'), 'typed text never read as a tag');
-    // The message is not repeated above it.
+    const c = table!.split('<td width="50%"').slice(1);
+    assert.equal(c.length, 2);
+    return c as [string, string];
+  };
+
+  it('a text change: product, ASIN, time, what changed, then the boxes, words marked', () => {
+    const e = email({
+      alertType: 'DescriptionChanged',
+      previousValue: 'For busy mornings, brewed <fast> in five minutes.',
+      newValue: 'For busy mornings, steeped <fast> in three minutes.',
+      message: 'Description changed from "..." to "...".',
+    });
+    const html = looksRight(e, { button: 'Open the task' });
+    const [before, now] = cells(html);
+    assert.match(before, />Before</);
+    assert.match(now, />Now</);
+    assert.match(before, /line-through;[^>]*>brewed<\/span>/);
+    assert.match(now, /background:#e2f0e6;[^>]*>steeped<\/span>/);
+    // The message is not repeated above the boxes.
     assert.doesNotMatch(html, /Description changed from/);
+    assert.match(
+      e.text,
+      new RegExp(
+        `Tea\\nASIN B0AAA00001 · USA\\nAlerted ${AT.replace(/[()]/g, '\\$&')}\\nDescription changed:\\n\\n` +
+          // Amazon's markup dropped from the description.
+          'Before:\\nFor busy mornings, brewed in five minutes\\.\\n\\nNow:\\nFor busy mornings, steeped in three minutes\\.',
+      ),
+    );
   });
 
-  it('the text version lists Before then Now', () => {
-    assert.match(
-      email().text,
-      /Alerted Nov 12, 2026, 8:42 AM EST \(New York\)\nDescription changed:\n\nBefore:\n\.\.\.for busy mornings, brewed <fast> in five\.\.\.\n\nNow:\n\.\.\.for busy mornings, steeped <fast> in three\.\.\./,
-    );
+  it('a brand that is gone shows "Removed" in red, not a dash', () => {
+    const e = email({
+      alertType: 'BrandChanged',
+      previousValue: 'Acme',
+      newValue: null,
+      message: 'Brand changed from "Acme" to "—".',
+    });
+    const [, now] = cells(looksRight(e));
+    assert.match(now, /color:#b42318;font-weight:bold;">Removed<\/span>/);
+    assert.doesNotMatch(now, /—/);
+    assert.match(e.text, /Brand changed:\n\nBefore:\nAcme\n\nNow:\nRemoved/);
+  });
+
+  it('the main image: both pictures, with their addresses', () => {
+    const e = email({
+      alertType: 'MainImageChanged',
+      previousValue: 'https://m.media-amazon.com/images/I/old.jpg',
+      newValue: 'https://m.media-amazon.com/images/I/new.jpg',
+      message: 'Main image changed.',
+    });
+    const [before, now] = cells(looksRight(e));
+    assert.match(before, /<img src="https:\/\/m\.media-amazon\.com\/images\/I\/old\.jpg"/);
+    assert.match(now, /<img src="https:\/\/m\.media-amazon\.com\/images\/I\/new\.jpg"/);
+    assert.match(before, />https:\/\/m\.media-amazon\.com\/images\/I\/old\.jpg</);
+    assert.match(e.text, /Before:\nhttps:\/\/m\.media-amazon\.com\/images\/I\/old\.jpg/);
+  });
+
+  it('a picture address that is not a web address is shown, never loaded', () => {
+    const e = email({
+      alertType: 'MainImageChanged',
+      previousValue: 'javascript:alert(1)',
+      newValue: 'https://m.media-amazon.com/images/I/new.jpg',
+      message: 'Main image changed.',
+    });
+    const [before] = cells(looksRight(e));
+    assert.doesNotMatch(before, /<img/);
+  });
+
+  it('competitive price change: Before and Now, our HL price under them', () => {
+    const e = email({
+      alertType: 'CompetitivePriceChanged',
+      previousValue: '7.14',
+      newValue: '7.86',
+      message: "Amazon's competitive price changed from $7.14 to $7.86 (our HL price: $14.99).",
+    });
+    const html = looksRight(e);
+    const [before, now] = cells(html);
+    assert.match(before, /line-through;[^>]*>\$7\.14<\/span>/);
+    assert.match(now, /background:#e2f0e6;[^>]*>\$7\.86<\/span>/);
+    assert.match(html, /<\/table><p [^>]*font-weight:bold;">Our HL Price: \$14\.99<\/p>/);
+    assert.match(e.text, /Now:\n\$7\.86\n\nOur HL Price: \$14\.99/);
+  });
+
+  it('competitive price below ours: the two prices in their own boxes, and the gap', () => {
+    const e = email({
+      alertType: 'CompetitivePriceBelowOurs',
+      previousValue: '15.50',
+      newValue: '7.86',
+      message:
+        "Amazon's competitive price went from $15.50 to $7.86, now below our HL price of " +
+        '$14.99 (price + shipping): the Buy Box is at risk.',
+    });
+    const [amazon, ours] = cells(looksRight(e));
+    assert.match(amazon, />Amazon competitive price</);
+    assert.match(amazon, />\$7\.86</);
+    assert.match(amazon, />Was \$15\.50</);
+    assert.match(ours, />Our HL price</);
+    assert.match(ours, />\$14\.99</);
+    assert.match(e.text, /Amazon's competitive price is \$7\.13 below our HL price\./);
   });
 });

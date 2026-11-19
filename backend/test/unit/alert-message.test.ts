@@ -1,7 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  alertCompare,
+  alertComparison,
+  compareBoxText,
+  type AlertComparison,
+  type ComparePart,
+} from '@healthy-tasks/shared';
+import {
   alertLogMessage,
   describeAlert,
   describeTextChange,
@@ -290,35 +295,222 @@ describe('Description changed: where the text first differs', () => {
   });
 });
 
-describe('alertCompare: what the email puts side by side', () => {
-  it('a description gives the excerpts around its first difference', () => {
+describe('alertComparison: the Before and Now boxes of the pop-up and the email', () => {
+  /** Each box as plain text, and its note. */
+  const shown = (c: AlertComparison | null) =>
+    c?.boxes.map((b) => ({ label: b.label, text: compareBoxText(b), note: b.note }));
+  const row = (
+    alertType: string,
+    previousValue: string | null,
+    newValue: string | null,
+    message = '',
+  ) => ({ alertType, previousValue, newValue, message });
+  const marked = (parts: ComparePart[]) => parts.filter((p) => p.changed).map((p) => p.text);
+
+  it('a description in the email: the excerpts around its first difference; whole in the pop-up', () => {
+    const r = row('DescriptionChanged', 'w1 w2 w3 w4 w5 old end', 'w1 w2 w3 w4 w5 new end');
+    const email = alertComparison(r, { excerpts: true })!;
+    assert.equal(email.heading, 'Description changed:');
     assert.deepEqual(
-      alertCompare({
-        alertType: 'DescriptionChanged',
-        previousValue: 'w1 w2 w3 w4 w5 old end',
-        newValue: 'w1 w2 w3 w4 w5 new end',
-      }),
-      { label: 'Description', before: '...w3 w4 w5 old end', after: '...w3 w4 w5 new end' },
+      shown(email)?.map((b) => b.text),
+      ['...w3 w4 w5 old end', '...w3 w4 w5 new end'],
+    );
+    assert.deepEqual(marked(email.boxes[0].parts), ['old']);
+    assert.deepEqual(marked(email.boxes[1].parts), ['new']);
+    assert.deepEqual(
+      shown(alertComparison(r))?.map((b) => b.text),
+      ['w1 w2 w3 w4 w5 old end', 'w1 w2 w3 w4 w5 new end'],
+    );
+    // Only spacing changed: nothing to show.
+    assert.equal(
+      alertComparison(row('DescriptionChanged', 'a  b', 'a b'), { excerpts: true }),
+      null,
     );
   });
 
-  it('a title or bullets give the whole text; other alerts nothing', () => {
+  it('title and bullets: the whole text, the changed words marked', () => {
+    const t = alertComparison(row('TitleChanged', 'Tea', 'Green Tea'))!;
+    assert.equal(t.heading, 'Title changed:');
+    assert.equal(t.beforeAndNow, true);
+    assert.deepEqual(marked(t.boxes[1].parts), ['Green']);
+    assert.equal(
+      alertComparison(row('BulletPointsChanged', '2. a', '2. b'))?.heading,
+      'Bullet points changed:',
+    );
+  });
+
+  it('brand: "Removed" in red when it is gone, "(none)" when there was none', () => {
+    const gone = alertComparison(row('BrandChanged', 'Acme', null))!;
     assert.deepEqual(
-      alertCompare({ alertType: 'TitleChanged', previousValue: 'Tea', newValue: 'Green Tea' }),
-      { label: 'Title', before: 'Tea', after: 'Green Tea' },
+      shown(gone)?.map((b) => b.text),
+      ['Acme', 'Removed'],
     );
-    assert.equal(
-      alertCompare({ alertType: 'BulletPointsChanged', previousValue: '2. a', newValue: '2. b' })
-        ?.label,
-      'Bullet points',
+    assert.equal(gone.boxes[1].parts[0]?.removed, true);
+    const added = alertComparison(row('BrandChanged', '', 'Acme'))!;
+    assert.deepEqual(
+      shown(added)?.map((b) => b.text),
+      ['(none)', 'Acme'],
     );
+    const renamed = alertComparison(row('BrandChanged', 'Acme', 'Acme Labs'))!;
+    assert.deepEqual(marked(renamed.boxes[1].parts), ['Labs']);
+  });
+
+  it('dimensions: only the values that changed are marked; a gone value is "Removed"', () => {
+    const c = alertComparison(row('DimensionsChanged', '10in x 5in x 2in', '10in x 6in'))!;
+    assert.equal(c.heading, 'Dimensions changed:');
+    assert.deepEqual(
+      shown(c)?.map((b) => b.text),
+      ['10in x 5in x 2in', '10in x 6in x Removed'],
+    );
+    assert.deepEqual(marked(c.boxes[0].parts), ['5in', '2in']);
+    assert.deepEqual(marked(c.boxes[1].parts), ['6in']);
+    assert.ok(c.boxes[1].parts.some((p) => p.removed));
+    const all = alertComparison(row('DimensionsChanged', '10in x 5in', null))!;
+    assert.deepEqual(
+      shown(all)?.map((b) => b.text),
+      ['10in x 5in', 'Removed'],
+    );
+  });
+
+  it('main image: the pictures, with their addresses; a gone one is "Removed"', () => {
+    const c = alertComparison(row('MainImageChanged', 'https://img/a.jpg', 'https://img/b.jpg'))!;
+    assert.deepEqual(
+      c.boxes.map((b) => b.image),
+      ['https://img/a.jpg', 'https://img/b.jpg'],
+    );
+    assert.deepEqual(
+      shown(c)?.map((b) => b.text),
+      ['https://img/a.jpg', 'https://img/b.jpg'],
+    );
+    const gone = alertComparison(row('MainImageChanged', 'https://img/a.jpg', null))!;
+    assert.equal(gone.boxes[1].image, null);
+    assert.equal(compareBoxText(gone.boxes[1]), 'Removed');
+    // Only a web address is shown as a picture.
     assert.equal(
-      alertCompare({ alertType: 'PriceChanged', previousValue: '1', newValue: '2' }),
+      alertComparison(row('MainImageChanged', 'javascript:x', 'https://b'))!.boxes[0].image,
       null,
     );
-    assert.equal(
-      alertCompare({ alertType: 'DescriptionChanged', previousValue: 'a  b', newValue: 'a b' }),
-      null,
+  });
+
+  it('price and sellers: before and now; the price with its change in percent', () => {
+    const p = alertComparison(row('PriceChanged', '34.99', '31.49'))!;
+    assert.deepEqual(
+      shown(p)?.map((b) => b.text),
+      ['$34.99', '$31.49'],
     );
+    assert.equal(p.footer, 'Change: -10.0%');
+    const n = alertComparison(row('NumberOfSellersChanged', '3', '4'))!;
+    assert.equal(n.heading, 'Number of sellers changed:');
+    assert.deepEqual(
+      shown(n)?.map((b) => b.text),
+      ['3', '4'],
+    );
+  });
+
+  it('nothing to compare for the Buy Box or a suppressed listing', () => {
+    assert.equal(alertComparison(row('BuyBoxLost', 'A', 'B', 'Buy Box lost.')), null);
+    assert.equal(alertComparison(row('BuyBoxWon', 'A', 'B', 'Buy Box won.')), null);
+    assert.equal(alertComparison(row('ListingSuppressed', 'false', 'true', 'Suppressed.')), null);
+  });
+
+  // The price alerts carry one price pair; the other price is read from the
+  // message the app wrote, so these make the message the way the app does.
+  const priced = (
+    alertType: DetectedAlert['alertType'],
+    prev: Partial<SnapshotView>,
+    cur: Partial<SnapshotView>,
+    values: [number | null, number | null],
+  ) => {
+    const str = (v: number | null) => (v == null ? null : String(v));
+    const a = alert({ alertType, previousValue: str(values[0]), newValue: str(values[1]) });
+    return alertComparison({ ...a, message: msg(a, s(prev), s(cur)) })!;
+  };
+
+  it('competitive price change: Before and Now, our HL price under them', () => {
+    const c = priced(
+      'CompetitivePriceChanged',
+      { competitivePrice: 7.14, ourLandedPrice: 14.99 },
+      { competitivePrice: 7.86, ourLandedPrice: 14.99 },
+      [7.14, 7.86],
+    );
+    assert.equal(c.heading, 'Competitive price changed:');
+    assert.deepEqual(
+      shown(c)?.map((b) => b.text),
+      ['$7.14', '$7.86'],
+    );
+    assert.equal(c.footer, 'Our HL Price: $14.99');
+    const removed = priced(
+      'CompetitivePriceChanged',
+      { competitivePrice: 7.14, ourLandedPrice: 14.99 },
+      { competitivePrice: null, ourLandedPrice: 14.99 },
+      [7.14, null],
+    );
+    assert.deepEqual(
+      shown(removed)?.map((b) => b.text),
+      ['$7.14', 'Removed'],
+    );
+    assert.equal(removed.footer, 'Our HL Price: $14.99');
+  });
+
+  it('competitive price below or above ours: each price in its own box, and the gap', () => {
+    const below = priced(
+      'CompetitivePriceBelowOurs',
+      { competitivePrice: 15.5, ourLandedPrice: 14.99 },
+      { competitivePrice: 7.86, ourLandedPrice: 14.99 },
+      [15.5, 7.86],
+    );
+    assert.equal(below.beforeAndNow, false);
+    assert.deepEqual(shown(below), [
+      { label: 'Amazon competitive price', text: '$7.86', note: 'Was $15.50' },
+      { label: 'Our HL price', text: '$14.99', note: 'Price + shipping' },
+    ]);
+    assert.equal(below.footer, "Amazon's competitive price is $7.13 below our HL price.");
+
+    const above = priced(
+      'CompetitivePriceAboveOurs',
+      { competitivePrice: null, ourLandedPrice: 14.99 },
+      { competitivePrice: 19.99, ourLandedPrice: 14.99 },
+      [null, 19.99],
+    );
+    assert.equal(shown(above)?.[0]?.note, 'None before');
+    assert.equal(above.footer, "Amazon's competitive price is $5.00 above our HL price.");
+
+    const gone = priced(
+      'CompetitivePriceBelowOurs',
+      { competitivePrice: 15.5, ourLandedPrice: 14.99 },
+      { competitivePrice: null, ourLandedPrice: 14.99 },
+      [15.5, null],
+    );
+    assert.equal(compareBoxText(gone.boxes[0]), 'Removed');
+    assert.equal(compareBoxText(gone.boxes[1]), '$14.99');
+    assert.equal(gone.footer, 'Amazon removed its competitive price.');
+  });
+
+  it('our HL price above or below theirs: the same two boxes, ours with what it was', () => {
+    const above = priced(
+      'OurPriceAboveCompetitive',
+      { competitivePrice: 12, ourLandedPrice: 11 },
+      { competitivePrice: 12, ourLandedPrice: 13.5 },
+      [11, 13.5],
+    );
+    assert.deepEqual(shown(above), [
+      { label: 'Amazon competitive price', text: '$12.00', note: undefined },
+      { label: 'Our HL price', text: '$13.50', note: 'Was $11.00 (price + shipping)' },
+    ]);
+    assert.equal(above.footer, "Our HL price is $1.50 above Amazon's competitive price.");
+    const below = priced(
+      'OurPriceBelowCompetitive',
+      { competitivePrice: 12, ourLandedPrice: 13.5 },
+      { competitivePrice: 12, ourLandedPrice: 11 },
+      [13.5, 11],
+    );
+    assert.equal(below.footer, "Our HL price is $1.00 below Amazon's competitive price.");
+    const removed = priced(
+      'OurPriceAboveCompetitive',
+      { competitivePrice: 12, ourLandedPrice: 11 },
+      { competitivePrice: null, ourLandedPrice: 13.5 },
+      [11, 13.5],
+    );
+    assert.equal(compareBoxText(removed.boxes[0]), 'Removed');
   });
 });

@@ -1,3 +1,4 @@
+import { textChangeExcerpts } from '@healthy-tasks/shared';
 import type { DetectedAlert } from './alert-detection.js';
 import type { SnapshotView } from './snapshot-diff.js';
 
@@ -154,9 +155,7 @@ export function describeAlert(
   }
 }
 
-/** Words shown before the first difference, when there are that many. */
-const CONTEXT_WORDS = 3;
-/** About a line or two of text in each quote. */
+/** About a line or two of text in each quote (an added or removed description). */
 const SNIPPET_CHARS = 160;
 
 /** A long text as words: markup dropped, any run of spaces or lines one space. */
@@ -206,56 +205,7 @@ export function describeTextChange(
   return `${label} changed from "${x.before}" to "${x.after}".`;
 }
 
-/**
- * The two excerpts `describeTextChange` quotes: from up to three words before
- * the first difference, a line or two of each version. Null when the words are
- * the same. An empty side is "".
- */
-export function textChangeExcerpts(
-  before: string | null,
-  after: string | null,
-): { before: string; after: string } | null {
-  const a = wordsOf(before);
-  const b = wordsOf(after);
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  if (i === a.length && i === b.length) return null;
-  const from = Math.max(0, i - CONTEXT_WORDS);
-  return {
-    before: a.length ? snippet(a, Math.min(from, a.length - 1)) : '',
-    after: b.length ? snippet(b, Math.min(from, b.length - 1)) : '',
-  };
-}
-
-/**
- * A text-change alert's before and now, to show side by side (the assignment
- * email): the whole title, the changed bullets, or a description's excerpts
- * around its first difference. Null for other alerts, or with nothing saved.
- */
-export function alertCompare(row: {
-  alertType: string;
-  previousValue: string | null;
-  newValue: string | null;
-}): { label: string; before: string; after: string } | null {
-  if (row.previousValue == null && row.newValue == null) return null;
-  const whole = (label: string) => ({
-    label,
-    before: row.previousValue ?? '',
-    after: row.newValue ?? '',
-  });
-  switch (row.alertType) {
-    case 'TitleChanged':
-      return whole('Title');
-    case 'BulletPointsChanged':
-      return whole('Bullet points');
-    case 'DescriptionChanged': {
-      const x = textChangeExcerpts(row.previousValue, row.newValue);
-      return x ? { label: 'Description', ...x } : null;
-    }
-    default:
-      return null;
-  }
-}
+export { textChangeExcerpts };
 
 /**
  * An alert's message as it should read now. Description alerts logged before
