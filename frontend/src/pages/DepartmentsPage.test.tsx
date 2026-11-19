@@ -42,6 +42,7 @@ const duty = (id: string, name: string, over: Partial<DutyDto> = {}): DutyDto =>
   description: null,
   sop: null,
   videoUrl: null,
+  videoFile: null,
   archived: false,
   peopleCount: 1,
   openTaskCount: 0,

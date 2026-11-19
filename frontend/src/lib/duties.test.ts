@@ -15,6 +15,7 @@ const duty = (id: string, departmentId: string, name: string, archived = false):
   description: null,
   sop: null,
   videoUrl: null,
+  videoFile: null,
   archived,
   peopleCount: 0,
   openTaskCount: 0,
