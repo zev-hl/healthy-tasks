@@ -757,29 +757,24 @@ Render build minutes may add a little if the larger build pipeline is needed
 
 ---
 
-## 13. Things to check in Connect (could not be verified from here)
+## 13. Checked in Connect's source
 
-1. Postgres version Connect expects (§3.2).
-2. Whether migrations need a direct (non-pooled) URL, and if a variable exists
-   for it (§3.2).
-3. Whether Render's build needs `corepack enable` for pnpm (§4.2).
-4. `SMTP_SECURE` / `SMTP_REQUIRE_TLS` / `SMTP_REPLY_TO` exact meaning (§4.3).
-5. Whether `SEED_ON_BOOT` matters for `SEED_OWNER_*`; what `SEED_RESET_PASSWORD`
-   does (§4.3).
-6. Whether `WORKSPACE_NAME` renames the built-in workspace or only the name
-   shown (§4.3).
-7. What `GOOGLE_CALENDAR_API` and `GMAIL_API` enable (§4.3).
-8. The sweeps' defaults in production (§4.3).
-9. Whether `DATA_ENCRYPTION_KEY` can be rotated (§4.4).
-10. Whether `WEB_ORIGIN` accepts several origins (§8.3).
-11. That `HLCENTRAL_URL` / `HLCENTRAL_KEY` are the names the K6/K7 code will
-    read (§9.4).
+All eleven open points, answered from Connect's own code (file paths are in the
+Connect repo).
 
-Settled from the source since the first draft: one instance needs no Redis;
-calls are LiveKit only (`MEETINGS_PROVIDER` is obsolete); a booking without
-LiveKit succeeds but can't be joined; the cookie is `SameSite=None` with
-`COOKIE_SECURE=true`; the internal workspace has bots, API keys and scheduled
-calls.
+| # | Question | Answer | What it means here |
+|---|---|---|---|
+| 1 | Postgres version | Production runs 18 (on Neon); local and CI use 16. No extensions, no version check; ids are made in the app. | Neon's default (17/18) is fine (§3.2). |
+| 2 | Direct URL for migrations | None exists: `drizzle-kit migrate` uses `DATABASE_URL`, and Connect's docs say to use the **pooled** string for everything. Migrations run in the **build** (`render:build` → `pnpm db:migrate`), not at boot. No advisory locks or prepared statements in them. | One pooled `DATABASE_URL`. A failed migration fails the build, and the old version keeps serving. |
+| 3 | `corepack enable` | Not needed: `packageManager: pnpm@9.12.0`, and Render detects pnpm from the lockfile and Node 22 from `.node-version`. | Use the build command as given in `render.yaml`. |
+| 4 | SMTP flags | Passed to nodemailer. `SMTP_SECURE=true` = TLS from the start (port 465); otherwise STARTTLS (587). `SMTP_REQUIRE_TLS` (on unless `false`) refuses to send without TLS. `SMTP_REPLY_TO` = the default Reply-To. | Port 587, `SMTP_SECURE` unset, leave `SMTP_REQUIRE_TLS` on. |
+| 5 | Seeding | `SEED_ON_BOOT` (on unless `false`) only decides whether the seed runs at boot. The seed is keyed by email: an existing account is skipped, nothing is deleted. `SEED_RESET_PASSWORD=true` resets that account's password to the env one and signs it out, **on every boot** while set. | Create the owner on the first deploy, then set `SEED_ON_BOOT=false` and remove `SEED_OWNER_PASSWORD`. Never leave `SEED_RESET_PASSWORD` on. |
+| 6 | `WORKSPACE_NAME` | Only the name shown in emails and invite pages, read at start. It never changes the name stored in the database (set by an old migration). | Set it, and rename the workspace in Connect's own settings too. |
+| 7 | `GOOGLE_CALENDAR_API`, `GMAIL_API` | Base addresses of Google's APIs, overridden only by test scripts. Not switches. | Leave unset. |
+| 8 | Sweeps | On by default in production. Reminders and scheduled calls every 15 s, stale meetings every 30 s, the upload cleanup hourly, the purge of deleted workspaces daily (after 30 days), the ticket sync every 60 s, and log flushes. | Fits one always-on Standard instance (§4.2). This is why it can't sleep. |
+| 9 | Rotating `DATA_ENCRYPTION_KEY` | **Not possible**: one key, no key id. It encrypts message bodies, notes, to-dos, reminders, the ticket cache and the API failure log. A lost or changed key leaves those showing "[Encrypted message — key missing or wrong]". Without a key, new text is stored unencrypted, and boot only warns. | Set it **before** the first message, keep it in the vault (D12), and never change it. |
+| 10 | Several `WEB_ORIGIN`s | Yes, comma-separated. Used for CORS, the realtime socket, and the check that refuses changes coming from other sites. Email links use `PUBLIC_APP_URL`/`APP_URL`. Who may frame Connect is fixed in code (`*.brecx.com` plus exceptions). | List Connect's own addresses (onrender + custom domain). HL Central needs none: it calls Connect server-to-server, and its nine-dot tile opens Connect in a new tab. Only the in-app chat pop-up needs the frame exception (connect-changes.md §2). |
+| 11 | `HLCENTRAL_URL` / `HLCENTRAL_KEY` | Nothing about HL Central exists in Connect yet. The ticket app's link is named `TICKET_BRECX_URL` + `TICKET_BRECX_KEY`; signed links use `CONNECT_TO_X_KEY_ID` + `_SECRET`. | Keep `HLCENTRAL_URL` + `HLCENTRAL_KEY` (the ticket app's pattern, and what connect-changes.md says). Whoever builds K6/K7 in Connect uses these names. |
 
 ---
 
