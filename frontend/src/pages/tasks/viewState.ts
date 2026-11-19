@@ -115,16 +115,18 @@ export function buildFilters(v: ViewState, me: string): TaskSearchFilters {
   if (v.priority !== ALL) f.priorities = [v.priority];
   const week = periodRange('week');
   const today = periodRange('today');
+  // Statuses picked in the filter menu win over the preset's.
+  const picked = !!v.extra.statuses?.length;
   switch (v.status) {
     case 'open':
-      f.statuses = ACTIVE_STATUSES;
+      if (!picked) f.statuses = ACTIVE_STATUSES;
       break;
     case 'overdue':
       f.overdue = true;
       break;
     case 'dueToday':
       Object.assign(f, {
-        statuses: ACTIVE_STATUSES,
+        ...(!picked && { statuses: ACTIVE_STATUSES }),
         dueFrom: today.from,
         dueTo: today.to,
         includeNoDue: false,
@@ -132,7 +134,7 @@ export function buildFilters(v: ViewState, me: string): TaskSearchFilters {
       break;
     case 'dueWeek':
       Object.assign(f, {
-        statuses: ACTIVE_STATUSES,
+        ...(!picked && { statuses: ACTIVE_STATUSES }),
         dueFrom: week.from,
         dueTo: week.to,
         includeNoDue: false,
@@ -201,7 +203,7 @@ export function fromRawFilters(raw: TaskSearchFilters, me: string): ViewState {
       delete extra[k];
   }
   v.extra = extra;
-  return v;
+  return normalizeState(v);
 }
 
 /** Whether two states show the same thing (for "Save as view" / "Update"). */
@@ -338,5 +340,28 @@ export function readViewState(x: unknown): ViewState | null {
   if (!x || typeof x !== 'object') return null;
   const v = x as Partial<ViewState>;
   if (v.scope !== 'mine' && v.scope !== 'all' && v.scope !== 'team') return null;
-  return { ...defaultState(v.scope), ...v, extra: v.extra ?? {} };
+  return normalizeState({ ...defaultState(v.scope), ...v, extra: v.extra ?? {} });
+}
+
+/**
+ * One filter menu (Nov 2026 plan): status, priority, assignee, department and
+ * duty are lists in `extra`, any number picked. Older states (and saved views)
+ * held one of each in their own field: move those into `extra`.
+ */
+export function normalizeState(v: ViewState): ViewState {
+  const extra: TaskSearchFilters = { ...v.extra };
+  const add = <T>(list: T[] | undefined, x: T) => (list?.includes(x) ? list : [...(list ?? []), x]);
+  if (v.owner !== ALL) {
+    if (v.owner === UNASSIGNED) extra.includeUnassigned = true;
+    else extra.assigneeIds = add(extra.assigneeIds, v.owner);
+  }
+  if (v.dept !== ALL) extra.departmentIds = add(extra.departmentIds, v.dept);
+  if (v.duty !== ALL) extra.dutyIds = add(extra.dutyIds, v.duty);
+  if (v.priority !== ALL) extra.priorities = add(extra.priorities, v.priority);
+  let status = v.status;
+  if (status.startsWith('s:')) {
+    extra.statuses = add(extra.statuses, status.slice(2) as TaskStatus);
+    status = 'any';
+  }
+  return { ...v, status, owner: ALL, dept: ALL, duty: ALL, priority: ALL, extra };
 }

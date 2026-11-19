@@ -42,9 +42,8 @@ import { TaskCalendar, type CalendarScale } from '../components/TaskCalendar';
 import { TaskGantt } from '../components/TaskGantt';
 import { TaskTable, OPTIONAL_COLUMNS, type OptionalColumn, type RowEdit } from './tasks/TaskTable';
 import { GROUP_OPTIONS, GROUP_SORT, isGroupBy, type GroupBy } from './tasks/grouping';
-import { MoreFilters } from './tasks/MoreFilters';
+import { FilterMenu } from './tasks/FilterMenu';
 import {
-  ALL,
   SORT_OPTIONS,
   STATUS_PRESETS,
   UNASSIGNED,
@@ -170,7 +169,12 @@ export function TasksPage() {
       const s = (pref.state && typeof pref.state === 'object' ? pref.state : {}) as Stored &
         Record<string, unknown>;
       stored.current = s;
-      if (Array.isArray(s.hbViews)) setViews(s.hbViews.filter((v) => v && readViewState(v.state)));
+      if (Array.isArray(s.hbViews))
+        setViews(
+          s.hbViews
+            .filter((v) => v && readViewState(v.state))
+            .map((v) => ({ ...v, state: readViewState(v.state)! })),
+        );
       if (s.hbView) setView(s.hbView);
       if (Array.isArray(s.hbColumns)) setColumns(new Set(s.hbColumns));
       if (typeof s.hbNest === 'boolean') setNest(s.hbNest);
@@ -355,32 +359,6 @@ export function TasksPage() {
     ],
     [people],
   );
-  const ownerFilterOptions: SelectOption<string>[] = [
-    { value: ALL, label: 'Anyone' },
-    ...ownerOptions,
-  ];
-  const deptOptions: SelectOption<string>[] = [
-    { value: ALL, label: 'All' },
-    ...departments.map((d) => ({ value: d.id, label: d.name, dot: d.color })),
-  ];
-  const dutyOptions: SelectOption<string>[] = [
-    { value: ALL, label: 'All' },
-    ...departments
-      .filter((d) => state.dept === ALL || d.id === state.dept)
-      .flatMap((d) =>
-        d.duties
-          .filter((x) => !x.archived)
-          .map((x) => ({
-            value: x.id,
-            label: state.dept === ALL ? `${d.name} › ${x.name}` : x.name,
-          })),
-      ),
-  ];
-  const priorityFilterOptions: SelectOption<string>[] = [
-    { value: ALL, label: 'Any' },
-    ...PRIORITY_OPTIONS,
-  ];
-
   const nameOf = (id: string) => {
     const p = people.find((x) => x.id === id);
     return p ? userLabel(p) : 'someone';
@@ -652,73 +630,23 @@ export function TasksPage() {
                 : `${total} match`}
             </span>
           )}
-          <Select
-            variant="chip"
-            label="Status"
-            value={state.status}
-            options={STATUS_PRESETS}
-            active={state.status !== 'open'}
-            onChange={(v) => patch({ status: v })}
-          />
-          <Select
-            variant="chip"
-            label="Dept"
-            value={state.dept}
-            options={deptOptions}
-            active={state.dept !== ALL}
-            onChange={(v) => patch({ dept: v, duty: ALL })}
-          />
-          <Select
-            variant="chip"
-            label="Duty"
-            value={state.duty}
-            options={dutyOptions}
-            active={state.duty !== ALL}
-            onChange={(v) => patch({ duty: v })}
-          />
-          {state.scope !== 'mine' && (
-            <Select
-              variant="chip"
-              label="Owner"
-              value={state.owner}
-              options={ownerFilterOptions}
-              active={state.owner !== ALL}
-              searchPlaceholder="Search people…"
-              onChange={(v) => patch({ owner: v })}
-            />
-          )}
-          <Select
-            variant="chip"
-            label="Priority"
-            value={state.priority}
-            options={priorityFilterOptions}
-            active={state.priority !== ALL}
-            onChange={(v) => patch({ priority: v as TaskPriority | typeof ALL })}
-          />
-          {chips.map((c) => (
-            <span key={c.key} className="hb-chip-on">
-              {c.label}
-              <button
-                type="button"
-                aria-label={`Remove filter: ${c.label}`}
-                onClick={() => {
-                  const extra = { ...state.extra };
-                  for (const k of c.clear) delete extra[k];
-                  if (c.clear.includes('dueFrom')) delete extra.includeNoDue;
-                  if (c.clear.includes('startFrom')) delete extra.includeNoStart;
-                  patch({ extra });
-                }}
-              >
-                <X size={13} aria-hidden="true" />
-              </button>
-            </span>
-          ))}
-          <MoreFilters
+          <FilterMenu
+            status={state.status}
+            onStatus={(v) => patch({ status: v })}
             extra={state.extra}
             onChange={(extra) => patch({ extra: clean(extra) })}
-            tags={tags}
+            onClear={() => patch({ status: defaultState(state.scope).status, extra: {} })}
+            showAssignee={state.scope !== 'mine'}
             people={ownerOptions}
+            departments={departments}
+            tags={tags}
             groups={groups}
+            applied={[
+              ...(state.status !== defaultState(state.scope).status
+                ? [STATUS_PRESETS.find((p) => p.value === state.status)?.label ?? state.status]
+                : []),
+              ...chips.map((c) => c.label),
+            ]}
           />
           {(isFiltered(state) || text) && (
             <Btn
