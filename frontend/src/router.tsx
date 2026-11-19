@@ -23,6 +23,13 @@ const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default:
 const TemplatesPage = lazy(() =>
   import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
 );
+const DraftsPage = lazy(() =>
+  import('./pages/DraftsPage').then((m) => ({ default: m.DraftsPage })),
+);
+const DutyPage = lazy(() => import('./pages/DutyPage').then((m) => ({ default: m.DutyPage })));
+const MyDutiesPage = lazy(() =>
+  import('./pages/DutyPage').then((m) => ({ default: m.MyDutiesPage })),
+);
 const TasksPage = lazy(() => import('./pages/TasksPage').then((m) => ({ default: m.TasksPage })));
 const TaskCreatePage = lazy(() =>
   import('./pages/TaskCreatePage').then((m) => ({ default: m.TaskCreatePage })),
@@ -30,8 +37,12 @@ const TaskCreatePage = lazy(() =>
 const TaskDetailPage = lazy(() =>
   import('./pages/TaskDetailPage').then((m) => ({ default: m.TaskDetailPage })),
 );
-const ProfilePage = lazy(() => import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
-const MyGoalsPage = lazy(() => import('./pages/MyGoalsPage').then((m) => ({ default: m.MyGoalsPage })));
+const ProfilePage = lazy(() =>
+  import('./pages/ProfilePage').then((m) => ({ default: m.ProfilePage })),
+);
+const MyGoalsPage = lazy(() =>
+  import('./pages/MyGoalsPage').then((m) => ({ default: m.MyGoalsPage })),
+);
 const TeamGoalsPage = lazy(() =>
   import('./pages/TeamGoalsPage').then((m) => ({ default: m.TeamGoalsPage })),
 );
@@ -58,7 +69,9 @@ const DepartmentsPage = lazy(() =>
 const OrganizationPage = lazy(() =>
   import('./pages/OrganizationPage').then((m) => ({ default: m.OrganizationPage })),
 );
-const MyTimePage = lazy(() => import('./pages/MyTimePage').then((m) => ({ default: m.MyTimePage })));
+const MyTimePage = lazy(() =>
+  import('./pages/MyTimePage').then((m) => ({ default: m.MyTimePage })),
+);
 const TimeReviewPage = lazy(() =>
   import('./pages/TimeReviewPage').then((m) => ({ default: m.TimeReviewPage })),
 );
@@ -156,6 +169,9 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
+          { path: '/drafts', element: <DraftsPage /> },
+          { path: '/duties', element: <MyDutiesPage /> },
+          { path: '/duties/:id', element: <DutyPage /> },
           // Department Duties.
           { path: '/time', element: <MyTimePage /> },
           {

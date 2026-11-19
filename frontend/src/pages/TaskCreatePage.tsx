@@ -41,7 +41,7 @@ export function TaskCreatePage() {
   // What the quick "New task" panel carried over ("More details").
   const carried = (useLocation().state ?? {}) as NewTaskCarry;
   const [name, setName] = useState(carried.name ?? '');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(carried.description ?? '');
   const [assigneeId, setAssigneeId] = useState(carried.assigneeId ?? me?.id ?? '');
   const [isProject, setIsProject] = useState(!!carried.isProject);
   // Each line becomes a sub-task (a project's: a task) once this is created.
@@ -165,6 +165,16 @@ export function TaskCreatePage() {
         } catch {
           failed += 1;
         }
+      }
+      // Made from a draft (I1): its files move onto the task and the draft goes.
+      if (carried.draftId) {
+        await api.finishDraft(carried.draftId, created.id).catch(() =>
+          toast({
+            message:
+              'The task was made, but the draft’s files could not be moved. The draft is kept.',
+            tone: 'error',
+          }),
+        );
       }
       window.dispatchEvent(new CustomEvent(TASK_CREATED_EVENT, { detail: { id: created.id } }));
       if (failed)

@@ -26,6 +26,9 @@ export interface NewTaskCarry {
   assigneeId?: string;
   dutyChoice?: string;
   isProject?: boolean;
+  /** From a draft (I1): its notes, and the draft to finish once the task exists. */
+  description?: string;
+  draftId?: string;
 }
 
 /**

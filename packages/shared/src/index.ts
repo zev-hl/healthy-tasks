@@ -2912,11 +2912,19 @@ export interface UpdateDepartmentRequest {
 export interface CreateDutyRequest {
   name: string;
   description?: string | null;
+  /** The SOP, rich text (sanitized on the server). */
+  sop?: string | null;
+  /** A training video link (https). */
+  videoUrl?: string | null;
 }
 
 export interface UpdateDutyRequest {
   name?: string;
   description?: string | null;
+  /** The SOP, rich text (sanitized on the server). */
+  sop?: string | null;
+  /** A training video link (https). */
+  videoUrl?: string | null;
 }
 
 /**

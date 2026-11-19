@@ -9459,3 +9459,117 @@ a.hb-origin-chip:hover {
   border-color: var(--accent);
   color: var(--accent-deep);
 }
+
+/* ── Drafts (Nov 2026 plan, I1) ─────────────────────────────────────── */
+.hb-drafts {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.hb-drafts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hb-drafts-new {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.hb-drafts-new .hb-tpl-input {
+  flex: 1;
+  min-width: 0;
+}
+.hb-draft-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.hb-draft-item:hover {
+  background: var(--surface-sunk);
+}
+.hb-draft-item.is-active {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.hb-draft-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hb-draft-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hb-draft-top .hb-title-input {
+  flex: 1;
+  min-width: 0;
+}
+.hb-draft-files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.hb-draft-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.hb-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .hb-drafts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Duty pages (I4) ────────────────────────────────────────────────── */
+.hb-duty {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.hb-duty-desc {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.hb-duty-video {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hb-duty-video video {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+}
+.hb-duty-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+@media (max-width: 760px) {
+  .hb-duty {
+    grid-template-columns: 1fr;
+  }
+}

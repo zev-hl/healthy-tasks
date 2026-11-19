@@ -86,4 +86,20 @@ describe('New task page', () => {
       expect.objectContaining({ isProject: true, dutyId: null }),
     );
   });
+
+  it('from a draft: carries its notes and finishes the draft once the task is made', async () => {
+    fn(api.finishDraft).mockReset().mockResolvedValue(undefined);
+    await renderPage({
+      name: 'Idea',
+      description: '<p>notes</p>',
+      draftId: 'dr1',
+      dutyChoice: '__no_duty',
+    });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Create task' })));
+    await settle();
+    expect(api.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Idea', description: '<p>notes</p>' }),
+    );
+    expect(api.finishDraft).toHaveBeenCalledWith('dr1', 9);
+  });
 });

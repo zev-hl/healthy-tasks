@@ -1,6 +1,8 @@
 import type {
   ActiveUserDto,
   PushConfigDto,
+  DraftDto,
+  SaveDraftRequest,
   DashboardAttentionDto,
   PushSubscriptionRequest,
   AdminResetLinkResponse,
@@ -655,6 +657,47 @@ export const api = {
   // --- Department Duties: Departments & Duties catalog ---
   // Every write answers with the whole catalog.
   listDepartments: () => request<DepartmentDto[]>('/api/departments'),
+  // A duty's video as a file (I4).
+  presignDutyVideo: (id: string, meta: { filename: string; contentType: string; size: number }) =>
+    request<{ uploadUrl: string; storageKey: string }>(
+      `/api/departments/duties/${id}/video/presign`,
+      {
+        method: 'POST',
+        body: JSON.stringify(meta),
+      },
+    ),
+  setDutyVideo: (
+    id: string,
+    body: { filename: string; contentType: string; size: number; storageKey: string },
+  ) =>
+    request<void>(`/api/departments/duties/${id}/video`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  clearDutyVideo: (id: string) =>
+    request<void>(`/api/departments/duties/${id}/video`, { method: 'DELETE' }),
+  getDutyVideoUrl: (id: string) => request<{ url: string }>(`/api/departments/duties/${id}/video`),
+
+  // --- Drafts (Nov 2026 plan, I1) ---
+  listDrafts: () => request<DraftDto[]>('/api/drafts'),
+  createDraft: (body: SaveDraftRequest) =>
+    request<DraftDto>('/api/drafts', { method: 'POST', body: JSON.stringify(body) }),
+  updateDraft: (id: string, body: Partial<SaveDraftRequest>) =>
+    request<DraftDto>(`/api/drafts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteDraft: (id: string) => request<void>(`/api/drafts/${id}`, { method: 'DELETE' }),
+  presignDraftFile: (id: string, meta: { filename: string; contentType: string; size: number }) =>
+    request<{ uploadUrl: string; storageKey: string }>(`/api/drafts/${id}/files/presign`, {
+      method: 'POST',
+      body: JSON.stringify(meta),
+    }),
+  addDraftFile: (id: string, body: ConfirmAttachmentRequest) =>
+    request<DraftDto>(`/api/drafts/${id}/files`, { method: 'POST', body: JSON.stringify(body) }),
+  removeDraftFile: (id: string, fileId: string) =>
+    request<DraftDto>(`/api/drafts/${id}/files/${fileId}`, { method: 'DELETE' }),
+  getDraftFileUrl: (id: string, fileId: string) =>
+    request<{ url: string }>(`/api/drafts/${id}/files/${fileId}/download`),
+  finishDraft: (id: string, taskId: number) =>
+    request<void>(`/api/drafts/${id}/finish`, { method: 'POST', body: JSON.stringify({ taskId }) }),
   getDutyHoldings: () => request<DutyHoldingsDto>('/api/departments/holdings'),
   createDepartment: (body: CreateDepartmentRequest) =>
     request<DepartmentDto[]>('/api/departments', { method: 'POST', body: JSON.stringify(body) }),
