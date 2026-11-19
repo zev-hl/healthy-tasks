@@ -180,6 +180,11 @@ Stage 3: one Calendar page (`/calendar`: due dates, your reminders, events, your
 Google events; Me / Team), events (`event.service.ts`; a notice now points at a
 task **or** an event), and each person's Google Calendar read-only
 (`google-calendar.service.ts`, off until the `GOOGLE_*` calendar vars are set) — see §21.
+Stage 4: our Connect (`connect.service.ts`, off until `CONNECT_URL` + `CONNECT_API_KEY`):
+notices as Connect messages (`notifyByConnect`), Call on a task (a Connect call saved
+as a `call` event), Discuss in Connect, the chat pop-up, Connect calls on the
+calendar, and `/api/integrations/connect` for Connect to call (`CONNECT_INBOUND_KEY`)
+— see §22. What Connect itself must change is in `docs/connect-changes.md`.
 
 ### Optimistic concurrency
 Mutable records carry a version; services call `assertNotStale`
@@ -321,7 +326,8 @@ default / `false`: HTML only), `REDIS_URL`,
 `QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
 `SCHEDULER_ENABLED`, `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
 (browser push; off without them), `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
-/ `GOOGLE_TOKEN_KEY` (Google Calendar, read-only; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
+/ `GOOGLE_TOKEN_KEY` (Google Calendar, read-only; off without them), `CONNECT_URL` /
+`CONNECT_API_KEY` / `CONNECT_INBOUND_KEY` (our Connect; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
 made, `HH:MM`), the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
 the email worker loads only `config/email-config.ts` and
 `config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's

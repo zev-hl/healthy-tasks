@@ -1239,3 +1239,55 @@ Changed, on a "T under P" state; its rows exist on no server.
   `GOOGLE_CALENDAR_REDIRECT_URI` and a 32-byte `GOOGLE_TOKEN_KEY` are set; the
   OAuth client needs the scope on its consent screen and the callback as an
   authorized redirect URI. Connect calls on the calendar (H5) come with Stage 4.
+
+## 22. Our Connect (Nov 2026 plan, Stage 4)
+
+HL Central's side of K1–K7. Off until `CONNECT_URL` and `CONNECT_API_KEY` (a
+read/write key named "HL Central", minted in Connect) are set; K6 and K7 also
+need `CONNECT_INBOUND_KEY`. What Connect itself needs — settings, and the
+changes K1, K4, K6 and K7 depend on — is in `docs/connect-changes.md`. People
+are matched by email both ways.
+
+- **The client** (`connect.service.ts`) speaks Connect's bot API
+  (`/api/v1/bots/*`) server to server, with a 10-second timeout; Connect's
+  refusals come back as `ConnectError` with its words and status (0 = not
+  reached / not linked). Tests replace `fetch` (`__setConnectFetch`).
+- **K3 notices** (`connect-notify.service.ts`, `notifyByConnect`): the
+  `connect` channel of the notification settings is live. Sent in the
+  background (never slowing a request), once per notice and person
+  (`idempotencyKey`), from `notifyTaskEvent` (status, comments, update requests,
+  due/overdue, snooze, the timer), assignments, mentions, reminders
+  (`Reminder.connectSentAt`; reminders already due when this shipped are
+  marked sent, and one over a day old is never sent) and event notices. Tests
+  wait with `connectSettled()`.
+- **K2 Call on a task** (`POST /api/tasks/:id/calls`, `scheduleTaskCall` in
+  `event.service.ts`): now (Connect rings) or a time (Connect books a Convene,
+  `externalRef` `hlcentral:event:<id>`), hosted by the caller. Saved first as a
+  `call` event on the task and calendar; `Event.connectCallId`,
+  `connectCallKind` (`convene` | `ring`) and `connectJoinUrl` (also its
+  location) record the Connect side, shown as `EventDto.connect`. When Connect
+  can't (not linked, or it refuses), the event becomes a meeting and the answer
+  carries the reason. Moving the event (time, title, people) moves the Convene;
+  canceling it cancels the Convene.
+- **K5 Discuss in Connect** (`POST /api/tasks/:id/discuss`,
+  `connect-task.service.ts`): makes the task's group (assignee, creator, the
+  assignee's supervisor, the presser), posts a link back, and keeps its id on
+  `Task.connectConversationId`; later presses reopen it and add the presser.
+- **K1 chat pop-up** (`components/connect/ConnectChat.tsx`): a button on every
+  page opening Connect in a frame (Connect must allow HL Central's address in
+  its `frame-ancestors`), with "Open in Connect".
+- **K4 Connect calls on the calendar** (`GET /api/connect/calls`): the reader's
+  own calls from Connect (a new Connect endpoint, `listPersonCalls`), leaving
+  out the ones HL Central booked; `available: false` until Connect has it.
+  Shown as the Calendar's "Connect calls" layer.
+- **K6, K7 inbound** (`routes/connect-inbound.routes.ts`,
+  `/api/integrations/connect`): Connect calls HL Central with
+  `Authorization: Bearer <CONNECT_INBOUND_KEY>` (compared in constant time; off
+  while shorter than 32 characters) and names the person it acts for (`as`:
+  their email, active users only). It acts with that person's own rights:
+  `POST /tasks` (make a task from a chat or voice note), `GET /tasks` (their
+  open tasks), `GET /timer`, `POST /timer/start`, `POST /timer/stop` (the same
+  server-side timer, `TIMER_CHANGED` rules included).
+- `GET /api/connect` tells the browser whether Connect is linked and where; the
+  buttons, the Connect column of the settings and the calendar layer follow it
+  (`lib/connect.ts`, `useConnect`).
