@@ -3,6 +3,7 @@ import { connectRouter } from './routes/connect.routes.js';
 import { googleCalendarRouter } from './routes/google-calendar.routes.js';
 import { calendarRouter, eventsRouter } from './routes/calendar.routes.js';
 import { timerRouter } from './routes/timer.routes.js';
+import { connectAuthRouter } from './routes/connect-auth.routes.js';
 import { filesRouter } from './routes/files.routes.js';
 import { draftsRouter } from './routes/drafts.routes.js';
 import express from 'express';
@@ -42,6 +43,11 @@ export interface AppOptions {
 export function createApp(options: AppOptions = {}) {
   const app = express();
 
+  // Before the app's own CORS and JSON: Connect's page and server call these
+  // (Stage 5, HL Central as Connect's sign-in service).
+  app.use(cookieParser());
+  app.use('/api/connect-auth', connectAuthRouter);
+
   app.use(
     cors({
       origin: corsOriginOption(env.corsOrigins),
@@ -54,7 +60,6 @@ export function createApp(options: AppOptions = {}) {
   // comments. File bytes never come through here — they go straight to storage
   // via pre-signed URLs.
   app.use(express.json({ limit: '2mb' }));
-  app.use(cookieParser());
 
   // Health check — used by docker-compose and load balancers.
   app.get('/health', (_req, res) => {

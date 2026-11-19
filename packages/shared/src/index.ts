@@ -621,6 +621,21 @@ export interface FileCabinetPageDto {
   next: string | null;
 }
 
+/** Stage 5: HL Central as Connect's sign-in service (`/api/connect/sign-in`, Admin). */
+export interface ConnectSignInStatusDto {
+  /** HL Central signs people in to Connect. */
+  signIn: boolean;
+  /** …and keeps Connect's member list in step. */
+  members: boolean;
+  /** What Connect is given as CENTRAL_AUTH_URL. */
+  authUrl: string | null;
+  orgId: string | null;
+}
+export interface ConnectMembersSyncDto {
+  sent: number;
+  failed: { email: string; error: string }[];
+}
+
 /** Comment recordings (Nov 2026 plan, D4): a voice note or the screen. */
 export const RECORDING_KINDS = ['voice', 'screen'] as const;
 export type RecordingKind = (typeof RECORDING_KINDS)[number];

@@ -132,3 +132,62 @@ pop-up once §2's reverse is wanted).
   /api/v1/bots/groups`: the assignee, the creator, the assignee's supervisor
   and whoever pressed it), posts a link back, and later reopens it, adding
   whoever presses it.
+
+## 7. Stage 5 — sign in to Connect with HL Central (settings only)
+
+Connect already has "central sign-in", built for auth.brecx.com
+(`docs/central-signin.md` in Connect). HL Central plays that service's part,
+so **Connect needs no code change**, only the settings below. People sign in to
+Connect with their HL Central sign-in (Google for company addresses, password
+for the rest), and Connect's member list follows HL Central.
+
+| Where | Setting | Value |
+| --- | --- | --- |
+| HL Central | `CONNECT_AUTH_URL` | HL Central's API address + `/api/connect-auth`, e.g. `https://api.<domain>/api/connect-auth` |
+| HL Central | `CONNECT_SIGNING_KEY` | an Ed25519 private key: `openssl genpkey -algorithm ed25519 \| base64 -w0` (keep it in the vault) |
+| HL Central | `CONNECT_ORG_ID` | a fixed uuid naming our workspace (`uuidgen`, lower case); never change it |
+| HL Central | `CONNECT_PROVISION_SECRET` | `openssl rand -hex 32`, the **same** value on both |
+| HL Central | `CONNECT_WORKSPACE_NAME` | optional, default `HL Central` |
+| Connect | `CENTRAL_SIGNIN` | `allowlist` (with `CENTRAL_SIGNIN_ALLOW` = a few addresses) to try it, then `on` |
+| Connect | `CENTRAL_AUTH_URL` | exactly HL Central's `CONNECT_AUTH_URL` |
+| Connect | `CENTRAL_SIGNIN_URL` | HL Central's site + `/connect-signin`, e.g. `https://app.<domain>/connect-signin` |
+| Connect | `CONNECT_PROVISION_SECRET` | the same value as HL Central's |
+| Connect | `CENTRAL_INVITES` | `off` (people are added in HL Central) |
+
+Once, in Connect's database, name our workspace with that uuid (Connect has no
+screen for it; its `central:backfill` script does the same):
+
+```sql
+UPDATE workspaces SET org_id = '<CONNECT_ORG_ID>' WHERE id = '<our workspace id>';
+```
+
+Then, as an HL Central Admin: **Settings → Connect sign-in → Send everyone to
+Connect**. It links each existing Connect account to its HL Central person by
+email (and adds anyone missing); from then on every change to a person in HL
+Central (added, renamed, new address, role, deactivated or back) reaches
+Connect by itself. HL Central Admins are Connect admins; everyone else is a
+member. The workspace owner stays as they are.
+
+How it works: Connect's "Continue with your Brecx account" button (worded by
+Connect) asks HL Central's `/api/connect-auth/token` for a five-minute EdDSA
+token, using a cookie HL Central set when the person signed in at
+`/connect-signin`; Connect checks it against `/api/connect-auth/.well-known/jwks.json`
+and opens a session. Signing out of HL Central, "Sign out everywhere", a
+password reset or deactivation ends it.
+
+Good to know:
+
+- **One domain.** The cookie is on HL Central's API address and is asked for
+  from Connect's site. Serve both on one domain (`api.<domain>`, `app.<domain>`,
+  `connect.<domain>`); on unrelated addresses, browsers that block third-party
+  cookies (Safari, and Chrome as it phases them out) will keep sending people
+  back to sign in.
+- **Password sign-in to Connect stays**, and is still the default form; Connect
+  users with its email two-step keep using their password (Connect refuses
+  central sign-in for them).
+- **Deleting someone in Connect** asks HL Central first (signed); HL Central
+  says yes. But who works here is decided in HL Central: deactivate them there,
+  or the next push adds them back.
+- The button's wording ("Brecx account") is Connect's; changing it to "HL
+  Central" is a one-line change in Connect's web app, if wanted.
+

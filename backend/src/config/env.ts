@@ -133,6 +133,21 @@ export const env = {
     // The key Connect uses to call HL Central (create a task from a chat,
     // list someone's tasks, the timer: K6, K7). Off while blank; 32+ characters.
     inboundKey: optional('CONNECT_INBOUND_KEY', ''),
+    // Stage 5: HL Central as Connect's sign-in service (Connect's "central
+    // sign-in", built for auth.brecx.com). Off until the first three are set.
+    // CONNECT_AUTH_URL is this API's address + /api/connect-auth, exactly as
+    // Connect is given it in its CENTRAL_AUTH_URL. CONNECT_SIGNING_KEY is an
+    // Ed25519 private key (PKCS#8 PEM, or that PEM base64-encoded) made once
+    // with `openssl genpkey -algorithm ed25519`. CONNECT_ORG_ID is a fixed uuid
+    // naming our Connect workspace (set on the workspace in Connect once).
+    authUrl: optional('CONNECT_AUTH_URL', '').replace(/\/+$/, ''),
+    signingKey: optional('CONNECT_SIGNING_KEY', ''),
+    orgId: optional('CONNECT_ORG_ID', '').toLowerCase(),
+    workspaceName: optional('CONNECT_WORKSPACE_NAME', 'HL Central'),
+    // The secret both sides sign their server-to-server calls with (Connect's
+    // CONNECT_PROVISION_SECRET, the same value): HL Central keeps Connect's
+    // member list in step with its people. 32+ characters; off while blank.
+    provisionSecret: optional('CONNECT_PROVISION_SECRET', ''),
   },
 
   // Browser push (Nov 2026 plan, E7). Off until both keys are set: make a pair

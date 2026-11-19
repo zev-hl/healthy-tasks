@@ -13,6 +13,7 @@ import { getUserById, updateMyProfile } from '../services/user.service.js';
 import { assertCanRecoverPassword } from '../utils/allowed-domain.js';
 import { toUserDto } from '../services/user.mapper.js';
 import { sendInBackground } from '../utils/mailer.js';
+import { pushConnectMembers } from '../services/connect-auth.service.js';
 import { sendPasswordResetEmail } from '../utils/account-emails.js';
 import type {
   LoginInput,
@@ -53,6 +54,7 @@ export async function meController(req: Request, res: Response): Promise<void> {
 export async function updateMeController(req: Request, res: Response): Promise<void> {
   if (!req.user) throw HttpError.unauthorized();
   const user = await updateMyProfile(req.user.id, req.body as UpdateMyProfileInput);
+  pushConnectMembers([user.id]);
   res.json(toUserDto(user) satisfies UserDto);
 }
 

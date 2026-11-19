@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { AuthShell } from '../components/AuthShell';
@@ -8,6 +8,13 @@ import { GoogleSignInButton, googleSignInAvailable } from '../components/GoogleS
 export function LoginPage() {
   const { login, loginWithGoogle, sessionExpired } = useAuth();
   const navigate = useNavigate();
+  // Where RequireAuth sent us from (e.g. Connect's sign-in), else the Dashboard.
+  const from = (useLocation().state as { from?: { pathname: string; search?: string } } | null)
+    ?.from;
+  const next =
+    from?.pathname?.startsWith('/') && from.pathname !== '/login'
+      ? `${from.pathname}${from.search ?? ''}`
+      : '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -25,7 +32,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await loginWithGoogle(idToken, remember);
-      navigate('/');
+      navigate(next);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Google sign-in failed');
     } finally {
@@ -39,7 +46,7 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password, remember);
-      navigate('/');
+      navigate(next);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed');
     } finally {

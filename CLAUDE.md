@@ -145,7 +145,10 @@ requests expires the session and the SPA bounces to login. Ticking "Keep me
 signed in on this device" at sign-in gives a `KEEP_SIGNED_IN_DAYS` window
 instead (default 30; the token carries `rm`, kept as it slides), and "Sign out
 everywhere" on the profile bumps `tokenVersion` (Stage 5, `docs/architecture.md`
-§23). No self-registration — Admins create users.
+§23). No self-registration — Admins create users. HL Central is also our
+Connect's sign-in service (`/api/connect-auth`, `connect-auth.service.ts`: an
+EdDSA token for Connect's central sign-in, a cookie set at `/connect-signin`,
+and every change to a person pushed to Connect's member list) — §25.
 
 The address decides the way in: with `GOOGLE_ALLOWED_DOMAIN` set, a company
 address signs in with Google only and any other with a password only
@@ -333,7 +336,9 @@ default / `false`: HTML only), `REDIS_URL`,
 `SCHEDULER_ENABLED`, `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
 (browser push; off without them), `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
 / `GOOGLE_TOKEN_KEY` (Google Calendar, read-only; off without them), `CONNECT_URL` /
-`CONNECT_API_KEY` / `CONNECT_INBOUND_KEY` (our Connect; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
+`CONNECT_API_KEY` / `CONNECT_INBOUND_KEY` (our Connect; off without them),
+`CONNECT_AUTH_URL` / `CONNECT_SIGNING_KEY` / `CONNECT_ORG_ID` /
+`CONNECT_PROVISION_SECRET` (signing in to Connect with HL Central; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
 made, `HH:MM`), the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
 the email worker loads only `config/email-config.ts` and
 `config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's

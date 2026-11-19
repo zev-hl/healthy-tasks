@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ConnectSignInCard } from '../components/connect/ConnectSignInCard';
 import {
   DEFAULT_MATERIALIZE_LEAD_DAYS,
   MATERIALIZE_LEAD_DAYS_MAX,
@@ -220,6 +221,8 @@ export function SettingsPage() {
             {timerSaved && <span className="settings-saved">Saved.</span>}
           </div>
         </section>
+
+        <ConnectSignInCard />
 
         {/* Admins only: the email queue dashboard (moved here from the profile page). */}
         <QueueDashboardCard />

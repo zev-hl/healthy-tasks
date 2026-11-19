@@ -5,6 +5,12 @@ import { requireAuth } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { connectAvailable, listPersonCalls } from '../services/connect.service.js';
 import { HttpError } from '../utils/http-error.js';
+import { requireAdmin } from '../middleware/auth.js';
+import {
+  connectMembersAvailable,
+  connectSignInAvailable,
+  pushAllConnectMembers,
+} from '../services/connect-auth.service.js';
 
 /** Our Connect (Nov 2026 plan, Stage 4): what the browser may know about the link. */
 export const connectRouter = Router();
@@ -55,5 +61,27 @@ connectRouter.get(
           host: c.host,
         })),
     } satisfies ConnectCallsDto);
+  }),
+);
+
+// Stage 5: whether HL Central signs people in to Connect and keeps its member
+// list in step (the Admin's Settings card), and "Send everyone to Connect".
+connectRouter.get('/sign-in', requireAdmin, (_req, res) => {
+  res.json({
+    signIn: connectSignInAvailable(),
+    members: connectMembersAvailable(),
+    authUrl: env.connect.authUrl || null,
+    orgId: env.connect.orgId || null,
+  });
+});
+
+connectRouter.post(
+  '/members/sync',
+  requireAdmin,
+  asyncHandler(async (_req, res) => {
+    if (!connectMembersAvailable()) {
+      throw HttpError.badRequest('Keeping Connect’s members in step is not set up');
+    }
+    res.json(await pushAllConnectMembers());
   }),
 );

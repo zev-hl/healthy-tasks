@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import type { User } from '@prisma/client';
+import { pushConnectMembers } from '../services/connect-auth.service.js';
 import type {
   ActiveUserDto,
   AdminResetLinkResponse,
@@ -118,6 +119,7 @@ export async function listSupervisorsController(_req: Request, res: Response): P
 export async function createUserController(req: Request, res: Response): Promise<void> {
   const input = req.body as CreateUserInput;
   const user = await createUser(input);
+  pushConnectMembers([user.id]);
 
   // The emails go out in the background: the user is saved either way, and the
   // admin should not wait on the mail provider to hear so.
@@ -147,6 +149,7 @@ export async function updateUserController(req: Request, res: Response): Promise
   const { id } = req.params as { id: string };
   const input = req.body as UpdateUserInput;
   const { user, emailChange } = await updateUser(id, input);
+  pushConnectMembers([user.id]);
   const body: UpdateUserResponse = toUserDto(user);
   if (emailChange) body.emailChange = await tellAboutEmailChange(user, emailChange);
   res.json(body);
@@ -197,12 +200,15 @@ async function tellAboutEmailChange(user: User, change: EmailChange): Promise<Em
 export async function deactivateUserController(req: Request, res: Response): Promise<void> {
   const { id } = req.params as { id: string };
   const user = await deactivateUser(id);
+  pushConnectMembers([user.id]);
   res.json(toUserDto(user) satisfies UserDto);
 }
 
 export async function mergeUsersController(req: Request, res: Response): Promise<void> {
   if (!req.user) throw HttpError.unauthorized();
   const survivor = await mergeUsers(req.user.id, req.body as MergeUsersInput);
+  // The merged account is deactivated; the survivor may have a new name or address.
+  pushConnectMembers([survivor.id, (req.body as MergeUsersInput).mergedId]);
   res.json(toUserDto(survivor) satisfies UserDto);
 }
 

@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const expireSession = useCallback(() => {
+    void api.endConnectAuthSession();
     setToken(null);
     setExpiryWarning(false);
     setUser((current) => {
@@ -148,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return me;
       },
       logout() {
+        void api.endConnectAuthSession();
         setToken(null);
         setUser(null);
         setSessionExpired(false);

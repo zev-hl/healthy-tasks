@@ -10,6 +10,8 @@ import type {
   UpdateAppSettingsRequest,
   AttachmentDownloadResponse,
   FileCabinetPageDto,
+  ConnectMembersSyncDto,
+  ConnectSignInStatusDto,
   FileCabinetQuery,
   ConfirmAttachmentRequest,
   CreateCommentRequest,
@@ -233,6 +235,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ idToken, remember }),
     }),
+  /** Stage 5: is sign-in for Connect set up (no sign-in needed to ask). */
+  connectAuthStatus: () =>
+    request<{ available: boolean; connectUrl: string | null }>('/api/connect-auth/status'),
+  /** The cookie Connect's "Continue with HL Central" uses, on the API's address. */
+  connectAuthSession: () =>
+    request<void>('/api/connect-auth/session', { method: 'POST', credentials: 'include' }),
+  /** Signing out of HL Central ends it too. Never fails the sign-out. */
+  endConnectAuthSession: () =>
+    fetch(`${API_URL}/api/connect-auth/session`, { method: 'DELETE', credentials: 'include' }).then(
+      () => undefined,
+      () => undefined,
+    ),
+  connectSignInStatus: () => request<ConnectSignInStatusDto>('/api/connect/sign-in'),
+  syncConnectMembers: () =>
+    request<ConnectMembersSyncDto>('/api/connect/members/sync', { method: 'POST' }),
   /** Ends every sign-in of mine, on every device, this one too. */
   signOutEverywhere: () => request<void>('/api/auth/sign-out-everywhere', { method: 'POST' }),
   me: () => request<UserDto>('/api/auth/me'),

@@ -1330,3 +1330,36 @@ you may see, newest first, 50 at a time (`GET /api/files`,
 Not in this version: drafts' files and duty videos (they have their own pages),
 Connect's files (Connect has its own Files page), folders or tags.
 
+## 25. HL Central as Connect's sign-in service (Nov 2026 plan, Stage 5)
+
+The rest of Stage 5: one sign-in for our Connect. Connect's existing "central
+sign-in" (built for auth.brecx.com) is pointed at HL Central, so Connect changes
+settings only (`docs/connect-changes.md` §7). Off until `CONNECT_URL`,
+`CONNECT_AUTH_URL`, `CONNECT_SIGNING_KEY` and `CONNECT_ORG_ID` are set.
+
+- **Routes** (`routes/connect-auth.routes.ts`, at `/api/connect-auth`, mounted
+  before the app's CORS and JSON parsing): `/.well-known/jwks.json` (our Ed25519
+  public key), `POST /session` (HL Central's `/connect-signin` page, signed in,
+  sets the `hlc_connect` cookie: HttpOnly, path `/api/connect-auth`, `SameSite=None;
+  Secure` on https; 12 hours, or `KEEP_SIGNED_IN_DAYS` for a kept sign-in),
+  `DELETE /session` (sign-out), `POST /token` (Connect's page, with the cookie and
+  `x-brecx-auth: 1`: a five-minute EdDSA token, `iss` = `CONNECT_AUTH_URL`,
+  `aud` = `brecx:connect`, `sub` = the user's id, `org` = `CONNECT_ORG_ID`,
+  `apps` = `["connect"]`), `GET /me` (the account and our one workspace), and
+  `POST /apps/connect/members/remove` (Connect, HMAC-signed: answered yes).
+  CORS with credentials for Connect's origin and `CORS_ORIGIN` only.
+- **The cookie** is a JWT under a key derived from `JWT_SECRET`, holding the
+  user and `tokenVersion`, re-checked on every use: deactivation, a password
+  reset or "Sign out everywhere" ends it; signing out (or the idle sign-out)
+  clears it.
+- **Members** (`services/connect-auth.service.ts`, `pushConnectMembers`): each
+  change to a person (create, update, deactivate, merge, own profile) is pushed
+  in the background to Connect's `POST /api/v1/central/members`, signed
+  `x-brecx-timestamp` + `x-brecx-signature: sha256=HMAC(CONNECT_PROVISION_SECRET,
+  "<ts>.<body>")`. Admin → `admin`, others `member`; `active` = `isActive`.
+  The Admin's Settings card has "Send everyone to Connect"
+  (`POST /api/connect/members/sync`) for the first link and to catch up.
+- **The sign-in page** `/connect-signin?return_to=…` goes back only to an
+  address on `CONNECT_URL`'s origin. `RequireAuth` now sends people to the
+  sign-in page with where they were going, and back there after.
+

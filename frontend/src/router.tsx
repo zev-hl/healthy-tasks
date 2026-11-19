@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
 import type { Role } from '@healthy-tasks/shared';
 import { useAuth } from './auth/AuthContext';
@@ -22,6 +22,9 @@ const DashboardPage = lazy(() =>
 const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const TemplatesPage = lazy(() =>
   import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
+);
+const ConnectSignInPage = lazy(() =>
+  import('./pages/ConnectSignInPage').then((m) => ({ default: m.ConnectSignInPage })),
 );
 const FilesPage = lazy(() => import('./pages/FilesPage').then((m) => ({ default: m.FilesPage })));
 const ConnectPage = lazy(() =>
@@ -85,8 +88,10 @@ const TimeReviewPage = lazy(() =>
 
 function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] }) {
   const { user, loading } = useAuth();
+  // Back here once signed in (e.g. Connect sending someone to /connect-signin).
+  const location = useLocation();
   if (loading) return <div className="container">Loading…</div>;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -112,6 +117,15 @@ export const router = createBrowserRouter([
       { path: '/login', element: <LoginPage /> },
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
+      // Stage 5: Connect's "Continue with HL Central" comes here.
+      {
+        path: '/connect-signin',
+        element: (
+          <RequireAuth>
+            <ConnectSignInPage />
+          </RequireAuth>
+        ),
+      },
       {
         element: (
           <RequireAuth>
