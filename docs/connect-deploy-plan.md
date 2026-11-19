@@ -48,6 +48,10 @@ Decided by Connect's design, not open for choice:
 
 ---
 
+> **Doing it:** follow `docs/connect-setup/` (start at its README). Where this plan's
+> body and §13 differ (SMTP port, several `WEB_ORIGIN`s, `SEED_ON_BOOT=false`
+> after the first deploy, no `corepack`), §13 and the setup kit are right.
+
 ## 1. Decisions and inputs to gather before starting
 
 Settle these first; the steps below refer to them by number.
