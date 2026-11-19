@@ -168,6 +168,12 @@ Admin's deleted list, restore) sees them. See `docs/architecture.md` §18.
 Stage 1 (task page, list, creating): rows carry `top`, `repeats` and `canChangeDue`,
 the detail carries `levels` and `unreadMentions`, and My team is the server-side
 `myTeam` filter — see §19.
+Stage 2: snooze, exact-time reminders with notes, request update, the event ×
+channel notification settings (every task event goes through `notifyTaskEvent`;
+browser push needs the `VAPID_*` vars), voice/screen recordings in comments, the
+Dashboard's Unread/Stale/Mentions, drafts (`/drafts`), duty pages (`/duties`), and
+the timer saving each stretch on the server (`TimedStretch`, shown on the task and
+summed by duty on My Time) — see §20.
 
 ### Optimistic concurrency
 Mutable records carry a version; services call `assertNotStale`
@@ -307,7 +313,8 @@ sites the queue dashboard's button is accepted from), `EMAIL_PROVIDER`
 default / `false`: HTML only), `REDIS_URL`,
 `EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `QUEUE_DASHBOARD_USER` /
 `QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
-`SCHEDULER_ENABLED`, `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
+`SCHEDULER_ENABLED`, `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
+(browser push; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
 made, `HH:MM`), the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
 the email worker loads only `config/email-config.ts` and
 `config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's

@@ -1107,3 +1107,70 @@ Changed, on a "T under P" state; its rows exist on no server.
   being a choice (UI rule; the API still accepts tasks without them, as templates
   and alerts need). The full page also takes sub-tasks one per line, made with
   `POST /api/tasks/:id/subtasks` after the task.
+
+## 20. Snooze, reminders, notifications, recordings, Dashboard, drafts, duties, timer (Nov 2026 plan, Stage 2)
+
+- **Snooze** (`task-snooze.service.ts`, `POST`/`DELETE /api/tasks/:id/snooze`):
+  `Task.snoozedUntil` + `snoozedById`, at most `SNOOZE_MAX_DAYS` (30). An Admin,
+  the assignee, the creator or anyone above them may snooze (`canSnoozeTask`,
+  `TaskDetailDto.canSnooze`). Snoozing makes `kind: 'snooze'` reminders for the
+  snoozer and the assignee (the wake), writes history (field `snooze`) and
+  notifies; Unsnooze clears pending wakes. Search hides snoozed tasks unless
+  `filters.snoozed` is `only` or `include`.
+- **Reminders** (`reminder.service.ts`): an exact `remindAt` and an optional
+  `note` replace the old lead-minutes; `kind` is `reminder` or `snooze` (CHECK).
+  Canceled tasks take none; a time in the past is refused.
+- **Request update** (`task-update-request.service.ts`, `POST
+  /api/tasks/:id/request-update`): asks the assignee, with a note; at most once
+  per 5 minutes per task (429), never for your own task or one with no assignee
+  (400); logged on the task (history field `updateRequested`).
+- **Notification settings** (`notification-preference.service.ts`): an event ×
+  channel matrix (`NotificationPreference.channels`, JSONB; `NOTIFY_EVENTS`,
+  `NOTIFY_CHANNELS`, `DEFAULT_NOTIFY_MATRIX` in shared), plus `soundOn`/`sound`
+  and `pushOn`. `wants(prefs, event, channel)` decides; the old columns map to
+  mention, reminder and assigned. Every task event goes through
+  `notifyTaskEvent` (`task-events.service.ts`): the in-app `Notification` (types
+  `updateRequested`, `statusChanged`, `commented`, `dueSoon`, `overdue`,
+  `snoozed` added, with `note` and `detail`), then browser push, then
+  `queueEmail` (kind `task-event`). Hooks: status change, a new comment (not to
+  those it mentions), snooze. Due-soon and overdue notices are a scheduler pass
+  (`dispatchDueNotices`, `nextDueNoticeAt`; `Task.dueSoonNoticeFor` /
+  `overdueNoticeFor` keep each one to once per due date). The notifications list
+  carries `activity` for these.
+- **Browser push** (`push.service.ts`, `web-push`): `PushSubscription` rows per
+  browser (`/api/notifications/push-config`, `/push-subscriptions`), sent only
+  with `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` set (off
+  otherwise). The service worker is `frontend/public/push-sw.js`.
+- **Voice notes and screen recordings** in comments: an `Attachment` with
+  `recording` (`voice` | `screen`), `durationMs` (at most `RECORDING_MAX_MS`) and
+  an editable `transcript`; comment search reads transcripts too.
+- **Dashboard numbers** (`dashboard-attention.service.ts`, `GET
+  /api/tasks/attention`): Unread (assigned tasks changed since the assignee last
+  opened them: `TaskSeen`, stamped by `getTaskDetail` for the assignee), Stale (no
+  activity for N business days) and Mentions awaiting reply.
+- **Templates**: in sections by department (`TaskTemplate.departmentId`), a
+  project switch, "Make tasks now"; a task made from one shows "Made from"
+  (`TaskDetailDto.template`).
+- **Drafts** (`draft.service.ts`, `/api/drafts`): `Draft` + `DraftFile`, private
+  to their owner, notifying no one. Files upload by pre-signed URL like task
+  files (at most `DRAFT_MAX_FILES`). Make task / Make project opens the New task
+  page with the draft; once the task exists, `POST /api/drafts/:id/finish
+  {taskId}` moves the files onto it as attachments and deletes the draft.
+- **Duty pages** (`/duties`, `/duties/:id`): a duty's SOP (rich text), training
+  video (a link, or an uploaded file: `Duty.videoKey`/`videoName`,
+  `duty-video.service.ts` under `/api/departments/duties/:id/video`, Admin
+  uploads, anyone signed in watches) and who holds it. My duties lists the
+  reader's.
+- **Timer** (`task-time.service.ts`, `GET`/`POST /api/tasks/:id/time`): the
+  clock runs in the browser (`lib/timer.ts`); each stop saves a `TimedStretch`
+  (user, task, the task's duty at that moment or null, the person's day, start,
+  end, minutes 1–1440). Later duty changes don't move past hours. The task's
+  time box shows the total and per person to anyone who can read it. My Time
+  shows the day's timed hours by duty (`TimeDayDto.timed`, with `dutyId: null`
+  as "No duty") read-only beside the hand-typed `TimeEntry` rows, and the day,
+  week and Time Review totals count both. A stretch that can't be sent stays in
+  `localStorage` (`hb-timer-unsaved`) and is sent with the next start or stop. A
+  duty with timed hours counts as used (archive, not delete).
+- **Organization**: toolbar counts of people reporting to nobody and without a
+  duty, each a filter; dropping a card on a manager asks before the move is
+  staged for Save changes.
