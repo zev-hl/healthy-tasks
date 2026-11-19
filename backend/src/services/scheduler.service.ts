@@ -19,6 +19,7 @@ import { runGoalReviewPass } from './goal.service.js';
 import { appSettingsChangedAt, getMaterializeLeadDays } from './app-settings.service.js';
 import { dispatchDueReminderEmails } from './notification.service.js';
 import { dispatchDueNotices, nextDueNoticeAt } from './task-events.service.js';
+import { dispatchTimerCheckIns, nextTimerCheckInAt } from './task-time.service.js';
 import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.service.js';
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
 import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
@@ -506,6 +507,9 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
   // Due soon / overdue notices (Nov 2026 plan, E7).
   consider((await nextDueNoticeAt(now))?.getTime());
 
+  // The timer's "Still working?" and its stop when nobody answers (L2).
+  consider((await nextTimerCheckInAt(now))?.getTime());
+
   // Goal review: the next Approved goal to pass its deadline.
   const goal = await prisma.goal.findFirst({
     where: { status: 'Approved', deadline: { gt: now } },
@@ -650,6 +654,14 @@ export async function runScheduler(now: Date): Promise<number> {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('scheduler: due notices failed', err);
+  }
+
+  // The timer's check-in (L2).
+  try {
+    await dispatchTimerCheckIns(now);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('scheduler: timer check-ins failed', err);
   }
 
   // HLAI-112: the Daily alert tasks of every day that has ended, including any

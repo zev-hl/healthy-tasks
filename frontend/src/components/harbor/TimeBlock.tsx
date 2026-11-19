@@ -7,6 +7,7 @@ import {
   TIMER_EVENT,
   formatClock,
   formatMinutes,
+  keepTimer,
   startTimer,
   stopMessage,
   stopTimer,
@@ -166,5 +167,61 @@ export function TimerPill({ hiddenOnTaskId }: { hiddenOnTaskId: number | null })
         <span className="hb-timer-pill-name">{timer.taskName}</span>
       </span>
     </Link>
+  );
+}
+
+/**
+ * "Still working on …?" (L2): shown on every page once the timer asks. Keep
+ * going asks again after the Admin's hours; with no answer the server stops
+ * it at the deadline, saving the time up to the question.
+ */
+export function TimerCheckIn() {
+  const { timer, checkingIn } = useTimer();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (!timer || !checkingIn) return null;
+  const at = new Date(timer.stopsAt).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const askedAt = new Date(timer.checkInAt).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  async function run(what: 'keep' | 'stop') {
+    setBusy(true);
+    try {
+      if (what === 'keep') await keepTimer();
+      else {
+        const r = await stopTimer();
+        if (r) toast({ message: stopMessage(r), tone: r.logged ? 'success' : 'error' });
+      }
+    } catch (e) {
+      toast({ message: e instanceof Error ? e.message : 'That didn’t work', tone: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="hb-checkin" role="alertdialog" aria-label="Still working?">
+      <span className="hb-live" aria-hidden="true" />
+      <span className="hb-checkin-text">
+        <strong>
+          Still working on <Link to={`/tasks/${timer.taskId}`}>{timer.taskName}</Link>?
+        </strong>{' '}
+        The timer stops at {at} unless you keep it going; the time up to {askedAt} is kept.
+      </span>
+      <button
+        type="button"
+        className="hb-btn hb-btn-primary"
+        disabled={busy}
+        onClick={() => void run('keep')}
+      >
+        Keep going
+      </button>
+      <button type="button" className="hb-btn" disabled={busy} onClick={() => void run('stop')}>
+        <Square size={13} fill="currentColor" aria-hidden="true" /> Stop
+      </button>
+    </div>
   );
 }

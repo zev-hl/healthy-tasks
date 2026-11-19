@@ -19,7 +19,7 @@ import { CommandPalette } from './CommandPalette';
 import { Avatar, userLabel } from './ui/Avatar';
 import { AppLauncher, appForPath, type AppKey } from './AppLauncher';
 import { ToastProvider } from './harbor/Toast';
-import { TimerPill } from './harbor/TimeBlock';
+import { TimerCheckIn, TimerPill } from './harbor/TimeBlock';
 import { NativeEnhancer } from './harbor/NativeEnhancer';
 
 interface NavEntry {
@@ -223,6 +223,7 @@ export function Layout() {
           <Sidebar />
           <main className="app-main">
             <SchedulerBanner />
+            <TimerCheckIn />
             <Outlet />
           </main>
         </div>

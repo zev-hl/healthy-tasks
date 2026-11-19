@@ -3,8 +3,8 @@ import { asyncHandler } from '../utils/async-handler.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../utils/http-error.js';
-import { startTimerSchema, stopTimerSchema } from '../validation/schemas.js';
-import { getMyTimer, startTimer, stopTimer } from '../services/task-time.service.js';
+import { keepTimerSchema, startTimerSchema, stopTimerSchema } from '../validation/schemas.js';
+import { getMyTimer, keepTimer, startTimer, stopTimer } from '../services/task-time.service.js';
 import type { Actor } from '../services/access-control.service.js';
 
 /** The caller's own running timer (Nov 2026 plan, L2), the same in every browser. */
@@ -34,5 +34,12 @@ timerRouter.post(
   validateBody(stopTimerSchema),
   asyncHandler(async (req, res) => {
     res.json(await stopTimer(actorOf(req), req.body));
+  }),
+);
+timerRouter.post(
+  '/keep',
+  validateBody(keepTimerSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await keepTimer(actorOf(req), req.body));
   }),
 );

@@ -1171,7 +1171,17 @@ Changed, on a "T under P" state; its rows exist on no server.
   that deletes the row saves the stretch, so nothing is saved twice. Each stop or
   switch saves a `TimedStretch` (user, task, the task's duty at that moment or
   null, the person's day, start, end, minutes 1–1440, a longer run cut to 24h).
-  Later duty changes don't move past hours. The browser (`lib/timer.ts`) keeps
+  Later duty changes don't move past hours. **Check-in**: after the Admin's
+  `timerCheckInHours` (App settings, 1–12, default 4) since the start or the last
+  "Keep going" (`RunningTimer.confirmedAt`; `POST /api/timer/keep`), every page
+  shows "Still working on …?" and a `timerCheckIn` notice goes out (event
+  `timer` in the notification settings, once per check-in: `checkInSentAt`).
+  With no answer within `timerCheckInGraceMinutes` (5–120, default 15) the timer
+  stops and the stretch is saved up to the moment it asked, with a
+  `timerStopped` notice. The stop is enforced on every timer read and change
+  (`settleTimer`), so it holds where the scheduler is off; the scheduler
+  (`dispatchTimerCheckIns`, `nextTimerCheckInAt`) sends the notices and stops
+  timers nobody looks at. The browser (`lib/timer.ts`) keeps
   one shared copy, refreshed on focus and every 30 seconds, and corrects the
   clock by the server's `now`. The task's time box shows the total and per
   person to anyone who can read it. My Time shows the day's timed hours by duty

@@ -174,7 +174,8 @@ browser push needs the `VAPID_*` vars), voice/screen recordings in comments, the
 Dashboard's Unread/Stale/Mentions, drafts (`/drafts`), duty pages (`/duties`), and
 the timer running on the server, one per person (`RunningTimer`; a start names the
 timer it replaces, or 409), each stretch saved with its task (`TimedStretch`, shown
-on the task and summed by duty on My Time) — see §20.
+on the task and summed by duty on My Time), asking "Still working?" after the
+Admin's hours and stopping itself at the question when nobody answers — see §20.
 
 ### Optimistic concurrency
 Mutable records carry a version; services call `assertNotStale`

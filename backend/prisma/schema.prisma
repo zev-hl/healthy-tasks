@@ -559,6 +559,10 @@ enum NotificationType {
   dueSoon
   overdue
   snoozed
+  // The timer's check-in (L2): "Still working on …?", and the timer stopped
+  // because nobody answered.
+  timerCheckIn
+  timerStopped
 }
 
 // For an `assigned` notification: whether the recipient was added or removed as
@@ -991,9 +995,13 @@ model TaskRecurrence {
 // show as ghost previews). This value is global — never overridden per-task or
 // per-template.
 model AppSetting {
-  id                  Int      @id @default(1)
-  materializeLeadDays Int      @default(14)
-  updatedAt           DateTime @updatedAt
+  id                       Int      @id @default(1)
+  materializeLeadDays      Int      @default(14)
+  // The timer's check-in (L2): ask after this many hours of timing, and stop it
+  // (saving the time up to the question) if nobody answers within the minutes.
+  timerCheckInHours        Int      @default(4)
+  timerCheckInGraceMinutes Int      @default(15)
+  updatedAt                DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -1382,11 +1390,16 @@ model TimedStretch {
 // browser sees the same one. A start must name the timer it replaces, so one
 // browser can't overwrite another's. Stopping saves a TimedStretch.
 model RunningTimer {
-  userId    String   @id
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  taskId    Int
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  startedAt DateTime
+  userId        String    @id
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId        Int
+  task          Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  startedAt     DateTime
+  // The check-in: it asks "Still working?" this long after `confirmedAt` (the
+  // start, or the last "Keep going"), by the Admin settings, and stops it if
+  // nobody answers. `checkInSentAt` keeps the notice to once per check-in.
+  confirmedAt   DateTime
+  checkInSentAt DateTime?
 
   @@index([taskId])
 }

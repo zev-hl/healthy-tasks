@@ -23,6 +23,10 @@ export interface RunningTimer {
   taskName: string;
   /** When it started, on this browser's clock (the server's, corrected for skew). */
   startedAt: number; // epoch ms
+  /** When it asks "Still working?" (same clock). */
+  checkInAt: number;
+  /** When it stops by itself if nobody answers (same clock). */
+  stopsAt: number;
 }
 
 /** Fired when the timer starts, stops, or saved time changes. */
@@ -36,14 +40,20 @@ let loaded: Promise<void> | null = null;
 
 function adopt(timer: RunningTimerDto | null | undefined, now: string | undefined) {
   if (now) skew = Date.parse(now) - Date.now();
+  const local = (iso: string) => Date.parse(iso) - skew;
   const next = timer
     ? {
         taskId: timer.taskId,
         taskName: timer.taskName,
-        startedAt: Date.parse(timer.startedAt) - skew,
+        startedAt: local(timer.startedAt),
+        checkInAt: local(timer.checkInAt),
+        stopsAt: local(timer.stopsAt),
       }
     : null;
-  const same = next?.taskId === current?.taskId && next?.startedAt === current?.startedAt;
+  const same =
+    next?.taskId === current?.taskId &&
+    next?.startedAt === current?.startedAt &&
+    next?.checkInAt === current?.checkInAt;
   current = next;
   if (!same) window.dispatchEvent(new Event(TIMER_EVENT));
 }
@@ -202,8 +212,26 @@ export async function startTimer(task: { id: number; name: string }): Promise<St
   }
 }
 
+/** "Keep going" on the check-in: it asks again after the Admin's hours. */
+export async function keepTimer(): Promise<void> {
+  const t = current;
+  if (!t) return;
+  try {
+    const r = await api.keepTimer({ taskId: t.taskId });
+    adopt(r.timer, r.now);
+  } catch (e) {
+    const changed = handleChanged(e);
+    throw new Error(changed ?? (e instanceof Error ? e.message : 'Could not keep the timer going'));
+  }
+}
+
 /** The running timer and a ticking clock, the same in every browser. */
-export function useTimer(): { timer: RunningTimer | null; elapsed: number } {
+export function useTimer(): {
+  timer: RunningTimer | null;
+  elapsed: number;
+  /** True once it is asking "Still working?". */
+  checkingIn: boolean;
+} {
   const [timer, setTimer] = useState<RunningTimer | null>(() => current);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -227,9 +255,20 @@ export function useTimer(): { timer: RunningTimer | null; elapsed: number } {
     if (!timer) return;
     setNow(Date.now());
     const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
+    // Ask the server again just after it stops by itself, so every view follows.
+    const wait = timer.stopsAt - Date.now() + 2000;
+    const stopCheck =
+      wait > 0 && wait < 2 ** 31 ? window.setTimeout(() => void refreshTimer(), wait) : 0;
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(stopCheck);
+    };
   }, [timer]);
-  return { timer, elapsed: timer ? now - timer.startedAt : 0 };
+  return {
+    timer,
+    elapsed: timer ? now - timer.startedAt : 0,
+    checkingIn: !!timer && now >= timer.checkInAt && now < timer.stopsAt,
+  };
 }
 
 /** The toast text for a stop. */

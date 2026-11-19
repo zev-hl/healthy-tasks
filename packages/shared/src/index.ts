@@ -1502,6 +1502,7 @@ export const NOTIFY_EVENTS = [
   'overdue',
   'snooze',
   'reminder',
+  'timer',
 ] as const;
 export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
 
@@ -1515,6 +1516,7 @@ export const NOTIFY_EVENT_LABELS: Record<NotifyEvent, string> = {
   overdue: 'Became overdue',
   snooze: 'Someone snoozed my task',
   reminder: 'My reminders, and snoozed tasks coming back',
+  timer: 'My timer: “Still working?”, and stopped when I didn’t answer',
 };
 
 /** Connect messages come with our Connect (Stage 4); the choice is kept until then. */
@@ -1538,6 +1540,7 @@ export const DEFAULT_NOTIFY_MATRIX: Record<NotifyEvent, ChannelPrefs> = {
   overdue: { inApp: true, email: false, connect: false },
   snooze: { inApp: true, email: false, connect: false },
   reminder: { inApp: true, email: false, connect: false },
+  timer: { inApp: true, email: false, connect: false },
 };
 
 export const NOTIFICATION_SOUNDS = ['chime', 'ping', 'pop'] as const;
@@ -1566,6 +1569,8 @@ export const ACTIVITY_TYPES = [
   'dueSoon',
   'overdue',
   'snoozed',
+  'timerCheckIn',
+  'timerStopped',
 ] as const;
 export type ActivityType = (typeof ACTIVITY_TYPES)[number];
 
@@ -1630,16 +1635,31 @@ export const DEFAULT_MATERIALIZE_LEAD_DAYS = 14;
 export const MATERIALIZE_LEAD_DAYS_MIN = 0;
 export const MATERIALIZE_LEAD_DAYS_MAX = 365;
 
+/** The timer's check-in (L2): ask "Still working?" after this many hours… */
+export const TIMER_CHECK_IN_HOURS_DEFAULT = 4;
+export const TIMER_CHECK_IN_HOURS_MIN = 1;
+export const TIMER_CHECK_IN_HOURS_MAX = 12;
+/** …and stop the timer if nobody answers within this many minutes. */
+export const TIMER_CHECK_IN_GRACE_DEFAULT = 15;
+export const TIMER_CHECK_IN_GRACE_MIN = 5;
+export const TIMER_CHECK_IN_GRACE_MAX = 120;
+
 /** Global, Admin-controlled application settings (a singleton). */
 export interface AppSettingsDto {
   /** Days before an occurrence is due that it materializes into a real task;
    * further-out occurrences show as ghost previews. Global — not per-template. */
   materializeLeadDays: number;
+  /** Hours of timing before the timer asks "Still working?" (L2). */
+  timerCheckInHours: number;
+  /** Minutes to answer before the timer stops, keeping the time up to the question. */
+  timerCheckInGraceMinutes: number;
 }
 
-/** Update the global application settings (Admin only). */
+/** Update the global application settings (Admin only); only what is sent changes. */
 export interface UpdateAppSettingsRequest {
-  materializeLeadDays: number;
+  materializeLeadDays?: number;
+  timerCheckInHours?: number;
+  timerCheckInGraceMinutes?: number;
 }
 
 /**
@@ -3102,6 +3122,18 @@ export interface RunningTimerDto {
   taskId: number;
   taskName: string;
   startedAt: string; // ISO, the server's clock
+  /**
+   * When it asks (or asked) "Still working?": the start or the last "Keep
+   * going", plus the Admin's check-in hours. Answering Keep going moves it on.
+   */
+  checkInAt: string; // ISO
+  /** When it stops by itself if nobody answers; the time saved ends at `checkInAt`. */
+  stopsAt: string; // ISO
+}
+
+/** "Keep going" on the check-in for the timer on `taskId`. */
+export interface KeepTimerRequest {
+  taskId: number;
 }
 
 /**

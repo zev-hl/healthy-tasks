@@ -19,6 +19,10 @@ import {
   GOAL_RESOLUTIONS,
   GOAL_SPECIFIC_MIN_LENGTH,
   MATERIALIZE_LEAD_DAYS_MIN,
+  TIMER_CHECK_IN_GRACE_MAX,
+  TIMER_CHECK_IN_GRACE_MIN,
+  TIMER_CHECK_IN_HOURS_MAX,
+  TIMER_CHECK_IN_HOURS_MIN,
   MATERIALIZE_LEAD_DAYS_MAX,
   EXCLUSIVES_GROUP_TYPES,
   EXCLUSIVES_GROUP_SORT_FIELDS,
@@ -873,13 +877,28 @@ export type GoalTeamInput = z.infer<typeof goalTeamSchema>;
 
 // --- App settings (global, Admin-controlled) -------------------------------
 
-export const updateAppSettingsSchema = z.object({
-  materializeLeadDays: z
-    .number()
-    .int()
-    .min(MATERIALIZE_LEAD_DAYS_MIN)
-    .max(MATERIALIZE_LEAD_DAYS_MAX),
-});
+export const updateAppSettingsSchema = z
+  .object({
+    materializeLeadDays: z
+      .number()
+      .int()
+      .min(MATERIALIZE_LEAD_DAYS_MIN)
+      .max(MATERIALIZE_LEAD_DAYS_MAX)
+      .optional(),
+    timerCheckInHours: z
+      .number()
+      .int()
+      .min(TIMER_CHECK_IN_HOURS_MIN)
+      .max(TIMER_CHECK_IN_HOURS_MAX)
+      .optional(),
+    timerCheckInGraceMinutes: z
+      .number()
+      .int()
+      .min(TIMER_CHECK_IN_GRACE_MIN)
+      .max(TIMER_CHECK_IN_GRACE_MAX)
+      .optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), 'Nothing to change');
 
 export type UpdateAppSettingsInput = z.infer<typeof updateAppSettingsSchema>;
 
@@ -1119,6 +1138,7 @@ export const startTimerSchema = z.object({
   replacing: z.number().int().positive().nullable(),
   date: calendarDate,
 });
+export const keepTimerSchema = z.object({ taskId: z.number().int().positive() });
 export const stopTimerSchema = z.object({
   taskId: z.number().int().positive(),
   date: calendarDate,

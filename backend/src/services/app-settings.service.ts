@@ -1,5 +1,7 @@
 import {
   DEFAULT_MATERIALIZE_LEAD_DAYS,
+  TIMER_CHECK_IN_GRACE_DEFAULT,
+  TIMER_CHECK_IN_HOURS_DEFAULT,
   type AppSettingsDto,
   type UpdateAppSettingsRequest,
 } from '@healthy-tasks/shared';
@@ -7,21 +9,38 @@ import { prisma } from '../db/prisma.js';
 
 /**
  * Global, Admin-controlled application settings, stored as a singleton row
- * (id = 1), mirroring the SchedulerState pattern. Currently holds the recurrence
+ * (id = 1), mirroring the SchedulerState pattern. Holds the recurrence
  * materialization lead time — a single value every recurring template and task
- * reads from (there is deliberately no per-template/per-task override).
+ * reads from (there is deliberately no per-template/per-task override) — and
+ * the timer's check-in hours and grace minutes (L2).
  */
 
 const APP_SETTING_ID = 1;
 
-function toDto(row: { materializeLeadDays: number }): AppSettingsDto {
-  return { materializeLeadDays: row.materializeLeadDays };
+const DEFAULTS: AppSettingsDto = {
+  materializeLeadDays: DEFAULT_MATERIALIZE_LEAD_DAYS,
+  timerCheckInHours: TIMER_CHECK_IN_HOURS_DEFAULT,
+  timerCheckInGraceMinutes: TIMER_CHECK_IN_GRACE_DEFAULT,
+};
+
+function toDto(row: AppSettingsDto): AppSettingsDto {
+  return {
+    materializeLeadDays: row.materializeLeadDays,
+    timerCheckInHours: row.timerCheckInHours,
+    timerCheckInGraceMinutes: row.timerCheckInGraceMinutes,
+  };
 }
 
 /** Read the global settings, falling back to defaults if the row is absent. */
 export async function getAppSettings(): Promise<AppSettingsDto> {
   const row = await prisma.appSetting.findUnique({ where: { id: APP_SETTING_ID } });
-  return toDto(row ?? { materializeLeadDays: DEFAULT_MATERIALIZE_LEAD_DAYS });
+  return toDto(row ?? DEFAULTS);
+}
+
+/** The timer's check-in (L2): hours before it asks, minutes to answer, in ms. */
+export async function getTimerCheckIn(): Promise<{ afterMs: number; graceMs: number }> {
+  const s = await getAppSettings();
+  return { afterMs: s.timerCheckInHours * 3_600_000, graceMs: s.timerCheckInGraceMinutes * 60_000 };
 }
 
 /**
@@ -52,10 +71,13 @@ export async function appSettingsChangedAt(): Promise<Date | null> {
 
 /** Update the global settings (Admin only; enforced at the route). */
 export async function updateAppSettings(input: UpdateAppSettingsRequest): Promise<AppSettingsDto> {
+  const data = Object.fromEntries(
+    Object.entries(input).filter(([, v]) => v !== undefined),
+  ) as UpdateAppSettingsRequest;
   const row = await prisma.appSetting.upsert({
     where: { id: APP_SETTING_ID },
-    create: { id: APP_SETTING_ID, materializeLeadDays: input.materializeLeadDays },
-    update: { materializeLeadDays: input.materializeLeadDays },
+    create: { id: APP_SETTING_ID, ...DEFAULTS, ...data },
+    update: data,
   });
   return toDto(row);
 }

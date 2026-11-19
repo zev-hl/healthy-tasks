@@ -92,6 +92,7 @@ import type {
   SaveTimeDayRequest,
   MyTimerDto,
   StartTimerRequest,
+  KeepTimerRequest,
   StopTimerRequest,
   TaskTimeDto,
   SetTimeDayCompletedRequest,
@@ -752,6 +753,8 @@ export const api = {
   getTimer: () => request<MyTimerDto>('/api/timer'),
   startTimer: (body: StartTimerRequest) =>
     request<MyTimerDto>('/api/timer/start', { method: 'POST', body: JSON.stringify(body) }),
+  keepTimer: (body: KeepTimerRequest) =>
+    request<MyTimerDto>('/api/timer/keep', { method: 'POST', body: JSON.stringify(body) }),
   stopTimer: (body: StopTimerRequest) =>
     request<MyTimerDto>('/api/timer/stop', { method: 'POST', body: JSON.stringify(body) }),
 

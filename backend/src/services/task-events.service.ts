@@ -24,7 +24,14 @@ import { formatBusinessTimestamp } from '../utils/business-time.js';
 
 export type TaskEventType = Extract<
   NotificationType,
-  'updateRequested' | 'statusChanged' | 'commented' | 'dueSoon' | 'overdue' | 'snoozed'
+  | 'updateRequested'
+  | 'statusChanged'
+  | 'commented'
+  | 'dueSoon'
+  | 'overdue'
+  | 'snoozed'
+  | 'timerCheckIn'
+  | 'timerStopped'
 >;
 
 const EVENT_OF: Record<TaskEventType, NotifyEvent> = {
@@ -34,6 +41,8 @@ const EVENT_OF: Record<TaskEventType, NotifyEvent> = {
   dueSoon: 'due',
   overdue: 'overdue',
   snoozed: 'snooze',
+  timerCheckIn: 'timer',
+  timerStopped: 'timer',
 };
 
 export interface TaskEventInput {

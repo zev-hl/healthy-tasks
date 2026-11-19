@@ -669,3 +669,79 @@ describe('Stage 2: the timer on the server, saved with the task (L2)', () => {
     assert.equal((await request(app).get(`/api/tasks/${t.id}/time`).set(auth(member))).status, 404);
   });
 });
+
+describe('Stage 2: the timer asks "Still working?" and stops when nobody answers (L2)', () => {
+  const today = () => new Date().toISOString().slice(0, 10);
+  const ago = (min: number) => new Date(Date.now() - min * 60_000);
+
+  it('asks after the Admin’s hours, Keep going asks again later, no answer stops it at the question', async () => {
+    const admin = await login(ADMIN);
+    const { dispatchTimerCheckIns } = await import('../src/services/task-time.service.js');
+    // 1 hour, 5 minutes to answer.
+    const set = await request(app)
+      .put('/api/settings')
+      .set(auth(admin))
+      .send({ timerCheckInHours: 1, timerCheckInGraceMinutes: 5 });
+    assert.equal(set.status, 200, JSON.stringify(set.body));
+    assert.equal(set.body.timerCheckInHours, 1);
+    assert.equal(set.body.materializeLeadDays, 14);
+    assert.equal(
+      (await request(app).put('/api/settings').set(auth(admin)).send({ timerCheckInHours: 13 }))
+        .status,
+      400,
+    );
+
+    const t = await makeTask(admin, 'Count the pallets');
+    await request(app)
+      .post('/api/timer/start')
+      .set(auth(admin))
+      .send({ taskId: t.id, replacing: null, date: today() });
+    const mine = (await request(app).get('/api/timer').set(auth(admin))).body.timer;
+    assert.equal(Date.parse(mine.checkInAt) - Date.parse(mine.startedAt), 3_600_000);
+    assert.equal(Date.parse(mine.stopsAt) - Date.parse(mine.checkInAt), 300_000);
+
+    // 61 minutes in: the question goes out, once.
+    await prisma.runningTimer.updateMany({ data: { startedAt: ago(61), confirmedAt: ago(61) } });
+    await dispatchTimerCheckIns(new Date());
+    await dispatchTimerCheckIns(new Date());
+    assert.equal(await prisma.notification.count({ where: { type: 'timerCheckIn' } }), 1);
+
+    // Keep going: it asks again an hour from now.
+    const kept = await request(app).post('/api/timer/keep').set(auth(admin)).send({ taskId: t.id });
+    assert.equal(kept.status, 200, JSON.stringify(kept.body));
+    assert.ok(Date.parse(kept.body.timer.checkInAt) > Date.now() + 59 * 60_000);
+    assert.equal((await prisma.runningTimer.findFirstOrThrow()).checkInSentAt, null);
+
+    // Nobody answers this time: 70 minutes after Keep going it has stopped
+    // itself, the time saved up to the question (60 minutes after Keep going).
+    await prisma.runningTimer.updateMany({ data: { startedAt: ago(130), confirmedAt: ago(70) } });
+    const after = (await request(app).get('/api/timer').set(auth(admin))).body;
+    assert.equal(after.timer, null);
+    const stretch = await prisma.timedStretch.findFirstOrThrow();
+    assert.equal(stretch.minutes, 120);
+    assert.equal(await prisma.notification.count({ where: { type: 'timerStopped' } }), 1);
+    // A browser still showing it can't stop or keep it.
+    assert.equal(
+      (await request(app).post('/api/timer/keep').set(auth(admin)).send({ taskId: t.id })).status,
+      409,
+    );
+  });
+
+  it('the scheduler stops an unanswered timer too', async () => {
+    const admin = await login(ADMIN);
+    const { dispatchTimerCheckIns, nextTimerCheckInAt } =
+      await import('../src/services/task-time.service.js');
+    const t = await makeTask(admin, 'Label the shelves');
+    await request(app)
+      .post('/api/timer/start')
+      .set(auth(admin))
+      .send({ taskId: t.id, replacing: null, date: today() });
+    // Default 4 hours + 15 minutes.
+    const next = await nextTimerCheckInAt(new Date());
+    assert.ok(next && Math.abs(next.getTime() - (Date.now() + 4 * 3_600_000)) < 5_000);
+    await prisma.runningTimer.updateMany({ data: { startedAt: ago(300), confirmedAt: ago(300) } });
+    await dispatchTimerCheckIns(new Date());
+    assert.equal(await prisma.runningTimer.count(), 0);
+    assert.equal((await prisma.timedStretch.findFirstOrThrow()).minutes, 240);
+  });
+});

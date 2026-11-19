@@ -9598,3 +9598,29 @@ a.hb-origin-chip:hover {
 .hb-org-flag {
   gap: 6px;
 }
+
+/* "Still working?" (L2): the timer's check-in, on every page. */
+.hb-checkin {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--warn-soft);
+  border-bottom: 1px solid var(--warn);
+  color: var(--warn-deep);
+}
+.hb-checkin-text {
+  flex: 1;
+  min-width: 220px;
+}
+.hb-checkin-text a {
+  color: inherit;
+  text-decoration: underline;
+}
+.settings-page .settings-card + .settings-card {
+  margin-top: 16px;
+}

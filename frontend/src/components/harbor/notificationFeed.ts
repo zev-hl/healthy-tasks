@@ -32,6 +32,10 @@ export function activityText(a: ActivityNotificationDto): string {
       return 'Overdue now';
     case 'snoozed':
       return `${who} snoozed it${a.detail ? ` until ${a.detail}` : ''}`;
+    case 'timerCheckIn':
+      return 'Your timer asks: still working on it?';
+    case 'timerStopped':
+      return 'Your timer stopped: nobody answered “Still working?”';
   }
 }
 
