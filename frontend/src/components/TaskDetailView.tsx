@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ALERT_ASSIGNED_LABEL,
@@ -43,6 +43,8 @@ import {
   Link as LinkIcon,
   Link2,
   ListChecks,
+  CornerLeftUp,
+  FolderOpen,
   ListTree,
   Lock,
   MessageSquare,
@@ -100,6 +102,35 @@ const PICKER_TEXT: Record<PickerKind, { title: string; hint: string }> = {
   },
   blocks: { title: 'Blocks', hint: 'The task you pick waits until this one is done.' },
 };
+
+/** A ⋯ menu choice; one that doesn't fit is greyed with the reason under it. */
+function MenuChoice({
+  icon,
+  label,
+  reason,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  reason: string | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={reason ? 'is-off' : undefined}
+      aria-disabled={reason ? true : undefined}
+      title={reason ?? undefined}
+      onClick={reason ? undefined : onClick}
+    >
+      {icon}
+      <span className="hb-actions-text">
+        {label}
+        {reason && <span className="hb-actions-why">{reason}</span>}
+      </span>
+    </button>
+  );
+}
 
 /** The type column of the Linked tasks list. */
 const LINK_LABEL: Record<Exclude<PickerKind, 'child'>, string> = {
@@ -604,7 +635,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
     setNewSubError(null);
     try {
       applyTask(await api.createSubtask(task.id, name));
-      closeNewSub();
+      // Stays open for the next line; Escape or Cancel closes it.
+      setNewSubName('');
     } catch (err) {
       setNewSubError(err instanceof ApiError ? err.message : 'Could not create the sub-task');
     } finally {
@@ -794,6 +826,40 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Once a parent is set, "Parent" leaves the type list: fall back to Blocked by.
   const addType = linkType === 'parent' && task.parent ? 'blockedBy' : linkType;
   const doneChildren = task.children.filter((c) => c.status === 'Completed').length;
+
+  // Project › Task › Sub-task (Nov 2026 plan): what this task may still hold,
+  // and which convert choices fit. A choice that doesn't fit is shown greyed
+  // with the reason; the server checks the same rules.
+  const lv = task.levels ?? { depth: 0, topIsProject: false, below: 0 };
+  const childWord = task.isProject ? 'task' : 'sub-task';
+  const holdsChildren = task.isProject || lv.depth < (lv.topIsProject ? 2 : 1);
+  const noChildrenReason = holdsChildren
+    ? null
+    : lv.topIsProject
+      ? 'A sub-task can’t have sub-tasks of its own: that would make a fourth level.'
+      : 'A sub-task can’t have sub-tasks of its own. Mark the top task as a project to allow three levels.';
+  const convert = {
+    markProject: lv.depth > 0 ? 'Only a top-level task can be a project' : null,
+    unmarkProject:
+      lv.below > 1 ? 'Its tasks have sub-tasks, and only a project holds three levels' : null,
+    moveUnder: task.isProject
+      ? 'A project is always at the top'
+      : lv.below > 1
+        ? 'Would make a fourth level'
+        : null,
+  };
+  async function setProject(on: boolean) {
+    try {
+      const updated = await api.updateTask(task.id, { isProject: on }, task.updatedAt);
+      applyTask(updated);
+      flashSaved();
+    } catch (err) {
+      toast({
+        message: err instanceof ApiError ? err.message : 'Could not change it',
+        tone: 'error',
+      });
+    }
+  }
   // Review workflow: while in Review, Status + Assignee are locked; the two exits
   // (Reviewed / Recall) carry their own permissions.
   const isInReview = task.status === 'Review';
@@ -1170,6 +1236,53 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               >
                 <FileStack size={16} aria-hidden="true" /> Save as template
               </button>
+            )}
+            {canEdit && (
+              <>
+                <div className="hb-actions-sep" role="separator" />
+                {task.isProject ? (
+                  <MenuChoice
+                    icon={<FolderOpen size={16} aria-hidden="true" />}
+                    label="Unmark as project"
+                    reason={convert.unmarkProject}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void setProject(false);
+                    }}
+                  />
+                ) : (
+                  <MenuChoice
+                    icon={<FolderOpen size={16} aria-hidden="true" />}
+                    label="Mark as project"
+                    reason={convert.markProject}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void setProject(true);
+                    }}
+                  />
+                )}
+                {task.parent && (
+                  <MenuChoice
+                    icon={<CornerLeftUp size={16} aria-hidden="true" />}
+                    label="Make it its own task"
+                    reason={null}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void runRel(() => api.clearParent(task.id));
+                    }}
+                  />
+                )}
+                <MenuChoice
+                  icon={<ListTree size={16} aria-hidden="true" />}
+                  label={task.parent ? 'Move under another task…' : 'Make it a sub-task of…'}
+                  reason={convert.moveUnder}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (menuRef.current) openPicker('parent', menuRef.current);
+                  }}
+                />
+                <div className="hb-actions-sep" role="separator" />
+              </>
             )}
             {currentUser.role === 'Admin' && (
               <button
@@ -1689,13 +1802,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <span className="hb-ic tone-blue">
                   <ListTree size={16} aria-hidden="true" />
                 </span>
-                <h3>Sub-tasks</h3>
+                <h3>{task.isProject ? 'Tasks' : 'Sub-tasks'}</h3>
                 {task.children.length > 0 && (
                   <span className="hb-small">
                     {doneChildren} of {task.children.length} done
                   </span>
                 )}
-                {canEdit && (
+                {canEdit && holdsChildren && (
                   <>
                     <Btn onClick={() => setNewSubOpen(true)}>
                       <Plus size={14} aria-hidden="true" /> New
@@ -1719,8 +1832,8 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 >
                   <input
                     className="hb-tpl-input"
-                    aria-label="New sub-task name"
-                    placeholder="Sub-task name, then Enter"
+                    aria-label={`New ${childWord} name`}
+                    placeholder={`${task.isProject ? 'Task' : 'Sub-task'} name, then Enter for the next`}
                     value={newSubName}
                     autoFocus
                     maxLength={300}
@@ -1748,8 +1861,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                   </span>
                 </form>
               )}
-              {task.children.length === 0 ? (
-                <Empty>No sub-tasks yet.</Empty>
+              {noChildrenReason && task.children.length === 0 ? (
+                <p className="hb-link-none">{noChildrenReason}</p>
+              ) : task.children.length === 0 ? (
+                <Empty>No {childWord}s yet.</Empty>
               ) : (
                 task.children.map((c) =>
                   c.accessible ? (
@@ -1945,6 +2060,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
           anchorRef={pickerAnchor}
           title={PICKER_TEXT[picker].title}
           hint={PICKER_TEXT[picker].hint}
+          forParent={picker === 'parent'}
           excludeId={task.id}
           linkedIds={linkedIds[picker]}
           onPick={handlePick}

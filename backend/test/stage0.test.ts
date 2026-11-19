@@ -456,3 +456,68 @@ describe('Stage 0: duty pages and template departments', () => {
     assert.equal(byName['All hands'], null);
   });
 });
+
+describe('Stage 1: levels, unread mentions and the parent picker on the task page', () => {
+  it('tells a task where it sits in the three levels', async () => {
+    const admin = await login(ADMIN);
+    const p = await makeTask(admin, 'Project', { isProject: true });
+    const t = await makeTask(admin, 'Task');
+    const s = await makeTask(admin, 'Sub-task');
+    await setParent(admin, t.id, p.id);
+    await setParent(admin, s.id, t.id);
+    assert.deepEqual((await getTask(admin, p.id)).body.levels, {
+      depth: 0,
+      topIsProject: true,
+      below: 2,
+    });
+    assert.deepEqual((await getTask(admin, t.id)).body.levels, {
+      depth: 1,
+      topIsProject: true,
+      below: 1,
+    });
+    assert.deepEqual((await getTask(admin, s.id)).body.levels, {
+      depth: 2,
+      topIsProject: true,
+      below: 0,
+    });
+  });
+
+  it("counts the reader's own unread mentions on a task", async () => {
+    const admin = await login(ADMIN);
+    const worker = await seedUser('worker@test.local', 'Member');
+    const t = await makeTask(admin, 'Mentioned here');
+    const me = await prisma.user.findUniqueOrThrow({ where: { email: ADMIN } });
+    await prisma.notification.createMany({
+      data: [
+        { userId: me.id, taskId: t.id, type: 'mentioned' },
+        { userId: me.id, taskId: t.id, type: 'mentioned', readAt: new Date() },
+        { userId: me.id, taskId: t.id, type: 'assigned', assignAction: 'added' },
+        { userId: worker.id, taskId: t.id, type: 'mentioned' },
+      ],
+    });
+    assert.equal((await getTask(admin, t.id)).body.unreadMentions, 1);
+  });
+
+  it('offers as parents only the tasks a task fits under', async () => {
+    const admin = await login(ADMIN);
+    const p = await makeTask(admin, 'Pick Project', { isProject: true });
+    const plain = await makeTask(admin, 'Pick Plain');
+    const t = await makeTask(admin, 'Pick Mover');
+    const s = await makeTask(admin, 'Pick Child');
+    await setParent(admin, s.id, t.id);
+    const res = await request(app)
+      .get(`/api/tasks/search?q=Pick&exclude=${t.id}&for=parent`)
+      .set(auth(admin));
+    assert.equal(res.status, 200);
+    // With a sub-task of its own, it fits only under the project.
+    assert.deepEqual(
+      (res.body as { id: number }[]).map((r) => r.id),
+      [p.id],
+    );
+    const all = await request(app).get(`/api/tasks/search?q=Pick&exclude=${t.id}`).set(auth(admin));
+    assert.deepEqual(
+      (all.body as { id: number }[]).map((r) => r.id).sort(),
+      [p.id, plain.id, s.id].sort(),
+    );
+  });
+});

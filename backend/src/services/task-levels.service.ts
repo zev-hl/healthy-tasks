@@ -61,6 +61,30 @@ export async function levelsBelow(db: Db, taskId: number): Promise<number> {
   }
 }
 
+/** Where `taskId` sits: depth (0 = top), whether its top is a project, levels below. */
+export async function levelInfo(
+  db: Db,
+  taskId: number,
+): Promise<{ depth: number; topIsProject: boolean; below: number }> {
+  const chain = await chainUp(db, taskId);
+  const top = chain[chain.length - 1];
+  return {
+    depth: Math.max(chain.length - 1, 0),
+    topIsProject: top?.isProject ?? false,
+    below: await levelsBelow(db, taskId),
+  };
+}
+
+/** Whether `taskId` may go under `parentId` (the check below, as a yes/no). */
+export async function fitsUnder(db: Db, taskId: number, parentId: number): Promise<boolean> {
+  try {
+    await assertCanPlaceUnder(db, taskId, parentId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Refuse placing `taskId` (null = a brand-new task with no sub-tasks) under
  * `parentId` when the result would break the levels.

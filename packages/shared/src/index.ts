@@ -378,7 +378,21 @@ export interface TaskRef {
  * `children` is derived (tasks whose parent is this one). `blocks` /
  * `isBlockedBy` come from the separate dependency graph.
  */
+/**
+ * Where a task sits in Project › Task › Sub-task (Nov 2026 plan): how deep it
+ * is (0 = top), whether its top task is a project, and how many levels sit
+ * below it. Drives which convert choices the task page offers.
+ */
+export interface TaskLevelsDto {
+  depth: number;
+  topIsProject: boolean;
+  below: number;
+}
+
 export interface TaskDetailDto extends TaskDto {
+  levels: TaskLevelsDto;
+  /** The requesting user's unread @mentions on this task. */
+  unreadMentions: number;
   parent: TaskRef | null;
   children: TaskRef[];
   blocks: TaskRef[];
@@ -429,6 +443,8 @@ export interface DependencyRequest {
 
 export interface CreateTaskRequest {
   name: string;
+  /** Mark it as a project (top-level only; Project › Task › Sub-task). */
+  isProject?: boolean;
   description?: string | null;
   assigneeId?: string | null;
   priority?: TaskPriority;
@@ -443,6 +459,8 @@ export interface CreateTaskRequest {
 /** All fields optional; id, creator, and createdAt are immutable and omitted. */
 export interface UpdateTaskRequest {
   name?: string;
+  /** Mark it as a project (top-level only; Project › Task › Sub-task). */
+  isProject?: boolean;
   description?: string | null;
   assigneeId?: string | null;
   priority?: TaskPriority;

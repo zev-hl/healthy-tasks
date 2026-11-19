@@ -55,7 +55,7 @@ import {
 import { toActiveUserDto } from './user.mapper.js';
 import { assertDutyAssignable } from './department.service.js';
 import { assertHoldsDuty } from './duty-check.service.js';
-import { assertCanPlaceUnder, assertCanSetProject } from './task-levels.service.js';
+import { assertCanPlaceUnder, assertCanSetProject, levelInfo } from './task-levels.service.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 
 /** "Department › Duty" for a duty id (history snapshots), or null. */
@@ -242,10 +242,18 @@ export async function getTaskDetail(id: number, actor: Actor): Promise<TaskDetai
   if (!level) throw HttpError.notFound('Task not found');
   const toggle = await canTogglePrivate(actor, task.assigneeId);
   const changeDue = level === 'full' && (await canChangeDueDate(actor, task));
+  const [levels, unreadMentions] = await Promise.all([
+    levelInfo(prisma, task.id),
+    prisma.notification.count({
+      where: { userId: actor.id, taskId: task.id, type: 'mentioned', readAt: null },
+    }),
+  ]);
   return toTaskDetailDto(task as unknown as TaskWithDetail, {
     level,
     canTogglePrivate: toggle,
     canChangeDue: changeDue,
+    levels,
+    unreadMentions,
     canSee: (refId) => isTaskVisible(scope, refId),
   });
 }
@@ -314,7 +322,8 @@ export async function updateTask(
   // Assignee is frozen for EVERYONE, including Admin — so the Due Date report can
   // trust "current Assignee" for terminal tasks. Reopening (moving Status away
   // from terminal, no assignee change in the same PATCH) unlocks it again.
-  const assigneeChanging = input.assigneeId !== undefined && input.assigneeId !== existing.assigneeId;
+  const assigneeChanging =
+    input.assigneeId !== undefined && input.assigneeId !== existing.assigneeId;
   if (
     !opts.allowReviewExit &&
     TERMINAL_TASK_STATUSES.includes(existing.status) &&
@@ -399,8 +408,7 @@ export async function updateTask(
   // A task keeps an inactive group it already has; it just cannot be picked.
   const alertGroupChanging =
     input.alertGroupId !== undefined && input.alertGroupId !== existing.alertGroupId;
-  const alertTypeChanging =
-    input.alertType !== undefined && input.alertType !== existing.alertType;
+  const alertTypeChanging = input.alertType !== undefined && input.alertType !== existing.alertType;
   const [alertGroupBefore, alertGroupAfter] = alertGroupChanging
     ? await Promise.all([
         alertGroupHistoryLabel(existing.alertGroupId),
@@ -794,7 +802,10 @@ export async function duplicateTask(
   const actorId = actor.id;
   // Cloning requires full (edit) access to the source task.
   await assertCanEditTask(actor, rootId);
-  const root = await prisma.task.findUnique({ where: { id: rootId }, select: { id: true, parentId: true } });
+  const root = await prisma.task.findUnique({
+    where: { id: rootId },
+    select: { id: true, parentId: true },
+  });
   if (!root) throw HttpError.notFound('Task not found');
 
   const ids = includeDescendants ? await collectSubtreeIds(rootId) : [rootId];
@@ -851,7 +862,8 @@ export async function duplicateTask(
       for (const e of edges) {
         const blockerId = idMap.get(e.blockerId);
         const blockedId = idMap.get(e.blockedId);
-        if (blockerId && blockedId) await tx.taskDependency.create({ data: { blockerId, blockedId } });
+        if (blockerId && blockedId)
+          await tx.taskDependency.create({ data: { blockerId, blockedId } });
       }
     }
   });
@@ -863,7 +875,12 @@ export async function duplicateTask(
   // Assignment notifications for the copies (self-assignments skipped inside).
   for (const c of created) {
     if (c.assigneeId) {
-      await createAssignedNotification({ recipientId: c.assigneeId, actorId, taskId: c.taskId, action: 'added' });
+      await createAssignedNotification({
+        recipientId: c.assigneeId,
+        actorId,
+        taskId: c.taskId,
+        action: 'added',
+      });
     }
   }
 

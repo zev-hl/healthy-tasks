@@ -177,10 +177,7 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
  * internal callers that don't scope (none currently ship a ref to an end user
  * without a `canSee`).
  */
-export function toTaskRef(
-  task: Pick<Task, 'id' | 'name' | 'status'>,
-  accessible = true,
-): TaskRef {
+export function toTaskRef(task: Pick<Task, 'id' | 'name' | 'status'>, accessible = true): TaskRef {
   return {
     id: task.id,
     name: accessible ? task.name : '',
@@ -194,6 +191,8 @@ export interface TaskAccessContext {
   level: TaskAccessLevel;
   canTogglePrivate: boolean;
   canChangeDue: boolean;
+  levels: TaskDetailDto['levels'];
+  unreadMentions: number;
   /** Live visibility test for referenced tasks (parent/children/blocks/blockedBy). */
   canSee: (taskId: number) => boolean;
 }
@@ -206,6 +205,8 @@ export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext)
     access: access.level,
     canTogglePrivate: access.canTogglePrivate,
     canChangeDue: access.canChangeDue,
+    levels: access.levels,
+    unreadMentions: access.unreadMentions,
     reminderCount: task._count.reminders,
     parent: task.parent ? ref(task.parent) : null,
     children: task.children.map(ref),

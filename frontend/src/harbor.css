@@ -8745,3 +8745,49 @@ textarea.hb-tpl-input {
   text-overflow: ellipsis;
   color: var(--muted);
 }
+
+/* ⋯ menu: convert choices, greyed with the reason when they don't fit. */
+.hb-actions-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.hb-actions-text {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+}
+.hb-actions-why {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.hb-pop .hb-actions-menu button.is-off {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.hb-pop .hb-actions-menu button.is-off:hover {
+  background: transparent;
+}
+
+/* Parent box: comment count, unread mentions of you in red. */
+.hb-parentbox-comments {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink-3);
+  text-decoration: none;
+}
+.hb-parentbox-unread {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}

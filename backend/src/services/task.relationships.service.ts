@@ -1,8 +1,13 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db/prisma.js';
-import { assertCanPlaceUnder } from './task-levels.service.js';
+import { assertCanPlaceUnder, fitsUnder } from './task-levels.service.js';
 import { HttpError } from '../utils/http-error.js';
-import { TASK_HISTORY_FIELDS, type DependencyType, type TaskDetailDto, type TaskRef } from '@healthy-tasks/shared';
+import {
+  TASK_HISTORY_FIELDS,
+  type DependencyType,
+  type TaskDetailDto,
+  type TaskRef,
+} from '@healthy-tasks/shared';
 import { getTaskDetail } from './task.service.js';
 import { toTaskRef } from './task.mapper.js';
 import { recordHistory, type HistoryEntryInput } from './task-history.service.js';
@@ -313,7 +318,10 @@ export async function removeDependency(
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.taskDependency.deleteMany({ where: { blockerId, blockedId } });
     if (count > 0) {
-      await recordHistory(tx, await dependencyEntries(tx, actorId, blockerId, blockedId, 'removed'));
+      await recordHistory(
+        tx,
+        await dependencyEntries(tx, actorId, blockerId, blockedId, 'removed'),
+      );
     }
   });
   return getTaskDetail(taskId, actor);
@@ -333,6 +341,8 @@ export async function searchTasks(
   actor: Actor,
   query: string,
   excludeId?: number,
+  /** 'parent': only tasks `excludeId` may move under within the three levels. */
+  purpose?: 'parent',
 ): Promise<TaskRef[]> {
   const q = query.trim();
   if (q === '') return [];
@@ -356,8 +366,18 @@ export async function searchTasks(
     },
     select: { id: true, name: true, status: true },
     orderBy: { id: 'asc' },
-    take: 20,
+    take: purpose === 'parent' ? 60 : 20,
   });
+  const fitting =
+    purpose === 'parent' && excludeId !== undefined
+      ? (
+          await Promise.all(
+            tasks.map(async (t) => ((await fitsUnder(prisma, excludeId, t.id)) ? t : null)),
+          )
+        )
+          .filter((t): t is (typeof tasks)[number] => t !== null)
+          .slice(0, 20)
+      : tasks;
   // Every returned task is visible to the actor, so these refs are all accessible.
-  return tasks.map((t) => toTaskRef(t, true));
+  return fitting.map((t) => toTaskRef(t, true));
 }

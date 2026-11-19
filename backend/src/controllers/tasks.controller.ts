@@ -179,7 +179,8 @@ export async function searchTasksController(req: Request, res: Response): Promis
   const excludeRaw = req.query.exclude;
   const exclude =
     typeof excludeRaw === 'string' && /^\d+$/.test(excludeRaw) ? Number(excludeRaw) : undefined;
-  res.json((await searchTasks(actorOf(req), q, exclude)) satisfies TaskRef[]);
+  const purpose = req.query.for === 'parent' ? 'parent' : undefined;
+  res.json((await searchTasks(actorOf(req), q, exclude, purpose)) satisfies TaskRef[]);
 }
 
 export async function setParentController(req: Request, res: Response): Promise<void> {

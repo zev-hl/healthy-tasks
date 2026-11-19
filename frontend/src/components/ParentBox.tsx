@@ -1,23 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CornerLeftUp, Lock } from 'lucide-react';
+import { CornerLeftUp, Lock, MessageSquare } from 'lucide-react';
 import type { TaskDetailDto, TaskRef } from '@healthy-tasks/shared';
 import { api } from '../api/client';
 import { userLabel } from './ui/Avatar';
 import { PriorityMark, StatusPill, cx } from './harbor/ui';
 import { dueInfo } from './harbor/taskHelpers';
 
-/** The text of some HTML. DOMParser's document is inert: nothing in it loads or runs. */
-function plain(html: string | null): string {
-  if (!html) return '';
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return (doc.body.textContent ?? '').replace(/\s+/g, ' ').trim();
-}
-
 /**
- * On a sub-task's page, a read-only box with its parent's main facts (meeting
- * decision, Nov 11), so whoever does the sub-task sees the bigger picture: the
- * parent's due date, priority, status, owner and description, with a link.
+ * On a sub-task's page, a read-only box with its parent's main facts (Nov 2026
+ * plan, F2), so whoever does the sub-task sees the bigger picture: the parent's
+ * title, status, assignee, due date and priority, how many comments it has and,
+ * in red, how many of them mention you unread. No description.
  */
 export function ParentBox({ parent }: { parent: TaskRef }) {
   const [detail, setDetail] = useState<TaskDetailDto | null>(null);
@@ -48,7 +42,6 @@ export function ParentBox({ parent }: { parent: TaskRef }) {
   }
 
   const due = detail ? dueInfo(detail.dueAt, detail.status) : null;
-  const desc = detail ? plain(detail.description) : '';
 
   return (
     <section className="hb-card hb-parentbox" aria-label="Parent task">
@@ -69,10 +62,29 @@ export function ParentBox({ parent }: { parent: TaskRef }) {
             <span className="hb-parentbox-who">
               {detail.assignee ? userLabel(detail.assignee) : 'Unassigned'}
             </span>
+            <Link
+              to={`/tasks/${parent.id}`}
+              className="hb-parentbox-comments"
+              title={
+                detail.unreadMentions > 0
+                  ? `${detail.unreadMentions} unread mention${detail.unreadMentions === 1 ? '' : 's'} of you`
+                  : undefined
+              }
+            >
+              <MessageSquare size={13} aria-hidden="true" />
+              {detail.comments.length} comment{detail.comments.length === 1 ? '' : 's'}
+              {detail.unreadMentions > 0 && (
+                <span
+                  className="hb-parentbox-unread"
+                  aria-label={`${detail.unreadMentions} unread mention${detail.unreadMentions === 1 ? '' : 's'}`}
+                >
+                  {detail.unreadMentions}
+                </span>
+              )}
+            </Link>
           </>
         )}
       </div>
-      {desc && <p className="hb-parentbox-desc">{desc}</p>}
     </section>
   );
 }

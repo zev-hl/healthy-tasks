@@ -384,10 +384,12 @@ export const api = {
     request<ActiveUserDto[]>(`/api/tasks/${taskId}/reviewer-candidates`),
 
   // --- Task relationships ---
-  searchTasks: (q: string, excludeId?: number) =>
+  /** `forParent`: only tasks `excludeId` may move under within the three levels. */
+  searchTasks: (q: string, excludeId?: number, forParent = false) =>
     request<TaskRef[]>(
       `/api/tasks/search?q=${encodeURIComponent(q)}` +
-        (excludeId !== undefined ? `&exclude=${excludeId}` : ''),
+        (excludeId !== undefined ? `&exclude=${excludeId}` : '') +
+        (forParent ? '&for=parent' : ''),
     ),
   setParent: (id: number, parentId: number) =>
     request<TaskDetailDto>(`/api/tasks/${id}/parent`, {
@@ -626,7 +628,10 @@ export const api = {
   createDepartment: (body: CreateDepartmentRequest) =>
     request<DepartmentDto[]>('/api/departments', { method: 'POST', body: JSON.stringify(body) }),
   updateDepartment: (id: string, body: UpdateDepartmentRequest) =>
-    request<DepartmentDto[]>(`/api/departments/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    request<DepartmentDto[]>(`/api/departments/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   archiveDepartment: (id: string) =>
     request<DepartmentDto[]>(`/api/departments/${id}/archive`, { method: 'POST' }),
   restoreDepartment: (id: string) =>

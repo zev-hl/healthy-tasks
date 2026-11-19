@@ -16,6 +16,7 @@ export function TaskLinkPicker({
   hint,
   excludeId,
   linkedIds,
+  forParent = false,
   onPick,
   onClose,
 }: {
@@ -26,6 +27,8 @@ export function TaskLinkPicker({
   excludeId: number;
   /** Tasks already linked this way (shown, marked, not pickable). */
   linkedIds: ReadonlySet<number>;
+  /** Picking a parent: list only tasks it fits under within the three levels. */
+  forParent?: boolean;
   onPick: (task: TaskRef) => void | Promise<void>;
   onClose: () => void;
 }) {
@@ -57,7 +60,7 @@ export function TaskLinkPicker({
     setLoading(true);
     const handle = setTimeout(() => {
       api
-        .searchTasks(q, excludeId)
+        .searchTasks(q, excludeId, forParent)
         .then((r) => {
           if (cancelled) return;
           setResults(r);
@@ -79,7 +82,7 @@ export function TaskLinkPicker({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, excludeId]);
+  }, [query, excludeId, forParent]);
 
   function move(step: number) {
     if (results.length === 0) return;

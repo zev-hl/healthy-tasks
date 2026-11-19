@@ -104,6 +104,9 @@ function makeTask(description: string | null): TaskDetailDto {
     access: 'full',
     canTogglePrivate: true,
     reminderCount: 0,
+    isProject: false,
+    levels: { depth: 0, topIsProject: false, below: 0 },
+    unreadMentions: 0,
   } as unknown as TaskDetailDto;
 }
 
@@ -269,7 +272,7 @@ describe('TaskDetailView — parent box', () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("shows the parent's due date, status and description on a sub-task", async () => {
+  it("shows the parent's due date, status and comment counts on a sub-task, no description", async () => {
     const getTask = api.getTask as unknown as ReturnType<typeof vi.fn>;
     getTask.mockResolvedValue({
       ...makeTask('<p>Check every <b>supplier</b> price.</p>'),
@@ -277,6 +280,8 @@ describe('TaskDetailView — parent box', () => {
       name: 'Quarter plan',
       status: 'InProgress',
       dueAt: '2020-01-02T17:00:00.000Z',
+      comments: [{ id: 'c1' }, { id: 'c2' }],
+      unreadMentions: 1,
     });
     renderWithDataRouter(
       <TaskDetailView
@@ -291,7 +296,9 @@ describe('TaskDetailView — parent box', () => {
     await settle();
     const box = screen.getByRole('region', { name: 'Parent task' });
     expect(within(box).getByRole('link', { name: '#1 Quarter plan' })).toBeTruthy();
-    expect(within(box).getByText('Check every supplier price.')).toBeTruthy();
+    expect(within(box).queryByText('Check every supplier price.')).toBeNull();
+    expect(within(box).getByRole('link', { name: /2 comments/ })).toBeTruthy();
+    expect(within(box).getByLabelText('1 unread mention')).toHaveClass('hb-parentbox-unread');
     expect(box.querySelector('.hb-parentbox-due.is-late')).not.toBeNull();
   });
 
@@ -362,5 +369,71 @@ describe('TaskDetailView — header chips save at once', () => {
     const box = document.querySelector('.hb-taskhead-due')!;
     expect(box).toHaveClass('is-late');
     expect(within(box as HTMLElement).getByRole('button', { name: /^Due date/ })).toBeDisabled();
+  });
+});
+
+describe('TaskDetailView — convert choices follow the three levels', () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+    (api.getTask as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeTask(null));
+  });
+
+  async function openMenu(over: Partial<TaskDetailDto>) {
+    renderWithDataRouter(
+      <TaskDetailView initialTask={{ ...makeTask(null), ...over }} currentUser={me} />,
+      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
+    );
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+  }
+
+  it('greys "Mark as project" on a sub-task, with the reason', async () => {
+    await openMenu({
+      parent: { id: 1, name: 'Up', status: 'Open', accessible: true },
+      levels: { depth: 1, topIsProject: false, below: 0 },
+    });
+    const mark = screen.getByRole('button', { name: /Mark as project/ });
+    expect(mark).toHaveAttribute('aria-disabled', 'true');
+    expect(mark).toHaveTextContent('Only a top-level task can be a project');
+    expect(screen.getByRole('button', { name: /Make it its own task/ })).not.toHaveAttribute(
+      'aria-disabled',
+    );
+  });
+
+  it('marks a top-level task as a project at once', async () => {
+    await openMenu({});
+    updateTask.mockResolvedValueOnce({ ...makeTask(null), isProject: true });
+    fireEvent.click(screen.getByRole('button', { name: /Mark as project/ }));
+    await settle();
+    expect(updateTask).toHaveBeenCalledWith(7, { isProject: true }, expect.any(String));
+  });
+
+  it("won't move a project under anything, or unmark one holding three levels", async () => {
+    await openMenu({ isProject: true, levels: { depth: 0, topIsProject: true, below: 2 } });
+    expect(screen.getByRole('button', { name: /Make it a sub-task of/ })).toHaveTextContent(
+      'A project is always at the top',
+    );
+    expect(screen.getByRole('button', { name: /Unmark as project/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  });
+
+  it('a sub-task under a plain task takes no sub-tasks of its own', async () => {
+    renderWithDataRouter(
+      <TaskDetailView
+        initialTask={{
+          ...makeTask(null),
+          parent: { id: 1, name: 'Up', status: 'Open', accessible: true },
+          levels: { depth: 1, topIsProject: false, below: 0 },
+        }}
+        currentUser={me}
+      />,
+      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
+    );
+    await settle();
+    const card = screen.getByRole('heading', { name: 'Sub-tasks' }).closest('section')!;
+    expect(within(card).queryByRole('button', { name: /New/ })).toBeNull();
+    expect(within(card).getByText(/can’t have sub-tasks of its own/)).toBeInTheDocument();
   });
 });

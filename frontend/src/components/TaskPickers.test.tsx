@@ -51,7 +51,7 @@ describe('TaskLinkPicker', () => {
     const input = screen.getByRole('textbox', { name: 'Search tasks' });
     fireEvent.change(input, { target: { value: '#re' } });
     await waitFor(() => expect(screen.getByText('Restock')).toBeTruthy());
-    expect(searchTasks).toHaveBeenCalledWith('re', 5);
+    expect(searchTasks).toHaveBeenCalledWith('re', 5, false);
     expect(screen.getByText('Old link')).toBeTruthy();
     expect(
       screen.getByText('Old link').closest('[role=option]')?.getAttribute('aria-disabled'),
