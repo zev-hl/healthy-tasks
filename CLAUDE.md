@@ -183,6 +183,9 @@ Stage 3: one Calendar page (`/calendar`: due dates, your reminders, events, your
 Google events; Me / Team), events (`event.service.ts`; a notice now points at a
 task **or** an event), and each person's Google Calendar read-only
 (`google-calendar.service.ts`, off until the `GOOGLE_*` calendar vars are set) — see §21.
+The file cabinet (I3, first version): `/files`, every file on tasks and comments
+you may see, with search and filters (`GET /api/files`, `file-cabinet.service.ts`)
+— see §24.
 Stage 4: our Connect (`connect.service.ts`, off until `CONNECT_URL` + `CONNECT_API_KEY`):
 notices as Connect messages (`notifyByConnect`), Call on a task (a Connect call saved
 as a `call` event), Discuss in Connect, the chat pop-up, Connect calls on the

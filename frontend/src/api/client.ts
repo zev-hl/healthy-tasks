@@ -9,6 +9,8 @@ import type {
   AppSettingsDto,
   UpdateAppSettingsRequest,
   AttachmentDownloadResponse,
+  FileCabinetPageDto,
+  FileCabinetQuery,
   ConfirmAttachmentRequest,
   CreateCommentRequest,
   CreateTaskRequest,
@@ -675,6 +677,13 @@ export const api = {
   // --- Department Duties: Departments & Duties catalog ---
   // Every write answers with the whole catalog.
   listDepartments: () => request<DepartmentDto[]>('/api/departments'),
+  /** The file cabinet (I3): files on tasks and comments I may see, newest first. */
+  listFiles: (query: FileCabinetQuery) => {
+    const qs = new URLSearchParams(
+      Object.entries(query).filter((e): e is [string, string] => !!e[1]),
+    ).toString();
+    return request<FileCabinetPageDto>(`/api/files${qs ? `?${qs}` : ''}`);
+  },
   // A duty's video as a file (I4).
   presignDutyVideo: (id: string, meta: { filename: string; contentType: string; size: number }) =>
     request<{ uploadUrl: string; storageKey: string }>(

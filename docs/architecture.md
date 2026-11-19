@@ -1309,3 +1309,24 @@ waits for our Connect.
   the caller's `tokenVersion`, ending every sign-in of theirs on every device,
   this one included; the page then goes to sign-in.
 
+## 24. The file cabinet (Nov 2026 plan, I3)
+
+A first version, for review (the meeting left I3 "needs more discussion").
+`/files` in HL Central's sidebar lists every file on a task or in a comment that
+you may see, newest first, 50 at a time (`GET /api/files`,
+`file-cabinet.service.ts`).
+
+- **Who sees what**: the task's rule, through `buildTaskAccessWhere` with
+  read-only included: every non-private task, private ones you have full access
+  to, Admins all. A soft-deleted task's files are left out. Opening a file goes
+  through `/api/attachments/:id/download`, which checks the task again.
+- **Search** (`q`): file names, voice-note transcripts and task names.
+- **Filters**: kind (`FILE_KINDS`: images, documents, videos, audio, voice notes
+  and screen recordings, other — by content type, recordings by how they were
+  made), the task's duty's department, who uploaded it, and dates (`from`/`to`,
+  business days; the page offers 7 days, 30 days, this year).
+- **Paging**: `next` is an opaque cursor (createdAt + id).
+
+Not in this version: drafts' files and duty videos (they have their own pages),
+Connect's files (Connect has its own Files page), folders or tags.
+

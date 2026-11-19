@@ -581,6 +581,46 @@ export interface AttachmentDto {
   transcript: string | null;
 }
 
+/**
+ * The file cabinet (Nov 2026 plan, I3): every file on tasks and comments that
+ * you may see, in one list (`GET /api/files`).
+ */
+export const FILE_KINDS = ['image', 'document', 'video', 'audio', 'recording', 'other'] as const;
+export type FileKind = (typeof FILE_KINDS)[number];
+export const FILE_KIND_LABELS: Record<FileKind, string> = {
+  image: 'Images',
+  document: 'Documents',
+  video: 'Videos',
+  audio: 'Audio',
+  recording: 'Voice notes and screen recordings',
+  other: 'Other',
+};
+export interface FileCabinetItemDto extends AttachmentDto {
+  /** The task it is on (a comment's file: the comment's task). */
+  task: { id: number; name: string; isPrivate: boolean };
+  /** On the task itself, or in a comment on it. */
+  on: 'task' | 'comment';
+  /** The task's duty's department, if it has a duty. */
+  department: { id: string; name: string; color: string } | null;
+}
+export interface FileCabinetQuery {
+  q?: string;
+  kind?: FileKind;
+  departmentId?: string;
+  uploadedById?: string;
+  /** Uploaded on or after (YYYY-MM-DD, business day). */
+  from?: string;
+  /** Uploaded on or before (YYYY-MM-DD). */
+  to?: string;
+  /** The `next` of the page before. */
+  cursor?: string;
+}
+export interface FileCabinetPageDto {
+  files: FileCabinetItemDto[];
+  /** Pass as `cursor` for the next page; null at the end. */
+  next: string | null;
+}
+
 /** Comment recordings (Nov 2026 plan, D4): a voice note or the screen. */
 export const RECORDING_KINDS = ['voice', 'screen'] as const;
 export type RecordingKind = (typeof RECORDING_KINDS)[number];

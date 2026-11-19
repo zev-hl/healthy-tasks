@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState } from 'react';
 import {
   CalendarDays,
   Clock,
+  FolderOpen,
   LayoutDashboard,
   Layers,
   ListChecks,
@@ -58,6 +59,7 @@ const CENTRAL_NAV: NavEntry[] = [
   },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays, match: ['/calendar'] },
   { to: '/time', label: 'Time', icon: Clock, match: ['/time', '/reports/time'] },
+  { to: '/files', label: 'Files', icon: FolderOpen, match: ['/files'] },
   { to: '/goals', label: 'Goals', icon: Target, match: ['/goals'] },
   {
     to: '/admin/organization',

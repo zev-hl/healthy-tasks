@@ -9894,3 +9894,83 @@ a.hb-origin-chip:hover {
 .hb-callpop .hb-seg button {
   white-space: nowrap;
 }
+
+/* The file cabinet (Nov 2026 plan, I3). */
+.hb-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hb-files-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) minmax(0, 200px) 150px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+}
+.hb-files-row + .hb-files-row {
+  border-top: 1px solid var(--border-soft);
+}
+.hb-files-main {
+  min-width: 0;
+}
+.hb-files-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-files-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.hb-files-transcript {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hb-files-lock {
+  margin-left: 4px;
+  vertical-align: -1px;
+}
+.hb-files-who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.hb-files-meta {
+  text-align: right;
+  white-space: nowrap;
+}
+.hb-files-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+@media (max-width: 760px) {
+  .hb-files-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .hb-files-who,
+  .hb-files-meta {
+    grid-column: 2;
+    text-align: left;
+  }
+}

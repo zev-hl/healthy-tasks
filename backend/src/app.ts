@@ -3,6 +3,7 @@ import { connectRouter } from './routes/connect.routes.js';
 import { googleCalendarRouter } from './routes/google-calendar.routes.js';
 import { calendarRouter, eventsRouter } from './routes/calendar.routes.js';
 import { timerRouter } from './routes/timer.routes.js';
+import { filesRouter } from './routes/files.routes.js';
 import { draftsRouter } from './routes/drafts.routes.js';
 import express from 'express';
 import cors from 'cors';
@@ -79,6 +80,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/org', orgRouter);
   app.use('/api/time', timeRouter);
   app.use('/api/drafts', draftsRouter);
+  app.use('/api/files', filesRouter);
   app.use('/api/timer', timerRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/events', eventsRouter);
