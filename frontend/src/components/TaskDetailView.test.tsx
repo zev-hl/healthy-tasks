@@ -474,3 +474,26 @@ describe('TaskDetailView — the Sub-tasks group', () => {
     expect(within(card).getByText('Low')).toBeInTheDocument();
   });
 });
+
+describe('TaskDetailView — where a task came from (G5)', () => {
+  it('shows "Made from" and "Repeats" from what the task already stores', async () => {
+    renderWithDataRouter(
+      <TaskDetailView
+        initialTask={{
+          ...makeTask(null),
+          template: { id: 4, name: 'Weekly restock' },
+          recurrenceSourceId: 3,
+          recurrenceSeq: 2,
+        }}
+        currentUser={me}
+      />,
+      { path: '/tasks/:id', initialEntries: ['/tasks/7'] },
+    );
+    await settle();
+    expect(screen.getByRole('link', { name: /Made from: Weekly restock/ })).toHaveAttribute(
+      'href',
+      '/admin/templates?template=4',
+    );
+    expect(screen.getByRole('link', { name: /Repeats: #2/ })).toHaveAttribute('href', '/tasks/3');
+  });
+});

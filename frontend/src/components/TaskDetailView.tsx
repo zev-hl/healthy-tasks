@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ALERT_ASSIGNED_LABEL,
+  EXCLUSIVES_ALERT_TYPE_LABELS,
   REMINDER_BLOCK_LABELS,
   reminderAddBlock,
   TASK_NAME_MIN_LENGTH,
@@ -35,6 +36,7 @@ import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { Avatar, userLabel } from './ui/Avatar';
 import {
   AlarmClock,
+  AlertTriangle,
   BellOff,
   Repeat,
   CheckCircle2,
@@ -1366,6 +1368,38 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               year: 'numeric',
             })}
           </p>
+          {/* G5: tasks made automatically say where they came from. */}
+          {(task.template ||
+            task.recurrenceSourceId != null ||
+            (task.creator === null && (task.alertGroup || task.alertType))) && (
+            <div className="hb-origin">
+              {task.template && (
+                <Link
+                  className="hb-origin-chip"
+                  to={`/admin/templates?template=${task.template.id}`}
+                >
+                  <FileStack size={13} aria-hidden="true" /> Made from: {task.template.name}
+                </Link>
+              )}
+              {task.recurrenceSourceId != null && (
+                <Link className="hb-origin-chip" to={`/tasks/${task.recurrenceSourceId}`}>
+                  <Repeat size={13} aria-hidden="true" /> Repeats
+                  {task.recurrenceSeq != null ? `: #${task.recurrenceSeq}` : ''}
+                </Link>
+              )}
+              {task.creator === null && (task.alertGroup || task.alertType) && (
+                <span className="hb-origin-chip">
+                  <AlertTriangle size={13} aria-hidden="true" /> Alert:{' '}
+                  {[
+                    task.alertGroup?.name,
+                    task.alertType ? EXCLUSIVES_ALERT_TYPE_LABELS[task.alertType] : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              )}
+            </div>
+          )}
 
           <div className="hb-chips">
             {isInReview || !canEdit ? (

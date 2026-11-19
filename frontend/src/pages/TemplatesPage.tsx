@@ -7,7 +7,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CalendarDays,
@@ -26,6 +26,8 @@ import {
   Trash2,
   UserRound,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import {
   RECURRENCE_UNIT_LABELS,
@@ -81,7 +83,7 @@ import {
  * editor follows the task page: the template's details and its task tree on
  * the left, how it repeats and what it makes on the right, and one Save bar.
  * Each task in the tree is a row (drag handle, name, its settings as chips)
- * that opens in place to edit everything else. "Create tasks" (instantiate)
+ * that opens in place to edit everything else. "Make tasks now"
  * asks for Day 0, a label and who fills each role, then checks duties.
  */
 
@@ -117,6 +119,8 @@ interface EditorState {
   id?: number;
   name: string;
   description: string;
+  /** G1: '' = company-wide. */
+  departmentId: string;
   nodes: EditorNode[];
   dependencies: { blockerKey: string; blockedKey: string }[];
   recurrence: EditorRecurrence;
@@ -158,6 +162,7 @@ function toEditor(t: TemplateDto): EditorState {
     id: t.id,
     name: t.name,
     description: t.description ?? '',
+    departmentId: t.department?.id ?? '',
     nodes: t.nodes.map((n) => ({
       key: keyOf(n.id),
       id: n.id,
@@ -219,6 +224,7 @@ function toRequest(e: EditorState): CreateTemplateRequest {
   return {
     name: e.name.trim(),
     description: e.description.trim() || null,
+    departmentId: e.departmentId || null,
     nodes,
     dependencies: e.dependencies,
     recurrence: {
@@ -250,6 +256,40 @@ const REC_SHORT: Record<RecurrenceType, string> = {
   Fixed: 'On a schedule',
   RelativeToCompletion: 'After completion',
 };
+
+/**
+ * The list by department (Nov 2026 plan, G2): Company-wide first, then each
+ * department in name order. A template's department is set in its editor (G1).
+ */
+function sectionsOf(list: TemplateSummaryDto[]): {
+  key: string;
+  title: string;
+  hint: string;
+  items: TemplateSummaryDto[];
+}[] {
+  const byDept = new Map<string, { title: string; items: TemplateSummaryDto[] }>();
+  const company: TemplateSummaryDto[] = [];
+  for (const t of list) {
+    if (!t.department) company.push(t);
+    else {
+      const g = byDept.get(t.department.id) ?? { title: t.department.name, items: [] };
+      g.items.push(t);
+      byDept.set(t.department.id, g);
+    }
+  }
+  const hint = (items: TemplateSummaryDto[]) => {
+    const rep = items.filter((t) => t.recurrenceType !== 'None' && t.isActive).length;
+    return rep ? `${rep} repeating` : '';
+  };
+  return [
+    ...(company.length
+      ? [{ key: 'company', title: 'Company-wide', hint: hint(company), items: company }]
+      : []),
+    ...[...byDept.entries()]
+      .sort((a, b) => a[1].title.localeCompare(b[1].title))
+      .map(([id, g]) => ({ key: id, title: g.title, hint: hint(g.items), items: g.items })),
+  ];
+}
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -299,12 +339,46 @@ export function TemplatesPage() {
   const keyCounter = useRef(0);
   const nextKey = () => `n${(keyCounter.current += 1)}`;
 
-  function newTemplate() {
+  // While a template is open, the list is a rail beside it (Nov 11: opening a
+  // template no longer takes over the page). It folds away for room.
+  const editorDirty = useRef(false);
+  const [editorKey, setEditorKey] = useState(0);
+  const [railFolded, setRailFolded] = useState(() => {
+    try {
+      return localStorage.getItem('hb-tpl-rail-folded') === '1';
+    } catch {
+      return false;
+    }
+  });
+  function toggleRail() {
+    setRailFolded((f) => {
+      try {
+        localStorage.setItem('hb-tpl-rail-folded', f ? '0' : '1');
+      } catch {
+        // Private mode: not remembered.
+      }
+      return !f;
+    });
+  }
+  // Another template opens at its top.
+  useEffect(() => {
+    if (editorKey) window.scrollTo(0, 0);
+  }, [editorKey]);
+  /** Leave the open template for another one, asking first if it has unsaved work. */
+  function switchTo(next: () => void) {
+    if (editor && !confirmDiscard(editorDirty.current)) return;
+    editorDirty.current = false;
+    next();
+  }
+
+  function newTemplate(name = '') {
     keyCounter.current = 0;
     const rootKey = nextKey();
+    setEditorKey((k) => k + 1);
     setEditor({
-      name: '',
+      name,
       description: '',
+      departmentId: '',
       nodes: [blankNode(rootKey, null)],
       dependencies: [],
       recurrence: emptyRecurrence(),
@@ -316,11 +390,20 @@ export function TemplatesPage() {
     try {
       const t = await api.getTemplate(id);
       keyCounter.current = 0;
+      setEditorKey((k) => k + 1);
       setEditor(toEditor(t));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not open the template');
     }
   }
+
+  // G5: a task's "Made from" chip links here with ?template=<id>.
+  const [params] = useSearchParams();
+  const askedFor = Number(params.get('template'));
+  useEffect(() => {
+    if (askedFor) void editTemplate(askedFor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedFor]);
 
   async function removeTemplate(t: TemplateSummaryDto) {
     if (!window.confirm(`Delete template “${t.name}”? Already-created tasks are kept.`)) return;
@@ -356,17 +439,37 @@ export function TemplatesPage() {
 
   if (editor) {
     return (
-      <TemplateEditor
-        editor={editor}
-        setEditor={setEditor}
-        nextKey={nextKey}
-        onCancel={() => setEditor(null)}
-        onSaved={(msg) => {
-          setEditor(null);
-          toast({ message: msg, tone: 'success' });
-          load();
-        }}
-      />
+      <div className={cx('hb-tpl-split', railFolded && 'is-rail-folded')}>
+        <TemplateRail
+          list={list}
+          activeId={editor.id ?? null}
+          folded={railFolded}
+          onToggle={toggleRail}
+          onPick={(id) => switchTo(() => void editTemplate(id))}
+          onNew={(name) => switchTo(() => newTemplate(name))}
+        />
+        <div className="hb-tpl-split-main">
+          <TemplateEditor
+            key={editorKey}
+            editor={editor}
+            setEditor={setEditor}
+            nextKey={nextKey}
+            onDirty={(d) => {
+              editorDirty.current = d;
+            }}
+            onCancel={() => {
+              editorDirty.current = false;
+              setEditor(null);
+            }}
+            onSaved={(msg) => {
+              editorDirty.current = false;
+              setEditor(null);
+              toast({ message: msg, tone: 'success' });
+              load();
+            }}
+          />
+        </div>
+      </div>
     );
   }
 
@@ -388,7 +491,7 @@ export function TemplatesPage() {
         searchValue={q}
         onSearchChange={setQ}
         actions={
-          <Btn kind="primary" onClick={newTemplate}>
+          <Btn kind="primary" onClick={() => newTemplate()}>
             <Plus size={16} aria-hidden="true" /> New template
           </Btn>
         }
@@ -425,83 +528,98 @@ export function TemplatesPage() {
                     A template is a task tree you reuse: dates count from a Day 0, people are roles
                     you fill when you use it, and it can repeat on a schedule.
                   </span>
-                  <Btn kind="primary" onClick={newTemplate}>
+                  <Btn kind="primary" onClick={() => newTemplate()}>
                     <Plus size={16} aria-hidden="true" /> New template
                   </Btn>
                 </div>
               ) : shown.length === 0 ? (
                 <Empty>No templates match{q.trim() ? ` “${q.trim()}”` : ''}.</Empty>
               ) : (
-                <div role="list">
-                  {shown.map((t) => (
-                    <div key={t.id} role="listitem" className="hb-row hb-tpl-row">
-                      <span
-                        className={cx('hb-ic', `tone-${REC_TONE[t.recurrenceType]}`)}
-                        aria-hidden="true"
-                      >
-                        {t.recurrenceType === 'None' ? (
-                          <ListTree size={16} />
-                        ) : (
-                          <Repeat size={16} />
-                        )}
-                      </span>
-                      <div className="hb-stack">
-                        <button
-                          type="button"
-                          className="hb-linklike hb-name"
-                          onClick={() => void editTemplate(t.id)}
-                        >
-                          {t.name}
-                        </button>
-                        <span className="hb-sub hb-tpl-desc" title={t.description ?? undefined}>
-                          {plural(t.nodeCount, 'task')} ·{' '}
-                          {t.occurrenceCount
-                            ? `used ${plural(t.occurrenceCount, 'time')}`
-                            : 'not used yet'}
-                          {' · '}
-                          {t.description || `by ${userLabel(t.createdBy)}`}
-                        </span>
+                sectionsOf(shown).map((sec) => {
+                  const items = sec.items;
+                  return (
+                    <section key={sec.key} className="hb-tpl-section" aria-label={sec.title}>
+                      <h4 className="hb-tpl-section-head">
+                        {sec.title}
+                        <span className="hb-tpl-section-count">{items.length}</span>
+                        <span className="hb-tpl-section-hint">{sec.hint}</span>
+                      </h4>
+                      <div role="list">
+                        {items.map((t) => (
+                          <div key={t.id} role="listitem" className="hb-row hb-tpl-row">
+                            <span
+                              className={cx('hb-ic', `tone-${REC_TONE[t.recurrenceType]}`)}
+                              aria-hidden="true"
+                            >
+                              {t.recurrenceType === 'None' ? (
+                                <ListTree size={16} />
+                              ) : (
+                                <Repeat size={16} />
+                              )}
+                            </span>
+                            <div className="hb-stack">
+                              <button
+                                type="button"
+                                className="hb-linklike hb-name"
+                                onClick={() => void editTemplate(t.id)}
+                              >
+                                {t.name}
+                              </button>
+                              <span
+                                className="hb-sub hb-tpl-desc"
+                                title={t.description ?? undefined}
+                              >
+                                {plural(t.nodeCount, 'task')} ·{' '}
+                                {t.occurrenceCount
+                                  ? `used ${plural(t.occurrenceCount, 'time')}`
+                                  : 'not used yet'}
+                                {' · '}
+                                {t.description || `by ${userLabel(t.createdBy)}`}
+                              </span>
+                            </div>
+                            <div className="hb-tpl-facts">
+                              <span title={REPEAT_LABEL[t.recurrenceType]}>
+                                <Pill tone={REC_TONE[t.recurrenceType]}>
+                                  {REC_SHORT[t.recurrenceType]}
+                                </Pill>
+                              </span>
+                              {t.recurrenceType !== 'None' && !t.isActive && (
+                                <Pill tone="amber">Paused</Pill>
+                              )}
+                            </div>
+                            <div className="hb-tpl-actions">
+                              <Btn
+                                kind="primary"
+                                className="hb-btn-sm"
+                                onClick={() => void openInstantiate(t.id)}
+                              >
+                                Make tasks now
+                              </Btn>
+                              <button
+                                type="button"
+                                className="hb-icon-btn hb-icon-btn-sm"
+                                aria-label={`Edit ${t.name}`}
+                                title="Edit"
+                                onClick={() => void editTemplate(t.id)}
+                              >
+                                <Pencil size={16} aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
+                                aria-label={`Delete ${t.name}`}
+                                title="Delete"
+                                onClick={() => void removeTemplate(t)}
+                              >
+                                <Trash2 size={16} aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="hb-tpl-facts">
-                        <span title={REPEAT_LABEL[t.recurrenceType]}>
-                          <Pill tone={REC_TONE[t.recurrenceType]}>
-                            {REC_SHORT[t.recurrenceType]}
-                          </Pill>
-                        </span>
-                        {t.recurrenceType !== 'None' && !t.isActive && (
-                          <Pill tone="amber">Paused</Pill>
-                        )}
-                      </div>
-                      <div className="hb-tpl-actions">
-                        <Btn
-                          kind="primary"
-                          className="hb-btn-sm"
-                          onClick={() => void openInstantiate(t.id)}
-                        >
-                          Create tasks
-                        </Btn>
-                        <button
-                          type="button"
-                          className="hb-icon-btn hb-icon-btn-sm"
-                          aria-label={`Edit ${t.name}`}
-                          title="Edit"
-                          onClick={() => void editTemplate(t.id)}
-                        >
-                          <Pencil size={16} aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
-                          aria-label={`Delete ${t.name}`}
-                          title="Delete"
-                          onClick={() => void removeTemplate(t)}
-                        >
-                          <Trash2 size={16} aria-hidden="true" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    </section>
+                  );
+                })
               )}
             </Card>
           </div>
@@ -581,7 +699,7 @@ export function TemplatesPage() {
                     </li>
                     <li>
                       <strong>Repeat it, or use it by hand.</strong> A repeating template makes its
-                      tasks on schedule; Create tasks makes them now.
+                      tasks on schedule; Make tasks now makes them straight away.
                     </li>
                   </ol>
                 </Card>
@@ -594,18 +712,121 @@ export function TemplatesPage() {
   );
 }
 
+// --- Rail: the list beside an open template ---------------------------------
+
+function TemplateRail({
+  list,
+  activeId,
+  folded,
+  onToggle,
+  onPick,
+  onNew,
+}: {
+  list: TemplateSummaryDto[];
+  activeId: number | null;
+  folded: boolean;
+  onToggle: () => void;
+  onPick: (id: number) => void;
+  onNew: (name: string) => void;
+}) {
+  const [name, setName] = useState('');
+  if (folded) {
+    return (
+      <aside className="hb-tpl-rail is-folded" aria-label="Templates">
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={onToggle}
+          aria-label="Show the templates list"
+          title="Show the templates list"
+        >
+          <PanelLeftOpen size={16} aria-hidden="true" />
+        </button>
+      </aside>
+    );
+  }
+  return (
+    <aside className="hb-tpl-rail" aria-label="Templates">
+      <div className="hb-tpl-rail-head">
+        <span className="hb-tpl-rail-title">Templates</span>
+        <span className="hb-small">{list.length}</span>
+        <span className="hb-grow" />
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          onClick={onToggle}
+          aria-label="Fold the templates list"
+          title="Fold the templates list"
+        >
+          <PanelLeftClose size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <label className="hb-tpl-quickadd is-rail">
+        <Plus size={15} aria-hidden="true" />
+        <input
+          value={name}
+          placeholder="New template…"
+          aria-label="New template name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && name.trim()) {
+              e.preventDefault();
+              onNew(name.trim());
+              setName('');
+            }
+          }}
+        />
+      </label>
+      {sectionsOf(list).map((sec) => {
+        const items = sec.items;
+        return (
+          <div key={sec.key} className="hb-tpl-rail-sec">
+            <span className="hb-tpl-rail-k">{sec.title}</span>
+            {items.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={cx('hb-tpl-rail-item', t.id === activeId && 'is-active')}
+                aria-current={t.id === activeId ? 'true' : undefined}
+                onClick={() => t.id !== activeId && onPick(t.id)}
+              >
+                {t.recurrenceType === 'None' ? (
+                  <ListTree size={14} aria-hidden="true" />
+                ) : (
+                  <Repeat size={14} aria-hidden="true" />
+                )}
+                <span className="hb-tpl-rail-name">{t.name}</span>
+                <span className="hb-tpl-rail-n">{t.nodeCount}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
+      {activeId == null && (
+        <span className="hb-tpl-rail-item is-active is-new">
+          <Plus size={14} aria-hidden="true" />
+          <span className="hb-tpl-rail-name">New template</span>
+        </span>
+      )}
+    </aside>
+  );
+}
+
 // --- Editor ----------------------------------------------------------------
 
 function TemplateEditor({
   editor,
   setEditor,
   nextKey,
+  onDirty,
   onCancel,
   onSaved,
 }: {
   editor: EditorState;
   setEditor: (e: EditorState) => void;
   nextKey: () => string;
+  /** Tells the page whether there is unsaved work, before it switches templates. */
+  onDirty?: (dirty: boolean) => void;
   onCancel: () => void;
   onSaved: (msg: string) => void;
 }) {
@@ -623,6 +844,9 @@ function TemplateEditor({
   const [original] = useState(() => JSON.stringify(editor));
   const dirty = savedId === null && JSON.stringify(editor) !== original;
   useUnsavedChangesWarning(dirty && !saving);
+  useEffect(() => onDirty?.(dirty), [dirty, onDirty]);
+  // Quick add: type a task name and press Enter (Nov 11), without opening its details.
+  const [quickName, setQuickName] = useState('');
   // Collapsed node keys (display-only; never affects drag/order). Drag state for
   // sibling reordering within the tree.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -681,6 +905,15 @@ function TemplateEditor({
     patch({ nodes: [...editor.nodes, blankNode(key, parent)] });
     revealUnder(parent);
     setOpen(key, true);
+  }
+  function quickAdd() {
+    const name = quickName.trim();
+    if (!name) return;
+    const root = editor.nodes.find((n) => n.parentKey === null) ?? editor.nodes[0];
+    const key = nextKey();
+    patch({ nodes: [...editor.nodes, { ...blankNode(key, root?.key ?? null), name }] });
+    revealUnder(root?.key ?? null);
+    setQuickName('');
   }
   function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
@@ -1160,7 +1393,9 @@ function TemplateEditor({
           pendingFuture.map((f) => f.occurrenceId),
         );
       } catch (e) {
-        setError(e instanceof ApiError ? e.message : 'Could not update future instances');
+        setError(
+          e instanceof ApiError ? e.message : 'Could not update the task sets already created',
+        );
         setPendingFuture(null);
         return;
       }
@@ -1260,6 +1495,20 @@ function TemplateEditor({
                     onChange={(e) => patch({ description: e.target.value })}
                   />
                 </label>
+                <div className="hb-tpl-field">
+                  <span className="hb-tpl-flabel">Department</span>
+                  <Select
+                    label="Department"
+                    value={editor.departmentId}
+                    options={[
+                      { value: '', label: 'Company-wide' },
+                      ...catalog.departments
+                        .filter((d) => !d.archived || d.id === editor.departmentId)
+                        .map((d) => ({ value: d.id, label: d.name, dot: d.color })),
+                    ]}
+                    onChange={(v) => patch({ departmentId: v })}
+                  />
+                </div>
               </div>
             </Card>
 
@@ -1296,6 +1545,22 @@ function TemplateEditor({
                 to reorder it among its siblings; “Sub-task of” moves it elsewhere.
               </p>
               <div className="hb-tpl-tree">{rootNode ? renderNode(rootNode, 0) : null}</div>
+              <label className="hb-tpl-quickadd">
+                <Plus size={15} aria-hidden="true" />
+                <input
+                  value={quickName}
+                  placeholder="Type a sub-task name and press Enter"
+                  aria-label="Quick add a sub-task"
+                  maxLength={300}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      quickAdd();
+                    }
+                  }}
+                />
+              </label>
             </Card>
           </div>
 
@@ -1318,7 +1583,7 @@ function TemplateEditor({
                 </div>
                 {r.recurrenceType === 'None' ? (
                   <p className="hb-tpl-note">
-                    Used by hand only: Create tasks on the Templates list makes a new set.
+                    Used by hand only: Make tasks now on the Templates list makes a new set.
                   </p>
                 ) : (
                   <>
@@ -1542,7 +1807,7 @@ const REPEAT_LABEL: Record<RecurrenceType, string> = {
   RelativeToCompletion: 'After the last one is done',
 };
 
-// --- Instantiate panel ("Create tasks"), in the page's side column ------------
+// --- "Make tasks now" panel, in the page's side column ------------------------
 
 function InstantiatePanel({
   template,
@@ -1616,7 +1881,8 @@ function InstantiatePanel({
       if (isDutyNotHeldError(e)) {
         // Someone's duties changed since the check: show what's missing now.
         setProblems((e.details as { problems: TemplateDutyProblemDto[] }).problems ?? []);
-      } else setError(e instanceof ApiError ? e.message : 'Could not make the tasks from this template');
+      } else
+        setError(e instanceof ApiError ? e.message : 'Could not make the tasks from this template');
       setBusy(false);
     }
   }
@@ -1814,7 +2080,7 @@ function InstantiatePanel({
     <InstPanel
       onClose={onClose}
       busy={busy}
-      title={`Create tasks from “${template.name}”`}
+      title={`Make tasks now from “${template.name}”`}
       hint={`${nodeCount} ${nodeCount === 1 ? 'task' : 'tasks'} will be created`}
       actions={
         <>
@@ -1951,7 +2217,7 @@ function InstantiatePanel({
   );
 }
 
-/** The side panel the two steps of Create tasks sit in. */
+/** The side panel the two steps of Make tasks now sit in. */
 function InstPanel({
   title,
   hint,
@@ -1972,7 +2238,7 @@ function InstPanel({
       <section aria-label={title}>
         <div className="hb-gpanel-head">
           <div className="hb-stack">
-            <span className="hb-gpanel-eyebrow">Create tasks</span>
+            <span className="hb-gpanel-eyebrow">Make tasks now</span>
             <h2>{title}</h2>
           </div>
           <button

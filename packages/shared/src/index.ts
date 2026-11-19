@@ -398,6 +398,8 @@ export interface TaskChildRef extends TaskRef {
 }
 
 export interface TaskDetailDto extends TaskDto {
+  /** G5: the template it was made from (name for the "Made from" chip). */
+  template: { id: number; name: string } | null;
   levels: TaskLevelsDto;
   /** The requesting user's unread @mentions on this task. */
   unreadMentions: number;
@@ -1862,6 +1864,8 @@ export interface RecurrenceInput {
 export interface CreateTemplateRequest {
   name: string;
   description?: string | null;
+  /** Nov 2026 plan (G1): the template's department; null = company-wide. */
+  departmentId?: string | null;
   nodes: TemplateNodeInput[];
   dependencies?: TemplateDependencyInput[];
   recurrence?: RecurrenceInput;

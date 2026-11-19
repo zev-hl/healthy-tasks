@@ -82,6 +82,7 @@ const taskRefSelect = { id: true, name: true, status: true } as const;
 
 /** Include used for the single-task detail view (adds relationships). */
 export const taskDetailInclude = {
+  template: { select: { id: true, name: true } },
   ...taskInclude,
   parent: { select: taskRefSelect },
   // Soft-deleted tasks (see db/prisma.ts) drop out of these relation lists.
@@ -112,6 +113,7 @@ export const taskDetailInclude = {
 } as const;
 
 export type TaskWithDetail = TaskWithRefs & {
+  template?: { id: number; name: string } | null;
   parent: TaskRef | null;
   children: (TaskRef & { priority: Task['priority'] })[];
   blocking: { blocked: TaskRef }[];
@@ -224,6 +226,7 @@ export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext)
     access: access.level,
     canTogglePrivate: access.canTogglePrivate,
     canChangeDue: access.canChangeDue,
+    template: task.template ?? null,
     levels: access.levels,
     unreadMentions: access.unreadMentions,
     canSnooze: access.canSnooze,
