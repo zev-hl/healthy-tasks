@@ -15,8 +15,12 @@ import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 import {
   getNotificationPreferences,
   getPreferencesMap,
+  wants,
 } from './notification-preference.service.js';
 import { listDueReminders, type DueReminder } from './reminder.service.js';
+import { notifyByConnect } from './connect-notify.service.js';
+import { connectAvailable } from './connect.service.js';
+import { userDisplayName } from '../utils/user-name.js';
 import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cache.js';
 import { formatBusinessTimestamp } from '../utils/business-time.js';
 import type { Actor } from './access-control.service.js';
@@ -60,6 +64,21 @@ function taskLink(taskId: number): string {
 
 // --- Creation hooks (called post-commit by comment/task services) -----------
 
+/** A comment's opening words, as plain text, for a Connect message. */
+function plainExcerpt(html: string, max = 300): string {
+  const text = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 /**
  * Create Mentioned notifications for the users whose @mention fired an event on
  * this comment save (the 15-minute gate having already been applied upstream).
@@ -75,6 +94,28 @@ export async function createMentionNotifications(
 ): Promise<void> {
   const recipients = [...new Set(firedUserIds)].filter((id) => id !== actorId);
   if (recipients.length === 0) return;
+  if (connectAvailable()) {
+    const [task, comment] = await Promise.all([
+      prisma.task.findUnique({ where: { id: taskId }, select: { name: true } }),
+      prisma.comment.findUnique({
+        where: { id: commentId },
+        select: {
+          body: true,
+          author: { select: { email: true, firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+    if (task && comment) {
+      notifyByConnect({
+        userIds: recipients,
+        event: 'mention',
+        what: `${userDisplayName(comment.author)} mentioned you on “${task.name}”`,
+        note: plainExcerpt(comment.body),
+        link: `${env.frontendUrl}/tasks/${taskId}`,
+        key: `mention:${commentId}`,
+      });
+    }
+  }
 
   const prefs = await getPreferencesMap(recipients);
   const inApp = recipients.filter((id) => prefs.get(id)?.mentionedInApp);
@@ -107,6 +148,32 @@ export async function createAssignedNotification(params: {
 }): Promise<void> {
   const { recipientId, actorId, taskId, action } = params;
   if (actorId !== null && recipientId === actorId) return;
+  if (connectAvailable()) {
+    const [task, actor] = await Promise.all([
+      prisma.task.findUnique({ where: { id: taskId }, select: { name: true } }),
+      actorId
+        ? prisma.user.findUnique({
+            where: { id: actorId },
+            select: { email: true, firstName: true, lastName: true },
+          })
+        : null,
+    ]);
+    if (task) {
+      const who = actor ? userDisplayName(actor) : null;
+      notifyByConnect({
+        userIds: [recipientId],
+        event: 'assigned',
+        what:
+          action === 'added'
+            ? who
+              ? `${who} assigned you “${task.name}”`
+              : `“${task.name}” was assigned to you`
+            : `${who ?? 'Someone'} took you off “${task.name}”`,
+        link: `${env.frontendUrl}/tasks/${taskId}`,
+        key: `assigned:${taskId}:${recipientId}:${action}:${Date.now()}`,
+      });
+    }
+  }
 
   const prefs = await getNotificationPreferences(recipientId);
   if (!prefs.assignedInApp) return; // opted out of Assigned entirely
@@ -443,6 +510,26 @@ export async function markNotificationUnread(userId: string, id: string): Promis
 export async function processDueReminderEmails(actor: Actor, now: Date): Promise<void> {
   const userId = actor.id;
   const prefs = await getNotificationPreferences(userId);
+  // K3: a reminder by Connect, once, for those who turned it on.
+  if (connectAvailable() && wants(prefs, 'reminder', 'connect')) {
+    const dueNow = await listDueReminders(actor, now);
+    for (const r of dueNow) {
+      if (r.kind !== 'due' || new Date(r.remindAt).getTime() < now.getTime() - 86_400_000) continue;
+      const claimed = await prisma.reminder.updateMany({
+        where: { id: r.id, connectSentAt: null },
+        data: { connectSentAt: now },
+      });
+      if (claimed.count !== 1) continue;
+      notifyByConnect({
+        userIds: [userId],
+        event: 'reminder',
+        what: `${r.source === 'snooze' ? 'Back from snooze' : 'Reminder'}: “${r.taskName}”`,
+        note: r.note,
+        link: `${env.frontendUrl}/tasks/${r.taskId}`,
+        key: `reminder:${r.id}`,
+      });
+    }
+  }
   if (!prefs.remindersInApp || !prefs.remindersEmail) return;
 
   // Only real (due) reminders are emailed; cancel notices are in-app only.
@@ -493,7 +580,7 @@ export async function dispatchDueReminderEmails(now: Date): Promise<void> {
   const rows = await prisma.reminder.findMany({
     where: {
       canceledAt: null,
-      emailSentAt: null,
+      OR: [{ emailSentAt: null }, { connectSentAt: null }],
       remindAt: { lte: now },
       task: { deletedAt: null },
     },

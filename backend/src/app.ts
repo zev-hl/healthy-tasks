@@ -1,3 +1,5 @@
+import { connectInboundRouter } from './routes/connect-inbound.routes.js';
+import { connectRouter } from './routes/connect.routes.js';
 import { googleCalendarRouter } from './routes/google-calendar.routes.js';
 import { calendarRouter, eventsRouter } from './routes/calendar.routes.js';
 import { timerRouter } from './routes/timer.routes.js';
@@ -81,6 +83,9 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/calendar', calendarRouter);
   app.use('/api/events', eventsRouter);
   app.use('/api/google-calendar', googleCalendarRouter);
+  app.use('/api/connect', connectRouter);
+  // What our Connect calls on HL Central (K6, K7), with its own key.
+  app.use('/api/integrations/connect', connectInboundRouter);
 
   const dashboard = options.queueDashboard;
   if (dashboard) {

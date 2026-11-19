@@ -3442,6 +3442,11 @@ export interface EventDto {
   /** The reader may change or delete it (its creator, or an Admin). */
   canEdit: boolean;
   updatedAt: string; // ISO
+  /**
+   * Stage 4 (K2): the Connect call it is. `convene` rings everyone in it at its
+   * time; `ring` rang them when it was made. Null when it isn't a Connect call.
+   */
+  connect: { kind: 'convene' | 'ring'; joinUrl: string | null } | null;
 }
 
 export interface SaveEventRequest {
@@ -3503,4 +3508,65 @@ export interface GoogleEventsDto {
   connected: boolean;
   events: GoogleEventDto[];
   problem: string | null;
+}
+
+// --- Our Connect (Nov 2026 plan, Stage 4) -------------------------------------
+
+/** Whether HL Central is linked to our Connect, and where it is (for links and the chat pop-up). */
+export interface ConnectStatusDto {
+  available: boolean;
+  /** Connect's address, e.g. https://connect.brecx.com (null when not linked). */
+  url: string | null;
+}
+
+/** Call lengths offered when scheduling a call (minutes). */
+export const CALL_LENGTHS = [15, 30, 45, 60] as const;
+
+/**
+ * "Schedule call" on a task (K2): ring now, or book a time. Who: the people
+ * picked; you host it. Saved on the task and the calendar as a Call.
+ */
+export interface ScheduleCallRequest {
+  /** "now" rings at once; otherwise an ISO time in the future. */
+  when: 'now' | string;
+  minutes: number;
+  participantIds: string[];
+  title?: string;
+}
+
+export interface ScheduleCallResultDto {
+  event: EventDto;
+  /** Connect booked (or rang) it. When false, it is saved as a meeting and `reason` says why. */
+  booked: boolean;
+  reason: string | null;
+  /** People Connect has no account for (they're on the event, not the call). */
+  skipped: string[];
+}
+
+/** "Discuss in Connect" on a task (K5): its group chat, made the first time. */
+export interface DiscussTaskDto {
+  /** Opens the chat in Connect. */
+  url: string;
+  conversationId: string;
+  /** True when this request made the chat (false: it already existed). */
+  created: boolean;
+  /** People Connect has no account for. */
+  skipped: string[];
+}
+
+/** A call from Connect on the calendar (K4): one the reader hosts or is in. */
+export interface ConnectCallDto {
+  id: string;
+  title: string;
+  startAt: string; // ISO
+  endAt: string | null;
+  status: 'scheduled' | 'started' | 'cancelled' | string;
+  joinUrl: string;
+  host: string;
+}
+
+export interface ConnectCallsDto {
+  /** False until our Connect can list a person's calls (or isn't linked). */
+  available: boolean;
+  calls: ConnectCallDto[];
 }

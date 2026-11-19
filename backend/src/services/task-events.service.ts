@@ -7,6 +7,7 @@ import { taskEventEmail } from '../utils/notification-emails.js';
 import { computeTaskAccess } from './access-control.service.js';
 import { getPreferencesMap, wants } from './notification-preference.service.js';
 import { pushTo } from './push.service.js';
+import { notifyByConnect } from './connect-notify.service.js';
 import { invalidateUnread } from './unread-cache.js';
 import { userDisplayName } from '../utils/user-name.js';
 import { formatBusinessTimestamp } from '../utils/business-time.js';
@@ -131,6 +132,15 @@ export async function notifyTaskEvent(e: TaskEventInput): Promise<string[]> {
     }
     if (inApp || wants(pref, event, 'email')) reached.push(p.id);
   }
+  // K3: by Connect too, for those who turned it on.
+  notifyByConnect({
+    userIds: seeing.map((p) => p.id),
+    event,
+    what: e.what,
+    note: e.note,
+    link,
+    key: `${e.type}:${task.id}:${Date.now()}`,
+  });
   return reached;
 }
 

@@ -8,6 +8,8 @@ import {
   type EventKind,
   type EventNoticeType,
   type SaveEventRequest,
+  type ScheduleCallRequest,
+  type ScheduleCallResultDto,
 } from '@healthy-tasks/shared';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
@@ -20,6 +22,15 @@ import { userDisplayName } from '../utils/user-name.js';
 import { computeTaskAccess, getDownlineIds, type Actor } from './access-control.service.js';
 import { getPreferencesMap, wants } from './notification-preference.service.js';
 import { pushTo } from './push.service.js';
+import {
+  bookConnectCall,
+  cancelConnectCall,
+  connectAvailable,
+  ConnectError,
+  moveConnectCall,
+  ringConnectCall,
+} from './connect.service.js';
+import { notifyByConnect } from './connect-notify.service.js';
 import { myTeamIds } from './task-search.service.js';
 import { invalidateUnread } from './unread-cache.js';
 import { toUserRef } from './user.mapper.js';
@@ -38,6 +49,7 @@ const DAY_MS = 86_400_000;
 const MAX_RANGE_DAYS = 62;
 
 const userSelect = { id: true, email: true, firstName: true, lastName: true, title: true } as const;
+const CALL_HOURS_AHEAD_MAX = 24 * 365;
 const eventInclude = {
   task: { select: { id: true, name: true, deletedAt: true } },
   createdBy: { select: userSelect },
@@ -87,6 +99,10 @@ export function toEventDto(e: EventRow, actor: Actor): EventDto {
       .sort((a, b) => (a.firstName ?? a.email).localeCompare(b.firstName ?? b.email)),
     canEdit: canEditEvent(actor, e),
     updatedAt: e.updatedAt.toISOString(),
+    connect:
+      e.connectCallKind === 'convene' || e.connectCallKind === 'ring'
+        ? { kind: e.connectCallKind, joinUrl: e.connectJoinUrl }
+        : null,
   };
 }
 
@@ -281,6 +297,13 @@ async function notifyEvent(
         ? `${who} changed the ${kind} “${event.title}”: now ${whenText(event)}`
         : `${who} canceled the ${kind} “${event.title}” (${whenText(event)})`;
   const link = `${env.frontendUrl}/calendar?event=${event.id}`;
+  notifyByConnect({
+    userIds: people.map((p) => p.id),
+    event: 'event',
+    what,
+    link,
+    key: `${type}:${event.id}:${Date.now()}`,
+  });
   const prefs = await getPreferencesMap(people.map((p) => p.id));
   for (const p of people) {
     const pref = prefs.get(p.id)!;
@@ -373,6 +396,28 @@ export async function updateEvent(
     before.endAt.getTime() !== e.endAt.getTime() ||
     before.allDay !== e.allDay ||
     (before.location ?? '') !== (e.location ?? '');
+  // K2: a booked Connect call follows the event's time, title and people.
+  if (e.connectCallId && e.connectCallKind === 'convene' && e.startAt > new Date()) {
+    const emails = e.attendees.map((a) => a.user.email);
+    try {
+      const call = await moveConnectCall(e.connectCallId, {
+        title: e.title,
+        ...(moved && { startAt: e.startAt, endAt: e.endAt }),
+        ...((added.length > 0 || removed.length > 0) &&
+          emails.length > 0 && { participants: emails }),
+      });
+      if (call.joinUrl !== e.connectJoinUrl) {
+        await prisma.event.update({
+          where: { id: e.id },
+          data: { connectJoinUrl: call.joinUrl, location: call.joinUrl },
+        });
+        e.connectJoinUrl = call.joinUrl;
+        e.location = call.joinUrl;
+      }
+    } catch (err) {
+      console.error('Connect call not moved:', (err as Error).message);
+    }
+  }
   await notifyEvent('eventInvited', e, added, actor.id);
   if (moved) await notifyEvent('eventChanged', e, kept, actor.id);
   if (removed.length) await notifyEvent('eventCanceled', e, removed, actor.id);
@@ -386,10 +431,108 @@ export async function cancelEvent(actor: Actor, id: string): Promise<void> {
     throw HttpError.forbidden('Only the person who made it, or an Admin, can cancel it');
   }
   await prisma.event.update({ where: { id }, data: { canceledAt: new Date() } });
+  if (e.connectCallId && e.connectCallKind === 'convene') {
+    await cancelConnectCall(e.connectCallId).catch((err) =>
+      console.error('Connect call not canceled:', (err as Error).message),
+    );
+  }
   await notifyEvent(
     'eventCanceled',
     e,
     e.attendees.map((a) => a.user.id),
     actor.id,
   );
+}
+
+// --- "Schedule call" on a task (Stage 4, K2) -----------------------------------
+
+/**
+ * POST /api/tasks/:id/calls — a Connect call about a task, rung now or booked
+ * for a time, hosted by the caller. It is saved first as a Call on the task
+ * and the calendar; then Connect books it (or rings it). When Connect can't,
+ * it stays saved, as a meeting, and the answer says why.
+ */
+export async function scheduleTaskCall(
+  actor: Actor,
+  taskId: number,
+  input: ScheduleCallRequest,
+): Promise<ScheduleCallResultDto> {
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, name: true, assigneeId: true, isPrivate: true },
+  });
+  if (!task || !(await computeTaskAccess(actor, task))) throw HttpError.notFound('Task not found');
+  const now = new Date();
+  const ringNow = input.when === 'now';
+  const startAt = ringNow ? now : new Date(input.when);
+  if (Number.isNaN(startAt.getTime())) throw HttpError.badRequest('Pick a time');
+  if (!ringNow && startAt <= now) throw HttpError.badRequest('Pick a time that hasn’t passed');
+  if (startAt.getTime() - now.getTime() > CALL_HOURS_AHEAD_MAX * 3_600_000) {
+    throw HttpError.badRequest('A call can be booked at most a year ahead');
+  }
+  const others = [...new Set(input.participantIds)].filter((id) => id !== actor.id);
+  if (others.length === 0) throw HttpError.badRequest('Pick at least one person to call');
+  const title = input.title?.trim() || `Call: ${task.name}`;
+  const endAt = new Date(startAt.getTime() + input.minutes * 60_000);
+
+  const made = await createEvent(actor, {
+    kind: 'call',
+    title,
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    taskId,
+    attendeeIds: others,
+  });
+
+  const fallback = async (reason: string): Promise<ScheduleCallResultDto> => {
+    // Still on the calendar, as a meeting: the people in it were told already.
+    await prisma.event.update({ where: { id: made.id }, data: { kind: 'meeting' } });
+    return { event: await getEvent(actor, made.id), booked: false, reason, skipped: [] };
+  };
+  if (!connectAvailable()) return fallback('Connect isn’t linked to HL Central yet');
+
+  const people = await prisma.user.findMany({
+    where: { id: { in: [actor.id, ...others] } },
+    select: { id: true, email: true },
+  });
+  const host = people.find((p) => p.id === actor.id)!.email;
+  const participants = people.filter((p) => p.id !== actor.id).map((p) => p.email);
+  const externalRef = `hlcentral:event:${made.id}`;
+  try {
+    const call = ringNow
+      ? await ringConnectCall({ host, participants, title, externalRef })
+      : await bookConnectCall({
+          title,
+          startAt,
+          endAt,
+          host,
+          participants,
+          link: `${env.frontendUrl}/tasks/${taskId}`,
+          externalRef,
+        });
+    await prisma.event.update({
+      where: { id: made.id },
+      data: {
+        connectCallId: call.id,
+        connectCallKind: ringNow ? 'ring' : 'convene',
+        connectJoinUrl: call.joinUrl,
+        location: call.joinUrl,
+      },
+    });
+    return {
+      event: await getEvent(actor, made.id),
+      booked: true,
+      reason: null,
+      skipped: call.skipped ?? [],
+    };
+  } catch (err) {
+    const why =
+      err instanceof ConnectError
+        ? err.status === 0
+          ? err.message
+          : `Connect said: ${err.message}`
+        : 'Connect couldn’t book it';
+    console.error('Connect call not booked:', why);
+    return fallback(why);
+  }
 }

@@ -46,6 +46,7 @@ describe('Calendar page (H3, H4)', () => {
           attendees: [],
           canEdit: true,
           updatedAt: iso(9),
+          connect: null,
         },
       ],
       reminders: [

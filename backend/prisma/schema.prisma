@@ -236,14 +236,16 @@ model Task {
 
   // Due soon / overdue notices (E7): the due date each was last sent for, so a
   // notice goes once per due date (a new due date sends again).
-  seenBy           TaskSeen[]
+  seenBy                TaskSeen[]
   // Stage 2 (L2): the timer's saved stretches on this task, and timers running on it.
-  timedStretches   TimedStretch[]
-  runningTimers    RunningTimer[]
+  timedStretches        TimedStretch[]
+  runningTimers         RunningTimer[]
   // Stage 3 (H4a): events linked to this task.
-  events           Event[]
-  dueSoonNoticeFor DateTime?
-  overdueNoticeFor DateTime?
+  events                Event[]
+  // Stage 4 (K5): the task's group chat in Connect ("Discuss in Connect").
+  connectConversationId String?
+  dueSoonNoticeFor      DateTime?
+  overdueNoticeFor      DateTime?
 
   // --- Review workflow (Phase 10) ---
   // Populated only while status == Review, cleared when the task leaves Review.
@@ -646,13 +648,15 @@ model Reminder {
   kind     String   @default("reminder")
 
   // Read state once the reminder has surfaced; set on click-through.
-  readAt       DateTime?
+  readAt        DateTime?
   // Stamped when the "also email me" reminder email was sent — sent once, when
   // the reminder first becomes due (detected during the polling heartbeat).
-  emailSentAt  DateTime?
+  emailSentAt   DateTime?
   // When set and in the future, the reminder is hidden from the due list until
   // this time (user snoozed it).
-  snoozedUntil DateTime?
+  snoozedUntil  DateTime?
+  // Stage 4 (K3): sent as a Connect message (once).
+  connectSentAt DateTime?
 
   // Soft-cancel (Reminders overhaul). Stamped when another user's Save removed
   // this reminder by clearing the task's Start Date or Canceling the task; the
@@ -1486,25 +1490,30 @@ model FailedEmail {
 // it is private (then its creator, its attendees and Admins). Its creator or an
 // Admin changes it.
 model Event {
-  id            String          @id @default(uuid())
+  id              String          @id @default(uuid())
   // meeting | call | deadline | other (CHECK in the migration).
-  kind          String
-  title         String
-  startAt       DateTime
-  endAt         DateTime
-  allDay        Boolean         @default(false)
+  kind            String
+  title           String
+  startAt         DateTime
+  endAt           DateTime
+  allDay          Boolean         @default(false)
   // A place, or a link to join (a Connect room comes with Stage 4).
-  location      String?
-  notes         String?
-  isPrivate     Boolean         @default(false)
-  taskId        Int?
-  task          Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  createdById   String
-  createdBy     User            @relation("EventCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  attendees     EventAttendee[]
-  notifications Notification[]
+  location        String?
+  notes           String?
+  isPrivate       Boolean         @default(false)
+  taskId          Int?
+  task            Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  createdById     String
+  createdBy       User            @relation("EventCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  attendees       EventAttendee[]
+  notifications   Notification[]
   // Canceled events leave the calendar but stay for their notices.
-  canceledAt    DateTime?
+  canceledAt      DateTime?
+  // Stage 4 (K2): the Connect call it books ("convene", at its time) or rang
+  // now ("ring"), and the link to join it. Null when it isn't a Connect call.
+  connectCallId   String?
+  connectCallKind String?
+  connectJoinUrl  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

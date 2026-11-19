@@ -36,6 +36,7 @@ const ev = (over: Partial<EventDto> = {}): EventDto => ({
   attendees: [],
   canEdit: false,
   updatedAt: '2026-11-19T10:00:00.000Z',
+  connect: null,
   ...over,
 });
 

@@ -1163,3 +1163,11 @@ export const saveEventSchema = z.object({
   attendeeIds: z.array(z.string().min(1)).max(EVENT_ATTENDEES_MAX).optional(),
   expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
 });
+
+// Stage 4 (K2): "Schedule call" on a task.
+export const scheduleCallSchema = z.object({
+  when: z.union([z.literal('now'), z.string().datetime({ offset: true })]),
+  minutes: z.number().int().min(5).max(480),
+  participantIds: z.array(z.string().min(1)).min(1).max(EVENT_ATTENDEES_MAX),
+  title: z.string().trim().max(EVENT_TITLE_MAX).optional(),
+});

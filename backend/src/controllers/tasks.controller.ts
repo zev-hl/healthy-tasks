@@ -1,3 +1,6 @@
+import { scheduleTaskCall } from '../services/event.service.js';
+import { discussTask } from '../services/connect-task.service.js';
+import type { ScheduleCallRequest } from '@healthy-tasks/shared';
 import { listTaskEvents } from '../services/event.service.js';
 import { getTaskTime } from '../services/task-time.service.js';
 import { requestUpdate } from '../services/task-update-request.service.js';
@@ -285,4 +288,16 @@ export async function getTaskTimeController(req: Request, res: Response): Promis
 /** GET /api/tasks/:id/events — the coming events linked to the task (H4a). */
 export async function listTaskEventsController(req: Request, res: Response): Promise<void> {
   res.json(await listTaskEvents(actorOf(req), parseTaskId(req)));
+}
+
+/** POST /api/tasks/:id/calls — a Connect call about the task (K2). */
+export async function scheduleTaskCallController(req: Request, res: Response): Promise<void> {
+  res
+    .status(201)
+    .json(await scheduleTaskCall(actorOf(req), parseTaskId(req), req.body as ScheduleCallRequest));
+}
+
+/** POST /api/tasks/:id/discuss — the task's group chat in Connect (K5). */
+export async function discussTaskController(req: Request, res: Response): Promise<void> {
+  res.json(await discussTask(actorOf(req), parseTaskId(req)));
 }

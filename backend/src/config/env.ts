@@ -118,6 +118,18 @@ export const env = {
     tokenKey: optional('GOOGLE_TOKEN_KEY', ''),
   },
 
+  // Our Connect (Nov 2026 plan, Stage 4). Off until both are set. The key is a
+  // read/write API key an Admin mints in Connect (Settings → Misc → API access),
+  // named "HL Central": it sends messages, books and rings calls, and makes
+  // group chats. Server-side only.
+  connect: {
+    url: optional('CONNECT_URL', '').replace(/\/+$/, ''),
+    apiKey: optional('CONNECT_API_KEY', ''),
+    // The key Connect uses to call HL Central (create a task from a chat,
+    // list someone's tasks, the timer: K6, K7). Off while blank; 32+ characters.
+    inboundKey: optional('CONNECT_INBOUND_KEY', ''),
+  },
+
   // Browser push (Nov 2026 plan, E7). Off until both keys are set: make a pair
   // once with `npx web-push generate-vapid-keys`. The subject is a mailto: or
   // https: address push services may use to reach whoever runs the server.
