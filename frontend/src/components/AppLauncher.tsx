@@ -12,10 +12,11 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { useConnect } from '../lib/connect';
 
-export type AppKey = 'central' | 'exclusives' | 'connect';
+export type AppKey = 'central' | 'exclusives';
+type TileKey = AppKey | 'connect';
 
 interface AppTile {
-  key: AppKey;
+  key: TileKey;
   name: string;
   to: string;
   icon: LucideIcon;
@@ -26,7 +27,8 @@ interface AppTile {
  * The apps the launcher lists. HL Central's own sections are in its sidebar;
  * the launcher holds the other apps (Exclusive Alerts, and our Connect once it
  * is linked — Admins see it before, to set it up), plus HL Central itself as
- * the way back.
+ * the way back. Connect opens in a tab of its own; until it is linked, its tile
+ * leads Admins to /connect, which says what to set.
  */
 const APPS: AppTile[] = [
   { key: 'central', name: 'HL Central', to: '/', icon: ListChecks, tone: 'blue' },
@@ -42,7 +44,6 @@ const APPS: AppTile[] = [
 
 export function appForPath(pathname: string): AppKey {
   if (pathname.startsWith('/exclusives')) return 'exclusives';
-  if (pathname === '/connect' || pathname.startsWith('/connect/')) return 'connect';
   return 'central';
 }
 
@@ -72,6 +73,10 @@ export function AppLauncher({ current }: { current: AppKey }) {
 
   function go(app: AppTile) {
     close(false);
+    if (app.key === 'connect' && connect.available && connect.url) {
+      window.open(connect.url, '_blank', 'noopener');
+      return;
+    }
     navigate(app.to);
   }
 
@@ -157,6 +162,9 @@ export function AppLauncher({ current }: { current: AppKey }) {
                   className={`launcher-tile${a.key === current ? ' current' : ''}`}
                   aria-current={a.key === current ? 'true' : undefined}
                   onClick={() => go(a)}
+                  title={
+                    a.key === 'connect' && connect.available ? 'Opens in a new tab' : undefined
+                  }
                 >
                   <span className={`launcher-icon tone-${a.tone}`} aria-hidden="true">
                     <Icon size={24} strokeWidth={2} />

@@ -27,9 +27,9 @@ be their Connect address.
 HL Central shows a chat button on every page that opens Connect in a frame
 (`<iframe src="{CONNECT_URL}/" allow="camera; microphone; display-capture;
 clipboard-write; autoplay; fullscreen">`), with "Open in Connect" beside it. Connect is also an **app in HL Central's
-nine-dot menu** (`/connect`): the same frame filling the page, with "Open in its
-own tab". The tile shows for everyone once Connect is linked (Admins see it before,
-with what to set).
+nine-dot menu**: its tile opens Connect in a tab of its own (no frame, so it needs
+no change in Connect). The tile shows for everyone once Connect is linked; Admins
+see it before, leading to `/connect`, which says what to set.
 
 **Connect change:** let HL Central's address frame Connect. Add it to
 `EMBED_EXCEPTIONS` in `apps/api/src/app.ts` (beside the ticket app), e.g.

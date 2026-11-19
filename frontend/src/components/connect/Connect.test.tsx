@@ -22,6 +22,7 @@ const { api } = await import('../../api/client');
 const { ScheduleCallButton } = await import('./ScheduleCallButton');
 const { ConnectChat } = await import('./ConnectChat');
 const { ConnectPage } = await import('../../pages/ConnectPage');
+const { AppLauncher } = await import('../AppLauncher');
 const { resetConnectCache } = await import('../../lib/connect');
 const { renderWithRouter } = await import('../../test/render');
 const fn = (f: unknown) => f as ReturnType<typeof vi.fn>;
@@ -110,31 +111,33 @@ describe('Connect chat pop-up (K1)', () => {
   });
 });
 
-describe('Connect as an app (the nine-dot menu)', () => {
+describe('Connect in the nine-dot menu', () => {
   beforeEach(() => {
     resetConnectCache();
     authUser = { id: 'me', role: 'Admin' };
   });
 
-  it('fills the page with Connect, and the pop-up stays away there', async () => {
+  it('opens Connect in a new tab once it is linked', async () => {
     fn(api.getConnect).mockResolvedValue({ available: true, url: 'https://connect.test' });
-    renderWithRouter(
-      <>
-        <ConnectPage />
-        <ConnectChat />
-      </>,
-      ['/connect'],
-    );
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+    renderWithRouter(<AppLauncher current="central" />);
     await settle();
-    expect(screen.getByTitle('Connect')).toHaveAttribute('src', 'https://connect.test/');
-    expect(screen.getByRole('link', { name: /Open in its own tab/ })).toHaveAttribute(
-      'href',
-      'https://connect.test',
-    );
-    expect(screen.queryByRole('button', { name: 'Open chat (Connect)' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'All apps' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Connect/ }));
+    expect(open).toHaveBeenCalledWith('https://connect.test', '_blank', 'noopener');
+    open.mockRestore();
   });
 
-  it('says it isn’t linked yet, with what to set for an Admin only', async () => {
+  it('is hidden from everyone but Admins until Connect is linked', async () => {
+    fn(api.getConnect).mockResolvedValue({ available: false, url: null });
+    authUser = { id: 'me', role: 'Employee' };
+    renderWithRouter(<AppLauncher current="central" />);
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'All apps' }));
+    expect(screen.queryByRole('button', { name: /^Connect/ })).toBeNull();
+  });
+
+  it('its page says it isn’t linked yet, with what to set for an Admin only', async () => {
     fn(api.getConnect).mockResolvedValue({ available: false, url: null });
     const { unmount } = renderWithRouter(<ConnectPage />, ['/connect']);
     await settle();
