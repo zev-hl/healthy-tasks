@@ -40,7 +40,7 @@ describe('TemplatesPage — editing beside the list', () => {
       tpl(1, 'Supplier onboarding'),
       tpl(2, 'Warehouse inspection', {
         recurrenceType: 'Fixed',
-        department: { id: 'd1', name: 'Warehouse', color: '#336' },
+        department: { id: 'd1', name: 'Warehouse', color: '#336', archived: false },
       }),
     ]);
     renderWithDataRouter(<TemplatesPage />, {
