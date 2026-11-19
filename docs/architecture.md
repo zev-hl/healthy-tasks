@@ -1077,3 +1077,33 @@ Changed, on a "T under P" state; its rows exist on no server.
   touched) and on every save. Drives the Dashboard's Stale count.
 - **Duty pages** (`Duty.sop` sanitized rich text, `Duty.videoUrl` http(s) link) and
   **template departments** (`TaskTemplate.departmentId`, null = company-wide).
+
+## 19. Task page, Tasks list and creating (Nov 2026 plan, Stage 1)
+
+- **Header chips save at once**: status, assignee, start, due and priority are sent
+  the moment they change, only the changed field; the Save bar stays for the title,
+  duty and alert attributes (and for a chip change waiting on a duty mismatch or on
+  dates that don't fit). The due date has its own box above the timer, red once
+  late, locked unless `TaskDetailDto.canChangeDue`.
+- **Levels on the task page** (`TaskDetailDto.levels`: `depth`, `topIsProject`,
+  `below`; `task-levels.service.ts` `levelInfo`) drive the ⋯ menu's convert choices
+  (Mark / Unmark as project, Make it its own task, Move under…), greyed with the
+  reason when they don't fit, and whether the Sub-tasks card may add more. The
+  parent picker asks `GET /api/tasks/search?for=parent&exclude=<id>`, which lists
+  only tasks it fits under (`fitsUnder`). `unreadMentions` (the reader's unread
+  `mentioned` notifications on the task) feeds the parent box's red number.
+- **Unsent comments** are kept in `localStorage` per user and task
+  (`hb-comment-draft:<user>:<task>`, text only); comments can be searched.
+- **Tasks list**: tabs My tasks / My team / All tasks for everyone. My team is the
+  `myTeam` search filter, worked out on the server (`myTeamIds`: people holding a
+  duty in a department where the reader holds one; Admins: every department).
+  Each row carries `top` (its tree's top task, one recursive query per page),
+  `isProject`, `repeats` (a series or one of its copies) and `canChangeDue` (the
+  task page's rule, worked out per page from the reader's downline). Group by
+  Project uses `top`. One Filter menu holds every filter as lists in `extra`; older
+  saved views move their single choices there (`normalizeState`).
+- **Creating**: "+ New" → Task or Project, then a quick panel. A title, an assignee
+  (you by default) and a duty from that person's duties are required, "No duty"
+  being a choice (UI rule; the API still accepts tasks without them, as templates
+  and alerts need). The full page also takes sub-tasks one per line, made with
+  `POST /api/tasks/:id/subtasks` after the task.

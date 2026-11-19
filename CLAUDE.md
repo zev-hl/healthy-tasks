@@ -165,6 +165,9 @@ creator, those above them or an Admin may move a due date. Tasks are soft-delete
 the exported `prisma` client hides `deletedAt` rows from every Task query, so raw SQL
 on "Task" must add `"deletedAt" IS NULL`, and only `prismaWithDeleted` (delete, the
 Admin's deleted list, restore) sees them. See `docs/architecture.md` §18.
+Stage 1 (task page, list, creating): rows carry `top`, `repeats` and `canChangeDue`,
+the detail carries `levels` and `unreadMentions`, and My team is the server-side
+`myTeam` filter — see §19.
 
 ### Optimistic concurrency
 Mutable records carry a version; services call `assertNotStale`
