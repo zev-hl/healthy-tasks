@@ -76,12 +76,35 @@ technical steps (a person or a Claude session). Plan section in brackets.
 - [ ] **Owner** — sign in to HL Central → nine-dot menu → **Connect tile
       opens Connect** in a new tab, already signed in or at its sign-in. ✅
 
+## G. One sign-in: Connect signs in with HL Central (Stage 5, HL Central's `docs/connect-changes.md` §7)
+
+- [ ] **Owner** — generate and keep in the vault: `CONNECT_SIGNING_KEY`
+      (`openssl genpkey -algorithm ed25519 | base64 -w0`), `CONNECT_ORG_ID`
+      (`uuidgen`, lower case, never changed), `CONNECT_PROVISION_SECRET`
+      (`openssl rand -hex 32`, the same value on both).
+- [ ] **Owner/Developer** — HL Central `hlcentral-api`: set `CONNECT_AUTH_URL`
+      (its API address + `/api/connect-auth`), `CONNECT_SIGNING_KEY`,
+      `CONNECT_ORG_ID`, `CONNECT_PROVISION_SECRET`; deploy.
+- [ ] **Developer** — `curl <CONNECT_AUTH_URL>/.well-known/jwks.json` → one key.
+- [ ] **Developer** — Connect's database, once:
+      `UPDATE workspaces SET org_id = '<CONNECT_ORG_ID>' WHERE id = '<workspace id>';`
+- [ ] **Developer** — Connect: `CENTRAL_SIGNIN=allowlist`,
+      `CENTRAL_SIGNIN_ALLOW=<owner's address>`, `CENTRAL_AUTH_URL` = HL Central's
+      `CONNECT_AUTH_URL` exactly, `CENTRAL_SIGNIN_URL=<HL Central site>/connect-signin`,
+      `CONNECT_PROVISION_SECRET`, `CENTRAL_INVITES=off`; redeploy.
+- [ ] **Owner** — HL Central → Settings → Connect sign-in → **Send everyone to
+      Connect** → "Sent N people", none failed.
+- [ ] **Owner** — in a private window, Connect → **Continue with your Brecx
+      account** → HL Central's sign-in → back in Connect, signed in. ✅
+- [ ] **Developer** — `CENTRAL_SIGNIN=on`; redeploy. Everyone signs in to
+      Connect with HL Central from now on (password sign-in stays).
+
 ## After go-live (not needed for the tile)
 
 - [ ] **Developer** — Connect commit: HL Central's address in
       `EMBED_EXCEPTIONS` (the chat pop-up frame, plan §8.4).
 - [ ] **Owner/Developer** — LiveKit (plan §7) **before** Call is announced.
-- [ ] **Owner** — invite everyone with their exact HL Central addresses.
+- [ ] ~~Invite everyone~~ — not needed once G is done: HL Central adds them.
 - [ ] **Developer** — the `hlcentral-env.md` checks (notice, Discuss, inbound curl).
 - [ ] **Developer** — `render.yaml` updates: Connect's (match reality), HL
       Central's (`CONNECT_*` as `sync: false`).

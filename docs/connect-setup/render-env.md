@@ -86,3 +86,17 @@ anything; turning it off just stops it running at every boot.
 In one save: `WEB_ORIGIN=https://connect.<domain>,https://hlcentral-connect.onrender.com`
 (both keep working, §13 #10), `APP_URL` and `PUBLIC_APP_URL` →
 `https://connect.<domain>`. Add the domain to R2's CORS too. Redeploy.
+
+## One sign-in with HL Central (Stage 5, checklist G)
+
+| Variable | Value |
+| --- | --- |
+| `CENTRAL_SIGNIN` | `allowlist` first (with `CENTRAL_SIGNIN_ALLOW`), then `on` |
+| `CENTRAL_AUTH_URL` | exactly HL Central's `CONNECT_AUTH_URL` (`https://<HL Central API>/api/connect-auth`) |
+| `CENTRAL_SIGNIN_URL` | `https://<HL Central site>/connect-signin` |
+| `CONNECT_PROVISION_SECRET` 🔒 | the same value as HL Central's (32+ characters) |
+| `CENTRAL_INVITES` | `off` |
+
+Plus, once, the workspace's `org_id` (checklist G). Keep HL Central's API, its
+site and Connect on one domain: the sign-in cookie is asked for across them.
+

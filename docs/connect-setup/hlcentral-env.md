@@ -48,3 +48,20 @@ check the workspace row is still `plan = 'internal'`, `is_internal = true` (id
   feature in HL Central switches off.
 - Follow-up on `main`: add the three keys to HL Central's `render.yaml` as
   `sync: false` so the Blueprint documents them (no values).
+
+## One sign-in for Connect (Stage 5, checklist G)
+
+| Variable | When | Value |
+| --- | --- | --- |
+| `CONNECT_AUTH_URL` | with the rest of G | this API's address + `/api/connect-auth` |
+| `CONNECT_SIGNING_KEY` 🔒 | G | `openssl genpkey -algorithm ed25519 \| base64 -w0` |
+| `CONNECT_ORG_ID` | G | a uuid, lower case, never changed |
+| `CONNECT_PROVISION_SECRET` 🔒 | G | the same value as Connect's |
+| `CONNECT_WORKSPACE_NAME` | optional | default `HL Central` |
+
+Check: `curl https://<API>/api/connect-auth/.well-known/jwks.json` shows one
+key; Settings → Connect sign-in says it is on. **Roll back:** unset
+`CONNECT_SIGNING_KEY` → the sign-in routes answer 404 and Connect's button
+fails; set Connect's `CENTRAL_SIGNIN=off` too. Details: `docs/connect-changes.md`
+§7 on the `redesign` branch.
+
