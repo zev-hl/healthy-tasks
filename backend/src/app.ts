@@ -1,3 +1,4 @@
+import { timerRouter } from './routes/timer.routes.js';
 import { draftsRouter } from './routes/drafts.routes.js';
 import express from 'express';
 import cors from 'cors';
@@ -74,6 +75,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/org', orgRouter);
   app.use('/api/time', timeRouter);
   app.use('/api/drafts', draftsRouter);
+  app.use('/api/timer', timerRouter);
 
   const dashboard = options.queueDashboard;
   if (dashboard) {

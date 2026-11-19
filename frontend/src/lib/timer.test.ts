@@ -3,59 +3,105 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../api/client', () => {
   class ApiError extends Error {
     status: number;
-    constructor(status: number, message: string) {
+    details?: unknown;
+    constructor(status: number, message: string, details?: unknown) {
       super(message);
       this.status = status;
+      this.details = details;
     }
   }
-  return { api: { saveTimedStretch: vi.fn() }, ApiError };
+  return { api: { getTimer: vi.fn(), startTimer: vi.fn(), stopTimer: vi.fn() }, ApiError };
 });
 
 const { api, ApiError } = await import('../api/client');
-const { startTimer, stopTimer, stopMessage, getTimer } = await import('./timer');
-const save = api.saveTimedStretch as unknown as ReturnType<typeof vi.fn>;
+const { startTimer, stopTimer, stopMessage, getTimer, refreshTimer, resetTimerCache } =
+  await import('./timer');
+const fn = (f: unknown) => f as ReturnType<typeof vi.fn>;
+const now = () => new Date().toISOString();
+const running = (taskId: number, taskName: string, startedAt = now()) => ({
+  timer: { taskId, taskName, startedAt },
+  now: now(),
+});
 
-describe('the timer saves stretches on the task (L2)', () => {
+describe('the timer runs on the server (L2)', () => {
   beforeEach(() => {
-    localStorage.clear();
-    save.mockReset();
+    resetTimerCache();
+    for (const f of [api.getTimer, api.startTimer, api.stopTimer]) fn(f).mockReset();
+    fn(api.getTimer).mockResolvedValue({ timer: null, now: now() });
   });
 
-  it('a stop saves the stretch and says where it went on My Time', async () => {
-    save.mockResolvedValue({
-      minutes: 1,
-      duty: { id: 'd', name: 'Receiving', departmentName: 'Ops' },
-      totalMinutes: 1,
-      people: [],
-    });
+  it('starts naming the timer it replaces, and a stop says where the time went', async () => {
+    fn(api.startTimer).mockResolvedValue(running(7, 'Count'));
     await startTimer({ id: 7, name: 'Count' });
+    expect(api.startTimer).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: 7, replacing: null }),
+    );
     expect(getTimer()?.taskId).toBe(7);
+
+    fn(api.startTimer).mockResolvedValue({
+      ...running(8, 'Pack'),
+      saved: {
+        taskId: 7,
+        taskName: 'Count',
+        minutes: 12,
+        duty: null,
+        totalMinutes: 12,
+        people: [],
+      },
+    });
+    const switched = await startTimer({ id: 8, name: 'Pack' });
+    expect(api.startTimer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ taskId: 8, replacing: 7 }),
+    );
+    expect(switched && stopMessage(switched)).toMatch(/Saved 12m on “Count”.*No duty/);
+
+    fn(api.stopTimer).mockResolvedValue({
+      timer: null,
+      now: now(),
+      saved: {
+        taskId: 8,
+        taskName: 'Pack',
+        minutes: 3,
+        duty: { id: 'd', name: 'Receiving', departmentName: 'Ops' },
+        totalMinutes: 3,
+        people: [],
+      },
+    });
     const r = await stopTimer();
+    expect(api.stopTimer).toHaveBeenCalledWith(expect.objectContaining({ taskId: 8 }));
     expect(getTimer()).toBeNull();
-    expect(save).toHaveBeenCalledWith(7, expect.objectContaining({ date: expect.any(String) }));
-    expect(r && stopMessage(r)).toMatch(/Saved 1m on “Count”.*under Ops › Receiving/);
+    expect(r && stopMessage(r)).toMatch(/Saved 3m on “Pack”.*under Ops › Receiving/);
   });
 
-  it('keeps a stretch that could not be sent, and sends it with the next stop', async () => {
-    save.mockRejectedValueOnce(new Error('Network down'));
-    await startTimer({ id: 7, name: 'Count' });
-    const r = await stopTimer();
-    expect(r?.logged).toBe(false);
-    expect(JSON.parse(localStorage.getItem('hb-timer-unsaved')!)).toHaveLength(1);
+  it('shows the timer another browser started, and refuses to overwrite it', async () => {
+    fn(api.getTimer).mockResolvedValue(running(5, 'Elsewhere'));
+    await refreshTimer();
+    expect(getTimer()?.taskName).toBe('Elsewhere');
 
-    save.mockResolvedValue({ minutes: 1, duty: null, totalMinutes: 2, people: [] });
-    await startTimer({ id: 8, name: 'Pack' });
-    await stopTimer();
-    await Promise.resolve();
-    expect(save.mock.calls.map((c) => c[0])).toEqual([7, 7, 8]);
-    expect(localStorage.getItem('hb-timer-unsaved')).toBeNull();
+    // Meanwhile it moved again; the server says so and hands the real one back.
+    fn(api.startTimer).mockRejectedValue(
+      new ApiError(409, 'Your timer is now running on “Other”.', {
+        code: 'TIMER_CHANGED',
+        timer: { taskId: 6, taskName: 'Other', startedAt: now() },
+        now: now(),
+      }),
+    );
+    await expect(startTimer({ id: 9, name: 'Mine' })).rejects.toThrow(
+      /Other.*Nothing was changed here/,
+    );
+    expect(api.startTimer).toHaveBeenCalledWith(expect.objectContaining({ replacing: 5 }));
+    expect(getTimer()?.taskId).toBe(6);
   });
 
-  it('drops a stretch the server refuses', async () => {
-    save.mockRejectedValueOnce(new ApiError(404, 'Task not found'));
-    await startTimer({ id: 9, name: 'Gone' });
-    const r = await stopTimer();
-    expect(r?.logged).toBe(false);
-    expect(localStorage.getItem('hb-timer-unsaved')).toBeNull();
+  it('uses the server clock for the running time', async () => {
+    const serverNow = Date.now() + 10 * 60_000; // this browser's clock is 10 minutes slow
+    fn(api.getTimer).mockResolvedValue({
+      timer: { taskId: 1, taskName: 'A', startedAt: new Date(serverNow - 60_000).toISOString() },
+      now: new Date(serverNow).toISOString(),
+    });
+    await refreshTimer();
+    const elapsed = Date.now() - getTimer()!.startedAt;
+    expect(elapsed).toBeGreaterThan(55_000);
+    expect(elapsed).toBeLessThan(65_000);
   });
 });

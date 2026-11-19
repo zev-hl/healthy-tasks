@@ -90,9 +90,10 @@ import type {
   RelatedTaskDto,
   SaveOrgChangesRequest,
   SaveTimeDayRequest,
-  SaveTimedStretchRequest,
+  MyTimerDto,
+  StartTimerRequest,
+  StopTimerRequest,
   TaskTimeDto,
-  TimedStretchSavedDto,
   SetTimeDayCompletedRequest,
   TemplateDutyCheckDto,
   TemplateDutyCheckRequest,
@@ -748,11 +749,11 @@ export const api = {
 
   // --- The timer's saved time (L2) ---
   getTaskTime: (taskId: number) => request<TaskTimeDto>(`/api/tasks/${taskId}/time`),
-  saveTimedStretch: (taskId: number, body: SaveTimedStretchRequest) =>
-    request<TimedStretchSavedDto>(`/api/tasks/${taskId}/time`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  getTimer: () => request<MyTimerDto>('/api/timer'),
+  startTimer: (body: StartTimerRequest) =>
+    request<MyTimerDto>('/api/timer/start', { method: 'POST', body: JSON.stringify(body) }),
+  stopTimer: (body: StopTimerRequest) =>
+    request<MyTimerDto>('/api/timer/stop', { method: 'POST', body: JSON.stringify(body) }),
 
   // --- Department Duties: time ---
   listTimeDays: (from: string, to: string, userId?: string) =>

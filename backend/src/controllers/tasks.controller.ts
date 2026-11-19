@@ -1,5 +1,4 @@
-import { getTaskTime, saveTimedStretch } from '../services/task-time.service.js';
-import type { TimedStretchInput } from '../validation/schemas.js';
+import { getTaskTime } from '../services/task-time.service.js';
 import { requestUpdate } from '../services/task-update-request.service.js';
 import type { RequestUpdateInput } from '../validation/schemas.js';
 import { snoozeTask, unsnoozeTask } from '../services/task-snooze.service.js';
@@ -280,11 +279,4 @@ export async function saveTaskAsTemplateController(req: Request, res: Response):
 /** GET /api/tasks/:id/time — the task's timed hours, in total and per person (L2). */
 export async function getTaskTimeController(req: Request, res: Response): Promise<void> {
   res.json(await getTaskTime(actorOf(req), parseTaskId(req)));
-}
-
-/** POST /api/tasks/:id/time — save one stretch of the caller's timer (L2). */
-export async function saveTimedStretchController(req: Request, res: Response): Promise<void> {
-  res
-    .status(201)
-    .json(await saveTimedStretch(actorOf(req), parseTaskId(req), req.body as TimedStretchInput));
 }

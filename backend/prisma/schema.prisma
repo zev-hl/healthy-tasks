@@ -127,6 +127,7 @@ model User {
   timeEntries    TimeEntry[]
   timeDays       TimeDay[]
   timedStretches TimedStretch[]
+  runningTimer   RunningTimer?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -232,8 +233,9 @@ model Task {
   // Due soon / overdue notices (E7): the due date each was last sent for, so a
   // notice goes once per due date (a new due date sends again).
   seenBy           TaskSeen[]
-  // Stage 2 (L2): the timer's saved stretches on this task.
+  // Stage 2 (L2): the timer's saved stretches on this task, and timers running on it.
   timedStretches   TimedStretch[]
+  runningTimers    RunningTimer[]
   dueSoonNoticeFor DateTime?
   overdueNoticeFor DateTime?
 
@@ -1374,6 +1376,19 @@ model TimedStretch {
   @@index([userId, date])
   @@index([taskId])
   @@index([dutyId])
+}
+
+// Stage 2 (L2): the one timer a person has running, kept on the server so every
+// browser sees the same one. A start must name the timer it replaces, so one
+// browser can't overwrite another's. Stopping saves a TimedStretch.
+model RunningTimer {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    Int
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  startedAt DateTime
+
+  @@index([taskId])
 }
 
 // Per-person, per-day header: the Completed flag and an optional note. A

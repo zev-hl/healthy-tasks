@@ -3097,6 +3097,46 @@ export interface TimedStretchSavedDto extends TaskTimeDto {
   duty: DutyRef | null;
 }
 
+/** A person's running timer (L2), kept on the server: one per person. */
+export interface RunningTimerDto {
+  taskId: number;
+  taskName: string;
+  startedAt: string; // ISO, the server's clock
+}
+
+/**
+ * The caller's timer as it stands, with the server's clock (`now`) so a
+ * browser whose clock is off still shows the right running time. `saved` is the
+ * stretch a stop or a switch just saved.
+ */
+export interface MyTimerDto {
+  timer: RunningTimerDto | null;
+  now: string; // ISO
+  saved?: (TimedStretchSavedDto & { taskId: number; taskName: string }) | null;
+}
+
+/**
+ * Start timing a task. `replacing` names the timer the browser believes is
+ * running (null: none); if another is running instead, the server refuses with
+ * 409 `TIMER_CHANGED_CODE` and the current timer, so no browser overwrites
+ * another's. A timer it replaces is stopped and saved first.
+ */
+export interface StartTimerRequest {
+  taskId: number;
+  replacing: number | null;
+  /** The person's own day, for the stretch a switch saves. */
+  date: CalendarDateString;
+}
+
+/** Stop the timer on `taskId` (refused with 409 if a different one is running). */
+export interface StopTimerRequest {
+  taskId: number;
+  date: CalendarDateString;
+}
+
+/** 409 `details.code` when the running timer isn't the one the browser named. */
+export const TIMER_CHANGED_CODE = 'TIMER_CHANGED';
+
 /** The longest one stretch may be; a timer left running longer is cut to this. */
 export const TIMED_STRETCH_MAX_MINUTES = 1440;
 

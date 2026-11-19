@@ -82,6 +82,11 @@ export function TimeBlock({
           message: `${stopMessage(stopped)} Now timing this task.`,
           tone: stopped.logged ? 'dark' : 'error',
         });
+    } catch (e) {
+      toast({
+        message: e instanceof Error ? e.message : 'Could not start the timer',
+        tone: 'error',
+      });
     } finally {
       setBusy(false);
     }

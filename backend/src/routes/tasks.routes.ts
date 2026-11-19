@@ -6,7 +6,6 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   createTaskSchema,
   snoozeTaskSchema,
-  timedStretchSchema,
   requestUpdateSchema,
   updateTaskSchema,
   duplicateTaskSchema,
@@ -44,7 +43,6 @@ import {
   restoreTaskController,
   snoozeTaskController,
   getTaskTimeController,
-  saveTimedStretchController,
   requestUpdateController,
   unsnoozeTaskController,
   duplicateTaskController,
@@ -129,11 +127,6 @@ tasksRouter.post('/:id/restore', asyncHandler(restoreTaskController));
 tasksRouter.post('/:id/snooze', validateBody(snoozeTaskSchema), asyncHandler(snoozeTaskController));
 tasksRouter.delete('/:id/snooze', asyncHandler(unsnoozeTaskController));
 tasksRouter.get('/:id/time', asyncHandler(getTaskTimeController));
-tasksRouter.post(
-  '/:id/time',
-  validateBody(timedStretchSchema),
-  asyncHandler(saveTimedStretchController),
-);
 tasksRouter.post(
   '/:id/request-update',
   validateBody(requestUpdateSchema),

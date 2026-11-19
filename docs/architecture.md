@@ -1161,16 +1161,23 @@ Changed, on a "T under P" state; its rows exist on no server.
   `duty-video.service.ts` under `/api/departments/duties/:id/video`, Admin
   uploads, anyone signed in watches) and who holds it. My duties lists the
   reader's.
-- **Timer** (`task-time.service.ts`, `GET`/`POST /api/tasks/:id/time`): the
-  clock runs in the browser (`lib/timer.ts`); each stop saves a `TimedStretch`
-  (user, task, the task's duty at that moment or null, the person's day, start,
-  end, minutes 1–1440). Later duty changes don't move past hours. The task's
-  time box shows the total and per person to anyone who can read it. My Time
-  shows the day's timed hours by duty (`TimeDayDto.timed`, with `dutyId: null`
-  as "No duty") read-only beside the hand-typed `TimeEntry` rows, and the day,
-  week and Time Review totals count both. A stretch that can't be sent stays in
-  `localStorage` (`hb-timer-unsaved`) and is sent with the next start or stop. A
-  duty with timed hours counts as used (archive, not delete).
+- **Timer** (`task-time.service.ts`; `GET /api/timer`, `POST /api/timer/start`,
+  `POST /api/timer/stop`; `GET /api/tasks/:id/time`): the running timer lives on
+  the server, one per person (`RunningTimer`, keyed by user), so every browser
+  and device shows the same one. A start names the timer it replaces
+  (`replacing`, null for none) and a stop the task it stops; when that isn't the
+  one running, because another browser changed it, the server answers 409
+  `TIMER_CHANGED` with the current timer and changes nothing. Only the request
+  that deletes the row saves the stretch, so nothing is saved twice. Each stop or
+  switch saves a `TimedStretch` (user, task, the task's duty at that moment or
+  null, the person's day, start, end, minutes 1–1440, a longer run cut to 24h).
+  Later duty changes don't move past hours. The browser (`lib/timer.ts`) keeps
+  one shared copy, refreshed on focus and every 30 seconds, and corrects the
+  clock by the server's `now`. The task's time box shows the total and per
+  person to anyone who can read it. My Time shows the day's timed hours by duty
+  (`TimeDayDto.timed`, with `dutyId: null` as "No duty") read-only beside the
+  hand-typed `TimeEntry` rows, and the day, week and Time Review totals count
+  both. A duty with timed hours counts as used (archive, not delete).
 - **Organization**: toolbar counts of people reporting to nobody and without a
   duty, each a filter; dropping a card on a manager asks before the move is
   staged for Save changes.

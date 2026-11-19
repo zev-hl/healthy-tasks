@@ -537,11 +537,67 @@ describe('Stage 2: a duty video as a file (I4)', () => {
   });
 });
 
-describe('Stage 2: the timer saved with the task (L2)', () => {
+describe('Stage 2: the timer on the server, saved with the task (L2)', () => {
+  const today = () => new Date().toISOString().slice(0, 10);
+  const start = (token: string, taskId: number, replacing: number | null) =>
+    request(app)
+      .post('/api/timer/start')
+      .set(auth(token))
+      .send({ taskId, replacing, date: today() });
+  const stop = (token: string, taskId: number) =>
+    request(app).post('/api/timer/stop').set(auth(token)).send({ taskId, date: today() });
+  /** Pretend the running timer started `min` minutes ago. */
+  const backdate = (email: string, min: number) =>
+    prisma.runningTimer.updateMany({
+      where: { user: { email } },
+      data: { startedAt: new Date(Date.now() - min * 60_000) },
+    });
+
+  it('one timer per person, the same in every browser; a stale start or stop is refused', async () => {
+    const admin = await login(ADMIN);
+    const a = await makeTask(admin, 'Count the pallets');
+    const b = await makeTask(admin, 'Label the shelves');
+
+    const started = await start(admin, a.id, null);
+    assert.equal(started.status, 200, JSON.stringify(started.body));
+    assert.equal(started.body.timer.taskId, a.id);
+    // "Another browser" sees it.
+    const seen = (await request(app).get('/api/timer').set(auth(admin))).body;
+    assert.equal(seen.timer.taskId, a.id);
+    assert.equal(seen.timer.taskName, 'Count the pallets');
+
+    // A browser that thinks nothing is running can't start over it.
+    const stale = await start(admin, b.id, null);
+    assert.equal(stale.status, 409);
+    assert.equal(stale.body.details.code, 'TIMER_CHANGED');
+    assert.equal(stale.body.details.timer.taskId, a.id);
+    // Nor stop a timer that isn't the one running.
+    assert.equal((await stop(admin, b.id)).status, 409);
+
+    // Switching names the one it replaces: that one is saved first.
+    await backdate(ADMIN, 30);
+    const sw = await start(admin, b.id, a.id);
+    assert.equal(sw.status, 200, JSON.stringify(sw.body));
+    assert.equal(sw.body.timer.taskId, b.id);
+    assert.equal(sw.body.saved.taskId, a.id);
+    assert.equal(sw.body.saved.minutes, 30);
+
+    await backdate(ADMIN, 10);
+    const stopped = await stop(admin, b.id);
+    assert.equal(stopped.status, 200);
+    assert.equal(stopped.body.timer, null);
+    assert.equal(stopped.body.saved.minutes, 10);
+    // Stopping again (the other browser) is refused, and nothing is saved twice.
+    const again = await stop(admin, b.id);
+    assert.equal(again.status, 409);
+    assert.equal(again.body.details.timer, null);
+    assert.equal(await prisma.timedStretch.count(), 2);
+  });
+
   it('saves each stretch with the duty the task had then, and adds it up on the task and My Time', async () => {
     const admin = await login(ADMIN);
     const adminId = (await prisma.user.findUniqueOrThrow({ where: { email: ADMIN } })).id;
-    await seedUser('timer2@test.local', 'Member');
+    const member2 = await seedUser('timer2@test.local', 'Member');
     const member = await login('timer2@test.local');
     const dep = await prisma.department.create({
       data: { name: 'Ops', nameKey: 'ops', color: '#3366cc' },
@@ -554,28 +610,21 @@ describe('Stage 2: the timer saved with the task (L2)', () => {
     });
     const t = await makeTask(admin, 'Count the pallets');
     await prisma.task.update({ where: { id: t.id }, data: { dutyId: recv.id } });
-    const today = new Date().toISOString().slice(0, 10);
-    const stretch = (token: string, startMin: number, endMin: number) =>
-      request(app)
-        .post(`/api/tasks/${t.id}/time`)
-        .set(auth(token))
-        .send({
-          startedAt: new Date(Date.now() - startMin * 60_000).toISOString(),
-          endedAt: new Date(Date.now() - endMin * 60_000).toISOString(),
-          date: today,
-        });
+    const timeOn = async (token: string, email: string, min: number) => {
+      assert.equal((await start(token, t.id, null)).status, 200);
+      await backdate(email, min);
+      return (await stop(token, t.id)).body.saved;
+    };
 
-    const first = await stretch(admin, 90, 60);
-    assert.equal(first.status, 201, JSON.stringify(first.body));
-    assert.equal(first.body.minutes, 30);
-    assert.equal(first.body.duty.id, recv.id);
+    const first = await timeOn(admin, ADMIN, 30);
+    assert.equal(first.minutes, 30);
+    assert.equal(first.duty.id, recv.id);
     // The duty changes; past hours stay where they were.
     await prisma.task.update({ where: { id: t.id }, data: { dutyId: pack.id } });
-    assert.equal((await stretch(admin, 20, 10)).body.duty.id, pack.id);
+    assert.equal((await timeOn(admin, ADMIN, 10)).duty.id, pack.id);
     await prisma.task.update({ where: { id: t.id }, data: { dutyId: null } });
-    const third = await stretch(member, 5, 0);
-    assert.equal(third.body.duty, null);
-    assert.equal(third.body.minutes, 5);
+    const third = await timeOn(member, 'timer2@test.local', 5);
+    assert.equal(third.duty, null);
 
     const time = (await request(app).get(`/api/tasks/${t.id}/time`).set(auth(member))).body;
     assert.equal(time.totalMinutes, 45);
@@ -583,14 +632,14 @@ describe('Stage 2: the timer saved with the task (L2)', () => {
       time.people.map((p: { user: { id: string }; minutes: number }) => [p.user.id, p.minutes]),
       [
         [adminId, 40],
-        [(await prisma.user.findUniqueOrThrow({ where: { email: 'timer2@test.local' } })).id, 5],
+        [member2.id, 5],
       ],
     );
 
     // Admin's My Time: timed by duty, beside (not inside) the hand-typed rows.
-    const [day] = (
-      await request(app).get(`/api/time/days?from=${today}&to=${today}`).set(auth(admin))
-    ).body;
+    const d = today();
+    const [day] = (await request(app).get(`/api/time/days?from=${d}&to=${d}`).set(auth(admin)))
+      .body;
     const timed = Object.fromEntries(
       day.timed.map((x: { dutyId: string | null; minutes: number }) => [
         x.dutyId ?? 'none',
@@ -599,9 +648,8 @@ describe('Stage 2: the timer saved with the task (L2)', () => {
     );
     assert.deepEqual(timed, { [recv.id]: 30, [pack.id]: 10 });
     assert.deepEqual(day.entries, []);
-    const [mine] = (
-      await request(app).get(`/api/time/days?from=${today}&to=${today}`).set(auth(member))
-    ).body;
+    const [mine] = (await request(app).get(`/api/time/days?from=${d}&to=${d}`).set(auth(member)))
+      .body;
     assert.deepEqual(mine.timed, [{ dutyId: null, minutes: 5 }]);
 
     // A duty with timed hours counts as used.
@@ -611,23 +659,13 @@ describe('Stage 2: the timer saved with the task (L2)', () => {
     );
   });
 
-  it('refuses a stretch that ends before it starts, or on a task you cannot read', async () => {
+  it('won’t time a task you cannot read', async () => {
     const admin = await login(ADMIN);
     await seedUser('timer3@test.local', 'Member');
     const member = await login('timer3@test.local');
     const t = await makeTask(admin, 'Secret thing');
     await prisma.task.update({ where: { id: t.id }, data: { isPrivate: true } });
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    const bad = await request(app)
-      .post(`/api/tasks/${t.id}/time`)
-      .set(auth(admin))
-      .send({ startedAt: now, endedAt: new Date(Date.now() - 60_000).toISOString(), date: today });
-    assert.equal(bad.status, 400);
-    const hidden = await request(app)
-      .post(`/api/tasks/${t.id}/time`)
-      .set(auth(member))
-      .send({ startedAt: new Date(Date.now() - 60_000).toISOString(), endedAt: now, date: today });
-    assert.equal(hidden.status, 404);
+    assert.equal((await start(member, t.id, null)).status, 404);
+    assert.equal((await request(app).get(`/api/tasks/${t.id}/time`).set(auth(member))).status, 404);
   });
 });

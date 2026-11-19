@@ -1113,10 +1113,13 @@ export const timeReviewSchema = z
   .refine((v) => v.from <= v.to, { message: '`from` must be on or before `to`', path: ['to'] });
 export type TimeReviewInput = z.infer<typeof timeReviewSchema>;
 
-// Stage 2 (L2): one stretch of the timer.
-export const timedStretchSchema = z.object({
-  startedAt: z.string().datetime({ offset: true }),
-  endedAt: z.string().datetime({ offset: true }),
+// Stage 2 (L2): the server-side timer.
+export const startTimerSchema = z.object({
+  taskId: z.number().int().positive(),
+  replacing: z.number().int().positive().nullable(),
   date: calendarDate,
 });
-export type TimedStretchInput = z.infer<typeof timedStretchSchema>;
+export const stopTimerSchema = z.object({
+  taskId: z.number().int().positive(),
+  date: calendarDate,
+});

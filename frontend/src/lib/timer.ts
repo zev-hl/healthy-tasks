@@ -1,55 +1,87 @@
 import { useEffect, useState } from 'react';
-import { dutyLabel, type TimeDayDto } from '@healthy-tasks/shared';
+import {
+  TIMER_CHANGED_CODE,
+  dutyLabel,
+  type MyTimerDto,
+  type RunningTimerDto,
+  type TimeDayDto,
+} from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 
 /**
- * One timer for the whole app, one task at a time (brief §6.4). The clock
- * lives in the browser (localStorage), so it keeps running across pages and a
- * closed tab. When it stops, the stretch is saved on the server with its task
- * and the duty the task has then (Nov 2026 plan, L2): the task shows the time,
- * and My Time adds it up by duty. No duty is asked for. A stretch that can't be
- * saved (offline) is kept here and sent again on the next start or stop.
+ * One timer per person, one task at a time (brief §6.4, Nov 2026 plan L2). It
+ * runs on the server (`/api/timer`), so every browser and device shows the
+ * same one, and none can overwrite another's: a start names the timer it
+ * replaces and a stop the one it stops, and the server refuses (409) when that
+ * isn't the one running, handing back the current one. Each stop or switch
+ * saves the stretch with the task and the task's duty; no duty is asked for.
+ * Here it is kept in one shared copy, refreshed on focus and every 30 seconds.
  */
 
 export interface RunningTimer {
   taskId: number;
   taskName: string;
+  /** When it started, on this browser's clock (the server's, corrected for skew). */
   startedAt: number; // epoch ms
 }
 
-interface Unsaved {
-  taskId: number;
-  taskName: string;
-  startedAt: string;
-  endedAt: string;
-  date: string;
-}
-
-const TIMER_KEY = 'hb-timer';
-const UNSAVED_KEY = 'hb-timer-unsaved';
 /** Fired when the timer starts, stops, or saved time changes. */
 export const TIMER_EVENT = 'hb-timer-change';
+const REFRESH_MS = 30_000;
 
-function read<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+let current: RunningTimer | null = null;
+/** Server clock minus this browser's clock. */
+let skew = 0;
+let loaded: Promise<void> | null = null;
+
+function adopt(timer: RunningTimerDto | null | undefined, now: string | undefined) {
+  if (now) skew = Date.parse(now) - Date.now();
+  const next = timer
+    ? {
+        taskId: timer.taskId,
+        taskName: timer.taskName,
+        startedAt: Date.parse(timer.startedAt) - skew,
+      }
+    : null;
+  const same = next?.taskId === current?.taskId && next?.startedAt === current?.startedAt;
+  current = next;
+  if (!same) window.dispatchEvent(new Event(TIMER_EVENT));
 }
-function write(key: string, value: unknown) {
+
+/** Read the timer from the server (it may have changed in another browser). */
+export function refreshTimer(): Promise<void> {
+  return api
+    .getTimer()
+    .then((r) => {
+      if (r && typeof r === 'object' && 'timer' in r) adopt(r.timer, r.now);
+    })
+    .catch(() => {
+      /* offline: keep showing what we had */
+    });
+}
+
+function ensureLoaded(): Promise<void> {
+  // A timer kept on this browser by the old version can't be carried over.
   try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, JSON.stringify(value));
+    localStorage.removeItem('hb-timer');
+    localStorage.removeItem('hb-timelog');
   } catch {
-    /* storage unavailable: the timer simply won't survive a reload */
+    /* storage unavailable */
   }
-  window.dispatchEvent(new Event(TIMER_EVENT));
+  return (loaded ??= refreshTimer());
 }
 
 export function getTimer(): RunningTimer | null {
-  return read<RunningTimer | null>(TIMER_KEY, null);
+  return current;
+}
+
+/** Forget the loaded copy (tests, sign-out). */
+export function resetTimerCache(): void {
+  const had = current !== null;
+  current = null;
+  skew = 0;
+  loaded = null;
+  if (had) window.dispatchEvent(new Event(TIMER_EVENT));
 }
 
 /** "0:12:04" */
@@ -85,107 +117,110 @@ const todayYmd = () => {
 export interface StopResult {
   taskName: string;
   minutes: number;
-  /** Saved on the server; when false, `reason` says why (it is kept to send again). */
+  /** Saved on the task; when false, `reason` says why. */
   logged: boolean;
   /** Where it went on My Time: a duty's name, or null for "No duty". */
   dutyName?: string | null;
   reason?: string;
 }
 
-async function send(u: Unsaved): Promise<StopResult> {
-  const r = await api.saveTimedStretch(u.taskId, {
-    startedAt: u.startedAt,
-    endedAt: u.endedAt,
-    date: u.date,
-  });
+function savedResult(saved: MyTimerDto['saved']): StopResult | null {
+  if (saved === undefined) return null;
+  if (saved === null)
+    return {
+      taskName: 'that task',
+      minutes: 0,
+      logged: false,
+      reason: 'you can no longer open the task, so the time couldn’t be kept on it',
+    };
   return {
-    taskName: u.taskName,
-    minutes: r.minutes,
+    taskName: saved.taskName,
+    minutes: saved.minutes,
     logged: true,
-    dutyName: r.duty ? dutyLabel(r.duty) : null,
+    dutyName: saved.duty ? dutyLabel(saved.duty) : null,
   };
 }
 
-let flushing: Promise<void> | null = null;
-
-/**
- * Send stretches kept from an earlier failed save, one flush at a time (the
- * list is taken out of storage first, so nothing is sent twice). Ones the
- * server refuses (task gone, bad times) are dropped; the rest are kept again.
- */
-export function flushUnsaved(): Promise<void> {
-  if (flushing) return flushing;
-  flushing = (async () => {
-    const list = read<Unsaved[]>(UNSAVED_KEY, []);
-    if (list.length === 0) return;
-    write(UNSAVED_KEY, null);
-    const left: Unsaved[] = [];
-    for (const u of list) {
-      try {
-        await send(u);
-      } catch (e) {
-        if (!(e instanceof ApiError) || e.status >= 500) left.push(u);
-      }
-    }
-    if (left.length) write(UNSAVED_KEY, [...left, ...read<Unsaved[]>(UNSAVED_KEY, [])]);
-    window.dispatchEvent(new Event(TIMER_EVENT));
-  })().finally(() => {
-    flushing = null;
-  });
-  return flushing;
+/** The server said another browser changed the timer: show the real one, and say so. */
+function handleChanged(e: unknown): string | null {
+  if (!(e instanceof ApiError) || e.status !== 409) return null;
+  const d = e.details as
+    { code?: string; timer?: RunningTimerDto | null; now?: string } | undefined;
+  if (d?.code !== TIMER_CHANGED_CODE) return null;
+  adopt(d.timer ?? null, d.now);
+  return e.message;
 }
 
-/** Stop the running timer and save the stretch. Time under a minute counts as 1m. */
+/** Stop the running timer and save the stretch on its task. */
 export async function stopTimer(): Promise<StopResult | null> {
-  const t = getTimer();
+  await ensureLoaded();
+  const t = current;
   if (!t) return null;
-  write(TIMER_KEY, null);
-  const stretch: Unsaved = {
-    taskId: t.taskId,
-    taskName: t.taskName,
-    startedAt: new Date(t.startedAt).toISOString(),
-    endedAt: new Date().toISOString(),
-    date: todayYmd(),
-  };
-  const minutes = Math.max(1, Math.round((Date.parse(stretch.endedAt) - t.startedAt) / 60000));
-  void flushUnsaved();
   try {
-    const r = await send(stretch);
+    const r = await api.stopTimer({ taskId: t.taskId, date: todayYmd() });
+    adopt(r.timer, r.now);
     window.dispatchEvent(new Event(TIMER_EVENT));
-    return r;
+    return savedResult(r.saved);
   } catch (e) {
-    const kept = !(e instanceof ApiError) || e.status >= 500;
-    if (kept) write(UNSAVED_KEY, [...read<Unsaved[]>(UNSAVED_KEY, []), stretch]);
-    const why = e instanceof ApiError || e instanceof Error ? e.message : 'the server refused it';
+    const changed = handleChanged(e);
     return {
       taskName: t.taskName,
-      minutes,
+      minutes: 0,
       logged: false,
-      reason: kept ? `${why}. It is kept on this browser and will be sent again` : why,
+      reason:
+        changed ??
+        `${e instanceof Error ? e.message : 'the server refused it'}. The timer is still running; try again`,
     };
   }
 }
 
-/** Start timing a task; a timer on another task is stopped and saved first. */
+/**
+ * Start timing a task; a timer on another task is stopped and saved first (the
+ * result says what was saved). Throws with a message the caller shows when the
+ * server refuses, e.g. because another browser changed the timer meanwhile.
+ */
 export async function startTimer(task: { id: number; name: string }): Promise<StopResult | null> {
-  const previous = getTimer();
-  const stopped = previous && previous.taskId !== task.id ? await stopTimer() : null;
-  void flushUnsaved();
-  write(TIMER_KEY, { taskId: task.id, taskName: task.name, startedAt: Date.now() });
-  return stopped;
+  await ensureLoaded();
+  try {
+    const r = await api.startTimer({
+      taskId: task.id,
+      replacing: current?.taskId ?? null,
+      date: todayYmd(),
+    });
+    adopt(r.timer, r.now);
+    window.dispatchEvent(new Event(TIMER_EVENT));
+    return savedResult(r.saved);
+  } catch (e) {
+    const changed = handleChanged(e);
+    throw new Error(
+      changed
+        ? `${changed} Nothing was changed here; press it again if you still want this task timed.`
+        : e instanceof Error
+          ? e.message
+          : 'Could not start the timer',
+    );
+  }
 }
 
-/** The running timer and a ticking clock, kept in step across tabs. */
+/** The running timer and a ticking clock, the same in every browser. */
 export function useTimer(): { timer: RunningTimer | null; elapsed: number } {
-  const [timer, setTimer] = useState<RunningTimer | null>(() => getTimer());
+  const [timer, setTimer] = useState<RunningTimer | null>(() => current);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const sync = () => setTimer(getTimer());
+    const sync = () => setTimer(current);
     window.addEventListener(TIMER_EVENT, sync);
-    window.addEventListener('storage', sync);
+    void ensureLoaded().then(sync);
+    const refresh = () => {
+      if (document.visibilityState !== 'hidden') void refreshTimer();
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    const id = window.setInterval(refresh, REFRESH_MS);
     return () => {
       window.removeEventListener(TIMER_EVENT, sync);
-      window.removeEventListener('storage', sync);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      window.clearInterval(id);
     };
   }, []);
   useEffect(() => {
@@ -199,8 +234,7 @@ export function useTimer(): { timer: RunningTimer | null; elapsed: number } {
 
 /** The toast text for a stop. */
 export function stopMessage(r: StopResult): string {
-  if (!r.logged)
-    return `Stopped the timer on “${r.taskName}” (${formatMinutes(r.minutes)}), but it wasn’t saved: ${r.reason}.`;
+  if (!r.logged) return `The timer on “${r.taskName}” wasn’t saved: ${r.reason}.`;
   const where = r.dutyName ? `under ${r.dutyName}` : 'as “No duty”';
   return `Saved ${formatMinutes(r.minutes)} on “${r.taskName}”. It shows on My Time ${where}.`;
 }

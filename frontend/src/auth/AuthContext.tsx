@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { UpdateMyProfileRequest, UserDto } from '@healthy-tasks/shared';
 import { api, getToken, getTokenExpiresAt, setToken, setUnauthorizedHandler } from '../api/client';
+import { resetTimerCache } from '../lib/timer';
 
 interface AuthState {
   user: UserDto | null;
@@ -40,6 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [expiryWarning, setExpiryWarning] = useState(false);
+
+  // The timer is per person: forget the loaded one whenever who is signed in changes.
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    resetTimerCache();
+  }, [userId]);
 
   const expireSession = useCallback(() => {
     setToken(null);
