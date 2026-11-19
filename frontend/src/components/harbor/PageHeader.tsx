@@ -117,7 +117,7 @@ export function NotificationBellMenu() {
       await markRead(it).catch(() => {});
       refresh();
     }
-    navigate(`/tasks/${it.taskId}`);
+    navigate(it.href);
   }
 
   return (

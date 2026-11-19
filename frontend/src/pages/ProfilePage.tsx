@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { PageHeader } from '../components/harbor/PageHeader';
 import { NotificationSettings } from '../components/NotificationSettings';
+import { GoogleCalendarCard } from '../components/calendar/GoogleCalendarCard';
 
 const DEVICE_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -156,6 +157,7 @@ export function ProfilePage() {
               <p className="profile-card-sub">Choose what reaches you, and where.</p>
               <NotificationSettings email={user?.email} />
             </div>
+            <GoogleCalendarCard />
           </div>
         </div>
       </div>

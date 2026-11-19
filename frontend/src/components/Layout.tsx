@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Fragment, useEffect, useState } from 'react';
 import {
+  CalendarDays,
   Clock,
   LayoutDashboard,
   Layers,
@@ -54,6 +55,7 @@ const CENTRAL_NAV: NavEntry[] = [
       { to: '/duties', label: 'My duties' },
     ],
   },
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays, match: ['/calendar'] },
   { to: '/time', label: 'Time', icon: Clock, match: ['/time', '/reports/time'] },
   { to: '/goals', label: 'Goals', icon: Target, match: ['/goals'] },
   {

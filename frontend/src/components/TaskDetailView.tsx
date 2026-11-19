@@ -30,12 +30,14 @@ import { TaskLinkPicker } from './TaskLinkPicker';
 import { ReviewerPicker } from './ReviewerPicker';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
+import { TaskEvents } from './calendar/TaskEvents';
 import { SnoozeButton, snoozeLabel } from './SnoozeButton';
 import { RequestUpdateButton } from './RequestUpdateButton';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { Avatar, userLabel } from './ui/Avatar';
 import {
   AlarmClock,
+  CalendarDays,
   AlertTriangle,
   BellOff,
   Repeat,
@@ -2061,6 +2063,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               </div>
               <div className="hb-card-pad hb-legacy-rail">
                 <TaskReminders taskId={task.id} status={task.status} />
+              </div>
+            </section>
+
+            <section className="hb-card" id="task-events">
+              <div className="hb-card-head">
+                <span className="hb-ic tone-blue">
+                  <CalendarDays size={16} aria-hidden="true" />
+                </span>
+                <h3>Events</h3>
+              </div>
+              <div className="hb-card-pad">
+                <TaskEvents taskId={task.id} taskName={task.name} />
               </div>
             </section>
           </div>

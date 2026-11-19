@@ -23,6 +23,9 @@ const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default:
 const TemplatesPage = lazy(() =>
   import('./pages/TemplatesPage').then((m) => ({ default: m.TemplatesPage })),
 );
+const CalendarPage = lazy(() =>
+  import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })),
+);
 const DraftsPage = lazy(() =>
   import('./pages/DraftsPage').then((m) => ({ default: m.DraftsPage })),
 );
@@ -169,6 +172,7 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
+          { path: '/calendar', element: <CalendarPage /> },
           { path: '/drafts', element: <DraftsPage /> },
           { path: '/duties', element: <MyDutiesPage /> },
           { path: '/duties/:id', element: <DutyPage /> },

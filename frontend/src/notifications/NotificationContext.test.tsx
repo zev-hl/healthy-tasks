@@ -19,8 +19,15 @@ vi.mock('../api/client', () => ({
 const getUnreadCount = api.getUnreadCount as unknown as ReturnType<typeof vi.fn>;
 
 function counts(total: number): UnreadCountDto {
-  return { total, mentioned: total, reminders: 0, assigned: 0, activity: 0,
-  events: 0, schedulerDown: false };
+  return {
+    total,
+    mentioned: total,
+    reminders: 0,
+    assigned: 0,
+    activity: 0,
+    events: 0,
+    schedulerDown: false,
+  };
 }
 
 /** A channel that records what was posted and can deliver messages inward. */

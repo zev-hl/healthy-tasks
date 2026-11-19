@@ -9624,3 +9624,195 @@ a.hb-origin-chip:hover {
 .settings-page .settings-card + .settings-card {
   margin-top: 16px;
 }
+
+/* ── Calendar page (Nov 2026 plan, Stage 3: H3, H4, H4a, H6) ───────────── */
+.hb-cal-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.hb-cal-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hb-cal-layer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hb-cal-layer:not(.is-on) {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.hb-cal-layer.is-on {
+  color: var(--ink);
+  border-color: var(--border-dashed);
+}
+.hb-cal-gproblem {
+  color: var(--warn-deep);
+}
+.hb-cal-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.hb-cal-cols.has-panel {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+}
+.hb-cal-side {
+  position: sticky;
+  top: 12px;
+}
+@media (max-width: 980px) {
+  .hb-cal-cols.has-panel {
+    grid-template-columns: 1fr;
+  }
+  .hb-cal-side {
+    position: static;
+    order: -1;
+  }
+}
+
+/* Chips for events, reminders and Google events: their kind's colour (--k). */
+.hb-tcal-ev.is-kind {
+  background: color-mix(in srgb, var(--k) 13%, var(--surface));
+  border-left: 3px solid var(--k);
+  color: var(--ink);
+}
+.hb-tcal-ev.is-kind:hover {
+  background: color-mix(in srgb, var(--k) 22%, var(--surface));
+}
+.hb-tcal-ev.is-kind svg {
+  color: var(--k);
+  flex: none;
+}
+.hb-tcal-ev.k-google {
+  border-left-style: dashed;
+}
+.hb-tcal-g {
+  flex: none;
+  font-weight: 700;
+  font-size: 10px;
+  color: var(--k);
+}
+.hb-tcal-cell.can-add {
+  cursor: copy;
+}
+.hb-tcal-dayrow.is-kind {
+  border-left: 3px solid var(--k);
+}
+.hb-tcal-dayadd {
+  align-self: flex-start;
+  margin: 8px 12px;
+}
+.hb-tcal-dayempty .hb-tcal-dayadd {
+  display: flex;
+  margin: 12px auto 0;
+}
+
+/* The event panel */
+.hb-evpanel .hb-gpanel-eyebrow .hb-dot {
+  margin-right: 6px;
+}
+.hb-ev-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hb-ev-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.hb-ev-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.hb-ev-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.hb-ev-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.hb-ev-notes {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+.hb-ev-hits {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.hb-ev-hits button {
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.hb-ev-hits button:last-child {
+  border-bottom: 0;
+}
+.hb-ev-hits button:hover {
+  background: var(--surface-sunk);
+}
+
+/* A task's events */
+.hb-task-events ul {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hb-task-events li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.hb-ok-note {
+  color: var(--ok-deep);
+}
+/* A narrow month (the event panel open, a small window): names before times. */
+.hb-tcal.is-month {
+  container-type: inline-size;
+}
+@container (max-width: 900px) {
+  .hb-tcal.is-month .hb-tcal-ev-time {
+    display: none;
+  }
+}

@@ -91,6 +91,12 @@ import type {
   SaveOrgChangesRequest,
   SaveTimeDayRequest,
   MyTimerDto,
+  CalendarDto,
+  CalendarScope,
+  EventDto,
+  GoogleCalendarStatusDto,
+  GoogleEventsDto,
+  SaveEventRequest,
   StartTimerRequest,
   KeepTimerRequest,
   StopTimerRequest,
@@ -757,6 +763,27 @@ export const api = {
     request<MyTimerDto>('/api/timer/keep', { method: 'POST', body: JSON.stringify(body) }),
   stopTimer: (body: StopTimerRequest) =>
     request<MyTimerDto>('/api/timer/stop', { method: 'POST', body: JSON.stringify(body) }),
+
+  // --- Calendar (Stage 3) ---
+  getCalendar: (from: string, to: string, scope: CalendarScope) =>
+    request<CalendarDto>(
+      `/api/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&scope=${scope}`,
+    ),
+  getEvent: (id: string) => request<EventDto>(`/api/events/${id}`),
+  createEvent: (body: SaveEventRequest) =>
+    request<EventDto>('/api/events', { method: 'POST', body: JSON.stringify(body) }),
+  updateEvent: (id: string, body: SaveEventRequest) =>
+    request<EventDto>(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  cancelEvent: (id: string) => request<void>(`/api/events/${id}`, { method: 'DELETE' }),
+  listTaskEvents: (taskId: number) => request<EventDto[]>(`/api/tasks/${taskId}/events`),
+  getGoogleCalendar: () => request<GoogleCalendarStatusDto>('/api/google-calendar'),
+  connectGoogleCalendar: () =>
+    request<{ url: string }>('/api/google-calendar/connect', { method: 'POST' }),
+  disconnectGoogleCalendar: () => request<void>('/api/google-calendar', { method: 'DELETE' }),
+  listGoogleEvents: (from: string, to: string) =>
+    request<GoogleEventsDto>(
+      `/api/google-calendar/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
 
   // --- Department Duties: time ---
   listTimeDays: (from: string, to: string, userId?: string) =>

@@ -1,4 +1,10 @@
-import type { ActivityNotificationDto, NotificationsDto, TaskUserRef } from '@healthy-tasks/shared';
+import {
+  EVENT_KIND_LABELS,
+  type ActivityNotificationDto,
+  type EventNotificationDto,
+  type NotificationsDto,
+  type TaskUserRef,
+} from '@healthy-tasks/shared';
 import { api } from '../../api/client';
 import { userLabel } from '../ui/Avatar';
 
@@ -6,9 +12,13 @@ import { userLabel } from '../ui/Avatar';
 export interface FeedItem {
   key: string;
   id: string;
-  list: 'mentioned' | 'reminders' | 'assigned' | 'activity';
+  list: 'mentioned' | 'reminders' | 'assigned' | 'activity' | 'events';
+  /** The task it is about (0 for an event's notice). */
   taskId: number;
+  /** The task's name, or the event's title. */
   taskName: string;
+  /** Where clicking it goes. */
+  href: string;
   who: TaskUserRef | null;
   /** "mentioned you in", "assigned you", "reminder:" … */
   text: string;
@@ -39,6 +49,26 @@ export function activityText(a: ActivityNotificationDto): string {
   }
 }
 
+/** What an event's notice says (Stage 3). */
+export function eventText(e: EventNotificationDto): string {
+  const who = e.actor ? userLabel(e.actor) : 'Someone';
+  const kind = EVENT_KIND_LABELS[e.kind].toLowerCase();
+  const when = new Date(e.startAt).toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    ...(e.allDay ? { timeZone: 'UTC' } : { hour: 'numeric', minute: '2-digit' }),
+  });
+  switch (e.type) {
+    case 'eventInvited':
+      return `${who} added you to a ${kind}, ${when}`;
+    case 'eventChanged':
+      return `${who} moved a ${kind}: now ${when}`;
+    case 'eventCanceled':
+      return `${who} canceled a ${kind} (${when})`;
+  }
+}
+
 export function toFeed(n: NotificationsDto): FeedItem[] {
   const items: FeedItem[] = [
     ...n.mentioned.map((m) => ({
@@ -47,6 +77,7 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
       list: 'mentioned' as const,
       taskId: m.taskId,
       taskName: m.taskName,
+      href: `/tasks/${m.taskId}`,
       who: m.commenter,
       text: `${userLabel(m.commenter)} mentioned you`,
       at: m.commentAt,
@@ -58,6 +89,7 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
       list: 'assigned' as const,
       taskId: a.taskId,
       taskName: a.taskName,
+      href: `/tasks/${a.taskId}`,
       who: a.byAlert ? null : a.actor,
       // A task made from an Exclusives alert is assigned by the alert, not a person.
       text: a.byAlert
@@ -74,6 +106,7 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
       list: 'reminders' as const,
       taskId: r.taskId,
       taskName: r.taskName,
+      href: `/tasks/${r.taskId}`,
       who: null,
       text:
         r.kind === 'canceled'
@@ -92,10 +125,23 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
       list: 'activity' as const,
       taskId: a.taskId,
       taskName: a.taskName,
+      href: `/tasks/${a.taskId}`,
       who: a.actor,
       text: activityText(a),
       at: a.createdAt,
       read: a.read,
+    })),
+    ...(n.events ?? []).map((e) => ({
+      key: `e-${e.id}`,
+      id: e.id,
+      list: 'events' as const,
+      taskId: 0,
+      taskName: e.title,
+      href: `/calendar?event=${e.eventId}`,
+      who: e.actor,
+      text: eventText(e),
+      at: e.createdAt,
+      read: e.read,
     })),
   ];
   return items.sort((a, b) => (b.at ?? '').localeCompare(a.at ?? ''));

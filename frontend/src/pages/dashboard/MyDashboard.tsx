@@ -82,13 +82,14 @@ const ATTENTION_FIELD = {
 } as const;
 
 /** The Alerts group's kinds (E5). */
-type AlertKind = 'all' | 'mentioned' | 'reminders' | 'assigned' | 'activity';
+type AlertKind = 'all' | 'mentioned' | 'reminders' | 'assigned' | 'activity' | 'events';
 const ALERT_KINDS: { value: AlertKind; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'mentioned', label: 'Mentions' },
   { value: 'reminders', label: 'Reminders' },
   { value: 'assigned', label: 'Assigned' },
   { value: 'activity', label: 'Activity' },
+  { value: 'events', label: 'Events' },
 ];
 
 interface Counts {
@@ -661,7 +662,7 @@ export function MyDashboard({
                     await markRead(it).catch(() => {});
                     refreshUnread();
                   }
-                  navigate(`/tasks/${it.taskId}`);
+                  navigate(it.href);
                 }}
               >
                 {it.who ? (

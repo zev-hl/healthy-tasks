@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStickyToolbar } from '../lib/useStickyToolbar';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Check,
   ChevronLeft,
@@ -108,6 +108,7 @@ function clean(f: TaskSearchFilters): TaskSearchFilters {
  */
 export function TasksPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const me = user?.id ?? '';
   const canTeam = user?.role === 'Admin' || user?.role === 'Manager';
   const location = useLocation();
@@ -175,7 +176,8 @@ export function TasksPage() {
             .filter((v) => v && readViewState(v.state))
             .map((v) => ({ ...v, state: readViewState(v.state)! })),
         );
-      if (s.hbView) setView(s.hbView);
+      // The calendar is its own page now (Nov 2026 plan, H3: one calendar).
+      if (s.hbView) setView(s.hbView === 'calendar' ? 'list' : s.hbView);
       if (Array.isArray(s.hbColumns)) setColumns(new Set(s.hbColumns));
       if (typeof s.hbNest === 'boolean') setNest(s.hbNest);
       if (isGroupBy(s.hbGroup)) setGroupBy(s.hbGroup);
@@ -615,7 +617,18 @@ export function TasksPage() {
           <>
             {tabs}
             <span className="hb-grow" />
-            <Segmented label="Show as" value={view} options={VIEWS} onChange={setView} small />
+            <Segmented
+              label="Show as"
+              value={view}
+              options={VIEWS}
+              onChange={(v) =>
+                // One calendar (H3): Calendar opens the Calendar page, Me or Team.
+                v === 'calendar'
+                  ? navigate(`/calendar?scope=${state.scope === 'mine' ? 'me' : 'team'}`)
+                  : setView(v)
+              }
+              small
+            />
           </>
         }
       />

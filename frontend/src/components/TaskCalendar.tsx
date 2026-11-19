@@ -1,12 +1,17 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Eye, GitFork, Repeat } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Eye, GitFork, Lock, Plus, Repeat } from 'lucide-react';
 import {
+  EVENT_KIND_LABELS,
   TASK_STATUS_LABELS,
+  type CalendarReminderDto,
+  type EventDto,
   type GhostOccurrenceDto,
+  type GoogleEventDto,
   type TaskRowDto,
 } from '@healthy-tasks/shared';
+import { EVENT_COLORS, GOOGLE_COLOR, REMINDER_COLOR } from '../lib/calendarKinds';
 import { api, ApiError } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
 import { STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
@@ -23,6 +28,17 @@ interface Props {
   onChanged?: () => void;
   /** Where the page wants the calendar's controls (its filter row); inline when absent. */
   toolbarSlot?: HTMLElement | null;
+  /** Stage 3 (H3, H4): events, the reader's reminders and their Google events. */
+  events?: EventDto[];
+  reminders?: CalendarReminderDto[];
+  google?: GoogleEventDto[];
+  onOpenEvent?: (e: EventDto) => void;
+  /** Clicking an empty spot of a day (or "New event" in Day view). */
+  onNewEvent?: (day: Date) => void;
+  /** The days shown changed: [from, to) — the page loads what falls in them. */
+  onRangeChange?: (range: { from: Date; to: Date }) => void;
+  /** Extra controls after the scale (e.g. Me / Team). */
+  extraControls?: React.ReactNode;
 }
 
 const DAY_MS = 86_400_000;
@@ -79,7 +95,31 @@ function taskDay(task: { startAt: string | null; dueAt: string | null }): Date |
 
 type Item =
   | { kind: 'task'; key: string; task: TaskRowDto; start: Date; end: Date }
-  | { kind: 'ghost'; key: string; ghost: GhostOccurrenceDto; start: Date; end: Date };
+  | { kind: 'ghost'; key: string; ghost: GhostOccurrenceDto; start: Date; end: Date }
+  | { kind: 'event'; key: string; event: EventDto; start: Date; end: Date }
+  | { kind: 'reminder'; key: string; reminder: CalendarReminderDto; start: Date; end: Date }
+  | { kind: 'google'; key: string; google: GoogleEventDto; start: Date; end: Date };
+
+/**
+ * The days a timed or all-day item covers. All-day ones are stored at UTC
+ * midnight of each day (read back as that calendar date); a timed one ending
+ * exactly at midnight doesn't spill into the next day.
+ */
+function spanOf(e: { startAt: string; endAt: string; allDay: boolean }): {
+  start: Date;
+  end: Date;
+} {
+  if (e.allDay) {
+    const day = (iso: string) => {
+      const d = new Date(iso);
+      return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    };
+    return { start: day(e.startAt), end: day(e.endAt) };
+  }
+  const start = dateOnly(e.startAt);
+  const endMs = Math.max(new Date(e.startAt).getTime(), new Date(e.endAt).getTime() - 1);
+  return { start, end: startOfDay(new Date(endMs)) };
+}
 
 interface Placed {
   item: Item;
@@ -130,6 +170,13 @@ export function TaskCalendar({
   ghosts = [],
   onChanged,
   toolbarSlot,
+  events = [],
+  reminders = [],
+  google = [],
+  onOpenEvent,
+  onNewEvent,
+  onRangeChange,
+  extraControls,
 }: Props) {
   const navigate = useNavigate();
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
@@ -193,8 +240,18 @@ export function TaskCalendar({
           end: day,
         });
     }
+    for (const event of events) {
+      out.push({ kind: 'event', key: `e${event.id}`, event, ...spanOf(event) });
+    }
+    for (const reminder of reminders) {
+      const day = dateOnly(reminder.remindAt);
+      out.push({ kind: 'reminder', key: `r${reminder.id}`, reminder, start: day, end: day });
+    }
+    for (const g of google) {
+      out.push({ kind: 'google', key: `G${g.id}`, google: g, ...spanOf(g) });
+    }
     return out;
-  }, [rows, ghosts]);
+  }, [rows, ghosts, events, reminders, google]);
 
   // The weeks shown: one for Week view, six for Month view.
   const weeks = useMemo(() => {
@@ -203,6 +260,15 @@ export function TaskCalendar({
     const gridStart = addDays(first, -first.getDay());
     return Array.from({ length: 6 }, (_, i) => addDays(gridStart, i * 7));
   }, [anchor, scale]);
+
+  // Tell the page which days are on screen, so it loads what falls in them.
+  const rangeFrom = scale === 'day' ? anchor : weeks[0]!;
+  const rangeTo = scale === 'day' ? addDays(anchor, 1) : addDays(weeks[weeks.length - 1]!, 7);
+  const rangeKey = `${rangeFrom.getTime()}-${rangeTo.getTime()}`;
+  useEffect(() => {
+    onRangeChange?.({ from: rangeFrom, to: rangeTo });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rangeKey]);
 
   function shiftPeriod(dir: -1 | 1) {
     if (scale === 'day') setAnchor((a) => addDays(a, dir));
@@ -260,6 +326,68 @@ export function TaskCalendar({
         >
           <Repeat size={11} aria-hidden="true" />
           <span className="hb-tcal-ev-name">{materializing === key ? '…' : g.name}</span>
+        </button>
+      );
+    }
+    if (p.item.kind !== 'task') {
+      const it = p.item;
+      const color =
+        it.kind === 'event'
+          ? EVENT_COLORS[it.event.kind]
+          : it.kind === 'reminder'
+            ? REMINDER_COLOR
+            : GOOGLE_COLOR;
+      const name =
+        it.kind === 'event'
+          ? it.event.title
+          : it.kind === 'reminder'
+            ? it.reminder.taskName
+            : it.google.title;
+      const timed =
+        it.kind === 'event'
+          ? !it.event.allDay && sameDay(it.start, it.end)
+            ? timeOf(it.event.startAt)
+            : ''
+          : it.kind === 'reminder'
+            ? timeOf(it.reminder.remindAt)
+            : !it.google.allDay && sameDay(it.start, it.end)
+              ? timeOf(it.google.startAt)
+              : '';
+      const title =
+        it.kind === 'event'
+          ? `${EVENT_KIND_LABELS[it.event.kind]}: ${it.event.title}`
+          : it.kind === 'reminder'
+            ? `Reminder: ${it.reminder.taskName}${it.reminder.note ? ` — ${it.reminder.note}` : ''}`
+            : `Google Calendar: ${it.google.title} (read-only)`;
+      const open = () => {
+        if (it.kind === 'event') onOpenEvent?.(it.event);
+        else if (it.kind === 'reminder') openTask(it.reminder.taskId);
+        else if (it.google.link) window.open(it.google.link, '_blank', 'noopener');
+      };
+      return (
+        <button
+          key={it.key}
+          type="button"
+          className={cx(
+            'hb-tcal-ev',
+            'is-kind',
+            `k-${it.kind}`,
+            p.clipStart && 'clip-s',
+            p.clipEnd && 'clip-e',
+          )}
+          style={{ top, left, width, ['--k' as string]: color }}
+          title={title}
+          onClick={open}
+        >
+          {it.kind === 'reminder' && <Bell size={11} aria-hidden="true" />}
+          {it.kind === 'event' && it.event.isPrivate && <Lock size={11} aria-hidden="true" />}
+          {it.kind === 'google' && (
+            <span className="hb-tcal-g" aria-hidden="true">
+              G
+            </span>
+          )}
+          {timed && <span className="hb-tcal-ev-time">{timed}</span>}
+          <span className="hb-tcal-ev-name">{name}</span>
         </button>
       );
     }
@@ -335,6 +463,7 @@ export function TaskCalendar({
         ]}
         onChange={onScaleChange}
       />
+      {extraControls}
     </>
   );
 
@@ -354,11 +483,15 @@ export function TaskCalendar({
 
       {scale === 'day' ? (
         <DayList
-          items={items.filter((it) => sameDay(it.start, anchor))}
+          items={items
+            .filter((it) => it.start <= anchor && it.end >= anchor)
+            .sort((a, b) => sortTime(a) - sortTime(b))}
           isLate={isLate}
           materializing={materializing}
           onGhost={(g) => void materializeGhost(g)}
           onOpen={openTask}
+          onOpenEvent={onOpenEvent}
+          onNewEvent={onNewEvent ? () => onNewEvent(anchor) : undefined}
         />
       ) : (
         <div ref={gridRef} className={cx('hb-tcal', isMonth ? 'is-month' : 'is-week')}>
@@ -404,7 +537,12 @@ export function TaskCalendar({
                         'hb-tcal-cell',
                         outside && 'is-outside',
                         (d === 0 || d === 6) && 'is-weekend',
+                        onNewEvent && 'can-add',
                       )}
+                      title={onNewEvent ? 'Click an empty spot to add an event' : undefined}
+                      onClick={(e: MouseEvent) => {
+                        if (onNewEvent && e.target === e.currentTarget) onNewEvent(day);
+                      }}
                     >
                       {isMonth && (
                         <button
@@ -451,24 +589,127 @@ export function TaskCalendar({
 }
 
 /** Day view: the day's tasks as rows — what, when, who and where it stands. */
+/** When an item happens that day, for sorting Day view (whole-day ones first). */
+function sortTime(it: Item): number {
+  switch (it.kind) {
+    case 'task':
+      return new Date(it.task.dueAt ?? it.task.startAt ?? 0).getTime();
+    case 'ghost':
+      return new Date(it.ghost.dueAt ?? it.ghost.startAt ?? 0).getTime();
+    case 'event':
+      return it.event.allDay ? 0 : new Date(it.event.startAt).getTime();
+    case 'reminder':
+      return new Date(it.reminder.remindAt).getTime();
+    case 'google':
+      return it.google.allDay ? 0 : new Date(it.google.startAt).getTime();
+  }
+}
+
+function spanText(e: { startAt: string; endAt: string; allDay: boolean }): string {
+  if (e.allDay) return 'All day';
+  const t = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${t(e.startAt)} – ${t(e.endAt)}`;
+}
+
 function DayList({
   items,
   isLate,
   materializing,
   onGhost,
   onOpen,
+  onOpenEvent,
+  onNewEvent,
 }: {
   items: Item[];
   isLate: (t: TaskRowDto) => boolean;
   materializing: string | null;
   onGhost: (g: GhostOccurrenceDto) => void;
   onOpen: (id: number) => void;
+  onOpenEvent?: (e: EventDto) => void;
+  onNewEvent?: () => void;
 }) {
+  const add = onNewEvent && (
+    <button type="button" className="hb-btn hb-btn-sm hb-tcal-dayadd" onClick={onNewEvent}>
+      <Plus size={14} aria-hidden="true" /> New event on this day
+    </button>
+  );
   if (items.length === 0)
-    return <div className="hb-tcal-dayempty">Nothing scheduled on this day.</div>;
+    return (
+      <div className="hb-tcal-dayempty">
+        Nothing scheduled on this day.
+        {add}
+      </div>
+    );
   return (
     <div className="hb-tcal-day">
+      {add}
       {items.map((it) => {
+        if (it.kind === 'event' || it.kind === 'reminder' || it.kind === 'google') {
+          const color =
+            it.kind === 'event'
+              ? EVENT_COLORS[it.event.kind]
+              : it.kind === 'reminder'
+                ? REMINDER_COLOR
+                : GOOGLE_COLOR;
+          const what =
+            it.kind === 'event'
+              ? EVENT_KIND_LABELS[it.event.kind]
+              : it.kind === 'reminder'
+                ? it.reminder.kind === 'snooze'
+                  ? 'Back from snooze'
+                  : 'Reminder'
+                : 'Google Calendar';
+          const name =
+            it.kind === 'event'
+              ? it.event.title
+              : it.kind === 'reminder'
+                ? it.reminder.taskName
+                : it.google.title;
+          const when =
+            it.kind === 'event'
+              ? spanText(it.event)
+              : it.kind === 'reminder'
+                ? new Date(it.reminder.remindAt).toLocaleTimeString(undefined, {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })
+                : spanText(it.google);
+          const extra =
+            it.kind === 'event'
+              ? it.event.location
+              : it.kind === 'reminder'
+                ? it.reminder.note
+                : it.google.location;
+          return (
+            <button
+              key={it.key}
+              type="button"
+              className={cx('hb-tcal-dayrow', 'is-kind')}
+              style={{ ['--k' as string]: color }}
+              onClick={() => {
+                if (it.kind === 'event') onOpenEvent?.(it.event);
+                else if (it.kind === 'reminder') onOpen(it.reminder.taskId);
+                else if (it.google.link) window.open(it.google.link, '_blank', 'noopener');
+              }}
+            >
+              <i style={{ background: color }} aria-hidden="true" />
+              <span className="hb-stack">
+                <b>{name}</b>
+                <span className="hb-sub">
+                  {what} · {when}
+                  {extra ? ` · ${extra}` : ''}
+                </span>
+              </span>
+              {it.kind === 'event' && it.event.attendees.length > 0 && (
+                <span className="hb-small">
+                  {it.event.attendees.length}{' '}
+                  {it.event.attendees.length === 1 ? 'person' : 'people'}
+                </span>
+              )}
+            </button>
+          );
+        }
         if (it.kind === 'ghost') {
           const g = it.ghost;
           const key = `${g.sourceType}:${g.sourceId}:${g.seq}`;

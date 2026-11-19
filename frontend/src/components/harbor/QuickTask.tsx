@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, FolderOpen, Plus } from 'lucide-react';
+import { CalendarPlus, CheckSquare, FolderOpen, Plus } from 'lucide-react';
 import { TASK_NAME_MIN_LENGTH, type ActiveUserDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
@@ -32,13 +32,14 @@ export interface NewTaskCarry {
 }
 
 /**
- * "+ New" in the page header (Nov 2026 plan, C1–C5): a menu (Task, Project),
+ * "+ New" in the page header (Nov 2026 plan, C1–C5, H4a): a menu (Task, Project, Event),
  * then a quick panel right there. Required: a title, an assignee (you, unless
  * changed) and a duty from that person's duties, "No duty" being one of the
  * choices. The due date is optional. A project is the same with its switch
  * on. "More details" carries what was typed to the full New task page.
  */
 export function QuickTaskButton() {
+  const navigate = useNavigate();
   const btnRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<NewKind | null>(null);
@@ -84,6 +85,16 @@ export function QuickTaskButton() {
             </button>
             <button type="button" role="menuitem" onClick={() => setKind('project')}>
               <FolderOpen size={16} aria-hidden="true" /> Project
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                navigate('/calendar?new=1');
+              }}
+            >
+              <CalendarPlus size={16} aria-hidden="true" /> Event
             </button>
           </div>
         )}
