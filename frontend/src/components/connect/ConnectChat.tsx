@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ExternalLink, MessagesSquare, X } from 'lucide-react';
 import { useConnect } from '../../lib/connect';
 import { cx } from '../harbor/ui';
@@ -13,10 +14,12 @@ import { cx } from '../harbor/ui';
  */
 export function ConnectChat() {
   const { available, url } = useConnect();
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   // The frame loads on first open and then stays, so it keeps its place.
   const [loaded, setLoaded] = useState(false);
-  if (!available || !url) return null;
+  // Not linked, or already in the Connect app (the whole page is Connect).
+  if (!available || !url || pathname === '/connect') return null;
   return (
     <>
       <button

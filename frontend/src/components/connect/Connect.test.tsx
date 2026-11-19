@@ -13,12 +13,15 @@ vi.mock('../../api/client', () => ({
   },
   ApiError: class ApiError extends Error {},
 }));
+vi.mock('../../auth/AuthContext', () => ({ useAuth: () => ({ user: authUser }) }));
+let authUser: { id: string; role: string } | null = { id: 'me', role: 'Admin' };
 const toast = vi.fn();
 vi.mock('../harbor/Toast', () => ({ useToast: () => toast }));
 
 const { api } = await import('../../api/client');
 const { ScheduleCallButton } = await import('./ScheduleCallButton');
 const { ConnectChat } = await import('./ConnectChat');
+const { ConnectPage } = await import('../../pages/ConnectPage');
 const { resetConnectCache } = await import('../../lib/connect');
 const { renderWithRouter } = await import('../../test/render');
 const fn = (f: unknown) => f as ReturnType<typeof vi.fn>;
@@ -104,5 +107,42 @@ describe('Connect chat pop-up (K1)', () => {
       'href',
       'https://connect.test',
     );
+  });
+});
+
+describe('Connect as an app (the nine-dot menu)', () => {
+  beforeEach(() => {
+    resetConnectCache();
+    authUser = { id: 'me', role: 'Admin' };
+  });
+
+  it('fills the page with Connect, and the pop-up stays away there', async () => {
+    fn(api.getConnect).mockResolvedValue({ available: true, url: 'https://connect.test' });
+    renderWithRouter(
+      <>
+        <ConnectPage />
+        <ConnectChat />
+      </>,
+      ['/connect'],
+    );
+    await settle();
+    expect(screen.getByTitle('Connect')).toHaveAttribute('src', 'https://connect.test/');
+    expect(screen.getByRole('link', { name: /Open in its own tab/ })).toHaveAttribute(
+      'href',
+      'https://connect.test',
+    );
+    expect(screen.queryByRole('button', { name: 'Open chat (Connect)' })).toBeNull();
+  });
+
+  it('says it isn’t linked yet, with what to set for an Admin only', async () => {
+    fn(api.getConnect).mockResolvedValue({ available: false, url: null });
+    const { unmount } = renderWithRouter(<ConnectPage />, ['/connect']);
+    await settle();
+    expect(screen.getByText(/isn’t linked to HL Central yet/)).toHaveTextContent(/CONNECT_URL/);
+    unmount();
+    authUser = { id: 'me', role: 'Employee' };
+    renderWithRouter(<ConnectPage />, ['/connect']);
+    await settle();
+    expect(screen.getByText(/isn’t linked to HL Central yet/)).not.toHaveTextContent(/CONNECT_URL/);
   });
 });

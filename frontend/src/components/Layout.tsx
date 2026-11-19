@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Fragment, useEffect, useState } from 'react';
 import {
   CalendarDays,
+  MessagesSquare,
   Clock,
   LayoutDashboard,
   Layers,
@@ -88,9 +89,25 @@ const EXCLUSIVES_NAV: NavEntry[] = [
   },
 ];
 
+/** Connect: our Connect, inside HL Central (Nov 2026 plan, Stage 4). */
+const CONNECT_NAV: NavEntry[] = [
+  { to: '/connect', label: 'Chats and calls', icon: MessagesSquare, match: ['/connect'] },
+];
+
 const APP_NAMES: Record<AppKey, { name: string; mark: string }> = {
   central: { name: 'HL Central', mark: 'HL' },
   exclusives: { name: 'Exclusive Alerts', mark: 'EA' },
+  connect: { name: 'Connect', mark: 'CX' },
+};
+const APP_NAV: Record<AppKey, NavEntry[]> = {
+  central: CENTRAL_NAV,
+  exclusives: EXCLUSIVES_NAV,
+  connect: CONNECT_NAV,
+};
+const APP_HOME: Record<AppKey, string> = {
+  central: '/',
+  exclusives: '/exclusives/log',
+  connect: '/connect',
 };
 
 function taskIdOnPage(pathname: string): number | null {
@@ -106,11 +123,9 @@ function Sidebar() {
   const { user } = useAuth();
   const { pathname } = useLocation();
   const app = appForPath(pathname);
-  const nav = (app === 'exclusives' ? EXCLUSIVES_NAV : CENTRAL_NAV).filter(
-    (n) => !n.roles || (user && n.roles.includes(user.role)),
-  );
+  const nav = APP_NAV[app].filter((n) => !n.roles || (user && n.roles.includes(user.role)));
   const brand = APP_NAMES[app];
-  const home = app === 'exclusives' ? '/exclusives/log' : '/';
+  const home = APP_HOME[app];
 
   return (
     <aside className="sidebar" aria-label={`${brand.name} menu`}>

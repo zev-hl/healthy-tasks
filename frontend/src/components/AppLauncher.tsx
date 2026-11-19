@@ -1,8 +1,18 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Grip, ListChecks, ScrollText, Search, X, type LucideIcon } from 'lucide-react';
+import {
+  Grip,
+  ListChecks,
+  MessagesSquare,
+  ScrollText,
+  Search,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
+import { useConnect } from '../lib/connect';
 
-export type AppKey = 'central' | 'exclusives';
+export type AppKey = 'central' | 'exclusives' | 'connect';
 
 interface AppTile {
   key: AppKey;
@@ -14,16 +24,26 @@ interface AppTile {
 
 /**
  * The apps the launcher lists. HL Central's own sections are in its sidebar;
- * the launcher holds the other apps (for now Exclusive Alerts), plus HL Central
- * itself as the way back.
+ * the launcher holds the other apps (Exclusive Alerts, and our Connect once it
+ * is linked — Admins see it before, to set it up), plus HL Central itself as
+ * the way back.
  */
 const APPS: AppTile[] = [
   { key: 'central', name: 'HL Central', to: '/', icon: ListChecks, tone: 'blue' },
-  { key: 'exclusives', name: 'Exclusive Alerts', to: '/exclusives/log', icon: ScrollText, tone: 'peach' },
+  {
+    key: 'exclusives',
+    name: 'Exclusive Alerts',
+    to: '/exclusives/log',
+    icon: ScrollText,
+    tone: 'peach',
+  },
+  { key: 'connect', name: 'Connect', to: '/connect', icon: MessagesSquare, tone: 'green' },
 ];
 
 export function appForPath(pathname: string): AppKey {
-  return pathname.startsWith('/exclusives') ? 'exclusives' : 'central';
+  if (pathname.startsWith('/exclusives')) return 'exclusives';
+  if (pathname === '/connect' || pathname.startsWith('/connect/')) return 'connect';
+  return 'central';
 }
 
 /** Google-style "All apps" popover, opened from the nine-dot button in the sidebar. */
@@ -36,7 +56,13 @@ export function AppLauncher({ current }: { current: AppKey }) {
   const navigate = useNavigate();
   const titleId = useId();
 
-  const shown = APPS.filter((a) => a.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const { user } = useAuth();
+  const connect = useConnect();
+  const shown = APPS.filter(
+    (a) =>
+      (a.key !== 'connect' || connect.available || user?.role === 'Admin') &&
+      a.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
 
   function close(returnFocus = true) {
     setOpen(false);
@@ -99,7 +125,12 @@ export function AppLauncher({ current }: { current: AppKey }) {
         <div ref={panelRef} className="launcher" role="dialog" aria-labelledby={titleId}>
           <div className="launcher-head">
             <h2 id={titleId}>Apps</h2>
-            <button type="button" className="launcher-close" onClick={() => close()} aria-label="Close">
+            <button
+              type="button"
+              className="launcher-close"
+              onClick={() => close()}
+              aria-label="Close"
+            >
               <X size={18} aria-hidden="true" />
             </button>
           </div>

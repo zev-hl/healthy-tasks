@@ -9894,3 +9894,24 @@ a.hb-origin-chip:hover {
 .hb-callpop .hb-seg button {
   white-space: nowrap;
 }
+
+/* Connect as an app (the nine-dot menu): Connect fills the page. */
+.hb-connect-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.hb-connect-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+.hb-connect-page iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--surface);
+}
