@@ -938,7 +938,11 @@ describe('Immediate alert tasks', () => {
     );
     const text = mailer.sentEmails[0]!.text;
     assert.match(text, /It was made automatically from a Price Changed alert in Wasif - US\./);
-    assert.match(text, /Widget\nASIN B0NOTIFY01 · USA\nSomething changed\.\nAlerted Oct 19, 2026/);
+    // Product, ASIN, when it was alerted, then what it says (no before/now saved).
+    assert.match(
+      text,
+      /Widget\nASIN B0NOTIFY01 · USA\nAlerted Oct 19, 2026[^\n]*\nSomething changed\./,
+    );
   });
 
   it('a person reassigning an alert task later is named, not "Alert-assigned"', async () => {

@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { diffWords, type DiffPart } from '@healthy-tasks/shared';
+import { compareBoxText, type CompareBox, type ComparePart } from '@healthy-tasks/shared';
 
 // Every email's HTML and text versions (HLAI-135), made from one description of
 // the email so the two always say the same thing. The HTML is the shared look:
@@ -21,10 +21,12 @@ export type EmailBlock =
    */
   | { button: { label: string; url: string; lead?: string } }
   /**
-   * Two versions of a text side by side, "Before" and "Now", the words that
-   * changed marked in each. The text version lists them one after the other.
+   * Two boxes side by side (an alert's Before and Now, or two prices): the
+   * changed words marked, a gone value as "Removed" in red, a picture where a
+   * box has one, and an optional line under them. The text version lists the
+   * boxes one after the other.
    */
-  | { compare: { before: string; after: string } };
+  | { compare: { boxes: [CompareBox, CompareBox]; footer?: string } };
 
 export interface EmailContent {
   /**
@@ -111,39 +113,69 @@ const CHANGED_STYLE = {
   now: 'background:#e2f0e6;',
 } as const;
 
-function compareSide(label: string, text: string, kind: 'before' | 'now', parts: DiffPart[]) {
-  const body = text
-    ? parts
-        .map((p) => {
-          const t = escapeHtml(p.text).replace(/\n/g, '<br>');
-          return p.changed
-            ? `<span style="${CHANGED_STYLE[kind]}border-radius:3px;">${t}</span>`
-            : t;
-        })
-        .join('')
+/** A value that is gone: "Removed", in red. */
+const REMOVED_STYLE = 'color:#b42318;font-weight:bold;';
+
+function comparePart(p: ComparePart, tone: CompareBox['tone']): string {
+  const t = escapeHtml(p.text).replace(/\n/g, '<br>');
+  if (p.removed) return `<span style="${REMOVED_STYLE}">${t}</span>`;
+  return p.changed ? `<span style="${CHANGED_STYLE[tone]}border-radius:3px;">${t}</span>` : t;
+}
+
+/** A picture's address, when it is a web address a mail app can load. */
+function pictureAddress(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === 'https:' || protocol === 'http:' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function compareSide(box: CompareBox, first: boolean) {
+  const picture = pictureAddress(box.image);
+  // A picture's address is long and unbroken: smaller, so it wraps tidily.
+  const textStyle = picture ? ' style="font-size:11px;line-height:1.4;"' : '';
+  const body = box.parts.length
+    ? box.parts.map((p) => comparePart(p, box.tone)).join('')
     : `<span style="color:${MUTED};">(none)</span>`;
+  const image = picture
+    ? `<img src="${escapeHtml(picture)}" width="200" alt="${escapeHtml(box.label)} image" ` +
+      'style="display:block;width:100%;max-width:200px;height:auto;border:0;margin:0 0 8px;' +
+      'background:#ffffff;">'
+    : '';
+  const note = box.note
+    ? `<div style="margin:6px 0 0;font-size:12px;line-height:1.4;color:${MUTED};">` +
+      `${escapeHtml(box.note)}</div>`
+    : '';
   return (
     `<td width="50%" valign="top" style="width:50%;vertical-align:top;padding:0 ${
-      kind === 'before' ? '6px 0 0' : '0 0 6px'
+      first ? '6px 0 0' : '0 0 6px'
     };">` +
     `<div style="font-family:${FONT};font-size:11px;font-weight:bold;letter-spacing:0.04em;` +
-    `text-transform:uppercase;color:${MUTED};margin:0 0 4px;">${label}</div>` +
+    `text-transform:uppercase;color:${MUTED};margin:0 0 4px;">${escapeHtml(box.label)}</div>` +
     `<div style="background:${CANVAS};border:1px solid ${BORDER};border-radius:8px;padding:10px 12px;` +
     `font-family:${FONT};font-size:13px;line-height:1.5;color:${INK};word-break:break-word;">` +
-    `${body}</div></td>`
+    `${image}<div${textStyle}>${body}</div>${note}</div></td>`
   );
 }
 
-/** Before and Now in two columns (a table, so every mail app keeps them side by side). */
-function compare(before: string, after: string): string {
-  const d = diffWords(before, after);
+/** The two boxes in two columns (a table, so every mail app keeps them side by side). */
+function compare(boxes: [CompareBox, CompareBox], footer: string | undefined): string {
   return (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ' +
-    'style="width:100%;table-layout:fixed;margin:0 0 18px;"><tr>' +
-    compareSide('Before', before, 'before', d.before) +
-    compareSide('Now', after, 'now', d.after) +
-    '</tr></table>'
+    `style="width:100%;table-layout:fixed;margin:0 0 ${footer ? '10px' : '18px'};"><tr>` +
+    compareSide(boxes[0], true) +
+    compareSide(boxes[1], false) +
+    '</tr></table>' +
+    (footer ? `<p style="margin:0 0 18px;font-weight:bold;">${escapeHtml(footer)}</p>` : '')
   );
+}
+
+/** A box in the text version: its heading, its text, its note. */
+function compareBoxLines(box: CompareBox): string {
+  return [`${box.label}:`, compareBoxText(box), box.note].filter(Boolean).join('\n');
 }
 
 function textVersion(blocks: EmailBlock[]): string {
@@ -151,7 +183,9 @@ function textVersion(blocks: EmailBlock[]): string {
     .map((b) => {
       if ('text' in b) return b.text;
       if ('compare' in b) {
-        return `Before:\n${b.compare.before || '(none)'}\n\nNow:\n${b.compare.after || '(none)'}`;
+        return [...b.compare.boxes.map(compareBoxLines), b.compare.footer]
+          .filter(Boolean)
+          .join('\n\n');
       }
       const url = webAddress(b.button.url);
       return b.button.lead ? `${b.button.lead}\n${url}` : url;
@@ -165,7 +199,7 @@ function htmlVersion(blocks: EmailBlock[], preview: string): string {
       'text' in b
         ? paragraph(b.text)
         : 'compare' in b
-          ? compare(b.compare.before, b.compare.after)
+          ? compare(b.compare.boxes, b.compare.footer)
           : button(b.button.label, b.button.url),
     )
     .join('');

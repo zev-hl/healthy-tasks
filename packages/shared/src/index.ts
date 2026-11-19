@@ -2984,3 +2984,338 @@ export function diffWords(
     after: mergeDiffParts(right.map(unmarkSpaces)),
   };
 }
+
+// ---------------------------------------------------------------------------
+// An alert's "before and now", as two boxes (the Compare pop-up and the
+// assignment email, for Immediate and Daily alert tasks alike). Removed words
+// are struck through in red on the Before side, new ones on green in Now, the
+// rest plain. A value that is gone shows as "Removed", in red.
+// ---------------------------------------------------------------------------
+
+/** A run of text in a box. `removed`: the value is gone, shown as "Removed" in red. */
+export interface ComparePart {
+  text: string;
+  changed?: boolean;
+  removed?: boolean;
+}
+
+export interface CompareBox {
+  /** The heading over the box: "Before", "Now", or what it holds. */
+  label: string;
+  /** How its changed runs are marked: struck through in red, or on green. */
+  tone: 'before' | 'now';
+  /** The text; none shows as "(none)". */
+  parts: ComparePart[];
+  /** A picture above the text (the main image), when there is one. */
+  image?: string | null;
+  /** A smaller line under the text, e.g. "Was $7.14". */
+  note?: string;
+}
+
+export interface AlertComparison {
+  /** The line above the boxes, e.g. "Brand changed:". */
+  heading: string;
+  boxes: [CompareBox, CompareBox];
+  /** A line under the boxes, e.g. "Our HL Price: $14.99". */
+  footer?: string;
+  /** Whether the boxes are Before and Now (else two prices side by side). */
+  beforeAndNow: boolean;
+}
+
+/** The fields of an alert the comparison is made from. */
+export interface ComparableAlert {
+  alertType: string;
+  previousValue: string | null;
+  newValue: string | null;
+  /** Read for the price an alert names but does not carry (our HL price, or Amazon's). */
+  message: string;
+}
+
+/** Words shown before a long text's first difference, when there are that many. */
+const EXCERPT_CONTEXT_WORDS = 3;
+/** About a line or two of text in each excerpt. */
+const EXCERPT_CHARS = 160;
+
+/** A long text as words: markup dropped, any run of spaces or lines one space. */
+function excerptWords(text: string | null): string[] {
+  return (text ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** Words from `start` up to about a line or two, "..." where the text goes on. */
+function excerptFrom(words: string[], start: number): string {
+  let end = start;
+  let length = 0;
+  while (end < words.length && (end === start || length + words[end]!.length < EXCERPT_CHARS)) {
+    length += words[end]!.length + 1;
+    end++;
+  }
+  const lead = start > 0 ? '...' : '';
+  const tail = end < words.length ? '...' : '';
+  return `${lead}${words.slice(start, end).join(' ')}${tail}`;
+}
+
+/**
+ * A long text that changed (a description): from up to three words before the
+ * first difference (none when it differs from the very start), a line or two
+ * of each version, with "..." where it goes on. Null when the words are the
+ * same. An empty side is "".
+ */
+export function textChangeExcerpts(
+  before: string | null,
+  after: string | null,
+): { before: string; after: string } | null {
+  const a = excerptWords(before);
+  const b = excerptWords(after);
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i === a.length && i === b.length) return null;
+  const from = Math.max(0, i - EXCERPT_CONTEXT_WORDS);
+  return {
+    before: a.length ? excerptFrom(a, Math.min(from, a.length - 1)) : '',
+    after: b.length ? excerptFrom(b, Math.min(from, b.length - 1)) : '',
+  };
+}
+
+const REMOVED: ComparePart = { text: 'Removed', removed: true };
+const blank = (s: string | null | undefined): boolean => s == null || s.trim() === '';
+
+/** A price as the alerts write it ("$7.10"); null when there is none or it isn't a number. */
+function alertMoney(v: string | null | undefined): string | null {
+  if (v == null || blank(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? `$${n.toFixed(2)}` : null;
+}
+
+/** "$7.86" → 7.86. */
+const moneyValue = (s: string): number => Number(s.slice(1));
+
+/**
+ * Before and Now of a text, the changed words marked. An empty Now is
+ * "Removed"; an empty Before is "(none)" (nothing was there).
+ */
+function textBoxes(before: string, after: string): [CompareBox, CompareBox] {
+  const d = diffWords(before, after);
+  return [
+    { label: 'Before', tone: 'before', parts: before ? d.before : [] },
+    { label: 'Now', tone: 'now', parts: after ? d.after : before ? [REMOVED] : [] },
+  ];
+}
+
+/**
+ * Dimensions ("10in x 5in x 2in"), value by value: only the values that
+ * changed are marked, and one that is gone shows as "Removed".
+ */
+function dimensionBoxes(before: string, after: string): [CompareBox, CompareBox] {
+  const values = (s: string) => (s ? s.split(/\s+x\s+/i).filter(Boolean) : []);
+  const a = values(before);
+  const b = values(after);
+  const joined = (parts: ComparePart[]): ComparePart[] =>
+    parts.flatMap((p, i) => (i === 0 ? [p] : [{ text: ' x ' }, p]));
+  const beforeParts = a.map((v, i) => ({ text: v, changed: v !== b[i] }));
+  const nowParts: ComparePart[] =
+    b.length === 0
+      ? a.length > 0
+        ? [REMOVED]
+        : []
+      : joined(
+          Array.from({ length: Math.max(a.length, b.length) }, (_, i) =>
+            b[i] == null ? REMOVED : { text: b[i]!, changed: b[i] !== a[i] },
+          ),
+        );
+  return [
+    { label: 'Before', tone: 'before', parts: joined(beforeParts) },
+    { label: 'Now', tone: 'now', parts: nowParts },
+  ];
+}
+
+/** The main image: each side's picture, with its address under it. */
+function imageBoxes(before: string, after: string): [CompareBox, CompareBox] {
+  const isWeb = (u: string) => /^https?:\/\//i.test(u);
+  const side = (label: string, tone: 'before' | 'now', url: string, gone: boolean): CompareBox => ({
+    label,
+    tone,
+    image: url && isWeb(url) ? url : null,
+    parts: url ? [{ text: url }] : gone ? [REMOVED] : [],
+  });
+  return [side('Before', 'before', before, false), side('Now', 'now', after, !!before)];
+}
+
+/** A number or price before and now, marked as changed. */
+function valueBoxes(before: string | null, after: string | null): [CompareBox, CompareBox] {
+  const changed = before !== after;
+  return [
+    { label: 'Before', tone: 'before', parts: before == null ? [] : [{ text: before, changed }] },
+    {
+      label: 'Now',
+      tone: 'now',
+      parts: after == null ? (before == null ? [] : [REMOVED]) : [{ text: after, changed }],
+    },
+  ];
+}
+
+/** Our HL price as an alert's message names it ("our HL price of $14.99", "(our HL price: $14.99)"). */
+function hlPriceIn(message: string): string | null {
+  const m = /our HL price(?: of|:) \$(\d+(?:\.\d+)?)/i.exec(message);
+  return m ? alertMoney(m[1]) : null;
+}
+
+/** Amazon's competitive price as an alert's message names it, unless it says it was removed. */
+function competitivePriceIn(message: string): string | null {
+  if (/removed its competitive price/i.test(message)) return null;
+  const m = /Amazon's competitive price of \$(\d+(?:\.\d+)?)/i.exec(message);
+  return m ? alertMoney(m[1]) : null;
+}
+
+/** How far apart two prices are, said from the first one's side. */
+function priceGap(who: string, price: string, otherName: string, other: string): string {
+  const gap = moneyValue(price) - moneyValue(other);
+  if (Math.abs(gap) < 0.005) return `${who} is the same as ${otherName}.`;
+  return `${who} is $${Math.abs(gap).toFixed(2)} ${gap < 0 ? 'below' : 'above'} ${otherName}.`;
+}
+
+/**
+ * Amazon's competitive price and our HL price in two boxes, the one that moved
+ * with what it was, and how far apart they now are. `undefined` for a "was":
+ * that price didn't move.
+ */
+function crossingComparison(o: {
+  heading: string;
+  amazonNow: string | null;
+  amazonWas?: string | null;
+  hlNow: string | null;
+  hlWas?: string | null;
+  fromOurSide: boolean;
+}): AlertComparison {
+  const was = (v: string | null) => (v == null ? 'None before' : `Was ${v}`);
+  const amazon: CompareBox = {
+    label: 'Amazon competitive price',
+    tone: 'now',
+    parts: o.amazonNow ? [{ text: o.amazonNow }] : [REMOVED],
+    note: o.amazonWas === undefined ? undefined : was(o.amazonWas),
+  };
+  const ours: CompareBox = {
+    label: 'Our HL price',
+    tone: 'now',
+    parts: o.hlNow ? [{ text: o.hlNow }] : [],
+    note: o.hlWas === undefined ? 'Price + shipping' : `${was(o.hlWas)} (price + shipping)`,
+  };
+  let footer: string | undefined;
+  if (!o.amazonNow) footer = 'Amazon removed its competitive price.';
+  else if (o.hlNow) {
+    footer = o.fromOurSide
+      ? priceGap('Our HL price', o.hlNow, "Amazon's competitive price", o.amazonNow)
+      : priceGap("Amazon's competitive price", o.amazonNow, 'our HL price', o.hlNow);
+  }
+  return { heading: o.heading, boxes: [amazon, ours], footer, beforeAndNow: false };
+}
+
+/**
+ * An alert's before and now as two boxes; null for alerts with nothing to
+ * compare (Buy Box won or lost, a suppressed listing) or nothing saved.
+ * `excerpts`: a description shows only around its first change (the email);
+ * otherwise the whole text (the pop-up).
+ */
+export function alertComparison(
+  row: ComparableAlert,
+  opts: { excerpts?: boolean } = {},
+): AlertComparison | null {
+  const prev = row.previousValue;
+  const next = row.newValue;
+  if (prev == null && next == null) return null;
+  const trimmed = (s: string | null) => (s ?? '').trim();
+  const text = (heading: string, before: string, after: string): AlertComparison => ({
+    heading,
+    boxes: textBoxes(before, after),
+    beforeAndNow: true,
+  });
+  switch (row.alertType) {
+    case 'TitleChanged':
+      return text('Title changed:', plainText(prev), plainText(next));
+    case 'BulletPointsChanged':
+      return text('Bullet points changed:', plainText(prev), plainText(next));
+    case 'DescriptionChanged': {
+      if (!opts.excerpts) return text('Description changed:', plainText(prev), plainText(next));
+      const x = textChangeExcerpts(prev, next);
+      return x ? text('Description changed:', x.before, x.after) : null;
+    }
+    case 'BrandChanged':
+      return text('Brand changed:', trimmed(prev), trimmed(next));
+    case 'CategoryChanged':
+      return text('Category changed:', trimmed(prev), trimmed(next));
+    case 'DimensionsChanged':
+      return {
+        heading: 'Dimensions changed:',
+        boxes: dimensionBoxes(trimmed(prev), trimmed(next)),
+        beforeAndNow: true,
+      };
+    case 'MainImageChanged':
+      return {
+        heading: 'Main image changed:',
+        boxes: imageBoxes(trimmed(prev), trimmed(next)),
+        beforeAndNow: true,
+      };
+    case 'NumberOfSellersChanged':
+      return {
+        heading: 'Number of sellers changed:',
+        boxes: valueBoxes(trimmed(prev) || null, trimmed(next) || null),
+        beforeAndNow: true,
+      };
+    case 'PriceChanged': {
+      const a = alertMoney(prev);
+      const b = alertMoney(next);
+      const pct =
+        a && b && moneyValue(a) !== 0
+          ? ((moneyValue(b) - moneyValue(a)) / moneyValue(a)) * 100
+          : null;
+      return {
+        heading: 'Price changed:',
+        boxes: valueBoxes(a, b),
+        footer: pct == null ? undefined : `Change: ${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`,
+        beforeAndNow: true,
+      };
+    }
+    case 'CompetitivePriceChanged': {
+      const hl = hlPriceIn(row.message);
+      return {
+        heading: 'Competitive price changed:',
+        boxes: valueBoxes(alertMoney(prev), alertMoney(next)),
+        footer: hl ? `Our HL Price: ${hl}` : undefined,
+        beforeAndNow: true,
+      };
+    }
+    case 'CompetitivePriceBelowOurs':
+    case 'CompetitivePriceAboveOurs':
+      return crossingComparison({
+        heading:
+          row.alertType === 'CompetitivePriceBelowOurs'
+            ? 'Competitive price below our HL price:'
+            : 'Competitive price above our HL price:',
+        amazonNow: alertMoney(next),
+        amazonWas: alertMoney(prev),
+        hlNow: hlPriceIn(row.message),
+        fromOurSide: false,
+      });
+    case 'OurPriceAboveCompetitive':
+    case 'OurPriceBelowCompetitive':
+      return crossingComparison({
+        heading:
+          row.alertType === 'OurPriceAboveCompetitive'
+            ? 'Our HL price above competitive price:'
+            : 'Our HL price below competitive price:',
+        amazonNow: competitivePriceIn(row.message),
+        hlNow: alertMoney(next),
+        hlWas: alertMoney(prev),
+        fromOurSide: true,
+      });
+    default:
+      return null;
+  }
+}
+
+/** A comparison's box as plain text: "Removed" for a gone value, "(none)" for nothing. */
+export function compareBoxText(box: CompareBox): string {
+  return box.parts.length ? box.parts.map((p) => p.text).join('') : '(none)';
+}
