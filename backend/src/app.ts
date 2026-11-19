@@ -1,3 +1,4 @@
+import { googleCalendarRouter } from './routes/google-calendar.routes.js';
 import { calendarRouter, eventsRouter } from './routes/calendar.routes.js';
 import { timerRouter } from './routes/timer.routes.js';
 import { draftsRouter } from './routes/drafts.routes.js';
@@ -79,6 +80,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/timer', timerRouter);
   app.use('/api/calendar', calendarRouter);
   app.use('/api/events', eventsRouter);
+  app.use('/api/google-calendar', googleCalendarRouter);
 
   const dashboard = options.queueDashboard;
   if (dashboard) {

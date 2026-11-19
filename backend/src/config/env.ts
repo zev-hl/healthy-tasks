@@ -108,6 +108,14 @@ export const env = {
     // how the Google consent screen is configured; blank disables the check.
     // Used from Chunk 3 onward.
     allowedDomain: optional('GOOGLE_ALLOWED_DOMAIN', '').trim().toLowerCase(),
+    // Stage 3 (H6): each person's Google Calendar, read-only. Off until all
+    // three are set. The secret is the same OAuth client's; the address is this
+    // API's /api/google-calendar/callback, as registered on that client; the
+    // key encrypts the stored refresh tokens (32 bytes, base64: `openssl rand
+    // -base64 32`).
+    clientSecret: optional('GOOGLE_CLIENT_SECRET', ''),
+    calendarRedirectUri: optional('GOOGLE_CALENDAR_REDIRECT_URI', ''),
+    tokenKey: optional('GOOGLE_TOKEN_KEY', ''),
   },
 
   // Browser push (Nov 2026 plan, E7). Off until both keys are set: make a pair

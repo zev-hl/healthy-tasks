@@ -31,6 +31,10 @@ before(async () => {
   process.env.GOOGLE_ALLOWED_DOMAIN = '';
   process.env.STORAGE_DRIVER = 'memory';
   process.env.EXCLUSIVES_SWEEP_ENABLED = 'false';
+  process.env.GOOGLE_CLIENT_ID = 'test-client.apps.googleusercontent.com';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-secret';
+  process.env.GOOGLE_CALENDAR_REDIRECT_URI = 'http://localhost:4000/api/google-calendar/callback';
+  process.env.GOOGLE_TOKEN_KEY = Buffer.alloc(32, 7).toString('base64');
   const [appMod, prismaMod, pwMod, cacheMod] = await Promise.all([
     import('../src/app.js'),
     import('../src/db/prisma.js'),
@@ -253,5 +257,148 @@ describe('Stage 3: events (H4a)', () => {
     assert.equal(cal.reminders.length, 1);
     assert.equal(cal.reminders[0].taskName, 'Call the bank');
     assert.equal(cal.reminders[0].note, 'Ask about fees');
+  });
+});
+
+describe('Stage 3: Google Calendar, read-only (H6)', () => {
+  /** A stand-in for Google: answers the token and events calls, and records them. */
+  function fakeGoogle(opts: { refreshFails?: boolean } = {}) {
+    const calls: string[] = [];
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const idToken = `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64({ email: 'me@gmail.com' })}.sig`;
+    const fetchFn = (async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(url.split('?')[0]!);
+      const json = (status: number, body: unknown) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+      if (url.startsWith('https://oauth2.googleapis.com/token')) {
+        const body = new URLSearchParams(String(init?.body));
+        if (body.get('grant_type') === 'authorization_code') {
+          return json(200, {
+            refresh_token: 'refresh-123',
+            access_token: 'access-1',
+            expires_in: 3600,
+            id_token: idToken,
+            scope: 'openid email https://www.googleapis.com/auth/calendar.readonly',
+          });
+        }
+        return opts.refreshFails
+          ? json(400, { error: 'invalid_grant' })
+          : json(200, { access_token: 'access-2', expires_in: 3600 });
+      }
+      if (url.startsWith('https://www.googleapis.com/calendar/v3/')) {
+        return json(200, {
+          items: [
+            {
+              id: 'g1',
+              summary: 'Dentist',
+              start: { dateTime: '2026-11-21T15:00:00Z' },
+              end: { dateTime: '2026-11-21T16:00:00Z' },
+              htmlLink: 'https://calendar.google.com/event?eid=g1',
+            },
+            {
+              id: 'g2',
+              summary: 'Holiday',
+              start: { date: '2026-11-26' },
+              end: { date: '2026-11-28' },
+            },
+            {
+              id: 'g3',
+              status: 'cancelled',
+              start: { date: '2026-11-26' },
+              end: { date: '2026-11-27' },
+            },
+          ],
+        });
+      }
+      if (url.startsWith('https://oauth2.googleapis.com/revoke'))
+        return new Response('', { status: 200 });
+      return new Response('', { status: 404 });
+    }) as typeof fetch;
+    return { fetchFn, calls };
+  }
+
+  async function connect(token: string) {
+    const start = await request(app).post('/api/google-calendar/connect').set(auth(token));
+    assert.equal(start.status, 200, JSON.stringify(start.body));
+    const url = new URL(start.body.url);
+    assert.match(url.searchParams.get('scope')!, /calendar\.readonly/);
+    const back = await request(app)
+      .get(`/api/google-calendar/callback?code=abc&state=${url.searchParams.get('state')}`)
+      .redirects(0);
+    assert.equal(back.status, 302);
+    return back.headers.location as string;
+  }
+
+  it('connects, keeps the refresh token sealed, lists the Google events, and disconnects', async () => {
+    const { __setGoogleFetch } = await import('../src/services/google-calendar.service.js');
+    const g = fakeGoogle();
+    __setGoogleFetch(g.fetchFn);
+    const admin = await login(ADMIN);
+    assert.equal(
+      (await request(app).get('/api/google-calendar').set(auth(admin))).body.available,
+      true,
+    );
+    assert.match(await connect(admin), /google=connected/);
+
+    const link = await prisma.googleCalendarLink.findFirstOrThrow();
+    assert.equal(link.email, 'me@gmail.com');
+    assert.ok(!link.refreshToken.includes('refresh-123'), 'stored sealed');
+
+    const ev = (
+      await request(app)
+        .get('/api/google-calendar/events?from=2026-11-01T00:00:00Z&to=2026-12-01T00:00:00Z')
+        .set(auth(admin))
+    ).body;
+    assert.equal(ev.connected, true);
+    assert.deepEqual(
+      ev.events.map((e: { title: string; allDay: boolean; endAt: string }) => [
+        e.title,
+        e.allDay,
+        e.endAt,
+      ]),
+      [
+        ['Dentist', false, '2026-11-21T16:00:00.000Z'],
+        // Google's all-day end is the day after; ours is the last day.
+        ['Holiday', true, '2026-11-27T00:00:00.000Z'],
+      ],
+    );
+
+    assert.equal((await request(app).delete('/api/google-calendar').set(auth(admin))).status, 204);
+    assert.ok(g.calls.includes('https://oauth2.googleapis.com/revoke'));
+    assert.equal(await prisma.googleCalendarLink.count(), 0);
+    __setGoogleFetch(null);
+  });
+
+  it('says so when Google takes the access away', async () => {
+    const { __setGoogleFetch } = await import('../src/services/google-calendar.service.js');
+    __setGoogleFetch(fakeGoogle({ refreshFails: true }).fetchFn);
+    const admin = await login(ADMIN);
+    await connect(admin);
+    // Forget the access token from connecting, so the next read must refresh.
+    __setGoogleFetch(fakeGoogle({ refreshFails: true }).fetchFn);
+    const ev = (
+      await request(app)
+        .get('/api/google-calendar/events?from=2026-11-01T00:00:00Z&to=2026-12-01T00:00:00Z')
+        .set(auth(admin))
+    ).body;
+    assert.deepEqual(ev.events, []);
+    assert.match(ev.problem, /no longer lets HL Central read your calendar/);
+    assert.match(
+      (await request(app).get('/api/google-calendar').set(auth(admin))).body.problem,
+      /Connect it again/,
+    );
+    __setGoogleFetch(null);
+  });
+
+  it('a forged or old state does not connect anyone', async () => {
+    const back = await request(app)
+      .get('/api/google-calendar/callback?code=abc&state=nope')
+      .redirects(0);
+    assert.match(back.headers.location, /google=expired/);
+    assert.equal(await prisma.googleCalendarLink.count(), 0);
   });
 });
