@@ -17,6 +17,7 @@ import { api, ApiError } from '../api/client';
 import { playNotificationSound } from '../lib/notificationSound';
 import { disablePush, enablePush, pushSupported } from '../lib/push';
 import { Select } from './harbor/Select';
+import { useConnect } from '../lib/connect';
 
 /** Fired on `window` when the settings change, so the bell can follow (sound). */
 export const PREFS_CHANGED_EVENT = 'hb:notification-prefs';
@@ -26,6 +27,7 @@ export const PREFS_CHANGED_EVENT = 'hb:notification-prefs';
  * (in the app, email, Connect), plus a sound and browser push. Saves as you go.
  */
 export function NotificationSettings({ email }: { email?: string }) {
+  const connect = useConnect();
   const [prefs, setPrefs] = useState<NotificationPreferencesDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pushNote, setPushNote] = useState<string | null>(null);
@@ -86,7 +88,9 @@ export function NotificationSettings({ email }: { email?: string }) {
             {NOTIFY_CHANNELS.map((ch) => (
               <th key={ch} scope="col">
                 {NOTIFY_CHANNEL_LABELS[ch]}
-                {ch === 'connect' && <span className="hb-notify-soon">coming</span>}
+                {ch === 'connect' && !connect.available && (
+                  <span className="hb-notify-soon">not linked yet</span>
+                )}
               </th>
             ))}
           </tr>
@@ -113,8 +117,10 @@ export function NotificationSettings({ email }: { email?: string }) {
         </tbody>
       </table>
       <p className="hb-small">
-        Email goes to {email ?? 'your address'}. Connect messages start once our Connect is linked;
-        your choice is kept until then.
+        Email goes to {email ?? 'your address'}.{' '}
+        {connect.available
+          ? 'Connect messages come from the HL Central bot in Connect, with a link back.'
+          : 'Connect messages start once our Connect is linked; your choice is kept until then.'}
       </p>
 
       <div className="hb-notify-row">

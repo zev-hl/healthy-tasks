@@ -21,6 +21,7 @@ import { Avatar, userLabel } from './ui/Avatar';
 import { AppLauncher, appForPath, type AppKey } from './AppLauncher';
 import { ToastProvider } from './harbor/Toast';
 import { TimerCheckIn, TimerPill } from './harbor/TimeBlock';
+import { ConnectChat } from './connect/ConnectChat';
 import { NativeEnhancer } from './harbor/NativeEnhancer';
 
 interface NavEntry {
@@ -227,6 +228,7 @@ export function Layout() {
             <SchedulerBanner />
             <TimerCheckIn />
             <Outlet />
+            <ConnectChat />
           </main>
         </div>
         {cmdkOpen && <CommandPalette onClose={() => setCmdkOpen(false)} />}

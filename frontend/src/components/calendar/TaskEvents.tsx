@@ -46,8 +46,18 @@ export function TaskEvents({ taskId, taskName }: { taskId: number; taskName: str
               />
               <Link to={`/calendar?event=${e.id}`}>{e.title}</Link>
               <span className="hb-small">
-                {EVENT_KIND_LABELS[e.kind]} · {when(e)}
+                {e.connect ? 'Connect call' : EVENT_KIND_LABELS[e.kind]} · {when(e)}
               </span>
+              {e.connect?.joinUrl && (
+                <a
+                  href={e.connect.joinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hb-small"
+                >
+                  Join
+                </a>
+              )}
             </li>
           ))}
         </ul>

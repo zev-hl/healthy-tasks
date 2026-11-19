@@ -19,6 +19,7 @@ import { PageBody, PageHeader } from '../components/harbor/PageHeader';
 import { Btn, Segmented, cx } from '../components/harbor/ui';
 import { useToast } from '../components/harbor/Toast';
 import {
+  CONNECT_COLOR,
   EVENT_COLORS,
   GOOGLE_COLOR,
   LAYER_LABELS,
@@ -26,8 +27,9 @@ import {
   type CalendarLayer,
 } from '../lib/calendarKinds';
 import { nowContext } from '../lib/taskSearch';
+import { useConnect } from '../lib/connect';
 
-const LAYERS: CalendarLayer[] = ['tasks', 'events', 'reminders', 'google'];
+const LAYERS: CalendarLayer[] = ['tasks', 'events', 'reminders', 'google', 'connect'];
 const PREF_KEY = 'hb-calendar';
 
 interface Saved {
@@ -85,6 +87,8 @@ export function CalendarPage() {
     problem: null,
     connected: false,
   });
+  const [connectCalls, setConnectCalls] = useState<GoogleEventDto[]>([]);
+  const connect = useConnect();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [panel, setPanel] = useState<{ event: EventDto | null; seed?: NewEventSeed } | null>(null);
@@ -142,14 +146,29 @@ export function CalendarPage() {
         ...nowContext(),
       });
     try {
-      const [mine, team, calendar, g] = await Promise.all([
+      const [mine, team, calendar, g, cc] = await Promise.all([
         taskQuery({ ...base, assigneeIds: [me] }),
         scope === 'team' ? taskQuery({ ...base, myTeam: true }) : Promise.resolve(null),
         api.getCalendar(from, to, scope),
         api
           .listGoogleEvents(from, to)
           .catch(() => ({ connected: false, events: [], problem: null })),
+        connect.available
+          ? api.listConnectCalls(from, to).catch(() => ({ available: false, calls: [] }))
+          : Promise.resolve({ available: false, calls: [] }),
       ]);
+      // K4: Connect calls booked in Connect itself, read-only, opening Connect.
+      setConnectCalls(
+        (cc.calls ?? []).map((c) => ({
+          id: c.id,
+          title: c.title,
+          startAt: c.startAt,
+          endAt: c.endAt ?? new Date(Date.parse(c.startAt) + 30 * 60_000).toISOString(),
+          allDay: false,
+          location: null,
+          link: c.joinUrl,
+        })),
+      );
       const all = new Map<number, TaskRowDto>();
       for (const r of [...mine.rows, ...(team?.rows ?? [])]) all.set(r.id, r);
       setRows([...all.values()]);
@@ -161,7 +180,7 @@ export function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [range, scope, me]);
+  }, [range, scope, me, connect.available]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -186,6 +205,7 @@ export function CalendarPage() {
     events: EVENT_COLORS.meeting,
     reminders: REMINDER_COLOR,
     google: GOOGLE_COLOR,
+    connect: CONNECT_COLOR,
   };
 
   return (
@@ -218,7 +238,7 @@ export function CalendarPage() {
             onChange={setScope}
           />
           <div className="hb-cal-layers" role="group" aria-label="Show on the calendar">
-            {LAYERS.map((l) => (
+            {LAYERS.filter((l) => l !== 'connect' || connect.available).map((l) => (
               <button
                 key={l}
                 type="button"
@@ -258,6 +278,7 @@ export function CalendarPage() {
               events={show('events') ? cal.events : []}
               reminders={show('reminders') ? cal.reminders : []}
               google={show('google') ? google.events : []}
+              connectCalls={show('connect') ? connectCalls : []}
               onOpenEvent={(e) => setPanel({ event: e })}
               onNewEvent={(day) => setPanel({ event: null, seed: { day } })}
               onRangeChange={setRange}

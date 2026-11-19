@@ -9816,3 +9816,81 @@ a.hb-origin-chip:hover {
     display: none;
   }
 }
+
+/* ── Our Connect (Nov 2026 plan, Stage 4) ───────────────────────────────── */
+.hb-chat-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(15, 27, 45, 0.25);
+  cursor: pointer;
+}
+.hb-chat-fab:hover {
+  background: var(--accent-deep);
+}
+.hb-chat-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 88px;
+  z-index: 60;
+  display: none;
+  flex-direction: column;
+  width: 420px;
+  height: min(680px, calc(100vh - 120px));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 16px 48px rgba(15, 27, 45, 0.28);
+}
+.hb-chat-panel.is-open {
+  display: flex;
+}
+.hb-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.hb-chat-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.hb-chat-panel iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+}
+@media (max-width: 600px) {
+  .hb-chat-panel {
+    inset: 0;
+    width: auto;
+    height: auto;
+    border-radius: 0;
+  }
+  .hb-chat-fab {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+.hb-callpop .hb-ev-people {
+  margin-bottom: 6px;
+}
+.hb-ev-join {
+  align-self: flex-start;
+}
+.hb-callpop .hb-seg button {
+  white-space: nowrap;
+}

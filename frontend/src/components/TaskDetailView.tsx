@@ -33,11 +33,14 @@ import { TaskReminders } from './TaskReminders';
 import { TaskEvents } from './calendar/TaskEvents';
 import { SnoozeButton, snoozeLabel } from './SnoozeButton';
 import { RequestUpdateButton } from './RequestUpdateButton';
+import { ScheduleCallButton } from './connect/ScheduleCallButton';
+import { useConnect } from '../lib/connect';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { Avatar, userLabel } from './ui/Avatar';
 import {
   AlarmClock,
   CalendarDays,
+  MessagesSquare,
   AlertTriangle,
   BellOff,
   Repeat,
@@ -156,6 +159,28 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   const toast = useToast();
   const [task, setTask] = useState<TaskDetailDto>(initialTask);
   const { timer: runningTimer, elapsed: timerElapsed } = useTimer();
+  // Stage 4: our Connect (Schedule call, Discuss in Connect), when it is linked.
+  const connect = useConnect();
+  const [eventsVersion, setEventsVersion] = useState(0);
+  const [discussing, setDiscussing] = useState(false);
+  async function discuss() {
+    // Opened before the request so the browser doesn't block it as a pop-up.
+    const win = window.open('', '_blank');
+    setDiscussing(true);
+    try {
+      const r = await api.discussTask(initialTask.id);
+      if (win) win.location.href = r.url;
+      else window.location.href = r.url;
+    } catch (e) {
+      win?.close();
+      toast({
+        message: e instanceof ApiError ? e.message : 'Could not open the chat in Connect.',
+        tone: 'error',
+      });
+    } finally {
+      setDiscussing(false);
+    }
+  }
   const timerHere = runningTimer?.taskId === initialTask.id;
 
   const [historyVersion, setHistoryVersion] = useState(0);
@@ -1191,6 +1216,13 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         {task.assignee && task.assigneeId !== currentUser.id && (
           <RequestUpdateButton task={task} onSent={() => setHistoryVersion((v) => v + 1)} />
         )}
+        {connect.available && (
+          <ScheduleCallButton
+            task={task}
+            meId={currentUser.id}
+            onBooked={() => setEventsVersion((v) => v + 1)}
+          />
+        )}
         {canEdit &&
           !isInReview &&
           (done ? (
@@ -1240,6 +1272,18 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             >
               <Copy size={16} aria-hidden="true" /> Duplicate task
             </button>
+            {connect.available && (
+              <button
+                type="button"
+                disabled={discussing}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void discuss();
+                }}
+              >
+                <MessagesSquare size={16} aria-hidden="true" /> Discuss in Connect
+              </button>
+            )}
             {canSaveAsTemplate && (
               <button
                 type="button"
@@ -2074,7 +2118,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <h3>Events</h3>
               </div>
               <div className="hb-card-pad">
-                <TaskEvents taskId={task.id} taskName={task.name} />
+                <TaskEvents key={eventsVersion} taskId={task.id} taskName={task.name} />
               </div>
             </section>
           </div>

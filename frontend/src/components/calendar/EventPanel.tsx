@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Lock, MapPin, Trash2, X } from 'lucide-react';
+import { Lock, MapPin, Phone, Trash2, X } from 'lucide-react';
 import {
   EVENT_KINDS,
   EVENT_KIND_LABELS,
@@ -145,7 +145,7 @@ function EventView({
                 style={{ background: EVENT_COLORS[event.kind] }}
                 aria-hidden="true"
               />
-              {EVENT_KIND_LABELS[event.kind]}
+              {event.connect ? 'Connect call' : EVENT_KIND_LABELS[event.kind]}
               {event.isPrivate && (
                 <>
                   {' · '}
@@ -171,7 +171,20 @@ function EventView({
               {error}
             </div>
           )}
-          {event.location && (
+          {event.connect?.joinUrl && (
+            <a
+              className="hb-btn hb-btn-primary hb-ev-join"
+              href={event.connect.joinUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Phone size={14} aria-hidden="true" />
+              {event.connect.kind === 'ring'
+                ? 'Join the call in Connect'
+                : 'Open the call in Connect'}
+            </a>
+          )}
+          {event.location && event.location !== event.connect?.joinUrl && (
             <p className="hb-ev-line">
               <MapPin size={14} aria-hidden="true" />
               {isLink(event.location) ? (

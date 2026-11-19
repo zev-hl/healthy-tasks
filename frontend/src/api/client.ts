@@ -92,6 +92,11 @@ import type {
   SaveTimeDayRequest,
   MyTimerDto,
   CalendarDto,
+  ConnectCallsDto,
+  ConnectStatusDto,
+  DiscussTaskDto,
+  ScheduleCallRequest,
+  ScheduleCallResultDto,
   CalendarScope,
   EventDto,
   GoogleCalendarStatusDto,
@@ -763,6 +768,20 @@ export const api = {
     request<MyTimerDto>('/api/timer/keep', { method: 'POST', body: JSON.stringify(body) }),
   stopTimer: (body: StopTimerRequest) =>
     request<MyTimerDto>('/api/timer/stop', { method: 'POST', body: JSON.stringify(body) }),
+
+  // --- Our Connect (Stage 4) ---
+  getConnect: () => request<ConnectStatusDto>('/api/connect'),
+  listConnectCalls: (from: string, to: string) =>
+    request<ConnectCallsDto>(
+      `/api/connect/calls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    ),
+  scheduleTaskCall: (taskId: number, body: ScheduleCallRequest) =>
+    request<ScheduleCallResultDto>(`/api/tasks/${taskId}/calls`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  discussTask: (taskId: number) =>
+    request<DiscussTaskDto>(`/api/tasks/${taskId}/discuss`, { method: 'POST' }),
 
   // --- Calendar (Stage 3) ---
   getCalendar: (from: string, to: string, scope: CalendarScope) =>

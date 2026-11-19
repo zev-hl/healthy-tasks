@@ -1,7 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ChevronLeft, ChevronRight, Eye, GitFork, Lock, Plus, Repeat } from 'lucide-react';
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  GitFork,
+  Lock,
+  Phone,
+  Plus,
+  Repeat,
+} from 'lucide-react';
 import {
   EVENT_KIND_LABELS,
   TASK_STATUS_LABELS,
@@ -11,7 +21,7 @@ import {
   type GoogleEventDto,
   type TaskRowDto,
 } from '@healthy-tasks/shared';
-import { EVENT_COLORS, GOOGLE_COLOR, REMINDER_COLOR } from '../lib/calendarKinds';
+import { CONNECT_COLOR, EVENT_COLORS, GOOGLE_COLOR, REMINDER_COLOR } from '../lib/calendarKinds';
 import { api, ApiError } from '../api/client';
 import { Avatar, userLabel } from './ui/Avatar';
 import { STATUS_DOT, Segmented, StatusPill, cx } from './harbor/ui';
@@ -32,6 +42,8 @@ interface Props {
   events?: EventDto[];
   reminders?: CalendarReminderDto[];
   google?: GoogleEventDto[];
+  /** Stage 4 (K4): the reader's own Connect calls, read-only, opening Connect. */
+  connectCalls?: GoogleEventDto[];
   onOpenEvent?: (e: EventDto) => void;
   /** Clicking an empty spot of a day (or "New event" in Day view). */
   onNewEvent?: (day: Date) => void;
@@ -98,7 +110,15 @@ type Item =
   | { kind: 'ghost'; key: string; ghost: GhostOccurrenceDto; start: Date; end: Date }
   | { kind: 'event'; key: string; event: EventDto; start: Date; end: Date }
   | { kind: 'reminder'; key: string; reminder: CalendarReminderDto; start: Date; end: Date }
-  | { kind: 'google'; key: string; google: GoogleEventDto; start: Date; end: Date };
+  | {
+      kind: 'google';
+      key: string;
+      google: GoogleEventDto;
+      /** Where it comes from: the reader's Google Calendar, or Connect (K4). */
+      source: 'google' | 'connect';
+      start: Date;
+      end: Date;
+    };
 
 /**
  * The days a timed or all-day item covers. All-day ones are stored at UTC
@@ -173,6 +193,7 @@ export function TaskCalendar({
   events = [],
   reminders = [],
   google = [],
+  connectCalls = [],
   onOpenEvent,
   onNewEvent,
   onRangeChange,
@@ -248,10 +269,13 @@ export function TaskCalendar({
       out.push({ kind: 'reminder', key: `r${reminder.id}`, reminder, start: day, end: day });
     }
     for (const g of google) {
-      out.push({ kind: 'google', key: `G${g.id}`, google: g, ...spanOf(g) });
+      out.push({ kind: 'google', key: `G${g.id}`, google: g, source: 'google', ...spanOf(g) });
+    }
+    for (const c of connectCalls) {
+      out.push({ kind: 'google', key: `C${c.id}`, google: c, source: 'connect', ...spanOf(c) });
     }
     return out;
-  }, [rows, ghosts, events, reminders, google]);
+  }, [rows, ghosts, events, reminders, google, connectCalls]);
 
   // The weeks shown: one for Week view, six for Month view.
   const weeks = useMemo(() => {
@@ -336,7 +360,9 @@ export function TaskCalendar({
           ? EVENT_COLORS[it.event.kind]
           : it.kind === 'reminder'
             ? REMINDER_COLOR
-            : GOOGLE_COLOR;
+            : it.source === 'connect'
+              ? CONNECT_COLOR
+              : GOOGLE_COLOR;
       const name =
         it.kind === 'event'
           ? it.event.title
@@ -358,7 +384,9 @@ export function TaskCalendar({
           ? `${EVENT_KIND_LABELS[it.event.kind]}: ${it.event.title}`
           : it.kind === 'reminder'
             ? `Reminder: ${it.reminder.taskName}${it.reminder.note ? ` — ${it.reminder.note}` : ''}`
-            : `Google Calendar: ${it.google.title} (read-only)`;
+            : it.source === 'connect'
+              ? `Connect call: ${it.google.title}`
+              : `Google Calendar: ${it.google.title} (read-only)`;
       const open = () => {
         if (it.kind === 'event') onOpenEvent?.(it.event);
         else if (it.kind === 'reminder') openTask(it.reminder.taskId);
@@ -381,11 +409,14 @@ export function TaskCalendar({
         >
           {it.kind === 'reminder' && <Bell size={11} aria-hidden="true" />}
           {it.kind === 'event' && it.event.isPrivate && <Lock size={11} aria-hidden="true" />}
-          {it.kind === 'google' && (
-            <span className="hb-tcal-g" aria-hidden="true">
-              G
-            </span>
-          )}
+          {it.kind === 'google' &&
+            (it.source === 'connect' ? (
+              <Phone size={11} aria-hidden="true" />
+            ) : (
+              <span className="hb-tcal-g" aria-hidden="true">
+                G
+              </span>
+            ))}
           {timed && <span className="hb-tcal-ev-time">{timed}</span>}
           <span className="hb-tcal-ev-name">{name}</span>
         </button>
@@ -651,7 +682,9 @@ function DayList({
               ? EVENT_COLORS[it.event.kind]
               : it.kind === 'reminder'
                 ? REMINDER_COLOR
-                : GOOGLE_COLOR;
+                : it.source === 'connect'
+                  ? CONNECT_COLOR
+                  : GOOGLE_COLOR;
           const what =
             it.kind === 'event'
               ? EVENT_KIND_LABELS[it.event.kind]
@@ -659,7 +692,9 @@ function DayList({
                 ? it.reminder.kind === 'snooze'
                   ? 'Back from snooze'
                   : 'Reminder'
-                : 'Google Calendar';
+                : it.source === 'connect'
+                  ? 'Connect call'
+                  : 'Google Calendar';
           const name =
             it.kind === 'event'
               ? it.event.title
