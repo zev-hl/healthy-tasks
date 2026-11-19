@@ -1123,7 +1123,7 @@ function TemplateEditor({
     const unnamed = editor.nodes.find((n) => !n.name.trim());
     if (unnamed) {
       revealUnder(unnamed.parentKey);
-      return setError('Every node needs a name');
+      return setError('Every task in the template needs a name');
     }
     if (r.recurrenceType !== 'None' && !r.anchorDate)
       return setError('A recurring template needs a start (anchor) date');
@@ -1616,7 +1616,7 @@ function InstantiatePanel({
       if (isDutyNotHeldError(e)) {
         // Someone's duties changed since the check: show what's missing now.
         setProblems((e.details as { problems: TemplateDutyProblemDto[] }).problems ?? []);
-      } else setError(e instanceof ApiError ? e.message : 'Could not instantiate the template');
+      } else setError(e instanceof ApiError ? e.message : 'Could not make the tasks from this template');
       setBusy(false);
     }
   }

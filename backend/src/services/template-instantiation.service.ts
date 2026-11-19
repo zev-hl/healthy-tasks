@@ -134,7 +134,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
     if (!template) throw HttpError.notFound('Template not found');
 
     const nodes = await tx.taskTemplateNode.findMany({ where: { templateId } });
-    if (nodes.length === 0) throw HttpError.badRequest('Template has no nodes to instantiate');
+    if (nodes.length === 0) throw HttpError.badRequest('This template has no tasks to make');
     const deps = await tx.taskTemplateDependency.findMany({
       where: { blockerNode: { templateId } },
       select: { blockerNodeId: true, blockedNodeId: true },
@@ -214,7 +214,7 @@ export async function generateOccurrence(params: GenerateOccurrenceParams): Prom
       if (isRoot) rootTaskId = task.id;
     }
 
-    if (rootTaskId === null) throw HttpError.badRequest('Template has no root node');
+    if (rootTaskId === null) throw HttpError.badRequest('This template has no top task');
 
     // Carry the template's between-node dependencies into real task edges.
     for (const d of deps) {

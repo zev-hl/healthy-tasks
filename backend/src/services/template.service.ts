@@ -97,11 +97,11 @@ function validateAndOrderTree(
   dependencies: DependencyInput[],
 ): TemplateNodeInputParsed[] {
   const byKey = new Map(nodes.map((n) => [n.key, n]));
-  if (byKey.size !== nodes.length) throw HttpError.badRequest('Duplicate template node keys');
+  if (byKey.size !== nodes.length) throw HttpError.badRequest('Two tasks in the template share the same key');
 
   const roots = nodes.filter((n) => n.parentKey === null);
   if (roots.length !== 1) {
-    throw HttpError.badRequest('A template must have exactly one root node');
+    throw HttpError.badRequest('A template must have exactly one top task');
   }
   for (const n of nodes) {
     if (n.parentKey !== null && !byKey.has(n.parentKey)) {
@@ -125,7 +125,7 @@ function validateAndOrderTree(
   };
   walk(null);
   if (ordered.length !== nodes.length) {
-    throw HttpError.badRequest('Template hierarchy has a cycle or an unreachable node');
+    throw HttpError.badRequest('The template’s tasks loop back on themselves, or one isn’t connected to the rest');
   }
 
   // Levels (Nov 2026 plan, F1): like real tasks, a template holds at most three
@@ -145,9 +145,9 @@ function validateAndOrderTree(
   const adj = new Map<string, string[]>();
   for (const d of dependencies) {
     if (!byKey.has(d.blockerKey) || !byKey.has(d.blockedKey)) {
-      throw HttpError.badRequest('A dependency references a node that is not in the template');
+      throw HttpError.badRequest('A “blocked by” link points to a task that isn’t in the template');
     }
-    if (d.blockerKey === d.blockedKey) throw HttpError.badRequest('A node cannot block itself');
+    if (d.blockerKey === d.blockedKey) throw HttpError.badRequest('A task can’t block itself');
     const edgeKey = `${d.blockerKey}->${d.blockedKey}`;
     if (seen.has(edgeKey)) continue;
     seen.add(edgeKey);
