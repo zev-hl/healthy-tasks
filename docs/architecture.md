@@ -1191,3 +1191,51 @@ Changed, on a "T under P" state; its rows exist on no server.
 - **Organization**: toolbar counts of people reporting to nobody and without a
   duty, each a filter; dropping a card on a manager asks before the move is
   staged for Save changes.
+
+## 21. Calendar, events and Google Calendar (Nov 2026 plan, Stage 3)
+
+- **One calendar** (`/calendar`, `pages/CalendarPage.tsx`; H3, H4): task due
+  dates (the Tasks search: yours, or yours plus `myTeam` on Team), the reader's
+  reminders, events, and their own Google events, each kind its own colour
+  (`lib/calendarKinds.ts`), with Me / Team and a switch per layer (kept in
+  `localStorage`, `hb-calendar`). The grid is `TaskCalendar`, which now also
+  draws events, reminders and Google events, reports the days it shows
+  (`onRangeChange`), and turns a click on an empty spot of a day into New
+  event. The Tasks list's Calendar view opens this page.
+- **Events** (`event.service.ts`; `GET /api/calendar?from&to&scope`, `POST
+  /api/events`, `GET`/`PATCH`/`DELETE /api/events/:id`, `GET
+  /api/tasks/:id/events`; H4a): `Event` (kind meeting | call | deadline | other,
+  title, `startAt`/`endAt`, `allDay` with each day at UTC midnight, location,
+  notes, `isPrivate`, optional `taskId`) and `EventAttendee`. Everyone signed in
+  sees an event unless it is private (then its creator, attendees and Admins);
+  its creator or an Admin changes it (optimistic, `expectedUpdatedAt`) or
+  cancels it (`canceledAt`: a soft cancel, so its notices keep pointing at it).
+  Team = you, your department colleagues (`myTeamIds`) and everyone below you;
+  an Admin's Team is everyone. Reminders on the calendar are only ever the
+  reader's own. A linked task must be one the creator can open.
+- **Event notices**: `eventInvited` (added), `eventChanged` (time or place moved,
+  to those who stay), `eventCanceled` (canceled, or taken off it), by the `event`
+  setting (in the app and by email by default; push when on). A `Notification`
+  now carries `taskId` **or** `eventId` (CHECK); the task lists only ever read
+  task notices (`onTask` guard), and `NotificationsDto.events` /
+  `UnreadCountDto.events` hold the event ones. The feed links each to
+  `/calendar?event=<id>`.
+- **New event** opens from the Calendar page (button, or an empty spot of a
+  day), from a task's Events card (`/calendar?new=1&task=<id>`, linked), and from
+  "+ New" → Event (`/calendar?new=1`). The panel (`components/calendar/
+  EventPanel.tsx`) reads an event, or edits / makes one.
+- **Google Calendar, read-only** (`google-calendar.service.ts`; `GET
+  /api/google-calendar`, `POST .../connect`, `GET .../callback`, `GET
+  .../events`, `DELETE`; H6): each person connects their own from the profile.
+  OAuth code flow on the sign-in client with scope `calendar.readonly`
+  (`access_type=offline`, `prompt=consent`), the `state` a signed 10-minute JWT
+  (its own key from `JWT_SECRET`). The refresh token is kept encrypted in
+  `GoogleCalendarLink` (AES-256-GCM, `GOOGLE_TOKEN_KEY`); access tokens only in
+  memory. Events come from the primary calendar, `singleEvents`, all-day ones on
+  their own days (Google's exclusive end turned inclusive). A refused refresh
+  marks the link with `lastError` and the calendar says to connect again.
+  Disconnecting revokes the token at Google. Nothing is written to Google. Off
+  until `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `GOOGLE_CALENDAR_REDIRECT_URI` and a 32-byte `GOOGLE_TOKEN_KEY` are set; the
+  OAuth client needs the scope on its consent screen and the callback as an
+  authorized redirect URI. Connect calls on the calendar (H5) come with Stage 4.

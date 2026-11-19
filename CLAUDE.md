@@ -176,6 +176,10 @@ the timer running on the server, one per person (`RunningTimer`; a start names t
 timer it replaces, or 409), each stretch saved with its task (`TimedStretch`, shown
 on the task and summed by duty on My Time), asking "Still working?" after the
 Admin's hours and stopping itself at the question when nobody answers — see §20.
+Stage 3: one Calendar page (`/calendar`: due dates, your reminders, events, your
+Google events; Me / Team), events (`event.service.ts`; a notice now points at a
+task **or** an event), and each person's Google Calendar read-only
+(`google-calendar.service.ts`, off until the `GOOGLE_*` calendar vars are set) — see §21.
 
 ### Optimistic concurrency
 Mutable records carry a version; services call `assertNotStale`
@@ -316,7 +320,8 @@ default / `false`: HTML only), `REDIS_URL`,
 `EMAIL_RETRY_DELAY_SECONDS`, `EMAIL_MAX_RETRIES`, `QUEUE_DASHBOARD_USER` /
 `QUEUE_DASHBOARD_PASSWORD` (the API's own queue dashboard), `STORAGE_DRIVER`,
 `SCHEDULER_ENABLED`, `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`
-(browser push; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
+(browser push; off without them), `GOOGLE_CLIENT_SECRET` / `GOOGLE_CALENDAR_REDIRECT_URI`
+/ `GOOGLE_TOKEN_KEY` (Google Calendar, read-only; off without them), `EXCLUSIVES_DAILY_TASKS_AT` (when the Daily alert tasks are
 made, `HH:MM`), the `S3_*` set, and `SEED_ADMIN_*`. Run as its own process,
 the email worker loads only `config/email-config.ts` and
 `config/business-time-zone.ts`, not `env.ts`, so it needs none of the API's
