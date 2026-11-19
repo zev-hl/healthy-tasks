@@ -1112,3 +1112,11 @@ export const timeReviewSchema = z
   })
   .refine((v) => v.from <= v.to, { message: '`from` must be on or before `to`', path: ['to'] });
 export type TimeReviewInput = z.infer<typeof timeReviewSchema>;
+
+// Stage 2 (L2): one stretch of the timer.
+export const timedStretchSchema = z.object({
+  startedAt: z.string().datetime({ offset: true }),
+  endedAt: z.string().datetime({ offset: true }),
+  date: calendarDate,
+});
+export type TimedStretchInput = z.infer<typeof timedStretchSchema>;

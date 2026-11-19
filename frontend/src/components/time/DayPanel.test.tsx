@@ -50,6 +50,7 @@ const day = (over: Partial<TimeDayDto> = {}): TimeDayDto => ({
   userId: 'me',
   date: '2026-09-21',
   entries: [],
+  timed: [],
   completed: false,
   completedAt: null,
   note: null,
@@ -124,6 +125,24 @@ describe('DayPanel', () => {
     });
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('shows the day’s timed hours by duty, with No duty, and counts them in the day total', async () => {
+    listDays.mockResolvedValue([
+      day({
+        timed: [
+          { dutyId: null, minutes: 20 },
+          { dutyId: 'recv', minutes: 40 },
+        ],
+      }),
+    ]);
+    open();
+    await screen.findByText('Timed on tasks');
+    expect(screen.getByText('No duty')).toBeInTheDocument();
+    expect(screen.getByText(/was timed on tasks with no duty/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: '+30m' })[0]!);
+    // 60 timed + 30 typed.
+    expect(screen.getByText('1:30')).toBeInTheDocument();
   });
 
   it('won’t let a day go over 24 hours', async () => {

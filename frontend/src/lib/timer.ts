@@ -1,29 +1,34 @@
 import { useEffect, useState } from 'react';
+import { dutyLabel, type TimeDayDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 
 /**
- * One timer for the whole app, one task at a time (brief §6.4). It lives in the
- * browser (localStorage), so it keeps running across pages and a closed tab,
- * but not onto another device: a server-side timer is backend job 3 in
- * docs/redesign-decisions.md. Stopping logs the minutes to My Time, under the
- * task's duty, for the day it was stopped.
+ * One timer for the whole app, one task at a time (brief §6.4). The clock
+ * lives in the browser (localStorage), so it keeps running across pages and a
+ * closed tab. When it stops, the stretch is saved on the server with its task
+ * and the duty the task has then (Nov 2026 plan, L2): the task shows the time,
+ * and My Time adds it up by duty. No duty is asked for. A stretch that can't be
+ * saved (offline) is kept here and sent again on the next start or stop.
  */
 
 export interface RunningTimer {
   taskId: number;
   taskName: string;
-  dutyId: string | null;
   startedAt: number; // epoch ms
 }
 
-interface LogEntry {
-  minutes: number;
-  sessions: number;
+interface Unsaved {
+  taskId: number;
+  taskName: string;
+  startedAt: string;
+  endedAt: string;
+  date: string;
 }
 
 const TIMER_KEY = 'hb-timer';
-const LOG_KEY = 'hb-timelog';
-const EVENT = 'hb-timer-change';
+const UNSAVED_KEY = 'hb-timer-unsaved';
+/** Fired when the timer starts, stops, or saved time changes. */
+export const TIMER_EVENT = 'hb-timer-change';
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -40,23 +45,11 @@ function write(key: string, value: unknown) {
   } catch {
     /* storage unavailable: the timer simply won't survive a reload */
   }
-  window.dispatchEvent(new Event(EVENT));
+  window.dispatchEvent(new Event(TIMER_EVENT));
 }
 
 export function getTimer(): RunningTimer | null {
   return read<RunningTimer | null>(TIMER_KEY, null);
-}
-
-/** Time this browser has logged on a task (the server keeps time per duty, not per task). */
-export function getTaskLog(taskId: number): LogEntry {
-  return read<Record<string, LogEntry>>(LOG_KEY, {})[String(taskId)] ?? { minutes: 0, sessions: 0 };
-}
-
-function addTaskLog(taskId: number, minutes: number) {
-  const log = read<Record<string, LogEntry>>(LOG_KEY, {});
-  const cur = log[String(taskId)] ?? { minutes: 0, sessions: 0 };
-  log[String(taskId)] = { minutes: cur.minutes + minutes, sessions: cur.sessions + 1 };
-  write(LOG_KEY, log);
 }
 
 /** "0:12:04" */
@@ -75,6 +68,14 @@ export function formatMinutes(min: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+/** A My Time day's whole time: hand-typed rows plus timed hours. */
+export function dayMinutes(d: Pick<TimeDayDto, 'entries' | 'timed'>): number {
+  return (
+    d.entries.reduce((n, e) => n + e.minutes, 0) +
+    (d.timed ?? []).reduce((n, e) => n + e.minutes, 0)
+  );
+}
+
 const pad = (n: number) => String(n).padStart(2, '0');
 const todayYmd = () => {
   const d = new Date();
@@ -84,62 +85,93 @@ const todayYmd = () => {
 export interface StopResult {
   taskName: string;
   minutes: number;
-  /** Logged to My Time; when false, `reason` says why it wasn't. */
+  /** Saved on the server; when false, `reason` says why (it is kept to send again). */
   logged: boolean;
+  /** Where it went on My Time: a duty's name, or null for "No duty". */
+  dutyName?: string | null;
   reason?: string;
 }
 
-/** Add minutes to today's My Time under a duty. */
-async function logToMyTime(dutyId: string, minutes: number): Promise<void> {
-  const date = todayYmd();
-  const [day] = await api.listTimeDays(date, date);
-  if (day?.completed) {
-    throw new Error('Today is marked complete on My Time; reopen it there to add time.');
-  }
-  const entries = [...(day?.entries ?? [])];
-  const i = entries.findIndex((e) => e.dutyId === dutyId);
-  if (i >= 0) entries[i] = { dutyId, minutes: Math.min(1440, entries[i]!.minutes + minutes) };
-  else entries.push({ dutyId, minutes });
-  await api.saveTimeDay(date, {
-    entries,
-    note: day?.note ?? null,
-    expectedUpdatedAt: day?.updatedAt ?? null,
+async function send(u: Unsaved): Promise<StopResult> {
+  const r = await api.saveTimedStretch(u.taskId, {
+    startedAt: u.startedAt,
+    endedAt: u.endedAt,
+    date: u.date,
   });
+  return {
+    taskName: u.taskName,
+    minutes: r.minutes,
+    logged: true,
+    dutyName: r.duty ? dutyLabel(r.duty) : null,
+  };
 }
 
-/** Stop the running timer and log it. Time under a minute counts as 1m. */
+let flushing: Promise<void> | null = null;
+
+/**
+ * Send stretches kept from an earlier failed save, one flush at a time (the
+ * list is taken out of storage first, so nothing is sent twice). Ones the
+ * server refuses (task gone, bad times) are dropped; the rest are kept again.
+ */
+export function flushUnsaved(): Promise<void> {
+  if (flushing) return flushing;
+  flushing = (async () => {
+    const list = read<Unsaved[]>(UNSAVED_KEY, []);
+    if (list.length === 0) return;
+    write(UNSAVED_KEY, null);
+    const left: Unsaved[] = [];
+    for (const u of list) {
+      try {
+        await send(u);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status >= 500) left.push(u);
+      }
+    }
+    if (left.length) write(UNSAVED_KEY, [...left, ...read<Unsaved[]>(UNSAVED_KEY, [])]);
+    window.dispatchEvent(new Event(TIMER_EVENT));
+  })().finally(() => {
+    flushing = null;
+  });
+  return flushing;
+}
+
+/** Stop the running timer and save the stretch. Time under a minute counts as 1m. */
 export async function stopTimer(): Promise<StopResult | null> {
   const t = getTimer();
   if (!t) return null;
   write(TIMER_KEY, null);
-  const minutes = Math.max(1, Math.round((Date.now() - t.startedAt) / 60000));
-  addTaskLog(t.taskId, minutes);
-  if (!t.dutyId) {
-    return { taskName: t.taskName, minutes, logged: false, reason: 'the task has no duty' };
-  }
+  const stretch: Unsaved = {
+    taskId: t.taskId,
+    taskName: t.taskName,
+    startedAt: new Date(t.startedAt).toISOString(),
+    endedAt: new Date().toISOString(),
+    date: todayYmd(),
+  };
+  const minutes = Math.max(1, Math.round((Date.parse(stretch.endedAt) - t.startedAt) / 60000));
+  void flushUnsaved();
   try {
-    await logToMyTime(t.dutyId, minutes);
-    return { taskName: t.taskName, minutes, logged: true };
+    const r = await send(stretch);
+    window.dispatchEvent(new Event(TIMER_EVENT));
+    return r;
   } catch (e) {
-    const reason = e instanceof ApiError || e instanceof Error ? e.message : 'My Time refused it';
-    return { taskName: t.taskName, minutes, logged: false, reason };
+    const kept = !(e instanceof ApiError) || e.status >= 500;
+    if (kept) write(UNSAVED_KEY, [...read<Unsaved[]>(UNSAVED_KEY, []), stretch]);
+    const why = e instanceof ApiError || e instanceof Error ? e.message : 'the server refused it';
+    return {
+      taskName: t.taskName,
+      minutes,
+      logged: false,
+      reason: kept ? `${why}. It is kept on this browser and will be sent again` : why,
+    };
   }
 }
 
-/** Start timing a task; a timer on another task is stopped and logged first. */
-export async function startTimer(task: {
-  id: number;
-  name: string;
-  dutyId: string | null;
-}): Promise<StopResult | null> {
+/** Start timing a task; a timer on another task is stopped and saved first. */
+export async function startTimer(task: { id: number; name: string }): Promise<StopResult | null> {
   const previous = getTimer();
   const stopped = previous && previous.taskId !== task.id ? await stopTimer() : null;
-  write(TIMER_KEY, {
-    taskId: task.id,
-    taskName: task.name,
-    dutyId: task.dutyId,
-    startedAt: Date.now(),
-  });
+  void flushUnsaved();
+  write(TIMER_KEY, { taskId: task.id, taskName: task.name, startedAt: Date.now() });
   return stopped;
 }
 
@@ -149,10 +181,10 @@ export function useTimer(): { timer: RunningTimer | null; elapsed: number } {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const sync = () => setTimer(getTimer());
-    window.addEventListener(EVENT, sync);
+    window.addEventListener(TIMER_EVENT, sync);
     window.addEventListener('storage', sync);
     return () => {
-      window.removeEventListener(EVENT, sync);
+      window.removeEventListener(TIMER_EVENT, sync);
       window.removeEventListener('storage', sync);
     };
   }, []);
@@ -167,7 +199,8 @@ export function useTimer(): { timer: RunningTimer | null; elapsed: number } {
 
 /** The toast text for a stop. */
 export function stopMessage(r: StopResult): string {
-  return r.logged
-    ? `Stopped the timer on “${r.taskName}” and logged ${formatMinutes(r.minutes)} to My Time.`
-    : `Stopped the timer on “${r.taskName}” (${formatMinutes(r.minutes)}). Not added to My Time: ${r.reason}.`;
+  if (!r.logged)
+    return `Stopped the timer on “${r.taskName}” (${formatMinutes(r.minutes)}), but it wasn’t saved: ${r.reason}.`;
+  const where = r.dutyName ? `under ${r.dutyName}` : 'as “No duty”';
+  return `Saved ${formatMinutes(r.minutes)} on “${r.taskName}”. It shows on My Time ${where}.`;
 }

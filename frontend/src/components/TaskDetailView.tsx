@@ -1628,14 +1628,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
               />
             </span>
           </div>
-          <TimeBlock
-            task={{
-              id: task.id,
-              name: task.name,
-              dutyId: task.dutyId,
-              dutyLabel: task.duty ? `${task.duty.departmentName} › ${task.duty.name}` : null,
-            }}
-          />
+          <TimeBlock task={{ id: task.id, name: task.name }} meId={currentUser.id} />
         </div>
       </header>
 

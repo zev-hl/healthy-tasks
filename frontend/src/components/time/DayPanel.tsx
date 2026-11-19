@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, ChevronLeft, ChevronRight, Lock, X } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Lock, Timer, X } from 'lucide-react';
 import {
   TIME_DAY_MAX_MINUTES,
   TIME_DAY_NOTE_MAX,
@@ -86,6 +86,7 @@ export function DayPanel({
             userId: userId ?? '',
             date,
             entries: [],
+            timed: [],
             completed: false,
             completedAt: null,
             note: null,
@@ -127,8 +128,12 @@ export function DayPanel({
   const locked = !readOnly && !!day?.completed;
   const total = Object.values(entries).reduce((s, m) => s + m, 0);
   const over = total > TIME_DAY_MAX_MINUTES;
+  // Timed hours (L2) come from the timer: shown, counted, never typed here.
+  const timedTotal = (day?.timed ?? []).reduce((s, e) => s + e.minutes, 0);
+  const noDutyMinutes = (day?.timed ?? []).find((e) => e.dutyId === null)?.minutes ?? 0;
   const shownTotal =
-    readOnly || locked ? (day?.entries ?? []).reduce((s, e) => s + e.minutes, 0) : total;
+    (readOnly || locked ? (day?.entries ?? []).reduce((s, e) => s + e.minutes, 0) : total) +
+    timedTotal;
   const original = useMemo(
     () =>
       day
@@ -302,7 +307,9 @@ export function DayPanel({
           ))}
       </div>
     ) : (
-      <div className="hb-dp2-empty">Nothing logged this day.</div>
+      <div className="hb-dp2-empty">
+        {day?.timed.length ? 'Nothing typed in this day.' : 'Nothing logged this day.'}
+      </div>
     );
 
   return (
@@ -407,6 +414,40 @@ export function DayPanel({
             </div>
           )}
 
+          {day && day.timed.length > 0 && (
+            <div className="hb-dp2-grp hb-dp2-timed">
+              <div className="hb-dp2-grp-h">
+                <Timer size={13} aria-hidden="true" /> Timed on tasks
+              </div>
+              {[...day.timed]
+                .sort((a, b) =>
+                  a.dutyId === null
+                    ? 1
+                    : b.dutyId === null
+                      ? -1
+                      : dutyLabel(
+                          duties.get(a.dutyId) ?? { name: '', departmentName: '' },
+                        ).localeCompare(
+                          dutyLabel(duties.get(b.dutyId) ?? { name: '', departmentName: '' }),
+                        ),
+                )
+                .map((e) => (
+                  <div
+                    key={e.dutyId ?? 'none'}
+                    className={cx('hb-dp2-ro', !e.dutyId && 'is-noduty')}
+                  >
+                    {e.dutyId ? <DutyTag duty={duties.get(e.dutyId)} /> : <b>No duty</b>}
+                    <span className="hb-dp2-time">{formatHM(e.minutes)}</span>
+                  </div>
+                ))}
+              {noDutyMinutes > 0 && !readOnly && !day.completed && (
+                <span className="hb-small">
+                  {formatHM(noDutyMinutes)} was timed on tasks with no duty. Type it under the right
+                  duty below, then mark the day completed.
+                </span>
+              )}
+            </div>
+          )}
           {!day ? (
             <div className="hb-dp2-empty">{error ? '' : 'Loading…'}</div>
           ) : readOnly || locked ? (

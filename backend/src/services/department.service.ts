@@ -27,7 +27,15 @@ import type {
  */
 
 const dutyCountSelect = {
-  _count: { select: { holders: true, tasks: true, templateNodes: true, timeEntries: true } },
+  _count: {
+    select: {
+      holders: true,
+      tasks: true,
+      templateNodes: true,
+      timeEntries: true,
+      timedStretches: true,
+    },
+  },
 } as const;
 
 // --- Reads -----------------------------------------------------------------
@@ -79,7 +87,7 @@ export async function listDepartments(): Promise<DepartmentDto[]> {
         archived: u.archivedAt !== null || d.archivedAt !== null,
         peopleCount: holders.size,
         openTaskCount: openByDuty.get(u.id) ?? 0,
-        inUse: c.holders + c.tasks + c.templateNodes + c.timeEntries > 0,
+        inUse: c.holders + c.tasks + c.templateNodes + c.timeEntries + c.timedStretches > 0,
       };
     });
     return {
@@ -282,7 +290,7 @@ export async function restoreDuty(id: string): Promise<void> {
 export async function deleteDuty(id: string): Promise<void> {
   const u = await getDutyOr404(id);
   const c = u._count;
-  if (c.holders + c.tasks + c.templateNodes + c.timeEntries > 0) {
+  if (c.holders + c.tasks + c.templateNodes + c.timeEntries + c.timedStretches > 0) {
     throw HttpError.conflict('This duty has been used, so it can only be archived');
   }
   try {

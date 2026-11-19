@@ -4,7 +4,14 @@ import { Square, Timer } from 'lucide-react';
 import { api } from '../../api/client';
 import { Bar, Card, CardHead } from '../../components/harbor/ui';
 import { useToast } from '../../components/harbor/Toast';
-import { formatClock, formatMinutes, stopMessage, stopTimer, useTimer } from '../../lib/timer';
+import {
+  dayMinutes,
+  formatClock,
+  formatMinutes,
+  stopMessage,
+  stopTimer,
+  useTimer,
+} from '../../lib/timer';
 import { toYmd } from '../../components/harbor/DatePicker';
 import type { Period } from '../../components/harbor/taskHelpers';
 import { periodRange } from '../../components/harbor/taskHelpers';
@@ -13,7 +20,7 @@ const DAY_MINUTES = 8 * 60;
 
 /**
  * The Dashboard's time tracker (§6.4): the same timer as the task page and the
- * sidebar pill, with Stop and log, and the time logged on My Time for the
+ * sidebar pill, with Stop, and the time logged on My Time for the
  * period against an 8h day.
  */
 export function TimeTrackerCard({ period }: { period: Period }) {
@@ -27,11 +34,7 @@ export function TimeTrackerCard({ period }: { period: Period }) {
     const to = period === 'today' ? range.from : toYmd(new Date());
     api
       .listTimeDays(range.from, to)
-      .then(
-        (days) =>
-          alive &&
-          setLogged(days.reduce((n, d) => n + d.entries.reduce((m, e) => m + e.minutes, 0), 0)),
-      )
+      .then((days) => alive && setLogged(days.reduce((n, d) => n + dayMinutes(d), 0)))
       .catch(() => alive && setLogged(null));
     return () => {
       alive = false;
@@ -66,7 +69,7 @@ export function TimeTrackerCard({ period }: { period: Period }) {
             On <Link to={`/tasks/${timer.taskId}`}>{timer.taskName}</Link>
           </span>
           <button type="button" className="hb-tb-btn stop" onClick={() => void stop()}>
-            <Square size={13} fill="currentColor" aria-hidden="true" /> Stop and log
+            <Square size={13} fill="currentColor" aria-hidden="true" /> Stop
           </button>
         </div>
       ) : (

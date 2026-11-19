@@ -123,9 +123,10 @@ model User {
 
   // Department Duties: the duties this person holds, and the time they log
   // against them (one row per duty per day, plus a per-day completion flag).
-  duties      UserDuty[]
-  timeEntries TimeEntry[]
-  timeDays    TimeDay[]
+  duties         UserDuty[]
+  timeEntries    TimeEntry[]
+  timeDays       TimeDay[]
+  timedStretches TimedStretch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -231,6 +232,8 @@ model Task {
   // Due soon / overdue notices (E7): the due date each was last sent for, so a
   // notice goes once per due date (a new due date sends again).
   seenBy           TaskSeen[]
+  // Stage 2 (L2): the timer's saved stretches on this task.
+  timedStretches   TimedStretch[]
   dueSoonNoticeFor DateTime?
   overdueNoticeFor DateTime?
 
@@ -1298,10 +1301,11 @@ model Duty {
 
   archivedAt DateTime?
 
-  holders       UserDuty[]
-  tasks         Task[]
-  templateNodes TaskTemplateNode[]
-  timeEntries   TimeEntry[]
+  holders        UserDuty[]
+  tasks          Task[]
+  templateNodes  TaskTemplateNode[]
+  timeEntries    TimeEntry[]
+  timedStretches TimedStretch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1344,6 +1348,31 @@ model TimeEntry {
 
   @@unique([userId, date, dutyId])
   @@index([date])
+  @@index([dutyId])
+}
+
+// Stage 2 (L2): one stretch of the timer, saved when it stops, with its task and
+// the duty the task had at that moment (a later duty change doesn't move it;
+// null = the task had no duty). `date` is the person's own day it stopped on.
+// My Time adds these up by duty beside the hand-typed TimeEntry rows.
+model TimedStretch {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskId    Int
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  dutyId    String?
+  duty      Duty?    @relation(fields: [dutyId], references: [id], onDelete: Restrict)
+  date      DateTime @db.Date
+  startedAt DateTime
+  endedAt   DateTime
+  // 1–1440 (CHECK in the migration).
+  minutes   Int
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+  @@index([taskId])
   @@index([dutyId])
 }
 

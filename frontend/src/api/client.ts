@@ -90,6 +90,9 @@ import type {
   RelatedTaskDto,
   SaveOrgChangesRequest,
   SaveTimeDayRequest,
+  SaveTimedStretchRequest,
+  TaskTimeDto,
+  TimedStretchSavedDto,
   SetTimeDayCompletedRequest,
   TemplateDutyCheckDto,
   TemplateDutyCheckRequest,
@@ -739,6 +742,14 @@ export const api = {
   // --- Department Duties: templates ---
   checkTemplateDuties: (id: number, body: TemplateDutyCheckRequest) =>
     request<TemplateDutyCheckDto>(`/api/templates/${id}/duty-check`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // --- The timer's saved time (L2) ---
+  getTaskTime: (taskId: number) => request<TaskTimeDto>(`/api/tasks/${taskId}/time`),
+  saveTimedStretch: (taskId: number, body: SaveTimedStretchRequest) =>
+    request<TimedStretchSavedDto>(`/api/tasks/${taskId}/time`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),

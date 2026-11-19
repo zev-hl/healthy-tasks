@@ -9573,3 +9573,23 @@ a.hb-origin-chip:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Timed on tasks (L2): read-only rows from the timer ──────────────── */
+.hb-sheet-timed .hb-sheet-dept th {
+  display: table-cell;
+}
+.hb-sheet-timed .hb-sheet-dept th svg {
+  vertical-align: -2px;
+  margin-right: 4px;
+}
+.hb-sheet-timed tr.is-noduty .hb-name,
+.hb-dp2-ro.is-noduty b {
+  color: var(--warn-deep);
+}
+.hb-dp2-timed {
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+.hb-dp2-timed .hb-dp2-grp-h svg {
+  vertical-align: -2px;
+}

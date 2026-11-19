@@ -3039,11 +3039,23 @@ export interface TimeEntryDto {
   minutes: number;
 }
 
+/** The timer's minutes on a day for one duty (null: tasks with no duty). */
+export interface TimedMinutesDto {
+  dutyId: string | null;
+  minutes: number;
+}
+
 /** One person's day: minutes per duty, the Completed flag and a note. */
 export interface TimeDayDto {
   userId: string;
   date: CalendarDateString;
+  /** Hand-typed rows (work done outside tasks, or added by hand). */
   entries: TimeEntryDto[];
+  /**
+   * Stage 2 (L2): the day's timed hours, added up by the duty each task had
+   * when it was timed. Read-only here; they come from the timer.
+   */
+  timed: TimedMinutesDto[];
   completed: boolean;
   completedAt: string | null; // ISO
   note: string | null;
@@ -3063,6 +3075,30 @@ export interface SaveTimeDayRequest {
   completed?: boolean;
   expectedUpdatedAt?: string | null;
 }
+
+/** Stage 2 (L2): one stretch of the timer, saved when it stops. */
+export interface SaveTimedStretchRequest {
+  startedAt: string; // ISO
+  endedAt: string; // ISO
+  /** The person's own day it stopped on. */
+  date: CalendarDateString;
+}
+
+/** A task's timed hours (L2), shown to everyone who can read the task. */
+export interface TaskTimeDto {
+  totalMinutes: number;
+  /** Per person, most first. */
+  people: { user: TaskUserRef; minutes: number }[];
+}
+
+/** The answer to saving a stretch: what was saved, and the task's new totals. */
+export interface TimedStretchSavedDto extends TaskTimeDto {
+  minutes: number;
+  duty: DutyRef | null;
+}
+
+/** The longest one stretch may be; a timer left running longer is cut to this. */
+export const TIMED_STRETCH_MAX_MINUTES = 1440;
 
 export interface SetTimeDayCompletedRequest {
   completed: boolean;

@@ -536,3 +536,98 @@ describe('Stage 2: a duty video as a file (I4)', () => {
     assert.ok(watch.body.url);
   });
 });
+
+describe('Stage 2: the timer saved with the task (L2)', () => {
+  it('saves each stretch with the duty the task had then, and adds it up on the task and My Time', async () => {
+    const admin = await login(ADMIN);
+    const adminId = (await prisma.user.findUniqueOrThrow({ where: { email: ADMIN } })).id;
+    await seedUser('timer2@test.local', 'Member');
+    const member = await login('timer2@test.local');
+    const dep = await prisma.department.create({
+      data: { name: 'Ops', nameKey: 'ops', color: '#3366cc' },
+    });
+    const recv = await prisma.duty.create({
+      data: { departmentId: dep.id, name: 'Receiving', nameKey: 'receiving' },
+    });
+    const pack = await prisma.duty.create({
+      data: { departmentId: dep.id, name: 'Packing', nameKey: 'packing' },
+    });
+    const t = await makeTask(admin, 'Count the pallets');
+    await prisma.task.update({ where: { id: t.id }, data: { dutyId: recv.id } });
+    const today = new Date().toISOString().slice(0, 10);
+    const stretch = (token: string, startMin: number, endMin: number) =>
+      request(app)
+        .post(`/api/tasks/${t.id}/time`)
+        .set(auth(token))
+        .send({
+          startedAt: new Date(Date.now() - startMin * 60_000).toISOString(),
+          endedAt: new Date(Date.now() - endMin * 60_000).toISOString(),
+          date: today,
+        });
+
+    const first = await stretch(admin, 90, 60);
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    assert.equal(first.body.minutes, 30);
+    assert.equal(first.body.duty.id, recv.id);
+    // The duty changes; past hours stay where they were.
+    await prisma.task.update({ where: { id: t.id }, data: { dutyId: pack.id } });
+    assert.equal((await stretch(admin, 20, 10)).body.duty.id, pack.id);
+    await prisma.task.update({ where: { id: t.id }, data: { dutyId: null } });
+    const third = await stretch(member, 5, 0);
+    assert.equal(third.body.duty, null);
+    assert.equal(third.body.minutes, 5);
+
+    const time = (await request(app).get(`/api/tasks/${t.id}/time`).set(auth(member))).body;
+    assert.equal(time.totalMinutes, 45);
+    assert.deepEqual(
+      time.people.map((p: { user: { id: string }; minutes: number }) => [p.user.id, p.minutes]),
+      [
+        [adminId, 40],
+        [(await prisma.user.findUniqueOrThrow({ where: { email: 'timer2@test.local' } })).id, 5],
+      ],
+    );
+
+    // Admin's My Time: timed by duty, beside (not inside) the hand-typed rows.
+    const [day] = (
+      await request(app).get(`/api/time/days?from=${today}&to=${today}`).set(auth(admin))
+    ).body;
+    const timed = Object.fromEntries(
+      day.timed.map((x: { dutyId: string | null; minutes: number }) => [
+        x.dutyId ?? 'none',
+        x.minutes,
+      ]),
+    );
+    assert.deepEqual(timed, { [recv.id]: 30, [pack.id]: 10 });
+    assert.deepEqual(day.entries, []);
+    const [mine] = (
+      await request(app).get(`/api/time/days?from=${today}&to=${today}`).set(auth(member))
+    ).body;
+    assert.deepEqual(mine.timed, [{ dutyId: null, minutes: 5 }]);
+
+    // A duty with timed hours counts as used.
+    assert.equal(
+      (await request(app).delete(`/api/departments/duties/${recv.id}`).set(auth(admin))).status,
+      409,
+    );
+  });
+
+  it('refuses a stretch that ends before it starts, or on a task you cannot read', async () => {
+    const admin = await login(ADMIN);
+    await seedUser('timer3@test.local', 'Member');
+    const member = await login('timer3@test.local');
+    const t = await makeTask(admin, 'Secret thing');
+    await prisma.task.update({ where: { id: t.id }, data: { isPrivate: true } });
+    const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+    const bad = await request(app)
+      .post(`/api/tasks/${t.id}/time`)
+      .set(auth(admin))
+      .send({ startedAt: now, endedAt: new Date(Date.now() - 60_000).toISOString(), date: today });
+    assert.equal(bad.status, 400);
+    const hidden = await request(app)
+      .post(`/api/tasks/${t.id}/time`)
+      .set(auth(member))
+      .send({ startedAt: new Date(Date.now() - 60_000).toISOString(), endedAt: now, date: today });
+    assert.equal(hidden.status, 404);
+  });
+});

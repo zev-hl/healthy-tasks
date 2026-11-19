@@ -50,7 +50,7 @@ function latestToday(now = new Date()): CalendarDateString {
   return fromDbDate(new Date(now.getTime() + 14 * 60 * 60 * 1000));
 }
 
-function assertNotFuture(date: CalendarDateString): void {
+export function assertNotFuture(date: CalendarDateString): void {
   if (date > latestToday()) throw HttpError.badRequest("You can't log time on a future day");
 }
 
@@ -76,11 +76,16 @@ async function loadDays(
   to: CalendarDateString,
 ): Promise<TimeDayDto[]> {
   const range = { gte: toDbDate(from), lte: toDbDate(to) };
-  const [days, entries] = await Promise.all([
+  const [days, entries, timed] = await Promise.all([
     prisma.timeDay.findMany({ where: { userId: { in: userIds }, date: range } }),
     prisma.timeEntry.findMany({
       where: { userId: { in: userIds }, date: range },
       select: { userId: true, date: true, dutyId: true, minutes: true },
+    }),
+    prisma.timedStretch.groupBy({
+      by: ['userId', 'date', 'dutyId'],
+      where: { userId: { in: userIds }, date: range },
+      _sum: { minutes: true },
     }),
   ]);
   const out = new Map<string, TimeDayDto>();
@@ -92,6 +97,7 @@ async function loadDays(
         userId,
         date: fromDbDate(date),
         entries: [],
+        timed: [],
         completed: false,
         completedAt: null,
         note: null,
@@ -110,6 +116,8 @@ async function loadDays(
   }
   for (const e of entries)
     get(e.userId, e.date).entries.push({ dutyId: e.dutyId, minutes: e.minutes });
+  for (const t of timed)
+    get(t.userId, t.date).timed.push({ dutyId: t.dutyId, minutes: t._sum.minutes ?? 0 });
   return [...out.values()].sort(
     (a, b) => a.date.localeCompare(b.date) || a.userId.localeCompare(b.userId),
   );
@@ -134,6 +142,7 @@ async function getDay(userId: string, date: CalendarDateString): Promise<TimeDay
       userId,
       date,
       entries: [],
+      timed: [],
       completed: false,
       completedAt: null,
       note: null,
@@ -426,7 +435,7 @@ export async function getTimeReview(actor: Actor, input: TimeReviewInput): Promi
   const ids = await resolveScope(actor, input.scope);
   const range = { gte: toDbDate(from), lte: toDbDate(to) };
 
-  const [people, entries, days] = await Promise.all([
+  const [people, typed, days, timed] = await Promise.all([
     prisma.user.findMany({
       where: { id: { in: ids } },
       select: personSelect,
@@ -446,6 +455,16 @@ export async function getTimeReview(actor: Actor, input: TimeReviewInput): Promi
       where: { userId: { in: ids }, date: range },
       select: { userId: true, date: true, completedAt: true },
     }),
+    prisma.timedStretch.findMany({
+      where: { userId: { in: ids }, date: range },
+      select: {
+        userId: true,
+        date: true,
+        dutyId: true,
+        minutes: true,
+        duty: { select: { departmentId: true } },
+      },
+    }),
   ]);
 
   const dayMap = new Map<
@@ -462,9 +481,19 @@ export async function getTimeReview(actor: Actor, input: TimeReviewInput): Promi
     return d;
   };
   for (const d of days) dayOf(d.userId, d.date).completed = d.completedAt !== null;
-  for (const e of entries) dayOf(e.userId, e.date).minutes += e.minutes;
+  for (const e of [...typed, ...timed]) dayOf(e.userId, e.date).minutes += e.minutes;
 
-  const records = entries
+  // Timed hours (L2) count with the hand-typed ones, one record per person,
+  // day and duty; timed time on tasks with no duty counts in the day only.
+  const merged = new Map<string, (typeof typed)[number]>();
+  for (const e of [...typed, ...timed]) {
+    if (!e.dutyId || !e.duty) continue;
+    const key = `${e.userId}|${fromDbDate(e.date)}|${e.dutyId}`;
+    const cur = merged.get(key);
+    if (cur) cur.minutes += e.minutes;
+    else merged.set(key, { ...e, dutyId: e.dutyId, duty: e.duty });
+  }
+  const records = [...merged.values()]
     .filter(
       (e) =>
         (!input.departmentId || e.duty.departmentId === input.departmentId) &&

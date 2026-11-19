@@ -7,9 +7,11 @@ import {
   Layers,
   Lock,
   Pencil,
+  Timer,
 } from 'lucide-react';
 import {
   TIME_DAY_MAX_MINUTES,
+  dutyLabel,
   formatDuration,
   formatHM,
   type TimeDayDto,
@@ -43,6 +45,7 @@ import { Bar, Btn, Card, CardHead, Empty, Segmented, Tile, cx } from '../compone
 import { useToast } from '../components/harbor/Toast';
 import { TimeTrackerCard } from './dashboard/TimeTrackerCard';
 import { CellEditor } from './time/CellEditor';
+import { dayMinutes } from '../lib/timer';
 
 /**
  * My Time (Department Duties), Harbor redesign. Each person logs hours and
@@ -61,10 +64,10 @@ const DAY_MINUTES = 8 * 60;
 /** Completed / Not completed / Mark complete, for a day. */
 export function dayStatus(
   date: string,
-  day: Pick<TimeDayDto, 'entries' | 'completed'> | undefined,
+  day: (Pick<TimeDayDto, 'entries' | 'completed'> & { timed?: TimeDayDto['timed'] }) | undefined,
   today: string,
 ): DayState {
-  const has = !!day && day.entries.length > 0;
+  const has = !!day && (day.entries.length > 0 || (day.timed ?? []).length > 0);
   if (date > today) return 'none';
   if (isWeekend(date) && !has && !day?.completed) return 'none';
   if (day?.completed) return 'done';
@@ -146,7 +149,12 @@ export function MyTimePage() {
     [myDutyIds, duties],
   );
 
-  const minutesOf = (d: string) => (days.get(d)?.entries ?? []).reduce((s, e) => s + e.minutes, 0);
+  const minutesOf = (d: string) => {
+    const day = days.get(d);
+    return day ? dayMinutes(day) : 0;
+  };
+  const timedMinutes = (d: string, dutyId: string | null) =>
+    (days.get(d)?.timed ?? []).find((e) => e.dutyId === dutyId)?.minutes ?? 0;
   const cellMinutes = (d: string, dutyId: string) =>
     days.get(d)?.entries.find((e) => e.dutyId === dutyId)?.minutes ?? 0;
 
@@ -156,6 +164,20 @@ export function MyTimePage() {
       ? daysInRange(range.from, range.to)
       : daysInRange(monthStart(anchor), monthEnd(anchor));
   const shownDays = daysInRange(range.from, range.to).filter((d) => !(hideWe && isWeekend(d)));
+  // Timed hours (L2): one read-only row per duty they went to, plus "No duty".
+  const timedRows = (() => {
+    const ids = new Set<string | null>();
+    for (const d of periodDays) for (const e of days.get(d)?.timed ?? []) ids.add(e.dutyId);
+    return [...ids]
+      .map((id) => ({ id, duty: id ? (duties.get(id) ?? null) : null }))
+      .sort((a, b) =>
+        a.id === null
+          ? 1
+          : b.id === null
+            ? -1
+            : (a.duty ? dutyLabel(a.duty) : '').localeCompare(b.duty ? dutyLabel(b.duty) : ''),
+      );
+  })();
 
   // Rows: the duties I hold, plus any that carry time in this period.
   const rows = useMemo(() => {
@@ -447,6 +469,63 @@ export function MyTimePage() {
                           />
                         ))}
                       </tbody>
+                      {timedRows.length > 0 && (
+                        <tbody className="hb-sheet-timed">
+                          <tr className="hb-sheet-dept">
+                            <th colSpan={shownDays.length + 2}>
+                              <Timer size={13} aria-hidden="true" /> Timed on tasks
+                              <span className="hb-small">
+                                {' '}
+                                · from the timer, by each task’s duty
+                              </span>
+                            </th>
+                          </tr>
+                          {timedRows.map((r) => {
+                            const rowTotal = periodDays.reduce(
+                              (s, d) => s + timedMinutes(d, r.id),
+                              0,
+                            );
+                            const name =
+                              r.id === null ? 'No duty' : r.duty ? dutyLabel(r.duty) : 'A duty';
+                            return (
+                              <tr key={r.id ?? 'none'} className={cx(r.id === null && 'is-noduty')}>
+                                <th className="hb-sheet-duty" scope="row">
+                                  <span className="hb-name">{name}</span>
+                                  {r.id === null && (
+                                    <span className="hb-small">
+                                      Tasks without a duty: sort it out before completing the day
+                                    </span>
+                                  )}
+                                </th>
+                                {shownDays.map((d) => {
+                                  const m = timedMinutes(d, r.id);
+                                  return (
+                                    <td
+                                      key={d}
+                                      className={cx(
+                                        'hb-sheet-cell',
+                                        d === today && 'today',
+                                        d > today && 'future',
+                                        isWeekend(d) && 'weekend',
+                                      )}
+                                    >
+                                      <span
+                                        className={cx('hb-cell', 'static', m > 0 && 'has')}
+                                        aria-label={`${name} timed, ${DOW_LONG[dayOfWeek(d)]} ${formatDay(d)}: ${m ? formatDuration(m) : 'nothing'}`}
+                                      >
+                                        {d > today ? '' : m ? formatHM(m) : '—'}
+                                      </span>
+                                    </td>
+                                  );
+                                })}
+                                <td className="hb-sheet-total">
+                                  {rowTotal ? formatHM(rowTotal) : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      )}
                       <tfoot>
                         <tr className="hb-sheet-sum">
                           <th>Day total</th>
@@ -591,7 +670,10 @@ export function MyTimePage() {
                       const perDuty = rows.flatMap((g) =>
                         g.duties.map((duty) => ({
                           duty,
-                          minutes: periodDays.reduce((s, d) => s + cellMinutes(d, duty.id), 0),
+                          minutes: periodDays.reduce(
+                            (s, d) => s + cellMinutes(d, duty.id) + timedMinutes(d, duty.id),
+                            0,
+                          ),
                         })),
                       );
                       const max = Math.max(...perDuty.map((p) => p.minutes), 1);
