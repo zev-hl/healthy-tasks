@@ -73,6 +73,7 @@ model User {
   createdTasks  Task[] @relation("TaskCreator")
   assignedTasks Task[] @relation("TaskAssignee")
   deletedTasks  Task[] @relation("TaskDeletedBy")
+  snoozedTasks  Task[] @relation("TaskSnoozedBy")
 
   // Phase 10 review workflow: tasks this user sent to Review, and tasks holding
   // this user as their pre-review assignee (restored when review ends).
@@ -217,6 +218,13 @@ model Task {
   // Drives the Dashboard's Stale count.
   lastActivityAt DateTime  @default(now())
 
+  // Snooze (Nov 2026 plan, E1): parked until this time, by this person. The
+  // task leaves the active lists until then; its due date and overdue counts
+  // never change. It wakes as a reminder (Reminder.kind = snooze).
+  snoozedUntil DateTime?
+  snoozedById  String?
+  snoozedBy    User?     @relation("TaskSnoozedBy", fields: [snoozedById], references: [id], onDelete: SetNull)
+
   // --- Review workflow (Phase 10) ---
   // Populated only while status == Review, cleared when the task leaves Review.
   // reviewInitiator = who sent it to Review (audit/context only). priorAssignee
@@ -329,6 +337,7 @@ model Task {
   @@index([alertType])
   @@index([deletedAt])
   @@index([lastActivityAt])
+  @@index([snoozedUntil])
 }
 
 // A directed dependency edge: `blocker` must reach a terminal status before
@@ -576,8 +585,12 @@ model Reminder {
   taskId Int
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  // Lead time (minutes before the task's Start Date/Time) at which to surface.
-  leadMinutes Int
+  // When it goes off (Nov 2026 plan, E4): an exact date and time, set by its
+  // owner, with an optional note. No start date needed. `kind` = snooze for the
+  // one a task's snooze leaves behind to bring it back (E2).
+  remindAt DateTime
+  note     String?
+  kind     String   @default("reminder")
 
   // Read state once the reminder has surfaced; set on click-through.
   readAt       DateTime?
@@ -599,6 +612,7 @@ model Reminder {
 
   @@index([userId])
   @@index([taskId])
+  @@index([remindAt])
 }
 
 // Per-user opt-in for each of the three lists, plus a per-list "also email me"

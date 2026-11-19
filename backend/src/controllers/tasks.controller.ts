@@ -1,3 +1,5 @@
+import { snoozeTask, unsnoozeTask } from '../services/task-snooze.service.js';
+import type { SnoozeTaskInput } from '../validation/schemas.js';
 import type { Request, Response } from 'express';
 import type {
   ActiveUserDto,
@@ -226,6 +228,23 @@ export async function listDeletedTasksController(req: Request, res: Response): P
 export async function restoreTaskController(req: Request, res: Response): Promise<void> {
   await restoreTask(actorOf(req), parseTaskId(req));
   res.status(204).send();
+}
+
+/** POST /api/tasks/:id/snooze — park it until `until` (at most 30 days); returns the task. */
+export async function snoozeTaskController(req: Request, res: Response): Promise<void> {
+  const { until } = req.body as SnoozeTaskInput;
+  const actor = actorOf(req);
+  const id = parseTaskId(req);
+  await snoozeTask(actor, id, until);
+  res.json((await getTaskDetail(id, actor)) satisfies TaskDetailDto);
+}
+
+/** DELETE /api/tasks/:id/snooze — bring it back now; returns the task. */
+export async function unsnoozeTaskController(req: Request, res: Response): Promise<void> {
+  const actor = actorOf(req);
+  const id = parseTaskId(req);
+  await unsnoozeTask(actor, id);
+  res.json((await getTaskDetail(id, actor)) satisfies TaskDetailDto);
 }
 
 export async function duplicateTaskController(req: Request, res: Response): Promise<void> {

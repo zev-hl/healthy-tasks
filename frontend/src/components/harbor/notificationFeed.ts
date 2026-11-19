@@ -52,8 +52,15 @@ export function toFeed(n: NotificationsDto): FeedItem[] {
       taskId: r.taskId,
       taskName: r.taskName,
       who: null,
-      text: r.kind === 'canceled' ? 'Reminder canceled' : 'Reminder',
-      at: r.canceledAt ?? r.startAt,
+      text:
+        r.kind === 'canceled'
+          ? 'Reminder canceled'
+          : r.source === 'snooze'
+            ? 'Back from snooze'
+            : r.note
+              ? `Reminder: ${r.note}`
+              : 'Reminder',
+      at: r.canceledAt ?? r.remindAt,
       read: r.read,
     })),
   ];

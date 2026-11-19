@@ -336,6 +336,9 @@ export interface TaskDto {
   isProject: boolean;
   /** When anything last happened on the task (edit, comment, file). ISO-8601. */
   lastActivityAt: string;
+  /** Snooze (E1): parked until this time (ISO), or null when not snoozed. */
+  snoozedUntil: string | null;
+  snoozedBy: TaskUserRef | null;
   // Phase 10 review workflow. All null unless the task is currently in Review.
   // reviewInitiator = who sent it to Review (audit/context only).
   // priorAssignee / priorStatus = what to restore when it leaves Review.
@@ -398,6 +401,8 @@ export interface TaskDetailDto extends TaskDto {
   levels: TaskLevelsDto;
   /** The requesting user's unread @mentions on this task. */
   unreadMentions: number;
+  /** Whether the reader may snooze it: the assignee, the creator or someone above them. */
+  canSnooze: boolean;
   parent: TaskRef | null;
   children: TaskChildRef[];
   blocks: TaskRef[];
@@ -682,6 +687,9 @@ export const TASK_HISTORY_FIELDS = {
   // Nov 2026 plan, Stage 0.
   project: 'project',
   deleted: 'deleted',
+  // Nov 2026 plan, Stage 2.
+  snooze: 'snooze',
+  updateRequested: 'updateRequested',
 } as const;
 
 /** Human-readable label for a history `field` key (falls back to the key). */
@@ -707,6 +715,8 @@ export const TASK_HISTORY_FIELD_LABELS: Record<string, string> = {
   alert: 'Alert',
   project: 'Project',
   deleted: 'Deleted',
+  snooze: 'Snooze',
+  updateRequested: 'Update requested',
 };
 
 /** A single change-history entry for a task, newest-first in listings. */
@@ -848,6 +858,11 @@ export interface TaskSearchFilters {
    * so it can never widen visibility. Mutually exclusive with `assigneeIds` in
    * the UI (selecting one clears the other). */
   hierarchyUserIds?: string[];
+  /**
+   * Snooze (E1): snoozed tasks leave the active lists. Default `hide`; `only`
+   * is the Snoozed view; `include` shows both.
+   */
+  snoozed?: 'hide' | 'only' | 'include';
   /**
    * "My team" (Nov 2026 plan, B1): tasks assigned to people in my departments
    * (those of the duties I hold; Admins: every department), me excluded.
@@ -1019,6 +1034,8 @@ export interface TaskRowDto {
   alertType: ExclusivesAlertType | null;
   /** The task is (or belongs to) a repeating series: shows the repeat icon. */
   repeats: boolean;
+  /** Snoozed until (ISO), or null: the "snoozed until" mark (B7). */
+  snoozedUntil: string | null;
   isProject: boolean;
   /**
    * The top of this task's tree when it sits under another task (the project
@@ -1228,10 +1245,10 @@ export interface MentionedNotificationDto {
 }
 
 /**
- * A row in the Reminders list. Either a `due` reminder (a personal reminder that
- * has become due) or a `canceled` notice — a reminder another user's Save
- * removed by clearing the task's Start Date or Canceling it. Both surface only
- * while the recipient currently has access to the task (the A2 access gate).
+ * A row in the Reminders list. Either a `due` reminder (one whose time has
+ * come) or a `canceled` notice — a reminder another user's Save removed by
+ * Canceling the task. Both surface only while the recipient currently has
+ * access to the task (the A2 access gate).
  */
 export interface ReminderNotificationDto {
   id: string; // Reminder id (for mark-read / remove)
@@ -1239,7 +1256,11 @@ export interface ReminderNotificationDto {
   taskName: string;
   startAt: string | null; // ISO — the task's Start Date & Time
   priority: TaskPriority;
-  leadMinutes: number;
+  /** ISO — when it went off. */
+  remindAt: string;
+  note: string | null;
+  /** `snooze`: the task's snooze is over and it is back (E2). */
+  source: ReminderKind;
   read: boolean;
   /** `due` = a live/time-based reminder; `canceled` = a soft-canceled notice. */
   kind: 'due' | 'canceled';
@@ -1304,58 +1325,28 @@ export interface UnreadCountDto {
 // --- Reminders (task-detail management) ------------------------------------
 
 /**
- * Preset lead times offered when adding a reminder, in minutes before the
- * task's Start Date & Time. Stored as a raw minute count so custom values
- * remain representable.
+ * Reminders (Nov 2026 plan, E4): each goes off at an exact date and time with
+ * an optional note, belongs to a task, and is seen only by its owner. Any
+ * number per task; no start date needed. `snooze` is the one a task's snooze
+ * leaves behind to bring it back (E2).
  */
-export const REMINDER_LEAD_OPTIONS: { minutes: number; label: string }[] = [
-  { minutes: 0, label: 'At start time' },
-  { minutes: 15, label: '15 minutes before' },
-  { minutes: 30, label: '30 minutes before' },
-  { minutes: 60, label: '1 hour before' },
-  { minutes: 120, label: '2 hours before' },
-  { minutes: 1440, label: '1 day before' },
-  { minutes: 2880, label: '2 days before' },
-  { minutes: 10080, label: '1 week before' },
-];
+export const REMINDER_KINDS = ['reminder', 'snooze'] as const;
+export type ReminderKind = (typeof REMINDER_KINDS)[number];
 
-/** Human label for a lead time (falls back to "N minutes before"). */
-export function reminderLeadLabel(minutes: number): string {
-  return (
-    REMINDER_LEAD_OPTIONS.find((o) => o.minutes === minutes)?.label ?? `${minutes} minutes before`
-  );
-}
+/** A new reminder goes off two hours from now unless another time is picked. */
+export const REMINDER_DEFAULT_HOURS = 2;
+export const REMINDER_NOTE_MAX = 500;
 
-/**
- * Why adding a reminder is blocked (Reminders overhaul, condition set B):
- *  - `no-start`   — the task has no Start Date (a reminder would never fire).
- *  - `past-start` — the Start Date itself is already in the past (fires instantly).
- *  - `canceled`   — the task is Canceled (its reminders are removed, not added).
- * A FUTURE start with an already-elapsed lead is NOT blocked (still a useful
- * "coming up" heads-up), so this keys off the Start Date, never the lead.
- */
-export type ReminderBlock = 'no-start' | 'past-start' | 'canceled';
+/** Why adding a reminder is blocked: only a Canceled task takes none. */
+export type ReminderBlock = 'canceled';
 
 export const REMINDER_BLOCK_LABELS: Record<ReminderBlock, string> = {
-  'no-start': 'Requires Start Date',
-  'past-start': 'Start date has passed',
   canceled: 'Task canceled',
 };
 
-/**
- * The single source of truth (shared by the API and the Task Detail UI) for
- * whether a reminder may be added to a task, and if not, why. Returns null when
- * adding is allowed. `startAt` is the task's Start Date/Time (ISO or null).
- */
-export function reminderAddBlock(
-  startAt: string | null,
-  status: TaskStatus,
-  now: Date,
-): ReminderBlock | null {
-  if (status === 'Canceled') return 'canceled';
-  if (!startAt) return 'no-start';
-  if (new Date(startAt).getTime() < now.getTime()) return 'past-start';
-  return null;
+/** Whether a reminder may be added to a task (null = yes). Shared by API and UI. */
+export function reminderAddBlock(status: TaskStatus): ReminderBlock | null {
+  return status === 'Canceled' ? 'canceled' : null;
 }
 
 /**
@@ -1373,12 +1364,24 @@ export const REMINDER_CANCEL_REASON_LABELS: Record<ReminderCancelReason, string>
 export interface ReminderDto {
   id: string;
   taskId: number;
-  leadMinutes: number;
+  remindAt: string; // ISO
+  note: string | null;
+  kind: ReminderKind;
   createdAt: string; // ISO
 }
 
 export interface AddReminderRequest {
-  leadMinutes: number;
+  remindAt: string; // ISO, in the future
+  note?: string | null;
+}
+
+// --- Snooze (Nov 2026 plan, E1) --------------------------------------------
+
+/** Longest snooze: 30 days. */
+export const SNOOZE_MAX_DAYS = 30;
+
+export interface SnoozeTaskRequest {
+  until: string; // ISO, in the future, at most SNOOZE_MAX_DAYS away
 }
 
 /** Snooze a due reminder for `minutes` from now; it re-surfaces after that. */

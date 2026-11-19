@@ -108,16 +108,20 @@ export function reminderEmail(o: {
   to: string;
   taskId: number;
   taskName: string;
-  /** When the task starts and how far ahead this is, written out; none without a start. */
-  starts?: string;
+  /** The reminder's own note, if it has one. */
+  note?: string | null;
+  /** A snoozed task that is back (E2), rather than a reminder someone set. */
+  snoozeOver?: boolean;
   link: string;
 }): Email {
-  const about = `Reminder for task #${o.taskId} (“${o.taskName}”).`;
+  const about = o.snoozeOver
+    ? `Task #${o.taskId} (“${o.taskName}”) is back from snooze.`
+    : `Reminder for task #${o.taskId} (“${o.taskName}”).`;
   return {
     to: o.to,
-    subject: `Reminder: “${o.taskName}”`,
+    subject: o.snoozeOver ? `Back from snooze: “${o.taskName}”` : `Reminder: “${o.taskName}”`,
     ...renderEmail({
-      blocks: [{ text: o.starts ? `${about}\nStarts: ${o.starts}` : about }, openTask(o.link)],
+      blocks: [{ text: o.note ? `${about}\n${o.note}` : about }, openTask(o.link)],
     }),
   };
 }

@@ -32,6 +32,7 @@ import {
   DUTY_DESCRIPTION_MAX,
   TIME_DAY_MAX_MINUTES,
   TIME_DAY_NOTE_MAX,
+  REMINDER_NOTE_MAX,
 } from '@healthy-tasks/shared';
 
 export const roleSchema = z.enum(ROLES);
@@ -367,6 +368,7 @@ const taskFiltersSchema = z.object({
   // Team Hierarchy filter (assignee IN a supervisor's selected downline).
   hierarchyUserIds: z.array(z.string().uuid()).max(5000).optional(),
   myTeam: z.boolean().optional(),
+  snoozed: z.enum(['hide', 'only', 'include']).optional(),
   statuses: z.array(z.enum(TASK_STATUSES)).optional(),
   priorities: z.array(z.enum(TASK_PRIORITIES)).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(50).optional(),
@@ -480,10 +482,19 @@ export const screenStateSchema = z.object({
 
 // --- Notifications & reminders (Phase 8) -----------------------------------
 
-// Lead time in minutes before a task's Start; capped at ~1 year.
+// An exact time (Nov 2026 plan, E4), within about a year, with an optional note.
 export const addReminderSchema = z.object({
-  leadMinutes: z.number().int().min(0).max(527040),
+  remindAt: z.coerce
+    .date()
+    .refine((d) => d.getTime() < Date.now() + 366 * 86_400_000, 'Pick a time within a year'),
+  note: z.string().trim().max(REMINDER_NOTE_MAX).nullable().optional(),
 });
+
+// Snooze a task until a time at most SNOOZE_MAX_DAYS ahead (E1).
+export const snoozeTaskSchema = z.object({
+  until: z.coerce.date(),
+});
+export type SnoozeTaskInput = z.infer<typeof snoozeTaskSchema>;
 
 // Snooze duration in minutes from now; capped at ~1 week.
 export const snoozeReminderSchema = z.object({

@@ -139,6 +139,28 @@ const adminToken = () => login(ADMIN_EMAIL, ADMIN_PASSWORD);
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 // Create a task via the API and return its body (asserts success).
+/**
+ * Add a reminder the way the old tests thought of it — "N minutes before the
+ * task's start" — as the exact time that implies (Nov 2026 plan, E4: reminders
+ * have their own time; the migration turned old ones into the same). The API
+ * takes only times ahead, so a time already passed is set on the row after.
+ */
+async function postReminderLead(tok: string, taskId: number, leadMinutes: number) {
+  const t = await prisma.task.findUnique({ where: { id: taskId }, select: { startAt: true } });
+  const want = t?.startAt
+    ? new Date(t.startAt.getTime() - leadMinutes * 60_000)
+    : new Date(Date.now() + 60 * 60_000);
+  const ahead = want.getTime() > Date.now() + 60_000;
+  const res = await request(app)
+    .post(`/api/tasks/${taskId}/reminders`)
+    .set(auth(tok))
+    .send({ remindAt: (ahead ? want : new Date(Date.now() + 60 * 60_000)).toISOString() });
+  if (res.status === 201 && !ahead) {
+    await prisma.reminder.update({ where: { id: res.body.id }, data: { remindAt: want } });
+  }
+  return res;
+}
+
 async function makeTask(
   token: string,
   name: string,
@@ -3239,7 +3261,9 @@ interface NotifShape {
     taskId: number;
     startAt: string | null;
     priority: string;
-    leadMinutes: number;
+    remindAt: string;
+    note: string | null;
+    source: 'reminder' | 'snooze';
     read: boolean;
     kind: 'due' | 'canceled';
     canceledReason: string | null;
@@ -3402,24 +3426,15 @@ describe('notifications: Reminders (Phase 8)', () => {
     const t = await makeTask(admin, 'Reminder task', { startAt: startSoon });
 
     // 15-min lead surfaces at start-15m (= +15 min): not due yet.
-    const r15 = await request(app)
-      .post(`/api/tasks/${t.id}/reminders`)
-      .set(auth(admin))
-      .send({ leadMinutes: 15 });
+    const r15 = await postReminderLead(admin, t.id, 15);
     assert.equal(r15.status, 201);
     // 60-min lead surfaces at start-60m (= -30 min): due now.
-    const r60 = await request(app)
-      .post(`/api/tasks/${t.id}/reminders`)
-      .set(auth(admin))
-      .send({ leadMinutes: 60 });
+    const r60 = await postReminderLead(admin, t.id, 60);
     assert.equal(r60.status, 201);
 
     // A task with no Start never surfaces its reminder.
     const t2 = await makeTask(admin, 'No start');
-    await request(app)
-      .post(`/api/tasks/${t2.id}/reminders`)
-      .set(auth(admin))
-      .send({ leadMinutes: 0 });
+    await postReminderLead(admin, t2.id, 0);
 
     const list = await getNotifs(admin);
     assert.equal(list.reminders.length, 1, 'only the due (60-min lead) reminder surfaces');
@@ -3473,10 +3488,7 @@ describe('notifications: preferences (Phase 8)', () => {
     const t = await makeTask(admin, 'Rem opt', {
       startAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     });
-    await request(app)
-      .post(`/api/tasks/${t.id}/reminders`)
-      .set(auth(admin))
-      .send({ leadMinutes: 60 });
+    await postReminderLead(admin, t.id, 60);
     assert.equal((await getNotifs(admin)).reminders.length, 1);
 
     await setPrefs(admin, { remindersInApp: false });
@@ -3508,10 +3520,7 @@ describe('notifications: preferences (Phase 8)', () => {
     const t2 = await makeTask(admin, 'Rem email', {
       startAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
     });
-    await request(app)
-      .post(`/api/tasks/${t2.id}/reminders`)
-      .set(auth(admin))
-      .send({ leadMinutes: 60 });
+    await postReminderLead(admin, t2.id, 60);
     const { runScheduler: runPass } = await import('../src/services/scheduler.service.js');
     const out2 = await captureConsole(async () => {
       await runPass(new Date());
@@ -6117,10 +6126,7 @@ describe('notifications: manual mark-as-unread (follow-up)', () => {
     // Future Start (so Add is allowed) + an already-elapsed lead => due now.
     const startSoon = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const t = await makeTask(admin, 'Due reminder task', { startAt: startSoon });
-    const rem = await request(app)
-      .post(`/api/tasks/${t.id}/reminders`)
-      .set(auth(admin))
-      .send({ leadMinutes: 60 });
+    const rem = await postReminderLead(admin, t.id, 60);
     assert.equal(rem.status, 201);
     assert.equal((await unread(admin)).reminders, 1);
 
@@ -6550,7 +6556,7 @@ describe('Reminders overhaul (A/B/C/D)', () => {
   const pastStart = (mins = 60) => new Date(Date.now() - mins * 60_000).toISOString();
 
   const addReminder = (tok: string, taskId: number, leadMinutes: number) =>
-    request(app).post(`/api/tasks/${taskId}/reminders`).set(auth(tok)).send({ leadMinutes });
+    postReminderLead(tok, taskId, leadMinutes);
   const patchTask = (tok: string, taskId: number, body: Record<string, unknown>) =>
     request(app).patch(`/api/tasks/${taskId}`).set(auth(tok)).send(body);
   const reparent = (admin: string, userId: string, supervisorId: string) =>
@@ -6635,72 +6641,59 @@ describe('Reminders overhaul (A/B/C/D)', () => {
   });
 
   // B ------------------------------------------------------------------------
-  it('B: Add is blocked (400) for no start date, a past start date, and a Canceled task', async () => {
+  it('B: a reminder has its own time: no start date needed; a past time or a Canceled task is refused', async () => {
     const admin = await adminToken();
+    const post = (taskId: number, body: Record<string, unknown>) =>
+      request(app).post(`/api/tasks/${taskId}/reminders`).set(auth(admin)).send(body);
 
+    // Nov 2026 plan (E4): no start date needed, with a note.
     const noStart = await makeTask(admin, 'No start');
-    const b1 = await addReminder(admin, noStart.id, 60);
-    assert.equal(b1.status, 400);
-    assert.match(b1.body.error, /Requires Start Date/i);
+    const at = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const ok = await post(noStart.id, { remindAt: at, note: 'Call the supplier' });
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    assert.equal(ok.body.remindAt, at);
+    assert.equal(ok.body.note, 'Call the supplier');
+    assert.equal(ok.body.kind, 'reminder');
 
-    const past = await makeTask(admin, 'Past start', { startAt: pastStart() });
-    const b2 = await addReminder(admin, past.id, 60);
-    assert.equal(b2.status, 400);
-    assert.match(b2.body.error, /Start date has passed/i);
+    const past = await post(noStart.id, {
+      remindAt: new Date(Date.now() - 3_600_000).toISOString(),
+    });
+    assert.equal(past.status, 400);
+    assert.match(past.body.error, /hasn.t passed/i);
 
-    const canceled = await makeTask(admin, 'To cancel', { startAt: futureStart() });
+    const canceled = await makeTask(admin, 'To cancel');
     assert.equal((await patchTask(admin, canceled.id, { status: 'Canceled' })).status, 200);
-    const b3 = await addReminder(admin, canceled.id, 60);
+    const b3 = await post(canceled.id, { remindAt: at });
     assert.equal(b3.status, 400);
     assert.match(b3.body.error, /Task canceled/i);
 
-    // A future start with an already-elapsed lead is NOT blocked (useful heads-up):
-    // start is 5 min out, a 1-week lead means it's already "due", but Add is allowed.
-    const future = await makeTask(admin, 'Future start', { startAt: futureStart(5) });
-    const ok = await addReminder(admin, future.id, 10080);
-    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    // Any number per task, listed in time order.
+    const later = new Date(Date.now() + 5 * 3_600_000).toISOString();
+    assert.equal((await post(noStart.id, { remindAt: later })).status, 201);
+    const list = await request(app).get(`/api/tasks/${noStart.id}/reminders`).set(auth(admin));
+    assert.deepEqual(
+      (list.body as { remindAt: string }[]).map((r) => r.remindAt),
+      [at, later],
+    );
   });
 
   // C: clearing the Start Date -----------------------------------------------
-  it('C: clearing the Start Date removes reminders — actor hard-deleted, others soft-canceled + dismissible', async () => {
+  it('C: clearing the Start Date leaves reminders as they are', async () => {
     const admin = await adminToken();
     const t = await seedAccessTeam();
     const task = await makeTask(admin, 'Start-clear task', {
       assigneeId: t.emp.id,
       startAt: futureStart(),
     });
-
-    // Both the assignee (actor) and their supervisor hold a due reminder.
-    const empRem = await addReminder(t.empTok, task.id, 60);
-    assert.equal(empRem.status, 201);
+    assert.equal((await addReminder(t.empTok, task.id, 60)).status, 201);
     assert.equal((await addReminder(t.mgrTok, task.id, 60)).status, 201);
-    assert.equal((await getNotifs(t.empTok)).reminders.length, 1);
-    assert.equal((await getNotifs(t.mgrTok)).reminders.length, 1);
-
-    // The assignee clears the Start Date.
     assert.equal((await patchTask(t.empTok, task.id, { startAt: null })).status, 200);
-
-    // Actor's own reminder is hard-deleted (feed + the task-detail management list).
-    assert.equal((await getNotifs(t.empTok)).reminders.length, 0, "actor's reminder deleted");
-    const empOnTask = await request(app).get(`/api/tasks/${task.id}/reminders`).set(auth(t.empTok));
-    assert.equal(empOnTask.body.length, 0, 'gone from the task-detail list too');
-
-    // The supervisor's reminder becomes a soft-canceled notice (they still have access).
+    assert.equal((await getNotifs(t.empTok)).reminders.length, 1);
     const mgrFeed = await getNotifs(t.mgrTok);
     assert.equal(mgrFeed.reminders.length, 1);
-    assert.equal(mgrFeed.reminders[0]?.kind, 'canceled');
-    assert.equal(mgrFeed.reminders[0]?.canceledReason, 'start-date-removed');
-
-    // Dismiss (Remove) hard-deletes the notice — the only cleanup path.
-    const del = await request(app)
-      .delete(`/api/reminders/${mgrFeed.reminders[0]!.id}`)
-      .set(auth(t.mgrTok));
-    assert.equal(del.status, 204);
-    assert.equal((await getNotifs(t.mgrTok)).reminders.length, 0);
-    assert.equal(await prisma.reminder.count({ where: { taskId: task.id } }), 0, 'no rows remain');
+    assert.equal(mgrFeed.reminders[0]?.kind, 'due');
   });
 
-  // C: canceling the task, plus suppression once access is lost ---------------
   it('C: Canceling the task soft-cancels others reminders; a since-lost-access user sees nothing', async () => {
     const admin = await adminToken();
     const mgr = await seedUser({ email: 'c2-mgr@test.local', role: 'Manager', password: PW });
@@ -6808,7 +6801,7 @@ async function seedApprovedGoal(deadline: Date, setUpAt?: Date): Promise<number>
 }
 
 const addRem = (tok: string, taskId: number, leadMinutes: number) =>
-  request(app).post(`/api/tasks/${taskId}/reminders`).set(auth(tok)).send({ leadMinutes });
+  postReminderLead(tok, taskId, leadMinutes);
 
 const ALL_PREFS_EMAIL_ON = {
   mentionedInApp: true,

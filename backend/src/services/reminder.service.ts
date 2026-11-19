@@ -7,6 +7,7 @@ import {
   REMINDER_BLOCK_LABELS,
   type ReminderCancelReason,
   type ReminderDto,
+  type ReminderKind,
   type TaskPriority,
 } from '@healthy-tasks/shared';
 import {
@@ -26,7 +27,9 @@ export interface DueReminder {
   taskName: string;
   startAt: Date | null;
   priority: TaskPriority;
-  leadMinutes: number;
+  remindAt: Date;
+  note: string | null;
+  source: ReminderKind;
   readAt: Date | null;
   emailSentAt: Date | null;
   kind: 'due' | 'canceled';
@@ -36,7 +39,9 @@ export interface DueReminder {
 
 const reminderTaskSelect = {
   id: true,
-  leadMinutes: true,
+  remindAt: true,
+  note: true,
+  kind: true,
   readAt: true,
   emailSentAt: true,
   snoozedUntil: true,
@@ -48,18 +53,27 @@ const reminderTaskSelect = {
   },
 } as const;
 
-/**
- * Whether a reminder has surfaced: its task has a Start Date/Time and the
- * current time has reached (startAt - leadMinutes). A task with no startAt is
- * treated as not-yet-due (never surfaces) rather than an error.
- */
-export function isReminderDue(startAt: Date | null, leadMinutes: number, now: Date): boolean {
-  if (!startAt) return false;
-  return now.getTime() >= startAt.getTime() - leadMinutes * 60_000;
+/** Whether a reminder has gone off: its time has come (Nov 2026 plan, E4). */
+export function isReminderDue(remindAt: Date, now: Date): boolean {
+  return now.getTime() >= remindAt.getTime();
 }
 
-function toDto(r: { id: string; taskId: number; leadMinutes: number; createdAt: Date }): ReminderDto {
-  return { id: r.id, taskId: r.taskId, leadMinutes: r.leadMinutes, createdAt: r.createdAt.toISOString() };
+function toDto(r: {
+  id: string;
+  taskId: number;
+  remindAt: Date;
+  note: string | null;
+  kind: string;
+  createdAt: Date;
+}): ReminderDto {
+  return {
+    id: r.id,
+    taskId: r.taskId,
+    remindAt: r.remindAt.toISOString(),
+    note: r.note,
+    kind: r.kind as ReminderKind,
+    createdAt: r.createdAt.toISOString(),
+  };
 }
 
 /** The current user's reminders on a task (for the Task Detail page). */
@@ -68,21 +82,21 @@ export async function listRemindersForTask(userId: string, taskId: number): Prom
     // Soft-canceled reminders are notices, not manageable reminders; the Task
     // Detail management list shows only the live ones.
     where: { userId, taskId, canceledAt: null },
-    orderBy: [{ leadMinutes: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ remindAt: 'asc' }, { createdAt: 'asc' }],
   });
   return rows.map(toDto);
 }
 
 /**
- * Add a reminder for the current user on a task they can see. Enforces the
- * access gate (A1: no-access -> 404, mirroring the rest of the app so a hidden
- * task can't be enumerated) and the block conditions (B: no Start Date / past
- * Start Date / Canceled task -> 400).
+ * Add a reminder for the current user on a task they can see, at an exact time
+ * with an optional note (E4). Enforces the access gate (A1: no-access -> 404,
+ * mirroring the rest of the app so a hidden task can't be enumerated); a
+ * Canceled task takes none, and the time must be ahead (a minute's grace).
  */
 export async function addReminder(
   actor: Actor,
   taskId: number,
-  leadMinutes: number,
+  input: { remindAt: Date; note?: string | null },
 ): Promise<ReminderDto> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -96,10 +110,15 @@ export async function addReminder(
     isPrivate: task.isPrivate,
   });
   if (!level) throw HttpError.notFound('Task not found');
-  // B: reject reminders that could never usefully fire.
-  const block = reminderAddBlock(task.startAt ? task.startAt.toISOString() : null, task.status, new Date());
+  const block = reminderAddBlock(task.status);
   if (block) throw HttpError.badRequest(REMINDER_BLOCK_LABELS[block]);
-  const row = await prisma.reminder.create({ data: { userId: actor.id, taskId, leadMinutes } });
+  if (input.remindAt.getTime() < Date.now() - 60_000) {
+    throw HttpError.badRequest('Pick a time that hasn’t passed');
+  }
+  const note = input.note?.trim() || null;
+  const row = await prisma.reminder.create({
+    data: { userId: actor.id, taskId, remindAt: input.remindAt, note },
+  });
   invalidateUnread(actor.id);
   return toDto(row);
 }
@@ -109,7 +128,10 @@ export async function addReminder(
  * a cancel notice — dismissing a notice hard-deletes it, the only cleanup path).
  */
 export async function removeReminder(userId: string, reminderId: string): Promise<void> {
-  const r = await prisma.reminder.findUnique({ where: { id: reminderId }, select: { userId: true } });
+  const r = await prisma.reminder.findUnique({
+    where: { id: reminderId },
+    select: { userId: true },
+  });
   if (!r || r.userId !== userId) throw HttpError.notFound('Reminder not found');
   await prisma.reminder.delete({ where: { id: reminderId } });
   invalidateUnread(userId);
@@ -185,7 +207,9 @@ export async function listDueReminders(actor: Actor, now: Date): Promise<DueRemi
       taskName: r.task.name,
       startAt: r.task.startAt,
       priority: r.task.priority,
-      leadMinutes: r.leadMinutes,
+      remindAt: r.remindAt,
+      note: r.note,
+      source: r.kind as ReminderKind,
       readAt: r.readAt,
       emailSentAt: r.emailSentAt,
     };
@@ -198,7 +222,7 @@ export async function listDueReminders(actor: Actor, now: Date): Promise<DueRemi
         canceledAt: r.canceledAt,
       });
     } else if (
-      isReminderDue(r.task.startAt, r.leadMinutes, now) &&
+      isReminderDue(r.remindAt, now) &&
       !(r.snoozedUntil && r.snoozedUntil.getTime() > now.getTime())
     ) {
       out.push({ ...base, kind: 'due', canceledReason: null, canceledAt: null });
@@ -208,7 +232,8 @@ export async function listDueReminders(actor: Actor, now: Date): Promise<DueRemi
 }
 
 /**
- * Remove a task's reminders when a Save clears its Start Date or Cancels it.
+ * Remove a task's reminders when a Save Cancels it (reminders no longer hang
+ * on the start date, so clearing it leaves them be).
  * Runs inside `updateTask`'s transaction (atomic with the task write):
  *  - the actor's own reminders are hard-deleted (they consented via the confirm
  *    dialog),

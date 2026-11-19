@@ -93,6 +93,8 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     alertGroup: t.alertGroup ? toAlertGroupRef(t.alertGroup) : null,
     alertType: toAlertType(t.alertType),
     repeats: t.recurrence != null || t.recurrenceSourceId != null,
+    snoozedUntil:
+      t.snoozedUntil && t.snoozedUntil.getTime() > Date.now() ? t.snoozedUntil.toISOString() : null,
     isProject: t.isProject,
     top: null, // filled by attachTops
     canChangeDue: false, // filled by finishRows
@@ -408,6 +410,12 @@ export async function scopedTaskWhere(
   const scope = await getTaskAccessScope(actor);
   const and: Prisma.TaskWhereInput[] = [await buildWhere(input)];
   if (input.filters?.myTeam) and.push({ assigneeId: { in: await myTeamIds(actor) } });
+  // Snoozed tasks leave the active lists until their time (E1).
+  const snoozed = input.filters?.snoozed ?? 'hide';
+  const now = new Date();
+  if (snoozed === 'hide')
+    and.push({ OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }] });
+  else if (snoozed === 'only') and.push({ snoozedUntil: { gt: now } });
   const accessWhere = buildTaskAccessWhere(scope, input.includeReadOnly ?? true);
   if (accessWhere) and.push(accessWhere);
   return { where: and.length === 1 ? and[0]! : { AND: and }, scope };

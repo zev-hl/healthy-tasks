@@ -56,6 +56,7 @@ import { toActiveUserDto } from './user.mapper.js';
 import { assertDutyAssignable } from './department.service.js';
 import { assertHoldsDuty } from './duty-check.service.js';
 import { assertCanPlaceUnder, assertCanSetProject, levelInfo } from './task-levels.service.js';
+import { canSnoozeTask } from './task-snooze.service.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
 
 /** "Department › Duty" for a duty id (history snapshots), or null. */
@@ -248,7 +249,9 @@ export async function getTaskDetail(id: number, actor: Actor): Promise<TaskDetai
       where: { userId: actor.id, taskId: task.id, type: 'mentioned', readAt: null },
     }),
   ]);
+  const snooze = await canSnoozeTask(actor, task);
   return toTaskDetailDto(task as unknown as TaskWithDetail, {
+    canSnooze: snooze,
     level,
     canTogglePrivate: toggle,
     canChangeDue: changeDue,
@@ -485,13 +488,12 @@ export async function updateTask(
   // (non-null -> null) OR moves the task into Canceled removes its reminders.
   // The actor's own are hard-deleted (they consented via the confirm dialog);
   // everyone else's become a soft-canceled notice. Canceled wins if both fire.
-  const startCleared = input.startAt === null && existing.startAt !== null;
+  // Since the Nov 2026 plan (E4) reminders have their own time, so clearing the
+  // Start Date leaves them be; only Canceling removes them.
   const becameCanceled = input.status === 'Canceled' && existing.status !== 'Canceled';
   const reminderRemovalReason: ReminderCancelReason | null = becameCanceled
     ? 'task-canceled'
-    : startCleared
-      ? 'start-date-removed'
-      : null;
+    : null;
 
   // Review bookkeeping: capture prior state on the way IN, clear it on the way OUT.
   const reviewData: {

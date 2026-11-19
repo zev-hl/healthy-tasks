@@ -308,6 +308,12 @@ export function extraChips(
     });
   if (extra.dutyIds?.length)
     chips.push({ key: 'duties', label: `${extra.dutyIds.length} duties`, clear: ['dutyIds'] });
+  if (extra.snoozed)
+    chips.push({
+      key: 'snoozed',
+      label: extra.snoozed === 'only' ? 'Only snoozed' : 'Snoozed shown too',
+      clear: ['snoozed'],
+    });
   if (extra.priorities?.length)
     chips.push({
       key: 'prios',

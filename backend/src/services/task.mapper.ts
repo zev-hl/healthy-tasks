@@ -75,6 +75,7 @@ export const taskInclude = {
   priorAssignee: holderRefSelect,
   duty: dutyRefSelect,
   alertGroup: alertGroupRefSelect,
+  snoozedBy: userRefSelect,
 } as const;
 
 const taskRefSelect = { id: true, name: true, status: true } as const;
@@ -138,6 +139,18 @@ export function toTaskRecurrenceDto(r: TaskRecurrence, occurrenceCount: number):
   };
 }
 
+/** A snooze counts only while its time is ahead; after that the task is back. */
+export function snoozeOf(task: {
+  snoozedUntil: Date | null;
+  snoozedBy?: Parameters<typeof toUserRef>[0] | null;
+}): { snoozedUntil: string | null; snoozedBy: TaskDto['snoozedBy'] } {
+  const live = task.snoozedUntil && task.snoozedUntil.getTime() > Date.now();
+  return {
+    snoozedUntil: live ? task.snoozedUntil!.toISOString() : null,
+    snoozedBy: live && task.snoozedBy ? toUserRef(task.snoozedBy) : null,
+  };
+}
+
 export function toTaskDto(task: TaskWithRefs): TaskDto {
   return {
     id: task.id,
@@ -155,6 +168,7 @@ export function toTaskDto(task: TaskWithRefs): TaskDto {
     isPrivate: task.isPrivate,
     isProject: task.isProject,
     lastActivityAt: task.lastActivityAt.toISOString(),
+    ...snoozeOf(task),
     startAt: task.startAt?.toISOString() ?? null,
     dueAt: task.dueAt?.toISOString() ?? null,
     createdAt: task.createdAt.toISOString(),
@@ -197,6 +211,7 @@ export interface TaskAccessContext {
   canChangeDue: boolean;
   levels: TaskDetailDto['levels'];
   unreadMentions: number;
+  canSnooze: boolean;
   /** Live visibility test for referenced tasks (parent/children/blocks/blockedBy). */
   canSee: (taskId: number) => boolean;
 }
@@ -211,6 +226,7 @@ export function toTaskDetailDto(task: TaskWithDetail, access: TaskAccessContext)
     canChangeDue: access.canChangeDue,
     levels: access.levels,
     unreadMentions: access.unreadMentions,
+    canSnooze: access.canSnooze,
     reminderCount: task._count.reminders,
     parent: task.parent ? ref(task.parent) : null,
     children: task.children.map((c) => ({ ...ref(c), priority: c.priority })),

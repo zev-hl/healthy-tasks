@@ -36,10 +36,12 @@ export async function listTaskRemindersController(req: Request, res: Response): 
 
 /** POST /api/tasks/:id/reminders — add a reminder for the current user. */
 export async function addTaskReminderController(req: Request, res: Response): Promise<void> {
-  const { leadMinutes } = req.body as AddReminderInput;
+  const { remindAt, note } = req.body as AddReminderInput;
   res
     .status(201)
-    .json((await addReminder(actorOf(req), parseTaskId(req), leadMinutes)) satisfies ReminderDto);
+    .json(
+      (await addReminder(actorOf(req), parseTaskId(req), { remindAt, note })) satisfies ReminderDto,
+    );
 }
 
 /** DELETE /api/reminders/:id — remove one of the current user's reminders. */

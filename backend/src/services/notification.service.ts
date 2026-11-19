@@ -12,14 +12,16 @@ import { env } from '../config/env.js';
 import { alertCompare, alertLogMessage } from './exclusives/alert-message.js';
 import { toUserRef } from './user.mapper.js';
 import { dutyRefSelect, toDutyRef } from './duty.mapper.js';
-import { getNotificationPreferences, getPreferencesMap } from './notification-preference.service.js';
+import {
+  getNotificationPreferences,
+  getPreferencesMap,
+} from './notification-preference.service.js';
 import { listDueReminders, type DueReminder } from './reminder.service.js';
 import { getCachedUnread, invalidateUnread, setCachedUnread } from './unread-cache.js';
 import { formatBusinessTimestamp } from '../utils/business-time.js';
 import type { Actor } from './access-control.service.js';
 import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
-  reminderLeadLabel,
   TERMINAL_TASK_STATUSES,
   type ExclusivesAlertType,
   type AssignAction,
@@ -243,8 +245,7 @@ export async function listNotifications(
   let reminders: ReminderNotificationDto[] = [];
   if (prefs.remindersInApp) {
     const due = await listDueReminders(actor, new Date());
-    const sortKey = (r: DueReminder): number =>
-      (r.canceledAt ?? r.startAt)?.getTime() ?? 0;
+    const sortKey = (r: DueReminder): number => (r.canceledAt ?? r.remindAt).getTime();
     due.sort((a, b) => sortKey(a) - sortKey(b));
     reminders = due.map((r) => ({
       id: r.id,
@@ -252,7 +253,9 @@ export async function listNotifications(
       taskName: r.taskName,
       startAt: iso(r.startAt),
       priority: r.priority,
-      leadMinutes: r.leadMinutes,
+      remindAt: r.remindAt.toISOString(),
+      note: r.note,
+      source: r.source,
       read: r.readAt !== null,
       kind: r.kind,
       canceledReason: r.canceledReason,
@@ -387,7 +390,8 @@ export async function dispatchDueReminderEmails(now: Date): Promise<void> {
     where: {
       canceledAt: null,
       emailSentAt: null,
-      task: { startAt: { not: null }, deletedAt: null },
+      remindAt: { lte: now },
+      task: { deletedAt: null },
     },
     select: { userId: true },
     distinct: ['userId'],
@@ -515,21 +519,14 @@ async function emailAssignment(
   );
 }
 
-async function emailReminder(
-  to: string,
-  r: DueReminder,
-  timeZone: string | null,
-): Promise<void> {
+async function emailReminder(to: string, r: DueReminder, timeZone: string | null): Promise<void> {
   await queueEmail(
     reminderEmail({
       to,
       taskId: r.taskId,
       taskName: r.taskName,
-      // The recipient's Profile timezone if set, else business time — either way
-      // with the zone named, since staff are spread across several countries.
-      starts: r.startAt
-        ? `${formatBusinessTimestamp(r.startAt, timeZone ?? undefined)} — ${reminderLeadLabel(r.leadMinutes)}`
-        : undefined,
+      note: r.note,
+      snoozeOver: r.source === 'snooze',
       link: taskLink(r.taskId),
     }),
     // A fixed id on top of the emailSentAt claim: the queue also refuses a

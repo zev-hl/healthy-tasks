@@ -415,6 +415,14 @@ export const api = {
       body: JSON.stringify({ type, otherTaskId }),
     }),
   deleteTask: (id: number) => request<void>(`/api/tasks/${id}`, { method: 'DELETE' }),
+  /** Snooze (E1): park the task until `until` (ISO, at most 30 days ahead). */
+  snoozeTask: (id: number, until: string) =>
+    request<TaskDetailDto>(`/api/tasks/${id}/snooze`, {
+      method: 'POST',
+      body: JSON.stringify({ until }),
+    }),
+  unsnoozeTask: (id: number) =>
+    request<TaskDetailDto>(`/api/tasks/${id}/snooze`, { method: 'DELETE' }),
   duplicateTask: (id: number, includeDescendants: boolean, copyAttachments: boolean) =>
     request<TaskDetailDto>(`/api/tasks/${id}/duplicate`, {
       method: 'POST',

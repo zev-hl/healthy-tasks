@@ -22,10 +22,7 @@ import { runExclusivesPass, type ExclusivesPassReport } from './exclusives/pass.
 import { lastSuccessfulSweepAt } from './exclusives/health.service.js';
 import { exclusivesSweepMode, nextSweepDueAt } from './exclusives/sweep-clock.js';
 import { nextDailyRunAt } from './exclusives/daily-window.js';
-import {
-  dailyAlertTasksInUse,
-  makeDailyAlertTasks,
-} from './exclusives/alert-tasks.service.js';
+import { dailyAlertTasksInUse, makeDailyAlertTasks } from './exclusives/alert-tasks.service.js';
 
 /**
  * Recurrence scheduler (Phase 11; reworked in Phase 14).
@@ -118,7 +115,9 @@ type TemplateForSchedule = {
 };
 
 /** Smallest start/due offset across a template's nodes (0 if none carry a date). */
-function earliestOffset(nodes: { startOffsetDays: number | null; dueOffsetDays: number | null }[]): number {
+function earliestOffset(
+  nodes: { startOffsetDays: number | null; dueOffsetDays: number | null }[],
+): number {
   let min = Infinity;
   for (const n of nodes) {
     if (n.startOffsetDays != null) min = Math.min(min, n.startOffsetDays);
@@ -377,7 +376,9 @@ export async function measureOverdue(now: Date, leadDays: number): Promise<Overd
 
   // Task-level recurrence. Mirrors materializeDueForSource's predicates.
   const sources = await prisma.task.findMany({
-    where: { recurrence: { isActive: true, recurrenceType: { in: ['Fixed', 'RelativeToCompletion'] } } },
+    where: {
+      recurrence: { isActive: true, recurrenceType: { in: ['Fixed', 'RelativeToCompletion'] } },
+    },
     select: {
       id: true,
       status: true,
@@ -390,9 +391,16 @@ export async function measureOverdue(now: Date, leadDays: number): Promise<Overd
     if (!s.recurrence) continue;
     const cfg = rowToConfig(s.recurrence);
     if (cfg.recurrenceType === 'Fixed') {
-      const fired = new Set<number>([1, ...s.recurrenceOccurrences.map((o) => o.recurrenceSeq ?? 0)]);
+      const fired = new Set<number>([
+        1,
+        ...s.recurrenceOccurrences.map((o) => o.recurrenceSeq ?? 0),
+      ]);
       for (const seq of dueFixedSeqs(cfg, fired, now, leadDays)) {
-        add(eligibleAt(fixedAnchorForSeq(cfg, seq), 0, leadDays), leadSetAt, s.recurrence.updatedAt);
+        add(
+          eligibleAt(fixedAnchorForSeq(cfg, seq), 0, leadDays),
+          leadSetAt,
+          s.recurrence.updatedAt,
+        );
       }
     } else {
       const latestOcc = await prisma.task.findFirst({
@@ -407,7 +415,11 @@ export async function measureOverdue(now: Date, leadDays: number): Promise<Overd
       };
       if (latest.status !== 'Completed' || !cfg.intervalUnit || !cfg.intervalCount) continue;
       const nextSeq = (latest.recurrenceSeq ?? 1) + 1;
-      const nextAnchor = addInterval(latest.statusChangedAt ?? now, cfg.intervalUnit, cfg.intervalCount);
+      const nextAnchor = addInterval(
+        latest.statusChangedAt ?? now,
+        cfg.intervalUnit,
+        cfg.intervalCount,
+      );
       if (seqAllowed(cfg, nextSeq, nextAnchor) && isWithinLeadTime(nextAnchor, leadDays, now)) {
         add(
           eligibleAt(nextAnchor, 0, leadDays),
@@ -451,35 +463,22 @@ export function lateForScheduler(items: OverdueItem[], now: Date, lastRunAt: Dat
 // --- Next-wake derivation (S4, the fine clock) -----------------------------
 
 /**
- * The earliest moment a reminder email becomes due, or null if none pending.
- *
- * Computed in JS rather than SQL on purpose. A reminder's due time is DERIVED
- * (`startAt - leadMinutes`; there is no stored column), and comparing a derived
- * `timestamp` against a bound parameter inside SQL is timezone-fragile: the
- * column is naive `timestamp` while the parameter binds as `timestamptz`, so
- * Postgres reconciles them through the session timezone and silently shifts the
- * comparison by the UTC offset. The candidate set here is small by construction -
- * only reminders that have not been emailed yet.
- *
- * Snoozing is not considered: `emailSentAt` is stamped on first dispatch, so a
- * reminder that can still be emailed has never been snoozed past a send.
+ * The next moment a reminder goes off (an exact stored time since the Nov 2026
+ * plan, E4), or null if none is pending. Only reminders not emailed yet and
+ * still ahead count: one already due is handled by the pass that calls this.
  */
 async function nextReminderDueAt(): Promise<Date | null> {
-  const rows = await prisma.reminder.findMany({
+  const next = await prisma.reminder.findFirst({
     where: {
       canceledAt: null,
       emailSentAt: null,
-      task: { startAt: { not: null }, deletedAt: null },
+      remindAt: { gt: new Date() },
+      task: { deletedAt: null },
     },
-    select: { leadMinutes: true, task: { select: { startAt: true } } },
+    orderBy: { remindAt: 'asc' },
+    select: { remindAt: true },
   });
-  let min: number | null = null;
-  for (const r of rows) {
-    if (!r.task.startAt) continue;
-    const due = r.task.startAt.getTime() - r.leadMinutes * 60_000;
-    if (min === null || due < min) min = due;
-  }
-  return min === null ? null : new Date(min);
+  return next?.remindAt ?? null;
 }
 
 /**
@@ -542,7 +541,11 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
   // Task-level recurrence (Fixed only; relative series wake on completion).
   const sources = await prisma.task.findMany({
     where: { recurrence: { isActive: true, recurrenceType: 'Fixed' } },
-    select: { id: true, recurrence: true, recurrenceOccurrences: { select: { recurrenceSeq: true } } },
+    select: {
+      id: true,
+      recurrence: true,
+      recurrenceOccurrences: { select: { recurrenceSeq: true } },
+    },
   });
   for (const s of sources) {
     if (!s.recurrence) continue;
@@ -558,7 +561,10 @@ export async function computeNextWakeAt(now: Date): Promise<Date> {
   }
 
   const soonest = candidates.length ? Math.min(...candidates) : t + SCHEDULER_MAX_SLEEP_MS;
-  const clamped = Math.min(Math.max(soonest, t + SCHEDULER_MIN_SLEEP_MS), t + SCHEDULER_MAX_SLEEP_MS);
+  const clamped = Math.min(
+    Math.max(soonest, t + SCHEDULER_MIN_SLEEP_MS),
+    t + SCHEDULER_MAX_SLEEP_MS,
+  );
   return new Date(clamped);
 }
 
@@ -742,7 +748,10 @@ export async function checkSchedulerHealth(now: Date): Promise<void> {
 
 /** Send an admin alert about scheduler health, rate-limited in memory. */
 async function alertHealth(now: Date, subject: string, lines: string[]): Promise<void> {
-  if (lastHealthAlertAt && now.getTime() - lastHealthAlertAt.getTime() < SCHEDULER_ALERT_COOLDOWN_MS) {
+  if (
+    lastHealthAlertAt &&
+    now.getTime() - lastHealthAlertAt.getTime() < SCHEDULER_ALERT_COOLDOWN_MS
+  ) {
     return;
   }
   lastHealthAlertAt = now;

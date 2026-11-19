@@ -142,6 +142,29 @@ export function FilterMenu({
           ))}
         </Section>
 
+        <Section title="Snoozed">
+          {(
+            [
+              ['hide', 'Hide snoozed'],
+              ['only', 'Only snoozed'],
+              ['include', 'Show both'],
+            ] as const
+          ).map(([v, label]) => {
+            const cur = extra.snoozed ?? 'hide';
+            return (
+              <label key={v} className={cx('hb-fm-opt', cur === v && 'is-on')}>
+                <input
+                  type="radio"
+                  name="hb-fm-snoozed"
+                  checked={cur === v}
+                  onChange={() => set({ snoozed: v === 'hide' ? undefined : v })}
+                />
+                {label}
+              </label>
+            );
+          })}
+        </Section>
+
         <Section title="Status">
           {TASK_STATUSES.map((s) => (
             <Check

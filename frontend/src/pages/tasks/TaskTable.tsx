@@ -1,6 +1,15 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ChevronRight, FolderOpen, ListTree, Lock, Repeat } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  BellOff,
+  ChevronRight,
+  FolderOpen,
+  ListTree,
+  Lock,
+  Repeat,
+} from 'lucide-react';
 import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
   type TaskPriority,
@@ -348,6 +357,15 @@ export function TaskTable({
                               overdueNote={due?.late ? `Currently ${due.text}` : undefined}
                               onChange={(v) => onEdit(t, { dueYmd: v })}
                             />
+                          )}
+                          {t.snoozedUntil && (
+                            <span className="hb-snoozed-mark" title="Snoozed: back by itself then">
+                              <BellOff size={12} aria-hidden="true" /> until{' '}
+                              {new Date(t.snoozedUntil).toLocaleDateString(undefined, {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </span>
                           )}
                         </td>
                         <td>

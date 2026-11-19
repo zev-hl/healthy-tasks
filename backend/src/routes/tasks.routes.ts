@@ -4,6 +4,7 @@ import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
   createTaskSchema,
+  snoozeTaskSchema,
   updateTaskSchema,
   duplicateTaskSchema,
   saveTaskAsTemplateSchema,
@@ -38,6 +39,8 @@ import {
   deleteTaskController,
   listDeletedTasksController,
   restoreTaskController,
+  snoozeTaskController,
+  unsnoozeTaskController,
   duplicateTaskController,
   saveTaskAsTemplateController,
   setTaskPrivateController,
@@ -110,6 +113,8 @@ tasksRouter.post('/:id/recall-review', asyncHandler(recallReviewController));
 // delete: an Admin can restore it.
 tasksRouter.delete('/:id', asyncHandler(deleteTaskController));
 tasksRouter.post('/:id/restore', asyncHandler(restoreTaskController));
+tasksRouter.post('/:id/snooze', validateBody(snoozeTaskSchema), asyncHandler(snoozeTaskController));
+tasksRouter.delete('/:id/snooze', asyncHandler(unsnoozeTaskController));
 // Duplicate a task, optionally its whole sub-tree.
 tasksRouter.post(
   '/:id/duplicate',

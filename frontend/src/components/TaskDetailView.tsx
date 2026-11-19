@@ -29,10 +29,12 @@ import { TaskLinkPicker } from './TaskLinkPicker';
 import { ReviewerPicker } from './ReviewerPicker';
 import { TaskHistory } from './TaskHistory';
 import { TaskReminders } from './TaskReminders';
+import { SnoozeButton, snoozeLabel } from './SnoozeButton';
 import { TaskRecurrencePanel } from './TaskRecurrencePanel';
 import { Avatar, userLabel } from './ui/Avatar';
 import {
   AlarmClock,
+  BellOff,
   Repeat,
   CheckCircle2,
   ChevronLeft,
@@ -305,7 +307,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
   // Whether (and why) adding a reminder is blocked for the task's CURRENT saved
   // state — shown as a note on the Reminders section title (see TaskReminders,
   // which disables Add for the same reason, and the server, which also 400s).
-  const reminderBlock = reminderAddBlock(task.startAt, task.status, new Date());
+  const reminderBlock = reminderAddBlock(task.status);
   const savedAttrGroupId = task.alertGroup ? String(task.alertGroup.id) : '';
   // Only a changed attribute is sent.
   const attrChanges = {
@@ -353,13 +355,11 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setFieldsError('Start must be earlier than Due');
       return;
     }
-    // Reminders overhaul: clearing the Start Date or moving into Canceled removes
-    // the task's reminders (the actor's own are hard-deleted). Confirm first when
-    // the task actually has reminders.
-    const startCleared = !stagedStartIso && task.startAt !== null;
+    // Moving into Canceled removes the task's reminders (the actor's own are
+    // hard-deleted). Confirm first when the task actually has reminders.
     const becameCanceled = nextStatus === 'Canceled' && task.status !== 'Canceled';
-    if (!skipReminderConfirm && (startCleared || becameCanceled) && task.reminderCount > 0) {
-      setPendingReminderRemoval(becameCanceled ? 'task-canceled' : 'start-date-removed');
+    if (!skipReminderConfirm && becameCanceled && task.reminderCount > 0) {
+      setPendingReminderRemoval('task-canceled');
       return;
     }
     // Transitioning INTO Review requires choosing a reviewer first — the actual
@@ -471,11 +471,10 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       setPendingReview(true);
       return;
     }
-    const startCleared = !stagedStartIso && task.startAt !== null;
     const becameCanceled = status === 'Canceled' && task.status !== 'Canceled';
-    if (!skipReminderConfirm && (startCleared || becameCanceled) && task.reminderCount > 0) {
+    if (!skipReminderConfirm && becameCanceled && task.reminderCount > 0) {
       chipFromBar.current = true;
-      setPendingReminderRemoval(becameCanceled ? 'task-canceled' : 'start-date-removed');
+      setPendingReminderRemoval('task-canceled');
       return;
     }
     const becameCompleted = status === 'Completed' && task.status !== 'Completed';
@@ -1183,6 +1182,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
         >
           <AlarmClock size={15} aria-hidden="true" /> Remind me
         </Btn>
+        {task.canSnooze && <SnoozeButton task={task} onChanged={applyTask} />}
         {canEdit &&
           !isInReview &&
           (done ? (
@@ -1309,8 +1309,17 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {/* Header band */}
       <header className={`hb-taskhead${justCompleted ? ' just-completed' : ''}`}>
         <div className="hb-taskhead-main">
-          {(done || task.isPrivate || !canEdit || task.isProject) && (
+          {(done || task.isPrivate || !canEdit || task.isProject || task.snoozedUntil) && (
             <div className="hb-flags">
+              {task.snoozedUntil && (
+                <Pill tone="blue">
+                  <BellOff size={12} aria-hidden="true" /> Snoozed until{' '}
+                  {snoozeLabel(task.snoozedUntil)}
+                  {task.snoozedBy && task.snoozedBy.id !== currentUser.id
+                    ? ` by ${userLabel(task.snoozedBy)}`
+                    : ''}
+                </Pill>
+              )}
               {task.isProject && <Pill tone="review">Project</Pill>}
               {done && <Pill tone="green">Done</Pill>}
               {task.status === 'Canceled' && <Pill tone="grey">Canceled</Pill>}
@@ -2020,7 +2029,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 )}
               </div>
               <div className="hb-card-pad hb-legacy-rail">
-                <TaskReminders taskId={task.id} startAt={task.startAt} status={task.status} />
+                <TaskReminders taskId={task.id} status={task.status} />
               </div>
             </section>
           </div>

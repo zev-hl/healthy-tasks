@@ -1,32 +1,60 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import {
   REMINDER_BLOCK_LABELS,
-  REMINDER_LEAD_OPTIONS,
+  REMINDER_DEFAULT_HOURS,
+  REMINDER_NOTE_MAX,
   reminderAddBlock,
-  reminderLeadLabel,
   type ReminderDto,
   type TaskStatus,
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../api/client';
 import { useNotifications } from '../notifications/NotificationContext';
+import { DatePicker, toYmd } from './harbor/DatePicker';
+import { Btn } from './harbor/ui';
 
 interface Props {
   taskId: number;
-  /** The task's Start Date/Time (ISO) and Status — drive the add-block (B). */
-  startAt: string | null;
   status: TaskStatus;
 }
 
-/** The current user's personal reminders on a task (add/remove), on Task Detail. */
-export function TaskReminders({ taskId, startAt, status }: Props) {
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** Two hours from now (E4's default), rounded up to the next 5 minutes. */
+export function defaultReminderParts(now = new Date()): { date: string; time: string } {
+  const at = new Date(now.getTime() + REMINDER_DEFAULT_HOURS * 3_600_000);
+  at.setSeconds(0, 0);
+  at.setMinutes(Math.ceil(at.getMinutes() / 5) * 5);
+  return { date: toYmd(at), time: `${pad(at.getHours())}:${pad(at.getMinutes())}` };
+}
+
+function whenLabel(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * The current user's own reminders on a task (Nov 2026 plan, E4): each at an
+ * exact date and time (two hours from now unless changed) with a note, any
+ * number of them, seen only by you and delivered through your alerts. No start
+ * date needed.
+ */
+export function TaskReminders({ taskId, status }: Props) {
   const [reminders, setReminders] = useState<ReminderDto[]>([]);
-  const [lead, setLead] = useState<number>(60); // default: 1 hour before
+  const [{ date, time }, setWhen] = useState(() => defaultReminderParts());
+  const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { refresh } = useNotifications();
 
   // Whether Add is blocked, and why (shared with the server, which also 400s).
-  const block = reminderAddBlock(startAt, status, new Date());
+  const block = reminderAddBlock(status);
 
   const load = useCallback(async () => {
     try {
@@ -37,17 +65,27 @@ export function TaskReminders({ taskId, startAt, status }: Props) {
     }
   }, [taskId]);
 
-  // Reload when the task's Start/Status changes too: a Save that clears the
-  // Start Date or Cancels the task removes this user's reminders server-side.
+  // Reload when the status changes too: Canceling removes them server-side.
   useEffect(() => {
     void load();
-  }, [load, startAt, status]);
+  }, [load, status]);
 
   const add = async () => {
+    if (!date || !time) return;
+    const at = new Date(`${date}T${time}`);
+    if (at.getTime() <= Date.now()) {
+      setError('Pick a time that hasn’t passed.');
+      return;
+    }
     setBusy(true);
     try {
-      const created = await api.addTaskReminder(taskId, { leadMinutes: lead });
-      setReminders((rs) => [...rs, created]);
+      const created = await api.addTaskReminder(taskId, {
+        remindAt: at.toISOString(),
+        note: note.trim() || null,
+      });
+      setReminders((rs) => [...rs, created].sort((a, b) => a.remindAt.localeCompare(b.remindAt)));
+      setNote('');
+      setWhen(defaultReminderParts());
       refresh();
       setError(null);
     } catch (err) {
@@ -67,47 +105,80 @@ export function TaskReminders({ taskId, startAt, status }: Props) {
     }
   };
 
-  // Rendered bare inside the Task Detail right-rail "Reminders" section.
+  const now = Date.now();
   return (
-    <div className="rail-reminders">
-      <p className="muted rail-reminders-hint">
-        Personal to you — surfaces in Notifications near the Start time.
-      </p>
-      {error && <div className="alert error">{error}</div>}
-      <ul className="reminder-list">
-        {reminders.map((r) => (
-          <li key={r.id}>
-            <span>{reminderLeadLabel(r.leadMinutes)}</span>
-            <button className="tertiary btn-sm" onClick={() => void remove(r.id)}>
-              Remove
-            </button>
-          </li>
-        ))}
-        {reminders.length === 0 && <li className="muted">No reminders set.</li>}
-      </ul>
-      <div className="reminder-add">
-        <select
-          value={lead}
-          onChange={(e) => setLead(Number(e.target.value))}
-          aria-label="Lead time"
-          disabled={busy || block !== null}
-        >
-          {REMINDER_LEAD_OPTIONS.map((o) => (
-            <option key={o.minutes} value={o.minutes}>
-              {o.label}
-            </option>
+    <div className="hb-reminders">
+      <p className="hb-small">Only you see these. They arrive in your alerts at the time set.</p>
+      {error && (
+        <p className="hb-quicktask-error" role="alert">
+          {error}
+        </p>
+      )}
+      {reminders.length === 0 ? (
+        <p className="hb-small">No reminders set.</p>
+      ) : (
+        <ul className="hb-reminder-list">
+          {reminders.map((r) => (
+            <li
+              key={r.id}
+              className={new Date(r.remindAt).getTime() <= now ? 'is-past' : undefined}
+            >
+              <span className="hb-stack">
+                <span className="hb-name">
+                  {r.kind === 'snooze' ? 'Back from snooze · ' : ''}
+                  {whenLabel(r.remindAt)}
+                </span>
+                {r.note && <span className="hb-sub">{r.note}</span>}
+              </span>
+              <button
+                type="button"
+                className="hb-icon-btn hb-icon-btn-sm"
+                aria-label={`Remove the reminder for ${whenLabel(r.remindAt)}`}
+                onClick={() => void remove(r.id)}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+              </button>
+            </li>
           ))}
-        </select>
-        <button
-          type="button"
-          className="secondary btn-sm"
-          onClick={() => void add()}
+        </ul>
+      )}
+      <form
+        className="hb-reminder-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void add();
+        }}
+      >
+        <DatePicker
+          variant="field"
+          label="Reminder date"
+          value={date || null}
+          allowClear={false}
+          disabled={busy || block !== null}
+          time={time}
+          onTimeChange={(t) => setWhen((w) => ({ ...w, time: t }))}
+          onChange={(v) => setWhen((w) => ({ ...w, date: v ?? w.date }))}
+          renderValue={(v) =>
+            v ? whenLabel(new Date(`${v}T${time || '09:00'}`).toISOString()) : 'Pick a time'
+          }
+        />
+        <input
+          className="hb-tpl-input"
+          value={note}
+          maxLength={REMINDER_NOTE_MAX}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note (optional)"
+          aria-label="Reminder note"
+          disabled={busy || block !== null}
+        />
+        <Btn
+          type="submit"
           disabled={busy || block !== null}
           title={block ? REMINDER_BLOCK_LABELS[block] : undefined}
         >
           Add reminder
-        </button>
-      </div>
+        </Btn>
+      </form>
     </div>
   );
 }
