@@ -521,3 +521,74 @@ describe('Stage 1: levels, unread mentions and the parent picker on the task pag
     );
   });
 });
+
+describe('Stage 1: the Tasks list (My team, top task, repeat mark)', () => {
+  const query = (token: string, body: Record<string, unknown>) =>
+    request(app).post('/api/tasks/query').set(auth(token)).send(body);
+
+  async function dutyIn(depName: string, dutyName: string) {
+    const dep = await prisma.department.create({
+      data: { name: depName, nameKey: depName.toLowerCase(), color: '#3366cc' },
+    });
+    return prisma.duty.create({
+      data: { departmentId: dep.id, name: dutyName, nameKey: dutyName.toLowerCase() },
+    });
+  }
+
+  it('My team is the people in my departments, for a Member too', async () => {
+    const admin = await login(ADMIN);
+    const me = await seedUser('member@test.local', 'Member');
+    const mate = await seedUser('mate@test.local', 'Member');
+    const stranger = await seedUser('stranger@test.local', 'Member');
+    const ops = await dutyIn('Ops', 'Receiving');
+    const ops2 = await prisma.duty.create({
+      data: { departmentId: ops.departmentId, name: 'Shipping', nameKey: 'shipping' },
+    });
+    const sales = await dutyIn('Sales', 'Quotes');
+    await prisma.userDuty.createMany({
+      data: [
+        { userId: me.id, dutyId: ops.id },
+        { userId: mate.id, dutyId: ops2.id },
+        { userId: stranger.id, dutyId: sales.id },
+      ],
+    });
+    const mine = await makeTask(admin, 'Mine', { assigneeId: me.id });
+    const mates = await makeTask(admin, 'Mates', { assigneeId: mate.id });
+    await makeTask(admin, 'Strangers', { assigneeId: stranger.id });
+    const tok = await login('member@test.local');
+    const res = await query(tok, { filters: { myTeam: true } });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual(
+      (res.body.rows as { id: number }[]).map((r) => r.id),
+      [mates.id],
+    );
+    assert.notEqual(mine.id, mates.id);
+  });
+
+  it('each row carries its top task and whether it repeats', async () => {
+    const admin = await login(ADMIN);
+    const p = await makeTask(admin, 'Top Project', { isProject: true });
+    const t = await makeTask(admin, 'Mid Task');
+    const s = await makeTask(admin, 'Low Sub');
+    await setParent(admin, t.id, p.id);
+    await setParent(admin, s.id, t.id);
+    await prisma.task.update({
+      where: { id: s.id },
+      data: { recurrenceSourceId: t.id, recurrenceSeq: 1 },
+    });
+    const res = await query(admin, { sort: [{ field: 'id', dir: 'asc' }] });
+    const rows = res.body.rows as {
+      id: number;
+      top: { id: number; name: string; isProject: boolean } | null;
+      repeats: boolean;
+      isProject: boolean;
+    }[];
+    const by = new Map(rows.map((r) => [r.id, r]));
+    assert.equal(by.get(p.id)!.top, null);
+    assert.equal(by.get(p.id)!.isProject, true);
+    assert.deepEqual(by.get(t.id)!.top, { id: p.id, name: 'Top Project', isProject: true });
+    assert.deepEqual(by.get(s.id)!.top, { id: p.id, name: 'Top Project', isProject: true });
+    assert.equal(by.get(s.id)!.repeats, true);
+    assert.equal(by.get(t.id)!.repeats, false);
+  });
+});

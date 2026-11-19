@@ -843,6 +843,12 @@ export interface TaskSearchFilters {
    * so it can never widen visibility. Mutually exclusive with `assigneeIds` in
    * the UI (selecting one clears the other). */
   hierarchyUserIds?: string[];
+  /**
+   * "My team" (Nov 2026 plan, B1): tasks assigned to people in my departments
+   * (those of the duties I hold; Admins: every department), me excluded.
+   * Worked out on the server, so it needs no access to the org screen.
+   */
+  myTeam?: boolean;
   statuses?: TaskStatus[];
   priorities?: TaskPriority[];
   tags?: string[]; // task must have at least one of these
@@ -1006,6 +1012,15 @@ export interface TaskRowDto {
   /** HLAI-118 special attributes; null when not set. */
   alertGroup: TaskAlertGroupRef | null;
   alertType: ExclusivesAlertType | null;
+  /** The task is (or belongs to) a repeating series: shows the repeat icon. */
+  repeats: boolean;
+  isProject: boolean;
+  /**
+   * The top of this task's tree when it sits under another task (the project
+   * for a project's tasks); null for a top-level task. Drives Group by Project.
+   * `name` is empty when the reader can't see that task.
+   */
+  top: { id: number; name: string; isProject: boolean } | null;
 }
 
 // ---------------------------------------------------------------------------

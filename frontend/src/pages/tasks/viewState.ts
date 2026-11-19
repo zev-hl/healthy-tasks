@@ -98,11 +98,12 @@ export function dirLabel(field: TaskSortField, dir: 'asc' | 'desc'): string {
 }
 
 /** Turn the page state into the API's filters. */
-export function buildFilters(v: ViewState, me: string, teamIds: string[]): TaskSearchFilters {
+export function buildFilters(v: ViewState, me: string): TaskSearchFilters {
   const f: TaskSearchFilters = { includeNoStart: true, includeNoDue: true, ...v.extra };
   if (v.scope === 'mine') f.assigneeIds = [me];
-  if (v.scope === 'team')
-    f.assigneeIds = teamIds.length > 0 ? teamIds : ['00000000-0000-0000-0000-000000000000'];
+  // My team = people in my departments, worked out on the server (so it works
+  // for everyone, not only those who can read the org screen).
+  if (v.scope === 'team') f.myTeam = true;
   if (v.scope !== 'mine' && v.owner !== ALL) {
     if (v.owner === UNASSIGNED) {
       f.assigneeIds = [];

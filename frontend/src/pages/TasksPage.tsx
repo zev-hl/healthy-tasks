@@ -28,7 +28,6 @@ import { api, ApiError, exportTasksToExcel } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { nowContext } from '../lib/taskSearch';
-import { loadTeamScope } from '../lib/teamScope';
 import { Avatar, userLabel } from '../components/ui/Avatar';
 import { PageBody, PageHeader } from '../components/harbor/PageHeader';
 import { Select, type SelectOption } from '../components/harbor/Select';
@@ -71,7 +70,9 @@ const VIEWS: { value: TaskView; label: string }[] = [
   { value: 'calendar', label: 'Calendar' },
   { value: 'gantt', label: 'Gantt' },
 ];
-const SCOPE_LABEL: Record<Scope, string> = { mine: 'My tasks', all: 'All tasks', team: 'My team' };
+const SCOPE_LABEL: Record<Scope, string> = { mine: 'My tasks', team: 'My team', all: 'All tasks' };
+/** The tabs, in this order, for everyone (Nov 2026 plan, B1). */
+const SCOPES: Scope[] = ['mine', 'team', 'all'];
 
 /** The keys this page keeps inside the shared `task-search` screen setting. */
 interface Stored {
@@ -117,7 +118,6 @@ export function TasksPage() {
   // --- Reference data --------------------------------------------------------
   const [people, setPeople] = useState<ActiveUserDto[]>([]);
   const [departments, setDepartments] = useState<DepartmentDto[]>([]);
-  const [teamIds, setTeamIds] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [groups, setGroups] = useState<ExclusivesGroupOptionDto[]>([]);
 
@@ -158,15 +158,13 @@ export function TasksPage() {
     void Promise.all([
       api.listActiveUsers().catch(() => []),
       api.listDepartments().catch(() => []),
-      loadTeamScope(user).catch(() => ({ teamIds: [] as string[] })),
       api.listTaskTags().catch(() => []),
       api.listExclusivesGroupOptions().catch(() => []),
       api.getPreference('task-search').catch(() => ({ state: null })),
-    ]).then(([users, deps, scope, tg, gr, pref]) => {
+    ]).then(([users, deps, tg, gr, pref]) => {
       if (!alive) return;
       setPeople(users);
       setDepartments(deps.filter((d) => !d.archived));
-      setTeamIds(scope.teamIds);
       setTags(tg);
       setGroups(gr);
       const s = (pref.state && typeof pref.state === 'object' ? pref.state : {}) as Stored &
@@ -192,7 +190,7 @@ export function TasksPage() {
         if (scopeParam === 'mine' || scopeParam === 'all' || scopeParam === 'team') {
           setState(defaultState(scopeParam));
           setTab(scopeParam);
-        } else if (last && (last.scope !== 'team' || user.role !== 'Member')) {
+        } else if (last) {
           setState(last);
           setTab(typeof s.hbTab === 'string' ? s.hbTab : last.scope);
         }
@@ -232,7 +230,7 @@ export function TasksPage() {
     void api.savePreference('task-search', next).catch(() => {});
   }, [debouncedSnapshot, hydrated]);
 
-  const filters = useMemo(() => buildFilters(state, me, teamIds), [state, me, teamIds]);
+  const filters = useMemo(() => buildFilters(state, me), [state, me]);
 
   // --- Rows -----------------------------------------------------------------
   const runQuery = useCallback(async (): Promise<TaskRowDto[]> => {
@@ -301,11 +299,11 @@ export function TasksPage() {
   // Tab counts (open tasks per built-in tab) and overdue for the subtitle.
   const loadCounts = useCallback(async () => {
     const ctx = nowContext();
-    const scopes: Scope[] = canTeam ? ['mine', 'all', 'team'] : ['mine', 'all'];
+    const scopes = SCOPES;
     const res = await Promise.all(
       scopes.map((s) =>
         api.getTaskDashboard({
-          filters: buildFilters(defaultState(s), me, teamIds),
+          filters: buildFilters(defaultState(s), me),
           includeReadOnly,
           ...ctx,
         }),
@@ -316,7 +314,7 @@ export function TasksPage() {
     setCounts(c);
     const cur = res[scopes.indexOf(state.scope)];
     setOverdueInScope(cur?.overdue ?? 0);
-  }, [canTeam, me, teamIds, includeReadOnly, state.scope]);
+  }, [me, includeReadOnly, state.scope]);
   useEffect(() => {
     if (hydrated) void loadCounts().catch(() => {});
   }, [hydrated, loadCounts]);
@@ -543,7 +541,7 @@ export function TasksPage() {
 
   const tabs = (
     <nav className="hb-viewtabs" aria-label="Task views">
-      {(['mine', 'all', ...(canTeam ? (['team'] as const) : [])] as Scope[]).map((s) => (
+      {SCOPES.map((s) => (
         <button
           key={s}
           type="button"
@@ -764,7 +762,9 @@ export function TasksPage() {
                   onChange={(g) => {
                     setGroupBy(g);
                     // The list is paged: sorting by the grouping keeps each group together.
-                    if (g !== 'none') patch({ sortField: GROUP_SORT[g], sortDir: 'asc' });
+                    const sortField = g !== 'none' ? GROUP_SORT[g] : undefined;
+                    if (sortField) patch({ sortField, sortDir: 'asc' });
+                    if (g === 'project') setNest(true);
                   }}
                 />
               )}

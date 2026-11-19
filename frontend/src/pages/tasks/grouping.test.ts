@@ -66,4 +66,22 @@ describe('groupRows', () => {
       'No due date',
     ]);
   });
+
+  it('groups by project: a project with everything under it, the rest Standalone', () => {
+    const proj = { id: 1, name: 'Launch', isProject: true };
+    const g = groupRows(
+      [
+        row(1, { isProject: true, name: 'Launch' }),
+        row(2, { depth: 1, top: proj }),
+        row(5, { top: proj }), // flat mode: no depth, still the project's
+        row(3),
+        row(4, { top: { id: 3, name: 'Plain', isProject: false } }),
+      ],
+      'project',
+    );
+    expect(g.map((x) => [x.label, x.rows.map((r) => r.id)])).toEqual([
+      ['Launch', [1, 2, 5]],
+      ['Standalone', [3, 4]],
+    ]);
+  });
 });

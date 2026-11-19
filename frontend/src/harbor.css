@@ -8791,3 +8791,14 @@ textarea.hb-tpl-input {
   line-height: 18px;
   text-align: center;
 }
+
+/* Tasks list: project and repeat marks beside a task's name. */
+.hb-task-mark {
+  display: inline-block;
+  margin: 0 5px;
+  vertical-align: -2px;
+  color: var(--muted);
+}
+.hb-task-mark:first-child {
+  margin-left: 0;
+}

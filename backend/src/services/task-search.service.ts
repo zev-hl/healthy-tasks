@@ -24,6 +24,7 @@ import {
   buildTaskAccessWhere,
   classifyRow,
   getTaskAccessScope,
+  isTaskVisible,
 } from './access-control.service.js';
 import { dutyRefSelect, heldDutiesSelect, isDutyMismatch, toDutyRef } from './duty.mapper.js';
 import { alertGroupRefSelect, toAlertGroupRef, toAlertType } from './task.mapper.js';
@@ -57,6 +58,7 @@ export const rowInclude = {
   _count: { select: { children: { where: { deletedAt: null } } } },
   // Phase 10: the predecessor ids that feed the Gantt view's dependency arrows.
   blockedBy: { where: { blocker: { deletedAt: null } }, select: { blockerId: true } },
+  recurrence: { select: { id: true } },
 } as const;
 
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof rowInclude }>;
@@ -89,7 +91,45 @@ export function toTaskRowDto(t: TaskRow, scope: TaskAccessScope): TaskRowDto {
     dutyMismatch: isDutyMismatch(t),
     alertGroup: t.alertGroup ? toAlertGroupRef(t.alertGroup) : null,
     alertType: toAlertType(t.alertType),
+    repeats: t.recurrence != null || t.recurrenceSourceId != null,
+    isProject: t.isProject,
+    top: null, // filled by attachTops
   };
+}
+
+/**
+ * Fill each row's `top`: the top of its tree when it sits under another task.
+ * One recursive query for the whole page.
+ */
+export async function attachTops(
+  rows: TaskRowDto[],
+  scope: TaskAccessScope,
+): Promise<TaskRowDto[]> {
+  const ids = rows.filter((r) => r.parentId != null).map((r) => r.id);
+  if (ids.length === 0) return rows;
+  const found = await prisma.$queryRaw<
+    { start: number; id: number; name: string; isProject: boolean }[]
+  >`
+    WITH RECURSIVE up(start, cur, pid, depth) AS (
+      SELECT t.id, t.id, t."parentId", 0 FROM "Task" t WHERE t.id = ANY(${ids}::int[])
+      UNION ALL
+      SELECT up.start, p.id, p."parentId", up.depth + 1
+        FROM up JOIN "Task" p ON p.id = up.pid
+       WHERE up.depth < 20
+    )
+    SELECT up.start, t.id, t.name, t."isProject"
+      FROM up JOIN "Task" t ON t.id = up.cur
+     WHERE up.pid IS NULL AND up.start <> up.cur`;
+  const byStart = new Map(found.map((f) => [f.start, f]));
+  return rows.map((r) => {
+    const f = byStart.get(r.id);
+    return f
+      ? {
+          ...r,
+          top: { id: f.id, name: isTaskVisible(scope, f.id) ? f.name : '', isProject: f.isProject },
+        }
+      : r;
+  });
 }
 
 // --- WHERE construction ----------------------------------------------------
@@ -178,7 +218,8 @@ export async function buildWhere(
 
   // Assignee (multi + optional "Unassigned").
   const assigneeOr: Prisma.TaskWhereInput[] = [];
-  if (f.assigneeIds && f.assigneeIds.length > 0) assigneeOr.push({ assigneeId: { in: f.assigneeIds } });
+  if (f.assigneeIds && f.assigneeIds.length > 0)
+    assigneeOr.push({ assigneeId: { in: f.assigneeIds } });
   if (f.includeUnassigned) assigneeOr.push({ assigneeId: null });
   if (assigneeOr.length > 0) and.push({ OR: assigneeOr });
 
@@ -192,7 +233,12 @@ export async function buildWhere(
   if (f.priorities && f.priorities.length > 0) and.push({ priority: { in: f.priorities } });
   if (f.tags && f.tags.length > 0) and.push({ tags: { hasSome: f.tags } });
 
-  const statusRange = dateRangeWhere('statusChangedAt', f.statusChangedFrom, f.statusChangedTo, true);
+  const statusRange = dateRangeWhere(
+    'statusChangedAt',
+    f.statusChangedFrom,
+    f.statusChangedTo,
+    true,
+  );
   if (statusRange) and.push(statusRange);
 
   const startRange = dateRangeWhere('startAt', f.startFrom, f.startTo, f.includeNoStart ?? true);
@@ -245,7 +291,8 @@ export async function buildWhere(
   if (alertGroupOr.length > 0) and.push({ OR: alertGroupOr });
 
   const alertTypeOr: Prisma.TaskWhereInput[] = [];
-  if (f.alertTypes && f.alertTypes.length > 0) alertTypeOr.push({ alertType: { in: f.alertTypes } });
+  if (f.alertTypes && f.alertTypes.length > 0)
+    alertTypeOr.push({ alertType: { in: f.alertTypes } });
   if (f.includeNoAlertType) alertTypeOr.push({ alertType: null });
   if (alertTypeOr.length > 0) and.push({ OR: alertTypeOr });
 
@@ -310,14 +357,37 @@ export function buildOrderBy(
  * (buildWhere) ANDed with the caller's Phase 13 access predicate. Returns the
  * where plus the scope (needed to flag mention-only rows).
  */
+/**
+ * "My team": the people in my departments, me excluded. My departments are
+ * those of the duties I hold; an Admin's are every department.
+ */
+export async function myTeamIds(actor: Actor): Promise<string[]> {
+  const deptFilter: Prisma.DutyWhereInput =
+    actor.role === 'Admin'
+      ? {}
+      : {
+          department: {
+            duties: { some: { holders: { some: { userId: actor.id } } } },
+          },
+        };
+  const rows = await prisma.userDuty.findMany({
+    where: { userId: { not: actor.id }, duty: deptFilter, user: { isActive: true } },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+  return rows.map((r) => r.userId);
+}
+
 export async function scopedTaskWhere(
   input: TaskSearchInput | TaskDashboardInput,
   actor: Actor,
 ): Promise<{ where: Prisma.TaskWhereInput; scope: TaskAccessScope }> {
   const scope = await getTaskAccessScope(actor);
-  const base = await buildWhere(input);
+  const and: Prisma.TaskWhereInput[] = [await buildWhere(input)];
+  if (input.filters?.myTeam) and.push({ assigneeId: { in: await myTeamIds(actor) } });
   const accessWhere = buildTaskAccessWhere(scope, input.includeReadOnly ?? true);
-  return { where: accessWhere ? { AND: [base, accessWhere] } : base, scope };
+  if (accessWhere) and.push(accessWhere);
+  return { where: and.length === 1 ? and[0]! : { AND: and }, scope };
 }
 
 export async function searchTasks(
@@ -342,7 +412,15 @@ export async function searchTasks(
     prisma.task.count({ where }),
   ]);
 
-  return { rows: rows.map((r) => toTaskRowDto(r, scope)), total, page, pageSize };
+  return {
+    rows: await attachTops(
+      rows.map((r) => toTaskRowDto(r, scope)),
+      scope,
+    ),
+    total,
+    page,
+    pageSize,
+  };
 }
 
 /**
@@ -359,10 +437,20 @@ async function nestedPage(
   pageSize: number,
   scope: TaskAccessScope,
 ): Promise<PaginatedResult<TaskRowDto>> {
-  const all = await prisma.task.findMany({ where, orderBy, take: NEST_MAX_ROWS, include: rowInclude });
+  const all = await prisma.task.findMany({
+    where,
+    orderBy,
+    take: NEST_MAX_ROWS,
+    include: rowInclude,
+  });
   const nested = buildNestedOrder(all.map((r) => toTaskRowDto(r, scope)));
   const start = (page - 1) * pageSize;
-  return { rows: nested.slice(start, start + pageSize), total: nested.length, page, pageSize };
+  return {
+    rows: await attachTops(nested.slice(start, start + pageSize), scope),
+    total: nested.length,
+    page,
+    pageSize,
+  };
 }
 
 /**
@@ -412,7 +500,12 @@ export async function getTaskDashboard(
     await prisma.$transaction(async (tx) => {
       const [byStatusGroups, child, parent, standalone, overdue, completedToday, dueToday] =
         await Promise.all([
-          tx.task.groupBy({ by: ['status'], where, _count: { _all: true }, orderBy: { status: 'asc' } }),
+          tx.task.groupBy({
+            by: ['status'],
+            where,
+            _count: { _all: true },
+            orderBy: { status: 'asc' },
+          }),
           tx.task.count({ where: and(relationWhere('child')) }),
           tx.task.count({ where: and(relationWhere('parent')) }),
           tx.task.count({ where: and(relationWhere('standalone')) }),
@@ -423,7 +516,10 @@ export async function getTaskDashboard(
       return { byStatusGroups, child, parent, standalone, overdue, completedToday, dueToday };
     });
 
-  const byStatus = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<TaskStatus, number>;
+  const byStatus = Object.fromEntries(TASK_STATUSES.map((s) => [s, 0])) as Record<
+    TaskStatus,
+    number
+  >;
   let total = 0;
   for (const g of byStatusGroups) {
     byStatus[g.status] = g._count._all;

@@ -8,13 +8,14 @@ import { userLabel } from '../../components/ui/Avatar';
 import { STATUS_DOT } from '../../components/harbor/ui';
 import type { SelectOption } from '../../components/harbor/Select';
 
-/** Group by on the Tasks list (Nov 2026 plan): Status, Assignee, Due date. */
-export type GroupBy = 'none' | 'status' | 'owner' | 'due';
+/** Group by on the Tasks list (Nov 2026 plan): Status, Assignee, Project, Due date. */
+export type GroupBy = 'none' | 'status' | 'owner' | 'project' | 'due';
 
 export const GROUP_OPTIONS: SelectOption<GroupBy>[] = [
   { value: 'none', label: 'None' },
   { value: 'status', label: 'Status' },
   { value: 'owner', label: 'Assignee' },
+  { value: 'project', label: 'Project' },
   { value: 'due', label: 'Due date' },
 ];
 
@@ -22,9 +23,11 @@ export const isGroupBy = (v: unknown): v is GroupBy => GROUP_OPTIONS.some((o) =>
 
 /**
  * The sort that keeps a grouping's groups together across pages: the list is
- * paged by the server, so picking a grouping also sorts by it.
+ * paged by the server, so picking a grouping also sorts by it. Project has no
+ * sort of its own: it shows sub-tasks under their parents instead, so each
+ * tree stays together.
  */
-export const GROUP_SORT: Record<Exclude<GroupBy, 'none'>, TaskSortField> = {
+export const GROUP_SORT: Partial<Record<Exclude<GroupBy, 'none'>, TaskSortField>> = {
   status: 'status',
   owner: 'assignee',
   due: 'dueAt',
@@ -69,6 +72,13 @@ function keyOf(t: TaskRowDto, by: Exclude<GroupBy, 'none'>, now: Date) {
       return t.assignee
         ? { key: t.assignee.id, label: userLabel(t.assignee) }
         : { key: '', label: 'Unassigned' };
+    case 'project': {
+      // A project's own row and everything under it go in the project's group.
+      const p = t.isProject ? { id: t.id, name: t.name } : t.top?.isProject ? t.top : null;
+      return p
+        ? { key: `p${p.id}`, label: p.name || `#${p.id}` }
+        : { key: '', label: 'Standalone' };
+    }
     case 'due': {
       const k = dueGroup(t, now);
       return { key: k, label: DUE_GROUPS.find((g) => g.key === k)!.label };
@@ -79,8 +89,8 @@ function keyOf(t: TaskRowDto, by: Exclude<GroupBy, 'none'>, now: Date) {
 /**
  * Splits the shown rows into groups. A sub-task shown nested under its parent
  * stays with the parent's group, so a tree is never cut apart. Status and due
- * groups keep a fixed order; people keep the list's order, with "Unassigned"
- * last.
+ * groups keep a fixed order; people and projects keep the list's order, with
+ * "Unassigned" / "Standalone" last.
  */
 export function groupRows(rows: TaskRowDto[], by: GroupBy, now = new Date()): RowGroup[] {
   if (by === 'none') return [{ key: 'all', label: '', rows }];

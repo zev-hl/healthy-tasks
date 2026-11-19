@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowDown, ArrowUp, ChevronRight, ListTree, Lock } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronRight, FolderOpen, ListTree, Lock, Repeat } from 'lucide-react';
 import {
   EXCLUSIVES_ALERT_TYPE_LABELS,
   type TaskPriority,
@@ -230,7 +230,17 @@ export function TaskTable({
                               controls={`task-peek-${t.id}`}
                             />
                             <Link to={`/tasks/${t.id}`} className="hb-task-name">
+                              {t.isProject && (
+                                <FolderOpen
+                                  size={14}
+                                  className="hb-task-mark"
+                                  aria-label="Project"
+                                />
+                              )}
                               {t.name}
+                              {t.repeats && (
+                                <Repeat size={13} className="hb-task-mark" aria-label="Repeats" />
+                              )}
                             </Link>
                             <span className="hb-task-sub">
                               #{t.id}

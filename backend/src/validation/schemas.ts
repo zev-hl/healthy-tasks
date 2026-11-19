@@ -366,6 +366,7 @@ const taskFiltersSchema = z.object({
   includeUnassigned: z.boolean().optional(),
   // Team Hierarchy filter (assignee IN a supervisor's selected downline).
   hierarchyUserIds: z.array(z.string().uuid()).max(5000).optional(),
+  myTeam: z.boolean().optional(),
   statuses: z.array(z.enum(TASK_STATUSES)).optional(),
   priorities: z.array(z.enum(TASK_PRIORITIES)).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(50).optional(),
