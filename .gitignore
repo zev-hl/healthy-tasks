@@ -38,3 +38,6 @@ docker-compose.override.yml
 # Departments/Duties prototype — kept LOCAL by request. Remove this line if it
 # should start being versioned alongside the other docs/design files.
 docs/design/Department Duties Prototype.html
+
+# Working copies used by parallel Claude Code workers
+.claude/worktrees/
