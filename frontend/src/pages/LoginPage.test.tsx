@@ -98,6 +98,21 @@ describe('LoginPage', () => {
     expect(loginWithGoogle).not.toHaveBeenCalled();
   });
 
+  it('says in the page, not in a browser bubble, what is missing', async () => {
+    renderWithRouter(<LoginPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByText('Enter your email')).toBeInTheDocument();
+    expect(screen.getByText('Enter your password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Email')).toHaveFocus();
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'me@' } });
+    expect(screen.getByText('That doesn’t look like an email address')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'me@healthlifeny.com' } });
+    expect(screen.queryByText(/look like an email/)).not.toBeInTheDocument();
+    expect(login).not.toHaveBeenCalled();
+  });
+
   it("shows the server's reason when Google sign-in is refused", async () => {
     loginWithGoogle.mockRejectedValue(
       new ApiError(401, 'There is no HL Central account for that Google address.'),

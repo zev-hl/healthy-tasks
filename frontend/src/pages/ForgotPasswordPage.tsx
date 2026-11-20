@@ -2,16 +2,25 @@ import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { AuthShell } from '../components/AuthShell';
+import { emailProblem, FieldError, invalidProps } from '../components/ui/FieldError';
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Checked once the link is asked for, then as it is fixed.
+  const [checked, setChecked] = useState(false);
+  const problem = checked ? emailProblem(email) : null;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setChecked(true);
+    if (emailProblem(email)) {
+      document.getElementById('email')?.focus();
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await api.forgotPassword(email);
@@ -34,7 +43,7 @@ export function ForgotPasswordPage() {
       ) : (
         <>
           {error && <div className="alert error">{error}</div>}
-          <form onSubmit={onSubmit}>
+          <form onSubmit={onSubmit} noValidate>
             <div className="field">
               <label htmlFor="email">Email</label>
               <input
@@ -43,7 +52,9 @@ export function ForgotPasswordPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                {...invalidProps('email-error', problem)}
               />
+              <FieldError id="email-error">{problem}</FieldError>
             </div>
             <button type="submit" className="auth-submit" disabled={submitting}>
               {submitting ? 'Sending…' : 'Send reset link'}
