@@ -10147,3 +10147,45 @@ a.hb-origin-chip:hover {
     display: none;
   }
 }
+
+/* --- Phone top bar (UX review, Nov 19): the bar never scrolls sideways.
+   The first line holds the app's mark, the running timer, All apps and your
+   profile; the section icons get their own line under it. ---------------- */
+@media (max-width: 560px) {
+  .sidebar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    overflow: visible;
+  }
+  .sidebar .side-nav {
+    order: 10;
+    flex: 1 1 100%;
+    min-width: 0;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sidebar .side-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .sidebar .hb-timer-pill {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .sidebar .side-brand {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    margin: 0;
+    padding: 0 6px 0 0;
+  }
+  .sidebar .launcher-wrap {
+    margin-left: auto;
+  }
+  .sidebar .side-account {
+    margin: 0;
+  }
+  .launcher {
+    top: 104px;
+  }
+}
