@@ -2116,6 +2116,9 @@ textarea:focus-visible {
 .auth-remember input {
   margin-top: 2px;
 }
+.auth-form-col form .auth-remember {
+  margin: 0;
+}
 .auth-remember small {
   display: block;
   font-weight: 400;

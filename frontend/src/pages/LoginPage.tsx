@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
@@ -22,6 +22,11 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   // Off unless ticked: a shared computer must not stay signed in.
   const [remember, setRemember] = useState(false);
+  // Email takes focus when the page opens, so typing can start at once.
+  const emailRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    emailRef.current?.focus();
+  }, []);
 
   /**
    * Both doors lead to the same place: the server returns the same session
@@ -73,18 +78,6 @@ export function LoginPage() {
       )}
       {error && <div className="alert error">{error}</div>}
 
-      {/* Before both ways in, since it applies to either. */}
-      <label className="auth-remember">
-        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-        <span>
-          Keep me signed in on this device
-          <small>
-            Only on your own computer or phone. You stay signed in unless you sign out or don’t use
-            it for a month.
-          </small>
-        </span>
-      </label>
-
       {googleSignInAvailable && (
         <>
           <GoogleSignInButton
@@ -104,6 +97,7 @@ export function LoginPage() {
           <label htmlFor="email">Email</label>
           <input
             id="email"
+            ref={emailRef}
             type="email"
             autoComplete="username"
             value={email}
@@ -134,6 +128,23 @@ export function LoginPage() {
             </button>
           </div>
         </div>
+        {/* After the password, so Tab runs Email › Password › this › Sign in. It
+            applies to either way in, and says so: tick it before Google too. */}
+        <label className="auth-remember">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+          />
+          <span>
+            Keep me signed in on this device
+            <small>
+              {googleSignInAvailable && 'For your password or the Google button above. '}
+              Only on your own computer or phone: you stay signed in unless you sign out or don’t
+              use it for a month.
+            </small>
+          </span>
+        </label>
         <button type="submit" className="auth-submit" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
