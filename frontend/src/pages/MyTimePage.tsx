@@ -19,6 +19,7 @@ import {
 import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { DayPanel } from '../components/time/DayPanel';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useDutyCatalog, type CatalogDuty } from '../lib/duties';
 import { isStaleWriteError } from '../lib/useStaleWriteGuard';
 import {
@@ -90,6 +91,8 @@ export function MyTimePage() {
   const [days, setDays] = useState<Map<string, TimeDayDto>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [openDate, setOpenDate] = useState<string | null>(null);
+  // A day waiting on "Complete anyway?" (it has timer time with no duty).
+  const [confirmComplete, setConfirmComplete] = useState<string | null>(null);
   // The day opens in the side panel; on narrow screens that sits below the
   // timesheet, so bring it into view.
   const dayRef = useRef<HTMLElement>(null);
@@ -272,6 +275,16 @@ export function MyTimePage() {
     } catch (err) {
       toast({ message: errorText(err, 'Could not undo'), tone: 'error' });
     }
+  }
+
+  /**
+   * Completing a day with timer time on tasks that have no duty asks first:
+   * the time still counts in the day, but under no duty, which is what the
+   * "No duty" row's hint asks people to sort out.
+   */
+  function requestCompleted(date: string, done: boolean) {
+    if (done && timedMinutes(date, null) > 0) setConfirmComplete(date);
+    else void setCompleted(date, done);
   }
 
   async function setCompleted(date: string, done: boolean) {
@@ -558,7 +571,7 @@ export function MyTimePage() {
                             >
                               <DayButton
                                 state={dayStatus(d, days.get(d), today)}
-                                onToggle={(done) => void setCompleted(d, done)}
+                                onToggle={(done) => requestCompleted(d, done)}
                               />
                             </td>
                           ))}
@@ -648,7 +661,7 @@ export function MyTimePage() {
                                 : 'Nothing logged'}
                             </span>
                           </div>
-                          <Btn kind="ok" onClick={() => void setCompleted(d, true)}>
+                          <Btn kind="ok" onClick={() => requestCompleted(d, true)}>
                             <Check size={15} aria-hidden="true" /> Complete
                           </Btn>
                         </div>
@@ -707,6 +720,21 @@ export function MyTimePage() {
             minutes={cellMinutes(editing.date, editing.dutyId)}
             onClose={() => setEditing(null)}
             onSave={(m) => void saveCell(editing.date, editing.dutyId, m)}
+          />
+        )}
+        {confirmComplete && (
+          <ConfirmDialog
+            title="Complete anyway?"
+            message={`${formatHM(timedMinutes(confirmComplete, null))} on ${DOW_LONG[dayOfWeek(confirmComplete)]}, ${formatDay(confirmComplete)} was timed on tasks with no duty. It counts in the day’s total, but under no duty. Complete the day as it is?`}
+            confirmLabel="Complete anyway"
+            cancelLabel="Not yet"
+            tone="warn"
+            onConfirm={() => {
+              const d = confirmComplete;
+              setConfirmComplete(null);
+              void setCompleted(d, true);
+            }}
+            onCancel={() => setConfirmComplete(null)}
           />
         )}
       </PageBody>
