@@ -9713,13 +9713,24 @@ a.hb-origin-chip:hover {
   font-size: 13px;
   cursor: pointer;
 }
+/* Off: still readable (no fading, no strike-through): a quiet chip with a
+   hollow dot. On: a dark label, the dot filled with the layer's colour. */
 .hb-cal-layer:not(.is-on) {
-  opacity: 0.55;
-  text-decoration: line-through;
+  background: var(--canvas);
+  color: var(--muted);
+}
+.hb-cal-layer:not(.is-on) .hb-dot {
+  background: transparent;
+  border: 1.5px solid;
+  box-sizing: border-box;
 }
 .hb-cal-layer.is-on {
   color: var(--ink);
   border-color: var(--border-dashed);
+}
+.hb-cal-layer.is-unavailable {
+  border-style: dashed;
+  cursor: not-allowed;
 }
 .hb-cal-gproblem {
   color: var(--warn-deep);
