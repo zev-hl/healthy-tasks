@@ -89,8 +89,9 @@ export function Select<T extends string>({
 
   useEffect(() => {
     if (!open) return;
-    if (searchable) searchRef.current?.focus();
-    else listRef.current?.focus();
+    // preventScroll: the panel may still be parked off screen, being measured.
+    if (searchable) searchRef.current?.focus({ preventScroll: true });
+    else listRef.current?.focus({ preventScroll: true });
   }, [open, searchable]);
 
   useEffect(() => {

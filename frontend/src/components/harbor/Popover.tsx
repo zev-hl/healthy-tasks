@@ -117,7 +117,11 @@ export function Popover({
         top: pos?.top ?? -9999,
         left: pos?.left ?? -9999,
         minWidth: pos?.width ?? minWidth,
-        visibility: pos ? 'visible' : 'hidden',
+        // Unseen until measured, but still focusable: a menu that focuses its
+        // list as it opens (Select, DatePicker) must get the keys. (With
+        // `visibility: hidden` the focus call is silently ignored.)
+        opacity: pos ? 1 : 0,
+        pointerEvents: pos ? undefined : 'none',
       }}
     >
       {children}
