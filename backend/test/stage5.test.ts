@@ -416,6 +416,23 @@ describe('HL Central signs people in to Connect (Stage 5)', () => {
     assert.match((out.headers['set-cookie'] as unknown as string[])[0]!, /hlc_connect=;/);
   });
 
+  it('signing out answers even while Connect sign-in is not set up', async () => {
+    const { env } = await import('../src/config/env.js');
+    const saved = env.connect.authUrl;
+    env.connect.authUrl = '';
+    try {
+      const out = await request(app).delete('/api/connect-auth/session');
+      assert.equal(out.status, 204);
+      // Everything else stays off.
+      const made = await request(app)
+        .post('/api/connect-auth/session')
+        .set(auth(await signIn()));
+      assert.equal(made.status, 404);
+    } finally {
+      env.connect.authUrl = saved;
+    }
+  });
+
   it('keeps Connect’s members in step: added, changed, deactivated — signed', async () => {
     await prisma.user.update({ where: { email: ME }, data: { role: 'Admin' } });
     const t = await signIn();

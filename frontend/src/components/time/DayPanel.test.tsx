@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Link } from 'react-router-dom';
 import type { RelatedTaskDto, TimeDayDto } from '@healthy-tasks/shared';
 import type { CatalogDuty } from '../../lib/duties';
@@ -272,21 +272,22 @@ describe('DayPanel', () => {
 
     it('asks before replacing time already entered, and keeps it if the person says no', async () => {
       serve(OPEN);
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       open();
       await showsDay('Sep 19');
       pickDay('Friday, September 18');
       copy();
 
-      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
-      expect(confirm.mock.calls[0]![0]).toMatch(/Replace the 1:00 entered here/);
+      let ask = await screen.findByRole('alertdialog');
+      expect(ask).toHaveTextContent(/Replace the 1:00 entered here/);
+      fireEvent.click(within(ask).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
       expect(screen.getByLabelText('Receiving hours')).toHaveValue(1);
 
-      confirm.mockReturnValue(true);
       copy();
+      ask = await screen.findByRole('alertdialog');
+      fireEvent.click(within(ask).getByRole('button', { name: 'Replace' }));
       await screen.findByText(/Copied 5:00 from Friday, September 18/);
       expect(screen.getByLabelText('Receiving hours')).toHaveValue(5);
-      confirm.mockRestore();
     });
 
     it('says so when the chosen day has nothing logged', async () => {
@@ -340,43 +341,40 @@ describe('DayPanel', () => {
     beforeEach(() => listDays.mockResolvedValue([]));
 
     it('asks first, and staying keeps the edits', async () => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       openWithSidebar();
       await screen.findByLabelText('Packing hours');
       fireEvent.click(screen.getAllByRole('button', { name: '+1h' })[0]!);
 
       fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
 
-      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+      const ask = await screen.findByRole('alertdialog');
+      fireEvent.click(within(ask).getByRole('button', { name: 'Stay' }));
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
       expect(screen.queryByText('Task page')).not.toBeInTheDocument();
       expect(screen.getByText('1:00')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Save day' })).toBeEnabled();
-      confirm.mockRestore();
     });
 
     it('leaves when the person confirms', async () => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
       openWithSidebar();
       await screen.findByLabelText('Packing hours');
       fireEvent.click(screen.getAllByRole('button', { name: '+1h' })[0]!);
 
       fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
 
+      const ask = await screen.findByRole('alertdialog');
+      fireEvent.click(within(ask).getByRole('button', { name: 'Leave page' }));
       expect(await screen.findByText('Task page')).toBeInTheDocument();
-      expect(confirm).toHaveBeenCalledTimes(1);
-      confirm.mockRestore();
     });
 
     it('does not ask when nothing has changed', async () => {
-      const confirm = vi.spyOn(window, 'confirm');
       openWithSidebar();
       await screen.findByLabelText('Packing hours');
 
       fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
 
       expect(await screen.findByText('Task page')).toBeInTheDocument();
-      expect(confirm).not.toHaveBeenCalled();
-      confirm.mockRestore();
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     });
   });
 });

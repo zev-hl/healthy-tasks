@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent, mergeAttributes } from '@tiptap/react';
 import type { Extensions } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
 import CharacterCount from '@tiptap/extension-character-count';
 import Mention from '@tiptap/extension-mention';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -80,9 +79,15 @@ const NumberedIcon = (
     <line x1="10" y1="6" x2="20" y2="6" />
     <line x1="10" y1="12" x2="20" y2="12" />
     <line x1="10" y1="18" x2="20" y2="18" />
-    <text x="1.5" y="8" fontSize="7" fill="currentColor" stroke="none">1</text>
-    <text x="1.5" y="14" fontSize="7" fill="currentColor" stroke="none">2</text>
-    <text x="1.5" y="20" fontSize="7" fill="currentColor" stroke="none">3</text>
+    <text x="1.5" y="8" fontSize="7" fill="currentColor" stroke="none">
+      1
+    </text>
+    <text x="1.5" y="14" fontSize="7" fill="currentColor" stroke="none">
+      2
+    </text>
+    <text x="1.5" y="20" fontSize="7" fill="currentColor" stroke="none">
+      3
+    </text>
   </svg>
 );
 const TaskIcon = (
@@ -150,7 +155,8 @@ export function RichTextEditor({
   const extensions = useMemo(() => {
     const list: Extensions = [
       StarterKit.configure({
-        // Restrict to the allowed marks/blocks: bold/italic/underline, paragraph
+        // Restrict to the allowed marks/blocks: bold/italic/underline (StarterKit
+        // 3 brings Underline itself, so it is not added again), paragraph
         // structure, and bullet/ordered lists (list-item enabled). Task lists are
         // added separately below.
         heading: false,
@@ -171,7 +177,6 @@ export function RichTextEditor({
           HTMLAttributes: { target: null, rel: null },
         },
       }),
-      Underline,
       TextStyle,
       Color.configure({ types: ['textStyle'] }),
       TaskList,
@@ -247,11 +252,20 @@ export function RichTextEditor({
     ? [
         {
           label: 'Insert table',
-          run: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+          run: () =>
+            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
           can: () => !inTable,
         },
-        { label: 'Add row above', run: () => editor.chain().focus().addRowBefore().run(), can: () => inTable },
-        { label: 'Add row below', run: () => editor.chain().focus().addRowAfter().run(), can: () => inTable },
+        {
+          label: 'Add row above',
+          run: () => editor.chain().focus().addRowBefore().run(),
+          can: () => inTable,
+        },
+        {
+          label: 'Add row below',
+          run: () => editor.chain().focus().addRowAfter().run(),
+          can: () => inTable,
+        },
         {
           label: 'Add column left',
           run: () => editor.chain().focus().addColumnBefore().run(),
@@ -262,13 +276,21 @@ export function RichTextEditor({
           run: () => editor.chain().focus().addColumnAfter().run(),
           can: () => inTable,
         },
-        { label: 'Delete row', run: () => editor.chain().focus().deleteRow().run(), can: () => inTable },
+        {
+          label: 'Delete row',
+          run: () => editor.chain().focus().deleteRow().run(),
+          can: () => inTable,
+        },
         {
           label: 'Delete column',
           run: () => editor.chain().focus().deleteColumn().run(),
           can: () => inTable,
         },
-        { label: 'Delete table', run: () => editor.chain().focus().deleteTable().run(), can: () => inTable },
+        {
+          label: 'Delete table',
+          run: () => editor.chain().focus().deleteTable().run(),
+          can: () => inTable,
+        },
       ]
     : [];
 
@@ -315,7 +337,9 @@ export function RichTextEditor({
             onClick={() => setListMenuOpen((o) => !o)}
           >
             {BulletIcon}
-            <span className="rte-listcaret" aria-hidden>▾</span>
+            <span className="rte-listcaret" aria-hidden>
+              ▾
+            </span>
           </button>
           {listMenuOpen && (
             <div className="rte-listpop" role="menu">
@@ -350,7 +374,9 @@ export function RichTextEditor({
             onClick={() => setTableMenuOpen((o) => !o)}
           >
             {TableIcon}
-            <span className="rte-listcaret" aria-hidden>▾</span>
+            <span className="rte-listcaret" aria-hidden>
+              ▾
+            </span>
           </button>
           {tableMenuOpen && (
             <div className="rte-listpop" role="menu">

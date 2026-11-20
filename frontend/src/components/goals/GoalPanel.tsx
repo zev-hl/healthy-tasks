@@ -16,6 +16,7 @@ import { GoalStatusPill, deadlineHint, formatGoalValue, formatDeadline } from '.
 import { GoalForm } from './GoalForm';
 import { confirmDiscard, useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
 import { Btn, Card, cx } from '../harbor/ui';
+import { askConfirm } from '../ui/confirm';
 import { Select } from '../harbor/Select';
 
 export type GoalAction = 'progress' | 'reject' | 'resolve';
@@ -73,10 +74,10 @@ export function GoalPanel({ goal: initial, supervisorView, startWith, onClose, o
           : false;
   useUnsavedChangesWarning(panelDirty && !busy);
   const close = () => {
-    if (confirmDiscard(panelDirty)) onClose();
+    confirmDiscard(panelDirty, () => onClose());
   };
   const cancelPanel = () => {
-    if (confirmDiscard(panelDirty)) setPanel(null);
+    confirmDiscard(panelDirty, () => setPanel(null));
   };
 
   // Sync the editable fields (results/notes/risks/mitigations) to a goal.
@@ -157,7 +158,12 @@ export function GoalPanel({ goal: initial, supervisorView, startWith, onClose, o
   }
 
   async function onDelete() {
-    if (!window.confirm('Delete this draft goal? This cannot be undone.')) return;
+    const ok = await askConfirm({
+      title: 'Delete this draft goal?',
+      message: 'The goal and what you wrote in it are deleted. This can’t be undone.',
+      confirmLabel: 'Delete goal',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -508,12 +514,15 @@ export function GoalPanel({ goal: initial, supervisorView, startWith, onClose, o
                       kind="primary"
                       disabled={busy}
                       onClick={() => {
-                        if (
-                          window.confirm(
-                            'Mark results final and send for review? You will no longer be able to update results.',
-                          )
-                        )
-                          void run(() => api.finalizeGoal(goal.id, goal.updatedAt));
+                        void askConfirm({
+                          title: 'Mark results final?',
+                          message:
+                            'The goal goes to your supervisor for review. After this you can’t update the results.',
+                          confirmLabel: 'Mark final',
+                          tone: 'accent',
+                        }).then((ok) => {
+                          if (ok) void run(() => api.finalizeGoal(goal.id, goal.updatedAt));
+                        });
                       }}
                     >
                       Mark results final

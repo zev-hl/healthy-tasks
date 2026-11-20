@@ -19,6 +19,7 @@ import { EVENT_COLORS } from '../../lib/calendarKinds';
 import { DatePicker, toYmd } from '../harbor/DatePicker';
 import { Select, type SelectOption } from '../harbor/Select';
 import { Btn, Card, Segmented } from '../harbor/ui';
+import { askConfirm } from '../ui/confirm';
 import { Avatar, userLabel } from '../ui/Avatar';
 
 /** What a new event starts from: a day (from the calendar), a linked task, or nothing. */
@@ -119,12 +120,15 @@ function EventView({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function cancel() {
-    if (
-      !window.confirm(
-        `Cancel “${event.title}”?${event.attendees.length ? ' Everyone in it is told.' : ''}`,
-      )
-    )
-      return;
+    const ok = await askConfirm({
+      title: `Cancel “${event.title}”?`,
+      message: event.attendees.length
+        ? 'The event is cancelled and everyone in it is told.'
+        : 'The event is cancelled.',
+      confirmLabel: 'Cancel event',
+      cancelLabel: 'Keep it',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.cancelEvent(event.id);

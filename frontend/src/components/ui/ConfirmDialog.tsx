@@ -41,11 +41,15 @@ export function ConfirmDialog({
   useEffect(() => {
     // Focus lands on Cancel, not Confirm: a stray Enter should not delete.
     cancelRef.current?.focus();
+    // Esc belongs to this dialog while it is open: caught first and kept from
+    // the panel or menu underneath, which would otherwise close too.
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onCancel();
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      onCancel();
     }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onCancel]);
 
   return (

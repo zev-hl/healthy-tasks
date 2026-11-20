@@ -56,9 +56,11 @@ connectAuthRouter.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Everything is off until it is set up; the page's own check says so.
+// Everything is off until it is set up; the page's own check says so. Signing
+// out (DELETE /session) always answers, so a sign-out never logs an error.
 connectAuthRouter.use((req, res, next) => {
   if (req.path === '/status') return next();
+  if (req.method === 'DELETE' && req.path === '/session') return next();
   if (!connectSignInAvailable()) {
     res.status(404).json({ error: 'not_found', message: 'Sign-in for Connect is not set up' });
     return;

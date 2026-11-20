@@ -693,7 +693,7 @@ export function ExclusivesEditorPage() {
 
           <section className="card exc-panel exc-settings">
             <span className="exc-panel-title">Alert settings</span>
-            <p className="exc-settings-sub">Daily and Immediate both mean “on” in this phase.</p>
+            <p className="exc-settings-sub">Daily and Immediate both turn an alert on.</p>
             <div className="exc-settings-status">
               <span className="mono exc-settings-count">
                 {onCount} of {EXCLUSIVES_ALERT_TYPES.length} on

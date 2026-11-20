@@ -159,11 +159,7 @@ const sentFor = (type: string) =>
     saveSetup.mock.calls.at(-1)![0].settings as { alertType: string; roleAssignments: unknown }[]
   ).find((s) => s.alertType === type);
 
-let confirmSpy: ReturnType<typeof vi.fn>;
-
 beforeEach(() => {
-  confirmSpy = vi.fn(() => false);
-  vi.spyOn(window, 'confirm').mockImplementation(confirmSpy);
   listTemplates.mockResolvedValue(
     Object.values(TEMPLATES).map((t) => ({ id: t.id, name: t.name }) as TemplateSummaryDto),
   );
@@ -505,10 +501,10 @@ describe('ExclusivesAlertTasksPage', () => {
     await pickTemplate('Buy Box Lost', 'Price Review');
     fireEvent.click(screen.getByRole('link', { name: 'Elsewhere' }));
 
-    await vi.waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
-    expect(confirmSpy).toHaveBeenCalledWith(
-      'You have unsaved changes. Leave this page and discard them?',
-    );
+    const ask = await screen.findByRole('alertdialog');
+    expect(ask).toHaveTextContent('Leave without saving?');
+    fireEvent.click(within(ask).getByRole('button', { name: 'Stay' }));
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(screen.queryByText('Another page')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Template for Buy Box Lost: Price Review' }),
@@ -522,7 +518,7 @@ describe('ExclusivesAlertTasksPage', () => {
     await settle();
     fireEvent.click(screen.getByRole('link', { name: 'Elsewhere' }));
     expect(await screen.findByText('Another page')).toBeInTheDocument();
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('shows it is loading until everything has arrived', async () => {

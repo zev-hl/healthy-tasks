@@ -4,6 +4,7 @@ import type { Role } from '@healthy-tasks/shared';
 import { useAuth } from './auth/AuthContext';
 import { Layout } from './components/Layout';
 import { SessionExpiryWarning } from './components/SessionExpiryWarning';
+import { NoAccessPage, NotFoundPage } from './pages/NotFoundPage';
 
 // Route components are code-split (React.lazy) so the first paint — login and
 // My Day — no longer downloads the whole app in one bundle. The heaviest
@@ -92,7 +93,8 @@ function RequireAuth({ children, roles }: { children: ReactNode; roles?: Role[] 
   const location = useLocation();
   if (loading) return <div className="container">Loading…</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  // Say so, rather than silently landing on the Dashboard.
+  if (roles && !roles.includes(user.role)) return <NoAccessPage />;
   return <>{children}</>;
 }
 
@@ -222,9 +224,11 @@ export const router = createBrowserRouter([
               </RequireAuth>
             ),
           },
+          // Any other address: say so, inside the app (signed out, the shell's
+          // RequireAuth sends people to sign in first).
+          { path: '*', element: <NotFoundPage /> },
         ],
       },
-      { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
 ]);

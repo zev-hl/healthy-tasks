@@ -34,7 +34,6 @@ async function renderPage(state?: unknown) {
 describe('New task page', () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
-    window.confirm = vi.fn(() => true);
     fn(api.listActiveUsers).mockResolvedValue([
       { id: 'me-1', email: 'me@x', firstName: 'Mo', lastName: 'Me' },
     ]);

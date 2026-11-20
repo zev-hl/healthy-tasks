@@ -37,9 +37,9 @@ export function ConnectSignInCard() {
         <p className="muted settings-help">Loading…</p>
       ) : !status.signIn ? (
         <p className="muted settings-help">
-          Not set up. Once our Connect is running, set CONNECT_AUTH_URL, CONNECT_SIGNING_KEY and
-          CONNECT_ORG_ID on HL Central’s server, and Connect’s central sign-in settings, as in
-          docs/connect-changes.md §7. People then sign in to Connect with their HL Central sign-in.
+          Not set up yet. Once it is, people sign in to Connect with their HL Central sign-in. It is
+          set up in the server settings of both HL Central and Connect: ask the person who runs the
+          servers.
         </p>
       ) : (
         <>
@@ -78,8 +78,8 @@ export function ConnectSignInCard() {
             </>
           ) : (
             <p className="muted settings-help">
-              Connect’s members aren’t kept in step yet: set CONNECT_PROVISION_SECRET (the same
-              value on both).
+              Connect’s members aren’t kept in step with HL Central yet. This is turned on in the
+              server settings of both HL Central and Connect: ask the person who runs the servers.
             </p>
           )}
         </>

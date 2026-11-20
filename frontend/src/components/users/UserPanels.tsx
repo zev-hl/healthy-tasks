@@ -17,6 +17,7 @@ import { confirmDiscard, useUnsavedChangesWarning } from '../../lib/useUnsavedCh
 import { Avatar, userLabel } from '../ui/Avatar';
 import { Btn, Card, Segmented, cx } from '../harbor/ui';
 import { Select, type SelectOption } from '../harbor/Select';
+import { emailProblem, FieldError, focusFirstProblem, invalidProps } from '../ui/FieldError';
 
 /**
  * The Users screen's side panels (Harbor: no pop-ups): add a user, edit one,
@@ -114,6 +115,7 @@ function TextField({
   required,
   wide,
   area,
+  error,
 }: {
   id: string;
   label: string;
@@ -123,6 +125,8 @@ function TextField({
   required?: boolean;
   wide?: boolean;
   area?: boolean;
+  /** Shown under the field (the form checks when it is sent). */
+  error?: string | null;
 }) {
   return (
     <label className={cx('hb-tpl-field', wide && 'is-wide')} htmlFor={id}>
@@ -143,10 +147,26 @@ function TextField({
           value={value}
           required={required}
           onChange={(e) => onChange(e.target.value)}
+          {...invalidProps(`${id}-error`, error)}
         />
       )}
+      <FieldError id={`${id}-error`}>{error}</FieldError>
     </label>
   );
+}
+
+/** What is wrong with the name and email fields, keyed by field id (in form order). */
+function userProblems(
+  ids: { email: string; first: string; last: string },
+  v: { email: string; firstName: string; lastName: string },
+  /** Edit: only a changed address is checked (the saved one stands). */
+  checkEmail = true,
+): Record<string, string | null> {
+  return {
+    [ids.email]: checkEmail ? emailProblem(v.email, 'Enter their email') : null,
+    [ids.first]: v.firstName.trim() ? null : 'Enter a first name',
+    [ids.last]: v.lastName.trim() ? null : 'Enter a last name',
+  };
 }
 
 // --- Add a user -------------------------------------------------------------
@@ -170,6 +190,10 @@ export function UserCreatePanel({
   const [supervisors, setSupervisors] = useState<UserDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Fields are checked once Create user is pressed, then as they are fixed.
+  const [checked, setChecked] = useState(false);
+  const NEW_IDS = { email: 'new-email', first: 'new-first-name', last: 'new-last-name' };
+  const problems = checked ? userProblems(NEW_IDS, { email, firstName, lastName }) : {};
 
   // Unsaved-work guard: once anything is filled in, Cancel, × and leaving the
   // page all ask first.
@@ -179,7 +203,7 @@ export function UserCreatePanel({
     ) || role !== 'Member';
   useUnsavedChangesWarning(dirty && !submitting);
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   useEffect(() => {
@@ -193,13 +217,11 @@ export function UserCreatePanel({
     e.preventDefault();
     if (!dirty) return; // nothing filled in yet
     setError(null);
-    if (!firstName.trim() || !lastName.trim()) {
-      setError('First and last name are required.');
-      return;
-    }
+    setChecked(true);
+    if (focusFirstProblem(userProblems(NEW_IDS, { email, firstName, lastName }))) return;
     setSubmitting(true);
     const body: CreateUserRequest = {
-      email,
+      email: email.trim(),
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       role,
@@ -218,7 +240,7 @@ export function UserCreatePanel({
   }
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} noValidate>
       <Panel
         label="Add user"
         eyebrow="New account"
@@ -252,6 +274,7 @@ export function UserCreatePanel({
           value={email}
           onChange={setEmail}
           required
+          error={problems['new-email']}
         />
         <div className="hb-upanel-two">
           <TextField
@@ -260,6 +283,7 @@ export function UserCreatePanel({
             value={firstName}
             onChange={setFirstName}
             required
+            error={problems['new-first-name']}
           />
           <TextField
             id="new-last-name"
@@ -267,6 +291,7 @@ export function UserCreatePanel({
             value={lastName}
             onChange={setLastName}
             required
+            error={problems['new-last-name']}
           />
         </div>
         <RoleField value={role} onChange={setRole} />
@@ -355,6 +380,13 @@ export function UserEditPanel({
   const [isActive, setIsActive] = useState(user.isActive);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Fields are checked once Save changes is pressed, then as they are fixed.
+  const [checked, setChecked] = useState(false);
+  const EDIT_IDS = { email: 'edit-email', first: 'edit-first', last: 'edit-last' };
+  const emailEdited = email.trim() !== user.email;
+  const problems = checked
+    ? userProblems(EDIT_IDS, { email, firstName, lastName }, emailEdited)
+    : {};
 
   function buildPatch(): UpdateUserRequest {
     const patch: UpdateUserRequest = {};
@@ -377,17 +409,16 @@ export function UserEditPanel({
   // Unsaved-work guard: with changes pending, Cancel, × and leaving the page all ask first.
   useUnsavedChangesWarning(dirty && !saving);
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!dirty) return;
     setError(null);
-    if (!firstName.trim() || !lastName.trim()) {
-      setError('First and last name are required.');
+    setChecked(true);
+    if (focusFirstProblem(userProblems(EDIT_IDS, { email, firstName, lastName }, emailEdited)))
       return;
-    }
     setSaving(true);
     try {
       const saved = await api.updateUser(user.id, patch);
@@ -402,7 +433,7 @@ export function UserEditPanel({
   const emailChanged = email.trim() !== user.email;
 
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={onSubmit} noValidate>
       <Panel
         label="Edit user"
         eyebrow={user.email}
@@ -432,6 +463,7 @@ export function UserEditPanel({
           value={email}
           onChange={setEmail}
           required
+          error={problems['edit-email']}
         />
         {emailChanged && (
           <span className="hb-org-note">
@@ -446,6 +478,7 @@ export function UserEditPanel({
             value={firstName}
             onChange={setFirstName}
             required
+            error={problems['edit-first']}
           />
           <TextField
             id="edit-last"
@@ -453,6 +486,7 @@ export function UserEditPanel({
             value={lastName}
             onChange={setLastName}
             required
+            error={problems['edit-last']}
           />
         </div>
         <RoleField value={role} onChange={setRole} />
@@ -590,7 +624,7 @@ export function MergeUsersPanel({
   const canMerge = bothChosen && survivorActive && confirmMatches && !submitting;
   const dirty = !!aId || !!bId;
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   async function handleMerge() {

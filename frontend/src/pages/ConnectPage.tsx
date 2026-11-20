@@ -28,8 +28,9 @@ export function ConnectPage() {
             <Empty>
               <MessagesSquare size={18} aria-hidden="true" /> Connect isn’t linked to HL Central
               yet.
-              {user?.role === 'Admin' &&
-                ' Once our Connect is running, set CONNECT_URL and CONNECT_API_KEY on HL Central’s server (docs/connect-changes.md) and its tile opens it.'}
+              {user?.role === 'Admin'
+                ? ' It’s linked in HL Central’s server settings: ask the person who runs the server. Once it is, this tile opens Connect.'
+                : ' Ask an Admin if you need it.'}
             </Empty>
           )}
         </Card>

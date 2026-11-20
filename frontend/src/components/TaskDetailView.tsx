@@ -1595,10 +1595,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             )}
 
             <span className="hb-chip-divider" aria-hidden="true" />
-            <span
-              className="hb-chip static soon"
-              title="Watching tasks needs a backend change (coming later)"
-            >
+            <span className="hb-chip static soon" title="Watching tasks is coming later">
               <Eye size={14} aria-hidden="true" /> Watching · soon
             </span>
             {task.canTogglePrivate ? (
@@ -2083,8 +2080,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <Pill tone="grey">Coming soon</Pill>
               </div>
               <p className="hb-soon-text">
-                Steps you tick off inside a task. This needs a backend change first; until then, use
-                sub-tasks.
+                Steps you tick off inside a task. It’s coming later; until then, use sub-tasks.
               </p>
             </section>
 

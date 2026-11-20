@@ -4,6 +4,12 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { AuthShell } from '../components/AuthShell';
 import { GoogleSignInButton, googleSignInAvailable } from '../components/GoogleSignInButton';
+import {
+  emailProblem,
+  FieldError,
+  focusFirstProblem,
+  invalidProps,
+} from '../components/ui/FieldError';
 
 export function LoginPage() {
   const { login, loginWithGoogle, sessionExpired } = useAuth();
@@ -22,6 +28,12 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   // Off unless ticked: a shared computer must not stay signed in.
   const [remember, setRemember] = useState(false);
+  // Fields are checked once Sign in is pressed, then as they are fixed.
+  const [checked, setChecked] = useState(false);
+  const problems = {
+    email: checked ? emailProblem(email) : null,
+    password: checked && !password ? 'Enter your password' : null,
+  };
 
   /**
    * Both doors lead to the same place: the server returns the same session
@@ -43,6 +55,14 @@ export function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setChecked(true);
+    if (
+      focusFirstProblem({
+        email: emailProblem(email),
+        password: password ? null : 'Enter your password',
+      })
+    )
+      return;
     setSubmitting(true);
     try {
       await login(email, password, remember);
@@ -99,7 +119,7 @@ export function LoginPage() {
         </>
       )}
 
-      <form onSubmit={onSubmit}>
+      <form onSubmit={onSubmit} noValidate>
         <div className="field">
           <label htmlFor="email">Email</label>
           <input
@@ -109,7 +129,9 @@ export function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            {...invalidProps('email-error', problems.email)}
           />
+          <FieldError id="email-error">{problems.email}</FieldError>
         </div>
         <div className="field">
           <label htmlFor="password">Password</label>
@@ -121,6 +143,7 @@ export function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              {...invalidProps('password-error', problems.password)}
             />
             <button
               type="button"
@@ -133,6 +156,7 @@ export function LoginPage() {
               {showPassword ? <EyeOffIcon /> : <EyeIcon />}
             </button>
           </div>
+          <FieldError id="password-error">{problems.password}</FieldError>
         </div>
         <button type="submit" className="auth-submit" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Sign in'}

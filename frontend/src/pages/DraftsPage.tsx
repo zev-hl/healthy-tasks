@@ -6,6 +6,7 @@ import { api, ApiError, uploadToStorage } from '../api/client';
 import { attachmentProblem, humanSize } from '../lib/attachmentFile';
 import { PageBody, PageHeader } from '../components/harbor/PageHeader';
 import { Btn, Card, Empty, cx } from '../components/harbor/ui';
+import { askConfirm } from '../components/ui/confirm';
 import { useToast } from '../components/harbor/Toast';
 import { RichTextEditor } from '../components/RichTextEditor';
 import { FileTile } from '../components/ui/FileTile';
@@ -55,7 +56,12 @@ export function DraftsPage() {
   }
 
   async function remove(d: DraftDto) {
-    if (!window.confirm(`Delete the draft “${d.title}” and its files?`)) return;
+    const ok = await askConfirm({
+      title: `Delete the draft “${d.title}”?`,
+      message: 'The draft and its files are deleted. This can’t be undone.',
+      confirmLabel: 'Delete draft',
+    });
+    if (!ok) return;
     try {
       await api.deleteDraft(d.id);
       setDrafts((list) => (list ?? []).filter((x) => x.id !== d.id));
