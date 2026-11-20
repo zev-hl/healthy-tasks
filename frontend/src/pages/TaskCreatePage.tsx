@@ -26,6 +26,7 @@ import { Select, type SelectOption } from '../components/harbor/Select';
 import { DatePicker, formatShortDay } from '../components/harbor/DatePicker';
 import { Pill, PRIORITY_DOT, STATUS_DOT, STATUS_TONE } from '../components/harbor/ui';
 import { PRIORITY_OPTIONS, dueInfo } from '../components/harbor/taskHelpers';
+import { missingHint } from '../lib/missingHint';
 
 /**
  * New task (§6.3, "#new"): the task page with an empty, focused title and
@@ -231,6 +232,12 @@ export function TaskCreatePage() {
       setDutyChoice('');
   }
   const due = dueInfo(partsToIso(dueDate, dueTime, DEFAULT_DUE_HOUR), status);
+  // What still stops it being created, said next to the disabled button.
+  const missing = missingHint([
+    ...(name.trim().length >= TASK_NAME_MIN_LENGTH ? [] : [isProject ? 'a name' : 'a title']),
+    ...(assigneeId ? [] : ['who it’s for']),
+    ...(dutyChoice ? [] : ['a duty (or “No duty”)']),
+  ]);
   const assignee = users.find((u) => u.id === assigneeId) ?? null;
 
   function addTag() {
@@ -247,7 +254,7 @@ export function TaskCreatePage() {
             <ChevronLeft size={16} aria-hidden="true" /> Tasks
           </Link>
           <span aria-hidden="true">/</span>
-          <span>New task</span>
+          <h1 className="hb-crumb-h1">New task</h1>
         </nav>
       </div>
 
@@ -500,7 +507,7 @@ export function TaskCreatePage() {
       <div className="hb-savebar" role="region" aria-label="New task">
         <span className="hb-savebar-dot" aria-hidden="true" />
         <strong>{isProject ? 'New project' : 'New task'}</strong>
-        <span className="hb-savebar-what">Not created yet</span>
+        <span className="hb-savebar-what">{missing ?? 'Not created yet'}</span>
         {mismatch && <span className="hb-savebar-err">Fix the duty mismatch to create it.</span>}
         <span className="hb-grow" />
         <span className="hb-kbd">Ctrl + S</span>
@@ -515,8 +522,8 @@ export function TaskCreatePage() {
         <button
           type="button"
           className="hb-savebar-save"
-          disabled={submitting || mismatch || !dutyChoice || !assigneeId}
-          title={!dutyChoice ? 'Pick a duty, or “No duty”' : undefined}
+          disabled={submitting || mismatch || missing !== null}
+          title={missing ?? undefined}
           onClick={() => void create()}
         >
           {submitting ? 'Creating…' : isProject ? 'Create project' : 'Create task'}

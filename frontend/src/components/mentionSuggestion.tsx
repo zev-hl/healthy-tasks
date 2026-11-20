@@ -84,6 +84,34 @@ const MentionList = forwardRef<MentionListRef, MentionListProps>(function Mentio
   );
 });
 
+/**
+ * Order @mention matches so names win over email addresses: a first or last name
+ * that starts with the query first, then the full name starting with it, then a
+ * name containing it, then an email starting with it, then an email containing
+ * it. Users matching none of these keep their place at the end (the server may
+ * match on more than we do). Ties keep the order they came in.
+ */
+export function rankMentionUsers<T extends TaskUserRef>(users: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return users;
+  const rank = (u: TaskUserRef): number => {
+    const first = (u.firstName ?? '').trim().toLowerCase();
+    const last = (u.lastName ?? '').trim().toLowerCase();
+    const full = [first, last].filter(Boolean).join(' ');
+    const email = (u.email ?? '').toLowerCase();
+    if (first.startsWith(q) || last.startsWith(q)) return 0;
+    if (full.startsWith(q)) return 1;
+    if (full.includes(q)) return 2;
+    if (email.startsWith(q)) return 3;
+    if (email.includes(q)) return 4;
+    return 5;
+  };
+  return users
+    .map((u, i) => ({ u, i, r: rank(u) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.u);
+}
+
 /** Build the TipTap suggestion config, sourcing users from `fetchUsers`. */
 export function createMentionSuggestion(
   fetchUsers: (query: string) => Promise<TaskUserRef[]>,
@@ -91,7 +119,7 @@ export function createMentionSuggestion(
   return {
     items: async ({ query }) => {
       const users = await fetchUsers(query);
-      return users.slice(0, 8);
+      return rankMentionUsers(users, query).slice(0, 8);
     },
     render: () => {
       let component: ReactRenderer<MentionListRef, MentionListProps> | null = null;

@@ -9,6 +9,7 @@ import {
   formatClock,
   formatMinutes,
   stopMessage,
+  stopTone,
   stopTimer,
   useTimer,
 } from '../../lib/timer';
@@ -43,7 +44,7 @@ export function TimeTrackerCard({ period }: { period: Period }) {
 
   async function stop() {
     const r = await stopTimer();
-    if (r) toast({ message: stopMessage(r), tone: r.logged ? 'success' : 'error' });
+    if (r) toast({ message: stopMessage(r), tone: stopTone(r, 'success') });
   }
 
   return (

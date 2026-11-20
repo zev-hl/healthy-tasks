@@ -12,6 +12,7 @@ import { DatePicker } from './DatePicker';
 import { Select, type SelectOption } from './Select';
 import { Btn } from './ui';
 import { useToast } from './Toast';
+import { missingHint } from '../../lib/missingHint';
 
 /** Fired on `window` after a quick task is made, so open lists can refresh. */
 export const TASK_CREATED_EVENT = 'hb:task-created';
@@ -149,13 +150,11 @@ function QuickTaskForm({
   const dutyChoices = heldDutyOptions(catalog, assigneeId || null);
   const nameOk = name.trim().length >= TASK_NAME_MIN_LENGTH;
   const ok = nameOk && !!assigneeId && !!dutyChoice;
-  const missing = !nameOk
-    ? null
-    : !assigneeId
-      ? 'Pick who it’s for.'
-      : !dutyChoice
-        ? 'Pick a duty, or “No duty”.'
-        : null;
+  const missing = missingHint([
+    ...(nameOk ? [] : [isProject ? 'a name' : 'a title']),
+    ...(assigneeId ? [] : ['who it’s for']),
+    ...(dutyChoice ? [] : ['a duty (or “No duty”)']),
+  ]);
 
   function pickAssignee(id: string) {
     setAssigneeId(id);

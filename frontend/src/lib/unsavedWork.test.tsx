@@ -174,14 +174,21 @@ describe('Goal editor', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it('keeps Create goal off until something is filled in', () => {
+  it('keeps Create goal off until what it needs is filled in, and says what is missing', () => {
     renderWithSidebar(<GoalForm onClose={vi.fn()} onSaved={vi.fn()} />);
     const create = () => screen.getByRole('button', { name: 'Create goal' });
     expect(create()).toBeDisabled();
+    expect(
+      screen.getByText('Still needed: what will be achieved, a target value and a deadline.'),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
-    expect(create()).toBeEnabled();
-    fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText(/Target value/), { target: { value: '10' } });
     expect(create()).toBeDisabled();
+    expect(screen.getByText('Still needed: a deadline.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: '' } });
+    expect(
+      screen.getByText('Still needed: what will be achieved and a deadline.'),
+    ).toBeInTheDocument();
   });
 
   it('keeps Save changes off until the goal is changed', () => {

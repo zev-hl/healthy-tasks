@@ -14,7 +14,7 @@ vi.mock('../api/client', () => {
 });
 
 const { api, ApiError } = await import('../api/client');
-const { startTimer, stopTimer, stopMessage, getTimer, refreshTimer, resetTimerCache } =
+const { startTimer, stopTimer, stopMessage, stopTone, getTimer, refreshTimer, resetTimerCache } =
   await import('./timer');
 const fn = (f: unknown) => f as ReturnType<typeof vi.fn>;
 const now = () => new Date().toISOString();
@@ -91,6 +91,17 @@ describe('the timer runs on the server (L2)', () => {
     );
     expect(api.startTimer).toHaveBeenCalledWith(expect.objectContaining({ replacing: 5 }));
     expect(getTimer()?.taskId).toBe(6);
+  });
+
+  it('names the replaced task, in a calm tone, when its time could not be kept', async () => {
+    fn(api.getTimer).mockResolvedValue(running(5, 'Old task'));
+    await refreshTimer();
+    // The server stopped it, but this person can no longer open task 5.
+    fn(api.startTimer).mockResolvedValue({ ...running(9, 'Mine'), saved: null });
+    const r = await startTimer({ id: 9, name: 'Mine' });
+    expect(r && stopMessage(r)).toMatch(/timer on “Old task” stopped.*can no longer open/);
+    expect(r && stopMessage(r)).not.toMatch(/that task”/);
+    expect(r && stopTone(r, 'dark')).toBe('dark');
   });
 
   it('uses the server clock for the running time', async () => {

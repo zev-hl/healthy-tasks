@@ -1550,7 +1550,7 @@ function TemplateEditor({
                       Expand all
                     </Btn>
                     <Btn className="hb-btn-sm" onClick={() => addNode()}>
-                      <Plus size={15} aria-hidden="true" /> Add task
+                      <Plus size={15} aria-hidden="true" /> Add sub-task
                     </Btn>
                     <Btn className="hb-btn-sm" onClick={addMainTask}>
                       <Plus size={15} aria-hidden="true" /> Add main task
@@ -1560,8 +1560,9 @@ function TemplateEditor({
               />
               <p className="hb-tpl-tree-hint">
                 Each main task becomes its own task with its sub-tasks; most templates have one.
-                “Add main task” adds another beside it. Drag a row by its handle to reorder it;
-                “Sub-task of” moves it elsewhere.
+                “Add sub-task” adds one under the first main task; “Add main task” adds another main
+                task beside it. Drag a row by its handle to reorder it; “Sub-task of” moves it
+                elsewhere.
               </p>
               <div className="hb-tpl-tree">{mainNodes.map((m) => renderNode(m, 0))}</div>
               <label className="hb-tpl-quickadd">

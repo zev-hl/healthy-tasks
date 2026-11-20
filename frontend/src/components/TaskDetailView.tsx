@@ -1202,160 +1202,162 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             <span className="hb-live" aria-hidden="true" /> {formatClock(timerElapsed)}
           </span>
         )}
-        {/* Quick actions (D9): Snooze and Request update come in the next stage. */}
-        <Btn
-          onClick={() => {
-            const el = document.getElementById('task-reminders');
-            el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            el?.querySelector<HTMLElement>('button, input')?.focus({ preventScroll: true });
-          }}
-        >
-          <AlarmClock size={15} aria-hidden="true" /> Remind me
-        </Btn>
-        {task.canSnooze && <SnoozeButton task={task} onChanged={applyTask} />}
-        {task.assignee && task.assigneeId !== currentUser.id && (
-          <RequestUpdateButton task={task} onSent={() => setHistoryVersion((v) => v + 1)} />
-        )}
-        {connect.available && (
-          <ScheduleCallButton
-            task={task}
-            meId={currentUser.id}
-            onBooked={() => setEventsVersion((v) => v + 1)}
-          />
-        )}
-        {canEdit &&
-          !isInReview &&
-          (done ? (
-            <Btn onClick={() => void markDone('Open')}>
-              <RotateCcw size={15} aria-hidden="true" /> Reopen
-            </Btn>
-          ) : (
-            <Btn kind="ok" onClick={() => void markDone('Completed')}>
-              <CheckCircle2 size={16} aria-hidden="true" /> Mark done
-            </Btn>
-          ))}
-        <button
-          ref={menuRef}
-          type="button"
-          className="hb-icon-btn hb-icon-btn-sm"
-          aria-label="More actions"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((o) => !o)}
-        >
-          <MoreHorizontal size={18} aria-hidden="true" />
-        </button>
-        <Popover
-          anchorRef={menuRef}
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          minWidth={230}
-          matchWidth={false}
-          label="More actions"
-        >
-          <div className="hb-actions-menu">
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                copyLink();
-              }}
-            >
-              <LinkIcon size={16} aria-hidden="true" /> {copied ? 'Link copied' : 'Copy link'}
-            </button>
-            <button
-              type="button"
-              disabled={duplicating}
-              onClick={() => {
-                setMenuOpen(false);
-                onDuplicateClick();
-              }}
-            >
-              <Copy size={16} aria-hidden="true" /> Duplicate task
-            </button>
-            {connect.available && (
-              <button
-                type="button"
-                disabled={discussing}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void discuss();
-                }}
-              >
-                <MessagesSquare size={16} aria-hidden="true" /> Discuss in Connect
-              </button>
-            )}
-            {canSaveAsTemplate && (
+        {/* Quick actions (D9). On a phone they drop to their own row and wrap. */}
+        <div className="hb-taskbar-actions">
+          <Btn
+            onClick={() => {
+              const el = document.getElementById('task-reminders');
+              el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+              el?.querySelector<HTMLElement>('button, input')?.focus({ preventScroll: true });
+            }}
+          >
+            <AlarmClock size={15} aria-hidden="true" /> Remind me
+          </Btn>
+          {task.canSnooze && <SnoozeButton task={task} onChanged={applyTask} />}
+          {task.assignee && task.assigneeId !== currentUser.id && (
+            <RequestUpdateButton task={task} onSent={() => setHistoryVersion((v) => v + 1)} />
+          )}
+          {connect.available && (
+            <ScheduleCallButton
+              task={task}
+              meId={currentUser.id}
+              onBooked={() => setEventsVersion((v) => v + 1)}
+            />
+          )}
+          {canEdit &&
+            !isInReview &&
+            (done ? (
+              <Btn onClick={() => void markDone('Open')}>
+                <RotateCcw size={15} aria-hidden="true" /> Reopen
+              </Btn>
+            ) : (
+              <Btn kind="ok" onClick={() => void markDone('Completed')}>
+                <CheckCircle2 size={16} aria-hidden="true" /> Mark done
+              </Btn>
+            ))}
+          <button
+            ref={menuRef}
+            type="button"
+            className="hb-icon-btn hb-icon-btn-sm"
+            aria-label="More actions"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            <MoreHorizontal size={18} aria-hidden="true" />
+          </button>
+          <Popover
+            anchorRef={menuRef}
+            open={menuOpen}
+            onClose={() => setMenuOpen(false)}
+            minWidth={230}
+            matchWidth={false}
+            label="More actions"
+          >
+            <div className="hb-actions-menu">
               <button
                 type="button"
                 onClick={() => {
                   setMenuOpen(false);
-                  onSaveAsTemplateClick();
+                  copyLink();
                 }}
               >
-                <FileStack size={16} aria-hidden="true" /> Save as template
+                <LinkIcon size={16} aria-hidden="true" /> {copied ? 'Link copied' : 'Copy link'}
               </button>
-            )}
-            {canEdit && (
-              <>
-                <div className="hb-actions-sep" role="separator" />
-                {task.isProject ? (
-                  <MenuChoice
-                    icon={<FolderOpen size={16} aria-hidden="true" />}
-                    label="Unmark as project"
-                    reason={convert.unmarkProject}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void setProject(false);
-                    }}
-                  />
-                ) : (
-                  <MenuChoice
-                    icon={<FolderOpen size={16} aria-hidden="true" />}
-                    label="Mark as project"
-                    reason={convert.markProject}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void setProject(true);
-                    }}
-                  />
-                )}
-                {task.parent && (
-                  <MenuChoice
-                    icon={<CornerLeftUp size={16} aria-hidden="true" />}
-                    label="Make it its own task"
-                    reason={null}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void runRel(() => api.clearParent(task.id));
-                    }}
-                  />
-                )}
-                <MenuChoice
-                  icon={<ListTree size={16} aria-hidden="true" />}
-                  label={task.parent ? 'Move under another task…' : 'Make it a sub-task of…'}
-                  reason={convert.moveUnder}
+              <button
+                type="button"
+                disabled={duplicating}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDuplicateClick();
+                }}
+              >
+                <Copy size={16} aria-hidden="true" /> Duplicate task
+              </button>
+              {connect.available && (
+                <button
+                  type="button"
+                  disabled={discussing}
                   onClick={() => {
                     setMenuOpen(false);
-                    if (menuRef.current) openPicker('parent', menuRef.current);
+                    void discuss();
                   }}
-                />
-                <div className="hb-actions-sep" role="separator" />
-              </>
-            )}
-            {currentUser.role === 'Admin' && (
-              <button
-                type="button"
-                className="danger"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setConfirmDelete(true);
-                }}
-              >
-                <Trash2 size={16} aria-hidden="true" /> Delete task
-              </button>
-            )}
-          </div>
-        </Popover>
+                >
+                  <MessagesSquare size={16} aria-hidden="true" /> Discuss in Connect
+                </button>
+              )}
+              {canSaveAsTemplate && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onSaveAsTemplateClick();
+                  }}
+                >
+                  <FileStack size={16} aria-hidden="true" /> Save as template
+                </button>
+              )}
+              {canEdit && (
+                <>
+                  <div className="hb-actions-sep" role="separator" />
+                  {task.isProject ? (
+                    <MenuChoice
+                      icon={<FolderOpen size={16} aria-hidden="true" />}
+                      label="Unmark as project"
+                      reason={convert.unmarkProject}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void setProject(false);
+                      }}
+                    />
+                  ) : (
+                    <MenuChoice
+                      icon={<FolderOpen size={16} aria-hidden="true" />}
+                      label="Mark as project"
+                      reason={convert.markProject}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void setProject(true);
+                      }}
+                    />
+                  )}
+                  {task.parent && (
+                    <MenuChoice
+                      icon={<CornerLeftUp size={16} aria-hidden="true" />}
+                      label="Make it its own task"
+                      reason={null}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void runRel(() => api.clearParent(task.id));
+                      }}
+                    />
+                  )}
+                  <MenuChoice
+                    icon={<ListTree size={16} aria-hidden="true" />}
+                    label={task.parent ? 'Move under another task…' : 'Make it a sub-task of…'}
+                    reason={convert.moveUnder}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (menuRef.current) openPicker('parent', menuRef.current);
+                    }}
+                  />
+                  <div className="hb-actions-sep" role="separator" />
+                </>
+              )}
+              {currentUser.role === 'Admin' && (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirmDelete(true);
+                  }}
+                >
+                  <Trash2 size={16} aria-hidden="true" /> Delete task
+                </button>
+              )}
+            </div>
+          </Popover>
+        </div>
       </div>
 
       {/* Header band */}
@@ -1384,17 +1386,20 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
             </div>
           )}
           {canEdit ? (
-            <textarea
-              className={`hb-title-input${nameDraft.trim() !== task.name ? ' is-dirty' : ''}`}
-              value={nameDraft}
-              rows={1}
-              onChange={(e) => setNameDraft(e.target.value.replace(/\n/g, ' '))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.preventDefault();
-              }}
-              aria-label="Task title"
-              maxLength={300}
-            />
+            // The editable title is still the page's heading.
+            <h1 className="hb-title-h1">
+              <textarea
+                className={`hb-title-input${nameDraft.trim() !== task.name ? ' is-dirty' : ''}`}
+                value={nameDraft}
+                rows={1}
+                onChange={(e) => setNameDraft(e.target.value.replace(/\n/g, ' '))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                aria-label="Task title"
+                maxLength={300}
+              />
+            </h1>
           ) : (
             <h1 className="hb-title-text">{task.name}</h1>
           )}
@@ -1876,7 +1881,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
                 <AttachmentSection
                   attachments={task.attachments}
                   target={{ kind: 'task', taskId: task.id }}
-                  canUpload
+                  canUpload={canEdit}
                   currentUser={currentUser}
                   onChanged={applyTask}
                 />
@@ -2434,7 +2439,7 @@ export function TaskDetailView({ initialTask, currentUser }: Props) {
       {confirmDelete && (
         <ConfirmDialog
           title="Delete this task?"
-          message={`This permanently deletes #${task.id} “${task.name}”, with its comments and files. This cannot be undone.`}
+          message={`#${task.id} “${task.name}” and its sub-tasks will disappear for everyone, with their comments and files. An Admin can restore them later.`}
           confirmLabel={deleting ? 'Deleting…' : 'Delete task'}
           busy={deleting}
           onCancel={() => setConfirmDelete(false)}

@@ -132,16 +132,22 @@ export interface StopResult {
   /** Where it went on My Time: a duty's name, or null for "No duty". */
   dutyName?: string | null;
   reason?: string;
+  /**
+   * The timer did stop, but its task is one this person can no longer open, so
+   * the time had nowhere to go. Nothing went wrong on their side: say it plainly.
+   */
+  lostAccess?: boolean;
 }
 
-function savedResult(saved: MyTimerDto['saved']): StopResult | null {
+/** `taskName`: the stopped timer's task, as this browser last knew it. */
+function savedResult(saved: MyTimerDto['saved'], taskName?: string): StopResult | null {
   if (saved === undefined) return null;
   if (saved === null)
     return {
-      taskName: 'that task',
+      taskName: taskName || 'the previous task',
       minutes: 0,
       logged: false,
-      reason: 'you can no longer open the task, so the time couldn’t be kept on it',
+      lostAccess: true,
     };
   return {
     taskName: saved.taskName,
@@ -170,7 +176,7 @@ export async function stopTimer(): Promise<StopResult | null> {
     const r = await api.stopTimer({ taskId: t.taskId, date: todayYmd() });
     adopt(r.timer, r.now);
     window.dispatchEvent(new Event(TIMER_EVENT));
-    return savedResult(r.saved);
+    return savedResult(r.saved, t.taskName);
   } catch (e) {
     const changed = handleChanged(e);
     return {
@@ -191,6 +197,7 @@ export async function stopTimer(): Promise<StopResult | null> {
  */
 export async function startTimer(task: { id: number; name: string }): Promise<StopResult | null> {
   await ensureLoaded();
+  const replacedName = current?.taskName;
   try {
     const r = await api.startTimer({
       taskId: task.id,
@@ -199,7 +206,7 @@ export async function startTimer(task: { id: number; name: string }): Promise<St
     });
     adopt(r.timer, r.now);
     window.dispatchEvent(new Event(TIMER_EVENT));
-    return savedResult(r.saved);
+    return savedResult(r.saved, replacedName);
   } catch (e) {
     const changed = handleChanged(e);
     throw new Error(
@@ -273,7 +280,15 @@ export function useTimer(): {
 
 /** The toast text for a stop. */
 export function stopMessage(r: StopResult): string {
+  if (r.lostAccess)
+    return `The timer on “${r.taskName}” stopped. Its time wasn’t kept because you can no longer open that task.`;
   if (!r.logged) return `The timer on “${r.taskName}” wasn’t saved: ${r.reason}.`;
   const where = r.dutyName ? `under ${r.dutyName}` : 'as “No duty”';
   return `Saved ${formatMinutes(r.minutes)} on “${r.taskName}”. It shows on My Time ${where}.`;
+}
+
+/** The toast tone for a stop: red only when something actually failed. */
+export function stopTone<T extends 'dark' | 'success'>(r: StopResult, ok: T): T | 'dark' | 'error' {
+  if (r.logged) return ok;
+  return r.lostAccess ? 'dark' : 'error';
 }

@@ -85,11 +85,14 @@ describe('QuickTaskButton', () => {
     window.addEventListener(TASK_CREATED_EVENT, created);
     await open('Task');
     const add = screen.getByRole('button', { name: 'Add task' }) as HTMLButtonElement;
+    expect(
+      screen.getByText('Still needed: a title and a duty (or “No duty”).'),
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Task title' }), {
       target: { value: 'Call the supplier' },
     });
     expect(add.disabled).toBe(true);
-    expect(screen.getByText('Pick a duty, or “No duty”.')).toBeInTheDocument();
+    expect(screen.getByText('Still needed: a duty (or “No duty”).')).toBeInTheDocument();
     // Only my own duties are offered, after "No duty".
     fireEvent.click(screen.getByRole('button', { name: /^Duty/ }));
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual([

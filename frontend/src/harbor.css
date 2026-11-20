@@ -2268,11 +2268,47 @@ button.hb-vtab:hover,
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
+.hb-taskbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* A phone: the breadcrumb keeps the first row, the actions take a second row of
+   their own and wrap, so the page never scrolls sideways. */
+@media (max-width: 640px) {
+  .hb-taskbar {
+    flex-wrap: wrap;
+    height: auto;
+    row-gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .hb-taskbar-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .hb-taskbar-actions .hb-btn {
+    height: 34px;
+    padding: 0 10px;
+  }
+}
 .hb-crumbs {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
+  color: var(--muted);
+}
+/* The last breadcrumb step as the page's h1 (New task): looks like the rest. */
+.hb-crumb-h1 {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+}
+.hb-gpanel-missing {
+  margin-right: auto;
+  font-size: 12.5px;
   color: var(--muted);
 }
 .hb-crumbs a {
@@ -2382,6 +2418,12 @@ button.hb-vtab:hover,
 }
 .hb-flags .hb-pill {
   height: 26px;
+}
+/* Holds the editable title so the page keeps one h1; adds no look of its own. */
+.hb-title-h1 {
+  margin: 0;
+  font: inherit;
+  display: block;
 }
 .hb-title-input,
 .hb-title-text {
@@ -3067,6 +3109,17 @@ button.secondary {
 button.secondary:hover {
   background: var(--canvas);
   color: var(--ink);
+}
+/* A destructive secondary (e.g. Discard a comment draft): red text on white,
+   never grey on red. #b42318 on white is about 6.5:1. */
+button.secondary.hb-btn-discard {
+  color: var(--danger);
+  border-color: var(--danger-line);
+}
+button.secondary.hb-btn-discard:hover {
+  background: var(--danger-soft);
+  color: var(--danger-deep);
+  border-color: var(--danger-line);
 }
 button.ghost,
 button.tertiary {

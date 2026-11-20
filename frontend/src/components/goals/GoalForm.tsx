@@ -8,6 +8,7 @@ import type {
 } from '@healthy-tasks/shared';
 import {
   GOAL_METRIC_TYPES,
+  GOAL_SPECIFIC_MIN_LENGTH,
   GOAL_METRIC_TYPE_LABELS,
   GOAL_METRIC_TYPES_NEEDING_UNIT,
 } from '@healthy-tasks/shared';
@@ -19,6 +20,7 @@ import { confirmDiscard, useUnsavedChangesWarning } from '../../lib/useUnsavedCh
 import { Card } from '../harbor/ui';
 import { Select } from '../harbor/Select';
 import { DatePicker } from '../harbor/DatePicker';
+import { missingHint } from '../../lib/missingHint';
 
 interface Props {
   /** Present ⇒ edit that draft; absent ⇒ create a new goal. */
@@ -69,6 +71,15 @@ export function GoalForm({ goal, ownerOptions, onClose, onSaved }: Props) {
     ]);
   const [original] = useState(fields);
   const dirty = fields() !== original;
+  // What still stops it being saved, said next to the disabled button.
+  const missing = missingHint([
+    ...(specific.trim().length >= GOAL_SPECIFIC_MIN_LENGTH ? [] : ['what will be achieved']),
+    ...(targetValue.trim() !== '' && Number.isFinite(Number(targetValue))
+      ? []
+      : ['a target value']),
+    ...(needsUnit && !unitLabel.trim() ? ['a unit'] : []),
+    ...(deadline ? [] : ['a deadline']),
+  ]);
   useUnsavedChangesWarning(dirty && !submitting);
   const dismiss = () => {
     if (confirmDiscard(dirty)) onClose();
@@ -307,6 +318,7 @@ export function GoalForm({ goal, ownerOptions, onClose, onSaved }: Props) {
         </div>
 
         <div className="hb-gpanel-foot">
+          {missing && !conflict && <span className="hb-gpanel-missing">{missing}</span>}
           <button type="button" className="hb-btn hb-btn-ghost" onClick={dismiss}>
             Cancel
           </button>
@@ -323,8 +335,8 @@ export function GoalForm({ goal, ownerOptions, onClose, onSaved }: Props) {
             <button
               type="submit"
               className="hb-btn hb-btn-primary"
-              disabled={submitting || !dirty}
-              title={dirty ? undefined : 'Nothing has changed yet'}
+              disabled={submitting || !dirty || missing !== null}
+              title={missing ?? (dirty ? undefined : 'Nothing has changed yet')}
             >
               {submitting ? 'Saving…' : editing ? 'Save changes' : 'Create goal'}
             </button>

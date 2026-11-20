@@ -10,6 +10,7 @@ import {
   keepTimer,
   startTimer,
   stopMessage,
+  stopTone,
   stopTimer,
   useTimer,
 } from '../../lib/timer';
@@ -81,7 +82,7 @@ export function TimeBlock({
       if (stopped)
         toast({
           message: `${stopMessage(stopped)} Now timing this task.`,
-          tone: stopped.logged ? 'dark' : 'error',
+          tone: stopTone(stopped, 'dark'),
         });
     } catch (e) {
       toast({
@@ -96,7 +97,7 @@ export function TimeBlock({
     setBusy(true);
     try {
       const r = await stopTimer();
-      if (r) toast({ message: stopMessage(r), tone: r.logged ? 'success' : 'error' });
+      if (r) toast({ message: stopMessage(r), tone: stopTone(r, 'success') });
     } finally {
       setBusy(false);
     }
@@ -194,7 +195,7 @@ export function TimerCheckIn() {
       if (what === 'keep') await keepTimer();
       else {
         const r = await stopTimer();
-        if (r) toast({ message: stopMessage(r), tone: r.logged ? 'success' : 'error' });
+        if (r) toast({ message: stopMessage(r), tone: stopTone(r, 'success') });
       }
     } catch (e) {
       toast({ message: e instanceof Error ? e.message : 'That didn’t work', tone: 'error' });

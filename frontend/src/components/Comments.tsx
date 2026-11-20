@@ -143,8 +143,13 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
       const list = usersRef.current ?? [];
       const q = query.trim().toLowerCase();
       if (!q) return list;
+      // Names count as well as emails; the suggestion list then ranks name
+      // matches above email matches (rankMentionUsers).
       return list.filter(
-        (u) => u.email.toLowerCase().includes(q) || (u.title ?? '').toLowerCase().includes(q),
+        (u) =>
+          userLabel(u).toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          (u.title ?? '').toLowerCase().includes(q),
       );
     },
     [taskId],
@@ -275,7 +280,8 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
    * removes what was uploaded, so a half-saved comment is never left behind.
    */
   async function submitComment() {
-    const hasText = composerBody.trim() !== '';
+    // Text that is only empty paragraphs or spaces counts as no text.
+    const hasText = plainText(composerBody) !== '';
     if (!hasText && pending.length === 0) return;
     setSubmitting(true);
     setError(null);
@@ -385,7 +391,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
   }
 
   // Either half is enough to post: text alone, files alone, or both.
-  const composerActive = composerBody.trim() !== '' || pending.length > 0;
+  const composerActive = plainText(composerBody) !== '' || pending.length > 0;
 
   return (
     <div className="comments">
@@ -415,6 +421,8 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                 onChange={(html) => {
                   setComposerBody(html);
                   writeDraft(draftId, html);
+                  // An old error no longer applies once the comment changes.
+                  setError(null);
                 }}
                 withMentions
                 mentionFetch={mentionFetch}
@@ -508,7 +516,7 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
                 {hasDraft && (
                   <button
                     type="button"
-                    className="secondary danger"
+                    className="secondary hb-btn-discard"
                     disabled={submitting}
                     onClick={discardDraft}
                   >
@@ -589,7 +597,9 @@ export function Comments({ task, currentUser, onChanged, onDirtyChange }: Props)
 
       {task.comments.length === 0 ? (
         <EmptyState compact title="No comments yet">
-          Start the conversation — add the first comment above.
+          {isViewOnlyAccess(task.access)
+            ? 'Nobody has commented on this task.'
+            : 'Start the conversation — add the first comment above.'}
         </EmptyState>
       ) : shownComments.length === 0 ? (
         <p className="hb-cfilter-none">
