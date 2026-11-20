@@ -218,9 +218,9 @@ describe('OrganizationPage — counts and moving someone (L4)', () => {
   });
   const people = () => [mo, bo, ana({ alertTaskPicks: [] })];
 
-  it('counts people reporting to nobody and without a duty, and filters to them', async () => {
+  it('counts people who need a supervisor and without a duty, and filters to them', async () => {
     await renderPage({ people: people(), scope: 'all' });
-    const nosup = screen.getByRole('button', { name: /Reporting to nobody/ });
+    const nosup = screen.getByRole('button', { name: /Needs a supervisor/ });
     const noduty = screen.getByRole('button', { name: /Without a duty/ });
     expect(nosup).toHaveTextContent('2');
     expect(noduty).toHaveTextContent('1');

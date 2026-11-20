@@ -2569,6 +2569,10 @@ button {
  *
  * The list that remains covers buttons with no hover of their own, which
  * would otherwise be filled; `btn-plain` is the class for a new one.
+ *
+ * Every Harbor button (any `hb-` class) is left out as a whole: Harbor paints
+ * its own buttons and hovers in harbor.css, and a card or chip drawn as a
+ * button (the Organization person card) was turning navy under its dark text.
  */
 button:hover:where(
     :not(
@@ -2600,6 +2604,8 @@ button:hover:where(
       .exc-drawer-x,
       .exc-drawer-open-log,
       .exc-group-name-btn,
+      [class^='hb-'],
+      [class*=' hb-'],
       :disabled
     )
   ) {
@@ -2635,6 +2641,8 @@ button:active:where(
       .exc-drawer-x,
       .exc-drawer-open-log,
       .exc-group-name-btn,
+      [class^='hb-'],
+      [class*=' hb-'],
       :disabled
     )
   ) {
