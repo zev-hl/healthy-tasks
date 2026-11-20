@@ -1,5 +1,10 @@
 # Redesign preview site (Render)
 
+> **Nov 20, 2026: done with.** The redesign was approved and `redesign` was
+> merged into `staging`, so the Staging site and API now run it. The preview
+> site is no longer needed; see "Removing it later". The "Its own API and
+> database" steps below were never carried out.
+
 The UI redesign lives on the `redesign` branch. It is deployed as a **second
 static site** on Render, built from that branch, that talks to the **existing
 Staging API and its data**. The Staging site (`hlcentral-staging`) is not
