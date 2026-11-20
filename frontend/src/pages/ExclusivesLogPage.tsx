@@ -6,6 +6,7 @@
  * screen never holds more than one page. The header toolbar keeps the reference
  * design: date-range and alert-type popovers, search, and Export.
  */
+import { CalendarDays, ChevronDown } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import {
@@ -248,12 +249,10 @@ export function ExclusivesLogPage() {
               aria-expanded={openFilter === 'dates'}
               onClick={() => toggleFilter('dates')}
             >
-              <span aria-hidden="true">🗓</span>
+              <CalendarDays size={14} aria-hidden="true" />
               Filter by date / time
               {(dateFrom || dateTo) && <span className="exc-filter-count">1</span>}
-              <span className="exc-caret" aria-hidden="true">
-                ▲
-              </span>
+              <ChevronDown className="exc-caret" size={14} strokeWidth={2.4} aria-hidden="true" />
             </button>
             {openFilter === 'dates' && (
               <div className="exc-filter-pop exc-date-pop">
@@ -330,9 +329,7 @@ export function ExclusivesLogPage() {
                   {active.size} of {EXCLUSIVES_ALERT_TYPES.length}
                 </span>
               )}
-              <span className="exc-caret" aria-hidden="true">
-                ▲
-              </span>
+              <ChevronDown className="exc-caret" size={14} strokeWidth={2.4} aria-hidden="true" />
             </button>
             {openFilter === 'types' && (
               <div className="exc-filter-pop exc-type-pop">
@@ -387,9 +384,7 @@ export function ExclusivesLogPage() {
                   {groupIds.length} of {groupOptions.length}
                 </span>
               )}
-              <span className="exc-caret" aria-hidden="true">
-                ▲
-              </span>
+              <ChevronDown className="exc-caret" size={14} strokeWidth={2.4} aria-hidden="true" />
             </button>
             {openFilter === 'groups' && (
               <div className="exc-filter-pop exc-group-pop">
@@ -441,7 +436,7 @@ export function ExclusivesLogPage() {
           />
           <button
             type="button"
-            className="exc-toolbtn"
+            className="hb-btn"
             onClick={() => void onExport()}
             disabled={exporting || total === 0}
           >

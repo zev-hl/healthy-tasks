@@ -35,9 +35,9 @@ describe('Previous and Next', () => {
 
   it('move one page a click', () => {
     const onPage = pager();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }), { detail: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }), { detail: 1 });
     expect(onPage).toHaveBeenLastCalledWith(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Previous' }), { detail: 1 });
+    fireEvent.click(screen.getByRole('button', { name: 'Previous page' }), { detail: 1 });
     expect(onPage).toHaveBeenLastCalledWith(1);
   });
 
@@ -45,13 +45,13 @@ describe('Previous and Next', () => {
     const onPage = pager();
     // What a browser sends for a double-click: a click, then a second one
     // counted as the second in a row.
-    const next = screen.getByRole('button', { name: 'Next' });
+    const next = screen.getByRole('button', { name: 'Next page' });
     fireEvent.click(next, { detail: 1 });
     fireEvent.click(next, { detail: 2 });
     expect(onPage).toHaveBeenCalledTimes(1);
     expect(onPage).toHaveBeenCalledWith(3);
 
-    const previous = screen.getByRole('button', { name: 'Previous' });
+    const previous = screen.getByRole('button', { name: 'Previous page' });
     fireEvent.click(previous, { detail: 1 });
     fireEvent.click(previous, { detail: 2 });
     fireEvent.click(previous, { detail: 3 });
@@ -61,7 +61,7 @@ describe('Previous and Next', () => {
 
   it('still work from the keyboard, which sends a click counted as 0', () => {
     const onPage = pager();
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }), { detail: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }), { detail: 0 });
     expect(onPage).toHaveBeenCalledWith(3);
   });
 

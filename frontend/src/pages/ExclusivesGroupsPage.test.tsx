@@ -88,6 +88,8 @@ const type = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 beforeEach(() => {
+  // jsdom has no scrollIntoView; the Rows menu calls it to keep its choice in view.
+  Element.prototype.scrollIntoView = vi.fn();
   vi.useFakeTimers();
   queryGroups.mockResolvedValue(pageOf([group()]));
   getSummary.mockResolvedValue(summary);
@@ -371,7 +373,8 @@ describe('ExclusivesGroupsPage — keeping its place', () => {
     renderList('/exclusives/groups?page=2');
     await settle();
 
-    fireEvent.click(screen.getByRole('button', { name: '50' }));
+    fireEvent.click(screen.getByRole('button', { name: /Rows/ }));
+    fireEvent.click(screen.getByRole('option', { name: '50' }));
     await settle();
     expect(address()).toBe('/exclusives/groups?size=50');
 
