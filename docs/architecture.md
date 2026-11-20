@@ -1193,9 +1193,13 @@ Changed, on a "T under P" state; its rows exist on no server.
   person to anyone who can read it. My Time shows the day's timed hours by duty
   (`TimeDayDto.timed`, with `dutyId: null` as "No duty") read-only beside the
   hand-typed `TimeEntry` rows, and the day, week and Time Review totals count
-  both. A duty with timed hours counts as used (archive, not delete).
-- **Organization**: toolbar counts of people reporting to nobody and without a
-  duty, each a filter; dropping a card on a manager asks before the move is
+  both (Review shows timer time on tasks with no duty as its own "No duty"
+  line: a record with `dutyId: null`, left out by a department or duty
+  filter). Completing a day that has "No duty" time asks "Complete anyway?"
+  first. A duty with timed hours counts as used (archive, not delete).
+- **Organization**: toolbar counts of people who need a supervisor (no
+  supervisor, Admins left out; the "Top level" section lists everyone with
+  none) and without a duty, each a filter; dropping a card on a manager asks before the move is
   staged for Save changes.
 
 ## 21. Calendar, events and Google Calendar (Nov 2026 plan, Stage 3)
