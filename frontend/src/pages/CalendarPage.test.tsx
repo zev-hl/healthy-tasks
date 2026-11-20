@@ -91,6 +91,27 @@ describe('Calendar page (H3, H4)', () => {
     expect(screen.getByRole('heading', { name: 'Weekly sync' })).toBeInTheDocument();
   });
 
+  it('shows the Google chip off, with a hint, while no Google Calendar is connected', async () => {
+    fn(api.listGoogleEvents).mockResolvedValue({ connected: false, problem: null, events: [] });
+    fn(api.getGoogleCalendar).mockResolvedValue({
+      available: true,
+      connected: false,
+      email: null,
+      problem: null,
+    });
+    renderWithDataRouter(<CalendarPage />, { path: '/calendar', initialEntries: ['/calendar'] });
+    await settle();
+    await settle();
+    const chip = screen.getByRole('button', { name: /Google Calendar$/ });
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    expect(chip).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    expect(
+      screen.getByRole('button', { name: 'Connect Google Calendar on your profile' }),
+    ).toBeInTheDocument();
+  });
+
   it('Team asks for the team’s tasks and events', async () => {
     renderWithDataRouter(<CalendarPage />, { path: '/calendar', initialEntries: ['/calendar'] });
     await settle();

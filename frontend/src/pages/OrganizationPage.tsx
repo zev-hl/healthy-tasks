@@ -536,7 +536,7 @@ export function OrganizationPage() {
           {noSupervisor.length > 0 && (
             <div className="hb-attn-col">
               <span className="hb-attn-title">
-                No supervisor <CountBadge n={noSupervisor.length} red />
+                Needs a supervisor <CountBadge n={noSupervisor.length} red />
               </span>
               {noSupervisor.slice(0, 5).map((p) => (
                 <div key={p.id} className="hb-attn-row">
@@ -620,7 +620,9 @@ export function OrganizationPage() {
                   </span>
                 )}
                 {isRoot && org?.scope === 'all' && (
-                  <span className="hb-sub">No supervisor · drop someone here to clear theirs</span>
+                  <span className="hb-sub">
+                    Everyone with no supervisor, Admins included · drop someone here to clear theirs
+                  </span>
                 )}
               </div>
               <span className="hb-count">{members.length}</span>
@@ -699,9 +701,10 @@ export function OrganizationPage() {
                 flagFilter === 'nosup' && 'is-active',
               )}
               aria-pressed={flagFilter === 'nosup'}
+              title="People other than Admins who have no supervisor yet"
               onClick={() => setFlagFilter((f) => (f === 'nosup' ? 'none' : 'nosup'))}
             >
-              Reporting to nobody{' '}
+              Needs a supervisor{' '}
               <CountBadge n={noSupervisor.length} red={noSupervisor.length > 0} />
             </button>
           )}

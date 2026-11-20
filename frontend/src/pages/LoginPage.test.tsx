@@ -133,6 +133,22 @@ describe('LoginPage', () => {
     expect(loginWithGoogle).not.toHaveBeenCalled();
   });
 
+  it('focuses Email on load, and tabs Email › Password › Keep me signed in › Sign in', () => {
+    renderWithRouter(<LoginPage />);
+    const email = screen.getByLabelText('Email');
+    expect(email).toHaveFocus();
+    const order = [
+      email,
+      screen.getByLabelText('Password'),
+      screen.getByRole('checkbox', { name: /Keep me signed in on this device/ }),
+      screen.getByRole('button', { name: 'Sign in' }),
+    ];
+    for (let i = 1; i < order.length; i++)
+      expect(
+        order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+  });
+
   it('keeps you signed in on this device only when ticked, either way in', async () => {
     renderWithRouter(<LoginPage />);
     const box = screen.getByRole('checkbox', { name: /Keep me signed in on this device/ });

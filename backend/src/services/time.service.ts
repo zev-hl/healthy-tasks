@@ -6,6 +6,7 @@ import {
   type DutyRef,
   type RelatedTaskDto,
   type TimeDayDto,
+  type TimeRecordDto,
   type TimeReviewDto,
   type TimeReviewPeopleDto,
   type TimeReviewPersonDto,
@@ -484,19 +485,37 @@ export async function getTimeReview(actor: Actor, input: TimeReviewInput): Promi
   for (const e of [...typed, ...timed]) dayOf(e.userId, e.date).minutes += e.minutes;
 
   // Timed hours (L2) count with the hand-typed ones, one record per person,
-  // day and duty; timed time on tasks with no duty counts in the day only.
-  const merged = new Map<string, (typeof typed)[number]>();
+  // day and duty. Timed time on tasks with no duty is its own record with
+  // `dutyId: null` (the "No duty" line, as on My Time), so the grid's totals
+  // match the person's own; a department or duty filter leaves it out.
+  const merged = new Map<
+    string,
+    {
+      userId: string;
+      date: Date;
+      dutyId: string | null;
+      departmentId: string | null;
+      minutes: number;
+    }
+  >();
   for (const e of [...typed, ...timed]) {
-    if (!e.dutyId || !e.duty) continue;
-    const key = `${e.userId}|${fromDbDate(e.date)}|${e.dutyId}`;
+    const dutyId = e.dutyId && e.duty ? e.dutyId : null;
+    const key = `${e.userId}|${fromDbDate(e.date)}|${dutyId ?? ''}`;
     const cur = merged.get(key);
     if (cur) cur.minutes += e.minutes;
-    else merged.set(key, { ...e, dutyId: e.dutyId, duty: e.duty });
+    else
+      merged.set(key, {
+        userId: e.userId,
+        date: e.date,
+        dutyId,
+        departmentId: e.duty?.departmentId ?? null,
+        minutes: e.minutes,
+      });
   }
-  const records = [...merged.values()]
+  const records: TimeRecordDto[] = [...merged.values()]
     .filter(
       (e) =>
-        (!input.departmentId || e.duty.departmentId === input.departmentId) &&
+        (!input.departmentId || e.departmentId === input.departmentId) &&
         (!input.dutyId || e.dutyId === input.dutyId),
     )
     .map((e) => ({
@@ -509,7 +528,7 @@ export async function getTimeReview(actor: Actor, input: TimeReviewInput): Promi
   const related = await relatedTasks(actor, ids, from, to, input.departmentId, input.dutyId);
 
   const dutyIds = new Set<string>([
-    ...records.map((r) => r.dutyId),
+    ...records.flatMap((r) => (r.dutyId ? [r.dutyId] : [])),
     ...related.map((t) => t.duty.id),
   ]);
   const dutyRows = dutyIds.size

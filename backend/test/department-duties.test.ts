@@ -1401,6 +1401,67 @@ describe('time review', () => {
     assert.equal(people.body.isAdmin, false);
   });
 
+  it('counts timer time on tasks with no duty as a "No duty" line, matching My Time', async () => {
+    const { admin, mgr, grace, packing } = await world();
+    await logDay(grace.email, '2026-09-21', [{ dutyId: packing.id, minutes: 60 }]);
+    const withDuty = await makeTask(admin, {
+      name: 'Packed',
+      assigneeId: grace.id,
+      dutyId: packing.id,
+    });
+    const noDuty = await makeTask(admin, { name: 'Loose', assigneeId: grace.id });
+    const stretch = (taskId: number, dutyId: string | null, minutes: number) =>
+      prisma.timedStretch.create({
+        data: {
+          userId: grace.id,
+          taskId,
+          dutyId,
+          date: new Date('2026-09-21T00:00:00Z'),
+          startedAt: new Date('2026-09-21T09:00:00Z'),
+          endedAt: new Date(Date.parse('2026-09-21T09:00:00Z') + minutes * 60_000),
+          minutes,
+        },
+      });
+    await stretch(withDuty.id, packing.id, 30);
+    await stretch(noDuty.id, null, 25);
+
+    const tok = await login(mgr.email);
+    const res = await request(app)
+      .post('/api/time/review')
+      .set(auth(tok))
+      .send({ from: '2026-09-20', to: '2026-09-26', scope: `user:${grace.id}` });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const sum = (rs: { minutes: number }[]) => rs.reduce((s, r) => s + r.minutes, 0);
+    assert.equal(sum(res.body.records), 115);
+    assert.deepEqual(
+      res.body.records.find((r: { dutyId: string | null }) => r.dutyId === null),
+      { userId: grace.id, date: '2026-09-21', dutyId: null, minutes: 25 },
+    );
+    assert.equal(
+      res.body.records.find((r: { dutyId: string | null }) => r.dutyId === packing.id).minutes,
+      90,
+    );
+    // The same total as the person's own My Time and the day's total.
+    const mine = await request(app)
+      .get('/api/time/days?from=2026-09-20&to=2026-09-26')
+      .set(auth(await login(grace.email)));
+    const day = mine.body.find((d: { date: string }) => d.date === '2026-09-21');
+    assert.equal(sum(day.entries) + sum(day.timed), 115);
+    assert.equal(res.body.days[0].minutes, 115);
+
+    // A duty or department filter leaves the "No duty" line out.
+    const byDuty = await request(app)
+      .post('/api/time/review')
+      .set(auth(tok))
+      .send({
+        from: '2026-09-20',
+        to: '2026-09-26',
+        scope: `user:${grace.id}`,
+        dutyId: packing.id,
+      });
+    assert.equal(sum(byDuty.body.records), 90);
+  });
+
   it("lists a person's related tasks for their day editor", async () => {
     const { admin, grace, packing } = await world();
     const t = await makeTask(admin, {

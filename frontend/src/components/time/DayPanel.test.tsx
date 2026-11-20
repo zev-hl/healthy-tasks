@@ -145,6 +145,23 @@ describe('DayPanel', () => {
     expect(screen.getByText('1:30')).toBeInTheDocument();
   });
 
+  it('asks "Complete anyway?" before completing a day with timer time under no duty', async () => {
+    listDays.mockResolvedValue([day({ timed: [{ dutyId: null, minutes: 20 }] })]);
+    saveDay.mockResolvedValue(day({ timed: [{ dutyId: null, minutes: 20 }], completed: true }));
+    const { onChanged } = open();
+    await screen.findByText('Timed on tasks');
+    fireEvent.click(screen.getByRole('checkbox', { name: /Mark this day as completed/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save day' }));
+    expect(await screen.findByText('Complete anyway?')).toBeInTheDocument();
+    expect(saveDay).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Complete anyway' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(saveDay).toHaveBeenCalledWith(
+      '2026-09-21',
+      expect.objectContaining({ completed: true }),
+    );
+  });
+
   it('won’t let a day go over 24 hours', async () => {
     listDays.mockResolvedValue([day({ entries: [{ dutyId: 'pack', minutes: 1380 }] })]);
     open();

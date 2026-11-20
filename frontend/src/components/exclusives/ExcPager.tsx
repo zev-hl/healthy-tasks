@@ -1,9 +1,11 @@
 /**
- * Exclusives table pager (HLAI-71) — matches the design: a range label, the
- * 25/50/100 size chips, and Previous · numbered-page · Next controls. All Tasks
- * uses it too, with its own sizes (`sizes`).
+ * Exclusives table pager (HLAI-71), in the Harbor pager's look (as on Users):
+ * a range label, a Rows chip (25/50/100), and Previous · numbered pages · Next.
+ * `sizes` sets the row counts offered.
  */
 import type { MouseEvent } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Select } from '../harbor/Select';
 
 export const PAGE_SIZES = [25, 50, 100] as const;
 
@@ -67,61 +69,57 @@ export function ExcPager({
   const pages = pageWindow(page, totalPages);
 
   return (
-    <div className="exc-pager">
-      <span className="mono muted exc-pager-range">
+    <div className="hb-pager exc-pager">
+      <span className="hb-small exc-pager-range">
         {total === 0 ? 'No rows' : `${first}–${last} of ${total}`}
       </span>
-      <div className="exc-pager-right">
-        <span className="exc-pager-rows-label">Rows</span>
-        <div className="exc-sizes">
-          {sizes.map((n) => (
+      <span className="hb-grow" />
+      <Select
+        variant="chip"
+        label="Rows"
+        value={String(pageSize)}
+        options={sizes.map((n) => ({ value: String(n), label: String(n) }))}
+        onChange={(v) => onPageSize(Number(v))}
+      />
+      {/* One group, so on a narrow screen it moves to its own line whole. */}
+      <div className="exc-pager-nav">
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          aria-label="Previous page"
+          title="Previous page"
+          disabled={page <= 1}
+          onClick={firstClickOnly(() => onPage(page - 1))}
+        >
+          <ChevronLeft size={16} aria-hidden="true" />
+        </button>
+        {pages.map((p, i) =>
+          p === 'gap' ? (
+            <span key={`gap-${i}`} className="exc-page-gap" aria-hidden="true">
+              …
+            </span>
+          ) : (
             <button
-              key={n}
+              key={p}
               type="button"
-              className={`exc-size${n === pageSize ? ' active' : ''}`}
-              aria-pressed={n === pageSize}
-              onClick={() => onPageSize(n)}
+              className={`exc-page-num${p === page ? ' active' : ''}`}
+              aria-current={p === page ? 'page' : undefined}
+              onClick={() => onPage(p)}
             >
-              {n}
+              {p}
             </button>
-          ))}
-        </div>
-        {/* One group, so on a narrow screen it moves to its own line whole. */}
-        <div className="exc-pager-nav">
-          <button
-            type="button"
-            className="exc-page-btn"
-            disabled={page <= 1}
-            onClick={firstClickOnly(() => onPage(page - 1))}
-          >
-            Previous
-          </button>
-          {pages.map((p, i) =>
-            p === 'gap' ? (
-              <span key={`gap-${i}`} className="exc-page-num muted" aria-hidden="true">
-                …
-              </span>
-            ) : (
-              <button
-                key={p}
-                type="button"
-                className={`exc-page-num${p === page ? ' active' : ''}`}
-                aria-current={p === page ? 'page' : undefined}
-                onClick={() => onPage(p)}
-              >
-                {p}
-              </button>
-            ),
-          )}
-          <button
-            type="button"
-            className="exc-page-btn"
-            disabled={page >= totalPages}
-            onClick={firstClickOnly(() => onPage(page + 1))}
-          >
-            Next
-          </button>
-        </div>
+          ),
+        )}
+        <button
+          type="button"
+          className="hb-icon-btn hb-icon-btn-sm"
+          aria-label="Next page"
+          title="Next page"
+          disabled={page >= totalPages}
+          onClick={firstClickOnly(() => onPage(page + 1))}
+        >
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
       </div>
     </div>
   );

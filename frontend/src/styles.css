@@ -2116,6 +2116,9 @@ textarea:focus-visible {
 .auth-remember input {
   margin-top: 2px;
 }
+.auth-form-col form .auth-remember {
+  margin: 0;
+}
 .auth-remember small {
   display: block;
   font-weight: 400;
@@ -2234,6 +2237,24 @@ textarea:focus-visible {
   display: flex;
   gap: 0.5rem;
   margin-top: 1.2rem;
+}
+/* Change password on a row of its own, then the two sign-outs side by side:
+   the narrow card can't hold all three on one line, and a ragged wrap read
+   as a mistake. No button label breaks. */
+.profile-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+}
+.profile-actions > button {
+  white-space: nowrap;
+}
+.profile-actions > .profile-pw-btn {
+  grid-column: 1 / -1;
+}
+.profile-pw-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-3);
 }
 
 /* A column of cards in one grid cell, spaced like the grid itself. */
@@ -2569,6 +2590,10 @@ button {
  *
  * The list that remains covers buttons with no hover of their own, which
  * would otherwise be filled; `btn-plain` is the class for a new one.
+ *
+ * Every Harbor button (any `hb-` class) is left out as a whole: Harbor paints
+ * its own buttons and hovers in harbor.css, and a card or chip drawn as a
+ * button (the Organization person card) was turning navy under its dark text.
  */
 button:hover:where(
     :not(
@@ -2600,6 +2625,8 @@ button:hover:where(
       .exc-drawer-x,
       .exc-drawer-open-log,
       .exc-group-name-btn,
+      [class^='hb-'],
+      [class*=' hb-'],
       :disabled
     )
   ) {
@@ -2635,6 +2662,8 @@ button:active:where(
       .exc-drawer-x,
       .exc-drawer-open-log,
       .exc-group-name-btn,
+      [class^='hb-'],
+      [class*=' hb-'],
       :disabled
     )
   ) {
@@ -6595,6 +6624,17 @@ tr.just-completed > td {
   color: var(--accent-strong, var(--accent));
   font-size: 0.85rem;
 }
+/* A problem with a setting, right under the field (or beside Save). */
+.settings-field-error {
+  align-self: center;
+  margin: 0.3rem 0 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.settings-card input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
 
 /* --- Template tree editor: nesting, drag handle, collapse ------------------ */
 .tpl-tree-hint {
@@ -6851,99 +6891,41 @@ tr.just-completed > td {
 .exc-log-table {
   min-width: 60rem;
 }
-/* On a screen too narrow for one line, the buttons wrap onto a second. */
+/* The Exclusives pager wears the Harbor pager (.hb-pager, as on Users): on a
+   screen too narrow for one line, the page buttons wrap onto a second. */
 .exc-pager {
-  display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 0.6rem;
-  margin: 0;
-  padding: 11px 18px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-sunk);
-}
-.exc-pager-range {
-  font-size: 11.5px;
-}
-.exc-pager-right {
-  margin-left: auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
+  row-gap: 8px;
 }
 .exc-pager-nav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
-.exc-pager-rows-label {
-  font-size: 11.5px;
-  color: var(--muted-2);
-}
-.exc-sizes {
-  display: inline-flex;
-  gap: 2px;
-}
-.exc-size {
-  background: var(--surface);
-  border: 0;
-  color: var(--muted-2);
-  font-weight: 600;
-  font-size: 11.5px;
-  padding: 4px 9px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-/* Same wash as the rail; the chosen size keeps the solid tint below. */
-.exc-size:hover:not(.active) {
-  background: var(--accent-tint);
-  color: var(--accent-deep);
-}
-.exc-size.active {
-  background: var(--accent-soft);
-  color: var(--accent-deep);
-}
-.exc-page-btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--ink-3);
-  font-weight: 600;
-  font-size: 11.5px;
-  padding: 5px 11px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.exc-page-btn:hover:not(:disabled) {
-  background: var(--accent-tint);
-  border-color: var(--accent-mid);
-  color: var(--accent-deep);
-}
-.exc-page-btn:disabled {
-  color: var(--faint-2);
-  cursor: default;
+.exc-page-gap {
+  padding: 0 2px;
+  color: var(--muted);
 }
 .exc-page-num {
-  min-width: 26px;
-  background: var(--surface);
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid var(--border);
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  padding: 5px 8px;
   border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
 .exc-page-num:hover:not(.active) {
-  background: var(--accent-tint);
-  border-color: var(--accent-mid);
-  color: var(--accent-deep);
+  background: var(--canvas);
+  color: var(--ink);
 }
 .exc-page-num.active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: #fff;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
 }
 
 /* --- Dashboard row cells ------------------------------------------------ */
@@ -9921,16 +9903,14 @@ button.dd-ctx-x:hover {
     justify-content: space-between;
   }
 }
-/* A phone: the pager's Previous, pages and Next fit on one line. */
+/* A phone: the page buttons take a line of their own, at the right. */
 @media (max-width: 480px) {
   .exc-pager {
     padding-inline: 12px;
   }
   .exc-pager-nav {
-    gap: 4px;
-  }
-  .exc-page-btn {
-    padding-inline: 8px;
+    flex-basis: 100%;
+    justify-content: flex-end;
   }
 }
 
@@ -9938,7 +9918,119 @@ button.dd-ctx-x:hover {
 .exc-compare-link {
   display: inline-block;
   margin-top: 0.2rem;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
+}
+/* Links on the Exclusive Alerts pages read as Harbor links: the accent colour,
+   underlined only on hover. */
+.exc-page .link-button,
+.exc-compare-link.link-button {
+  color: var(--accent-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+.exc-page .link-button:hover,
+.exc-compare-link.link-button:hover {
+  color: var(--accent-deep);
+  text-decoration: underline;
+}
+
+/* --- Alert Log filters as Harbor filter chips (as on the Tasks list) ------- */
+.exc-log-toolbar .exc-toolbtn {
+  height: 32px;
+  padding: 0 12px;
+  gap: 6px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.exc-log-toolbar .exc-toolbtn:hover:not(:disabled) {
+  background: var(--surface);
+  border-color: var(--border-dashed);
+  color: var(--ink);
+}
+.exc-log-toolbar .exc-toolbtn.open,
+.exc-log-toolbar .exc-toolbtn.on,
+.exc-log-toolbar .exc-toolbtn.on:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--ink);
+}
+.exc-log-toolbar .exc-caret {
+  color: var(--muted);
+  transition: transform 0.12s ease;
+}
+.exc-log-toolbar .exc-toolbtn.open .exc-caret {
+  transform: rotate(180deg);
+}
+.exc-log-toolbar .exc-filter-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+.exc-log-toolbar .exc-search {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+.exc-log-toolbar > .hb-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* A phone: the Alert Log stacks each alert as a card instead of a table
+   cut off after its first two columns. */
+@media (max-width: 640px) {
+  .exc-log-table {
+    min-width: 0;
+  }
+  .exc-table.exc-log-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .exc-table.exc-log-table,
+  .exc-table.exc-log-table tbody,
+  .exc-table.exc-log-table tr,
+  .exc-table.exc-log-table td {
+    display: block;
+    width: auto;
+    min-width: 0;
+  }
+  .exc-table.exc-log-table tr {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .exc-table.exc-log-table td {
+    padding: 2px 0;
+    border: 0;
+    text-align: left;
+  }
+  .exc-table.exc-log-table td.exc-col-name,
+  .exc-table.exc-log-table td.exc-col-detail {
+    width: auto;
+    min-width: 0;
+  }
+  .exc-table.exc-log-table .exc-compare-link {
+    text-align: left;
+  }
+  .exc-table.exc-log-table td.exc-col-when {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    padding: 6px 0;
+  }
 }
 .exc-compare-about {
   margin: 0 0 0.6rem;

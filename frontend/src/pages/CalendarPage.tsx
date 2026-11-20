@@ -87,6 +87,10 @@ export function CalendarPage() {
     problem: null,
     connected: false,
   });
+  // Whether Google events have been asked for yet, and whether the server is
+  // set up for Google Calendar at all (no chip when it isn't).
+  const [googleLoaded, setGoogleLoaded] = useState(false);
+  const [googleAvailable, setGoogleAvailable] = useState(true);
   const [connectCalls, setConnectCalls] = useState<GoogleEventDto[]>([]);
   const connect = useConnect();
   const [loading, setLoading] = useState(false);
@@ -174,6 +178,7 @@ export function CalendarPage() {
       setRows([...all.values()]);
       setCal(calendar);
       setGoogle(g);
+      setGoogleLoaded(true);
       setError(null);
     } catch (e) {
       setError(errorText(e, 'Could not load the calendar.'));
@@ -192,6 +197,15 @@ export function CalendarPage() {
   }, []);
 
   const show = (l: CalendarLayer) => !hidden.has(l);
+  useEffect(() => {
+    api
+      .getGoogleCalendar()
+      .then((st) => setGoogleAvailable(st?.available !== false))
+      .catch(() => undefined);
+  }, []);
+  // Not connected: the Google chip is off and can't be switched on here.
+  const googleOff = googleLoaded && !google.connected;
+
   const toggle = (l: CalendarLayer) =>
     setHidden((h) => {
       const n = new Set(h);
@@ -238,26 +252,44 @@ export function CalendarPage() {
             onChange={setScope}
           />
           <div className="hb-cal-layers" role="group" aria-label="Show on the calendar">
-            {LAYERS.filter((l) => l !== 'connect' || connect.available).map((l) => (
-              <button
-                key={l}
-                type="button"
-                className={cx('hb-cal-layer', show(l) && 'is-on')}
-                aria-pressed={show(l)}
-                onClick={() => toggle(l)}
-                title={
-                  l === 'google' && !google.connected
-                    ? 'Connect your Google Calendar from your profile'
-                    : l === 'reminders'
-                      ? 'Only you see your reminders'
-                      : undefined
-                }
-              >
-                <span className="hb-dot" style={{ background: layerColor[l] }} aria-hidden="true" />
-                {LAYER_LABELS[l]}
-              </button>
-            ))}
+            {LAYERS.filter(
+              (l) => (l !== 'connect' || connect.available) && (l !== 'google' || googleAvailable),
+            ).map((l) => {
+              const off = l === 'google' && googleOff;
+              const on = show(l) && !off;
+              return (
+                <button
+                  key={l}
+                  type="button"
+                  className={cx('hb-cal-layer', on && 'is-on', off && 'is-unavailable')}
+                  aria-pressed={on}
+                  aria-disabled={off || undefined}
+                  onClick={() => {
+                    if (!off) toggle(l);
+                  }}
+                  title={
+                    off
+                      ? 'Not connected. Connect Google Calendar on your profile.'
+                      : l === 'reminders'
+                        ? 'Only you see your reminders'
+                        : undefined
+                  }
+                >
+                  <span
+                    className="hb-dot"
+                    style={on ? { background: layerColor[l] } : { borderColor: layerColor[l] }}
+                    aria-hidden="true"
+                  />
+                  {LAYER_LABELS[l]}
+                </button>
+              );
+            })}
           </div>
+          {googleOff && googleAvailable && (
+            <Btn kind="link" onClick={() => navigate('/profile#google-calendar')}>
+              Connect Google Calendar on your profile
+            </Btn>
+          )}
           {google.problem && show('google') && (
             <span className="hb-small hb-cal-gproblem">
               {google.problem}{' '}

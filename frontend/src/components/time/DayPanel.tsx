@@ -12,6 +12,7 @@ import {
 } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
 import { Avatar } from '../ui/Avatar';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { DutyTag, Swatch } from '../duties/DutyTag';
 import type { CatalogDuty } from '../../lib/duties';
 import { addDays, formatLongDay, splitMinutes, todayISO } from '../../lib/calendar';
@@ -57,6 +58,7 @@ export function DayPanel({
   const [entries, setEntries] = useState<Record<string, number>>({});
   const [note, setNote] = useState('');
   const [markDone, setMarkDone] = useState(false);
+  const [askNoDuty, setAskNoDuty] = useState(false);
   const [related, setRelated] = useState<RelatedTaskDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -249,8 +251,15 @@ export function DayPanel({
     });
   }
 
-  async function save() {
+  async function save(completeAnyway = false) {
     if (!day) return;
+    // Completing with timer time on tasks with no duty asks first (the hint
+    // under the timed hours asks to sort it out before completing).
+    if (markDone && noDutyMinutes > 0 && !completeAnyway) {
+      setAskNoDuty(true);
+      return;
+    }
+    setAskNoDuty(false);
     setSaving(true);
     setError(null);
     try {
@@ -652,6 +661,17 @@ export function DayPanel({
           )}
         </div>
       </section>
+      {askNoDuty && (
+        <ConfirmDialog
+          title="Complete anyway?"
+          message={`${formatHM(noDutyMinutes)} was timed on tasks with no duty. It counts in the day’s total, but under no duty. Save and complete the day as it is?`}
+          confirmLabel="Complete anyway"
+          cancelLabel="Not yet"
+          tone="warn"
+          onConfirm={() => void save(true)}
+          onCancel={() => setAskNoDuty(false)}
+        />
+      )}
     </Card>
   );
 }

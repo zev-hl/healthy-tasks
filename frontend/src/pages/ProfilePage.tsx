@@ -31,6 +31,23 @@ export function ProfilePage() {
   const tzOptions = useMemo(timeZoneOptions, []);
   const [confirmEverywhere, setConfirmEverywhere] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  // Change password: a link to set a new one goes to the person's own address,
+  // and they stay signed in here (the reset page is for the signed-out).
+  const [pwState, setPwState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [pwError, setPwError] = useState<string | null>(null);
+
+  const sendPasswordLink = async () => {
+    if (!user) return;
+    setPwState('sending');
+    setPwError(null);
+    try {
+      await api.forgotPassword(user.email);
+      setPwState('sent');
+    } catch (err) {
+      setPwState('failed');
+      setPwError(err instanceof ApiError ? err.message : 'Could not send the link. Try again.');
+    }
+  };
 
   const saveTimeZone = async (timeZone: string | null) => {
     setTzSaving(true);
@@ -131,10 +148,12 @@ export function ProfilePage() {
               {user?.signInMethod === 'password' && (
                 <button
                   type="button"
-                  className="secondary"
-                  onClick={() => navigate('/forgot-password')}
+                  className="secondary profile-pw-btn"
+                  disabled={pwState === 'sending'}
+                  title="Emails you a link to set a new password"
+                  onClick={() => void sendPasswordLink()}
                 >
-                  Change password
+                  {pwState === 'sending' ? 'Sending…' : 'Change password'}
                 </button>
               )}
               <button
@@ -145,7 +164,7 @@ export function ProfilePage() {
                   navigate('/login');
                 }}
               >
-                Log out
+                Sign out
               </button>
               <button
                 type="button"
@@ -156,6 +175,17 @@ export function ProfilePage() {
                 Sign out everywhere
               </button>
             </div>
+            {pwState === 'sent' && (
+              <p className="profile-pw-note" role="status">
+                We sent a link to your email ({user?.email}). Open it to set a new password. Your
+                current password keeps working until you do.
+              </p>
+            )}
+            {pwState === 'failed' && pwError && (
+              <div className="alert error" role="alert">
+                {pwError}
+              </div>
+            )}
             {confirmEverywhere && (
               <ConfirmDialog
                 title="Sign out everywhere?"

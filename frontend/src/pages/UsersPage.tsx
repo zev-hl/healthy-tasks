@@ -26,6 +26,7 @@ import { api, ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { MergeUsersPanel, UserCreatePanel, UserEditPanel } from '../components/users/UserPanels';
 import { Avatar, userLabel } from '../components/ui/Avatar';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useDebouncedValue } from '../lib/useDebouncedValue';
 import { cycleSort, sortState } from '../lib/multiSort';
 import { PageBody, PageHeader } from '../components/harbor/PageHeader';
@@ -81,6 +82,9 @@ export function UsersPage() {
   const moreRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [editing, setEditing] = useState<UserDto | null>(null);
+  // The person a reset link is about to go to, while the admin is asked first.
+  const [confirmReset, setConfirmReset] = useState<UserDto | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   const debouncedFilters = useDebouncedValue(filters, 350);
@@ -167,12 +171,16 @@ export function UsersPage() {
    * use instead of offering a button that cannot work.
    */
   async function handleReset(user: UserDto) {
+    setResetBusy(true);
     try {
       const res = await api.adminResetPassword(user.id);
       setNotice(`Reset link made for ${user.email}. It was also emailed to them.`);
       setResetLink(res.resetLink ?? null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to generate reset link');
+    } finally {
+      setResetBusy(false);
+      setConfirmReset(null);
     }
   }
 
@@ -326,7 +334,7 @@ export function UsersPage() {
           </>
         }
       />
-      <PageBody>
+      <PageBody className="hb-users-page">
         {error && (
           <div className="hb-alert" role="alert">
             {error}
@@ -581,10 +589,12 @@ export function UsersPage() {
                                   <Btn
                                     kind="ghost"
                                     className="hb-btn-sm"
-                                    onClick={() => void handleReset(u)}
+                                    onClick={() => setConfirmReset(u)}
                                     title="Send this user a link to set a password"
+                                    aria-label={`Reset password for ${u.email}`}
                                   >
-                                    <KeyRound size={14} aria-hidden="true" /> Reset password
+                                    <KeyRound size={14} aria-hidden="true" />
+                                    <span className="hb-users-reset-label">Reset password</span>
                                   </Btn>
                                 )}
                                 <button
@@ -709,6 +719,17 @@ export function UsersPage() {
             </aside>
           )}
         </div>
+        {confirmReset && (
+          <ConfirmDialog
+            title="Reset password?"
+            message={`Send a password reset link to ${confirmReset.email}? Their current password keeps working until they set a new one. Any earlier reset link stops working.`}
+            confirmLabel="Send link"
+            tone="accent"
+            busy={resetBusy}
+            onConfirm={() => void handleReset(confirmReset)}
+            onCancel={() => setConfirmReset(null)}
+          />
+        )}
       </PageBody>
     </>
   );
