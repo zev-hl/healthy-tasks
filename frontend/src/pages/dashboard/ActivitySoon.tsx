@@ -19,7 +19,7 @@ export function ActivitySoon({ team = false }: { team?: boolean }) {
         {team
           ? 'What your team changed in this period: status changes, comments and finished tasks. '
           : 'What you did in this period: status changes, comments and finished tasks. '}
-        It needs a backend change first.
+        It’s coming later.
       </p>
     </Card>
   );

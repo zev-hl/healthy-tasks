@@ -137,15 +137,17 @@ describe('Connect in the nine-dot menu', () => {
     expect(screen.queryByRole('button', { name: /^Connect/ })).toBeNull();
   });
 
-  it('its page says it isn’t linked yet, with what to set for an Admin only', async () => {
+  it('its page says it isn’t linked yet, in plain words, with who links it', async () => {
     fn(api.getConnect).mockResolvedValue({ available: false, url: null });
     const { unmount } = renderWithRouter(<ConnectPage />, ['/connect']);
     await settle();
-    expect(screen.getByText(/isn’t linked to HL Central yet/)).toHaveTextContent(/CONNECT_URL/);
+    const forAdmin = screen.getByText(/isn’t linked to HL Central yet/);
+    expect(forAdmin).toHaveTextContent(/ask the person who runs the server/);
+    expect(forAdmin).not.toHaveTextContent(/CONNECT_|docs\//);
     unmount();
     authUser = { id: 'me', role: 'Employee' };
     renderWithRouter(<ConnectPage />, ['/connect']);
     await settle();
-    expect(screen.getByText(/isn’t linked to HL Central yet/)).not.toHaveTextContent(/CONNECT_URL/);
+    expect(screen.getByText(/isn’t linked to HL Central yet/)).toHaveTextContent(/Ask an Admin/);
   });
 });
