@@ -2235,6 +2235,24 @@ textarea:focus-visible {
   gap: 0.5rem;
   margin-top: 1.2rem;
 }
+/* Change password on a row of its own, then the two sign-outs side by side:
+   the narrow card can't hold all three on one line, and a ragged wrap read
+   as a mistake. No button label breaks. */
+.profile-actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+}
+.profile-actions > button {
+  white-space: nowrap;
+}
+.profile-actions > .profile-pw-btn {
+  grid-column: 1 / -1;
+}
+.profile-pw-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-3);
+}
 
 /* A column of cards in one grid cell, spaced like the grid itself. */
 .profile-col {
