@@ -86,6 +86,14 @@ interface Stored {
   hbCalScale?: CalendarScale;
 }
 
+/** What the list keeps in its history entry when it opens the Calendar page. */
+interface ListReturn {
+  state: ViewState;
+  tab: string;
+  view: TaskView;
+  text: string;
+}
+
 function errorText(e: unknown, fallback = 'Something went wrong.'): string {
   return e instanceof ApiError ? e.message : fallback;
 }
@@ -184,12 +192,23 @@ export function TasksPage() {
       if (typeof s.hbReadOnly === 'boolean') setIncludeReadOnly(s.hbReadOnly);
       if (s.hbCalScale) setCalScale(s.hbCalScale);
 
-      const st = location.state as { filters?: TaskSearchFilters; text?: string } | null;
+      const st = location.state as {
+        filters?: TaskSearchFilters;
+        text?: string;
+        back?: ListReturn;
+      } | null;
       const params = new URLSearchParams(location.search);
+      const back = st?.back ? readViewState(st.back.state) : null;
       if (st?.filters) {
         const v = fromRawFilters(st.filters, user.id);
         setState(v);
         setTab(v.scope);
+      } else if (back && st?.back) {
+        // Back from the Calendar: the list as it was left (tab, filters, search).
+        setState(back);
+        setTab(st.back.tab);
+        if (st.back.view) setView(st.back.view);
+        if (st.back.text) setText(st.back.text);
       } else {
         const last = readViewState(s.hbState);
         const scopeParam = params.get('scope');
@@ -334,6 +353,32 @@ export function TasksPage() {
     window.addEventListener(TASK_CREATED_EVENT, refresh);
     return () => window.removeEventListener(TASK_CREATED_EVENT, refresh);
   }, [runQuery, loadCounts]);
+
+  // Escape clears the ticked rows (a dropdown or panel that is open takes
+  // Escape first and stops it, and typing in a field is left alone).
+  useEffect(() => {
+    if (selected.size === 0) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('input:not([type=checkbox]), textarea, select, [contenteditable="true"]'))
+        return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      setSelected(new Set());
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selected.size]);
+
+  /** Calendar opens the Calendar page (one calendar, H3), Me for My tasks and
+   * Team otherwise. This entry of the history keeps the list as it is, so Back
+   * returns to the same tab, filters and search. */
+  function openCalendar() {
+    const back: ListReturn = { state, tab, view, text };
+    navigate(location.pathname, { replace: true, state: { back } });
+    void api.savePreference('task-search', { ...stored.current, ...snapshot }).catch(() => {});
+    navigate(`/calendar?scope=${state.scope === 'mine' ? 'me' : 'team'}`);
+  }
 
   // Page and selection reset whenever what is shown changes.
   useEffect(() => {
@@ -621,12 +666,7 @@ export function TasksPage() {
               label="Show as"
               value={view}
               options={VIEWS}
-              onChange={(v) =>
-                // One calendar (H3): Calendar opens the Calendar page, Me or Team.
-                v === 'calendar'
-                  ? navigate(`/calendar?scope=${state.scope === 'mine' ? 'me' : 'team'}`)
-                  : setView(v)
-              }
+              onChange={(v) => (v === 'calendar' ? openCalendar() : setView(v))}
               small
             />
           </>

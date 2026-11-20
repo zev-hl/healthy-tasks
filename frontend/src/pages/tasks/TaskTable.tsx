@@ -228,6 +228,7 @@ export function TaskTable({
                       <tr
                         id={`task-row-${t.id}`}
                         className={cx(
+                          'hb-task-row',
                           selected.has(t.id) && 'selected',
                           flash.has(t.id) && 'flash',
                           open && 'is-peek',
@@ -310,7 +311,7 @@ export function TaskTable({
                           </div>
                         </td>
                         {showOwner && (
-                          <td>
+                          <td className="hb-col-owner">
                             {ro ? (
                               <span className="hb-owner">
                                 {t.assignee ? (
@@ -334,7 +335,7 @@ export function TaskTable({
                             )}
                           </td>
                         )}
-                        <td>
+                        <td className="hb-col-due">
                           {ro || t.canChangeDue === false ? (
                             <span
                               className={cx('hb-due-cell', due?.late && 'late')}
@@ -368,7 +369,7 @@ export function TaskTable({
                             </span>
                           )}
                         </td>
-                        <td>
+                        <td className="hb-col-status">
                           {ro || t.status === 'Review' ? (
                             <StatusPill status={t.status} />
                           ) : (
@@ -382,7 +383,7 @@ export function TaskTable({
                             />
                           )}
                         </td>
-                        <td>
+                        <td className="hb-col-prio">
                           {ro ? (
                             <PriorityMark priority={t.priority} />
                           ) : (
