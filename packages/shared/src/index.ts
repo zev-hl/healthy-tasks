@@ -3283,7 +3283,8 @@ export interface TimeReviewRequest {
 export interface TimeRecordDto {
   userId: string;
   date: CalendarDateString;
-  dutyId: string;
+  /** null: timer time on tasks with no duty (the "No duty" line). */
+  dutyId: string | null;
   minutes: number;
 }
 

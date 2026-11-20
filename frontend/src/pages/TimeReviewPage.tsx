@@ -88,6 +88,9 @@ const DAY_MINUTES = 8 * 60;
 const personName = (p: TaskUserRef) => `${p.firstName} ${p.lastName}`.trim() || p.email;
 
 /** A small shim so the logic below keeps its `showToast(message, tone)` calls. */
+/** The pivot key for timer time on tasks with no duty (and so no department). */
+const NO_DUTY = 'none';
+
 function useShowToast() {
   const toast = useHbToast();
   return {
@@ -222,8 +225,9 @@ export function TimeReviewPage() {
     () =>
       (data?.records ?? []).map((r) => ({
         p: r.userId,
-        d: dutyById.get(r.dutyId)?.departmentId ?? '?',
-        u: r.dutyId,
+        // Timer time on tasks with no duty: its own "No duty" line, as on My Time.
+        d: r.dutyId ? (dutyById.get(r.dutyId)?.departmentId ?? '?') : NO_DUTY,
+        u: r.dutyId ?? NO_DUTY,
         c: colKey(r.date),
         min: r.minutes,
         date: r.date,
@@ -235,6 +239,9 @@ export function TimeReviewPage() {
     () => new Map((data?.days ?? []).map((d) => [`${d.userId}|${d.date}`, d])),
     [data],
   );
+
+  const deptLabel = (id: string) => (id === NO_DUTY ? 'No duty' : (deptById.get(id)?.name ?? '?'));
+  const dutyName = (id: string) => (id === NO_DUTY ? 'No duty' : (dutyById.get(id)?.name ?? '?'));
 
   const labelOf = (n: PivotNode): string =>
     n.dim === 'p'
@@ -248,8 +255,8 @@ export function TimeReviewPage() {
           },
         )
       : n.dim === 'd'
-        ? (deptById.get(n.key)?.name ?? '?')
-        : (dutyById.get(n.key)?.name ?? '?');
+        ? deptLabel(n.key)
+        : dutyName(n.key);
 
   const viewKey = `${view}:${effPeriod}`;
   const pivot = useMemo(
@@ -275,8 +282,8 @@ export function TimeReviewPage() {
           return k === 'p'
             ? personName(personById.get(v!)!)
             : k === 'd'
-              ? (deptById.get(v!)?.name ?? '?')
-              : (dutyById.get(v!)?.name ?? '?');
+              ? deptLabel(v!)
+              : dutyName(v!);
         })
         .join(' › ')
     : '';
