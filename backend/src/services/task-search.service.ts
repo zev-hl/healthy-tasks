@@ -349,8 +349,9 @@ function mapSort(field: TaskSortField, dir: SortDirection): Prisma.TaskOrderByWi
       // Spec: tasks with no Start Date sort to the top.
       return { startAt: { sort: dir, nulls: 'first' } };
     case 'dueAt':
-      // Spec: tasks with no Due Date sort to the top.
-      return { dueAt: { sort: dir, nulls: 'first' } };
+      // Tasks with no Due Date sort last either way (UX review, Nov 2026): a
+      // "Soonest" list must open on what is overdue, not on undated tasks.
+      return { dueAt: { sort: dir, nulls: 'last' } };
     case 'parentChild':
       return { parentId: { sort: dir, nulls: 'last' } };
     case 'duty':
@@ -369,7 +370,7 @@ export function buildOrderBy(
       : [mapSort(s.field, s.dir)],
   );
   // Default: Due ascending with no-due tasks pinned to the top.
-  if (orderBy.length === 0) orderBy.push({ dueAt: { sort: 'asc', nulls: 'first' } });
+  if (orderBy.length === 0) orderBy.push({ dueAt: { sort: 'asc', nulls: 'last' } });
   // Stable tiebreaker for deterministic pagination.
   orderBy.push({ id: 'asc' });
   return orderBy;
