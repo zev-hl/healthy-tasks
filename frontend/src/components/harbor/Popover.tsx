@@ -41,6 +41,8 @@ export function Popover({
     left: number;
     width: number;
     above: boolean;
+    /** The window's room on the side it opens to, for panels that cap their height to it. */
+    room: number;
   } | null>(null);
 
   useLayoutEffect(() => {
@@ -61,7 +63,8 @@ export function Popover({
       const shown = Math.max(width, p?.offsetWidth ?? 0);
       const left = Math.max(8, Math.min(a.left, window.innerWidth - shown - 8));
       const top = above ? a.top - h - 6 : a.bottom + 6;
-      setPos({ top, left, width, above });
+      const room = Math.max(160, (above ? a.top : window.innerHeight - a.bottom) - 6 - 12);
+      setPos({ top, left, width, above, room });
     }
     place();
     // Measure again once the panel has its height.
@@ -118,6 +121,7 @@ export function Popover({
         left: pos?.left ?? -9999,
         minWidth: pos?.width ?? minWidth,
         visibility: pos ? 'visible' : 'hidden',
+        ['--hb-pop-room' as string]: pos ? `${pos.room}px` : undefined,
       }}
     >
       {children}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Square, Timer } from 'lucide-react';
 import { api } from '../../api/client';
-import { Bar, Card, CardHead } from '../../components/harbor/ui';
+import { Bar, Card, CardHead, cx } from '../../components/harbor/ui';
 import { useToast } from '../../components/harbor/Toast';
 import {
   dayMinutes,
@@ -18,6 +18,17 @@ import type { Period } from '../../components/harbor/taskHelpers';
 import { periodRange } from '../../components/harbor/taskHelpers';
 
 const DAY_MINUTES = 8 * 60;
+
+/** The card's note on time logged: today against the 8h target, saying so
+ * plainly when it is over; this week or month as a plain total. */
+function loggedText(logged: number, period: Period): string {
+  if (period !== 'today')
+    return `Logged ${period === 'week' ? 'this week' : 'this month'}: ${formatMinutes(logged)}`;
+  const base = `Logged today: ${formatMinutes(logged)}`;
+  return logged > DAY_MINUTES
+    ? `${base}, ${formatMinutes(logged - DAY_MINUTES)} over the 8h target`
+    : `${base} of the 8h target`;
+}
 
 /**
  * The Dashboard's time tracker (§6.4): the same timer as the task page and the
@@ -49,19 +60,7 @@ export function TimeTrackerCard({ period }: { period: Period }) {
 
   return (
     <Card>
-      <CardHead
-        icon={<Timer size={16} />}
-        title="Time tracker"
-        right={
-          <span className="hb-small">
-            {logged === null
-              ? ''
-              : period === 'today'
-                ? `${formatMinutes(logged)} of 8h today`
-                : `${formatMinutes(logged)} ${period === 'week' ? 'this week' : 'this month'}`}
-          </span>
-        }
-      />
+      <CardHead icon={<Timer size={16} />} title="Time tracker" />
       {timer ? (
         <div className="hb-tt running">
           <span className="hb-live" aria-hidden="true" />
@@ -75,15 +74,18 @@ export function TimeTrackerCard({ period }: { period: Period }) {
         </div>
       ) : (
         <div className="hb-tt">
-          <span className="hb-tt-clock idle">0:00:00</span>
+          <span className="hb-tt-idle">No timer running</span>
           <span className="hb-tt-on">
             Start the timer from any task’s page; it keeps running while you move around.
           </span>
         </div>
       )}
-      {period === 'today' && logged !== null && (
+      {logged !== null && (
         <div className="hb-pad hb-pad-tight" style={{ paddingBottom: 16 }}>
-          <Bar value={logged} max={DAY_MINUTES} />
+          <p className={cx('hb-tt-logged', period === 'today' && logged > DAY_MINUTES && 'over')}>
+            {loggedText(logged, period)}
+          </p>
+          {period === 'today' && <Bar value={logged} max={DAY_MINUTES} />}
         </div>
       )}
     </Card>

@@ -2911,14 +2911,14 @@ describe('task search / query (Phase 6)', () => {
     );
   });
 
-  it('defaults to Due ascending with no-due tasks pinned to the top', async () => {
+  it('defaults to Due ascending with no-due tasks last', async () => {
     const tok = await adminToken();
     const noDue = await makeTask(tok, 'ZZ no due');
     const early = await makeTask(tok, 'early', { dueAt: '2026-08-01T00:00:00Z' });
     const late = await makeTask(tok, 'late', { dueAt: '2026-12-01T00:00:00Z' });
 
     const ids = (await queryTasks(tok, {})).rows.map((r) => r.id);
-    assert.equal(ids[0], noDue.id, 'no-due pinned to top');
+    assert.equal(ids[ids.length - 1], noDue.id, 'no-due sorts last');
     assert.ok(ids.indexOf(early.id) < ids.indexOf(late.id), 'earlier due before later');
   });
 
@@ -2951,6 +2951,23 @@ describe('task search / query (Phase 6)', () => {
     const rows = (await queryTasks(tok, { sort: [{ field: 'id', dir: 'asc' }] })).rows;
     assert.equal(rows.find((r) => r.id === parent.id)?.childrenCount, 1);
     assert.equal(rows.find((r) => r.id === child.id)?.parentId, parent.id);
+  });
+
+  it('sorts tasks with no due date last, for Soonest and Latest alike', async () => {
+    const tok = await adminToken();
+    const none = await makeTask(tok, 'No date');
+    const overdue = await makeTask(tok, 'Overdue', { dueAt: '2020-01-01T00:00:00Z' });
+    const later = await makeTask(tok, 'Later', { dueAt: '2030-01-01T00:00:00Z' });
+    const soonest = await queryTasks(tok, { sort: [{ field: 'dueAt', dir: 'asc' }] });
+    assert.deepEqual(
+      soonest.rows.map((r) => r.id),
+      [overdue.id, later.id, none.id],
+    );
+    const latest = await queryTasks(tok, { sort: [{ field: 'dueAt', dir: 'desc' }] });
+    assert.deepEqual(
+      latest.rows.map((r) => r.id),
+      [later.id, overdue.id, none.id],
+    );
   });
 
   it('nests children under parents across the whole set, per-layer sorted, and paginates the tree', async () => {

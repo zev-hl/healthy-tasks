@@ -2222,6 +2222,13 @@ button.hb-vtab:hover,
 .hb-pop.hb-filters-pop {
   max-height: calc(100vh - 24px);
 }
+/* The Tasks filter panel ends above the window's bottom and scrolls inside. */
+.hb-pop.hb-filters-pop.hb-fm {
+  width: min(400px, calc(100vw - 16px));
+  max-height: min(640px, var(--hb-pop-room, calc(100vh - 24px)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 @media (max-width: 819px) {
   .hb-tabs-row {
     flex-wrap: wrap;
@@ -3017,6 +3024,20 @@ button.hb-x:hover {
 }
 .hb-tt-clock.idle {
   color: var(--faint);
+}
+.hb-tt-idle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.hb-tt-logged {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.hb-tt-logged.over {
+  color: var(--warn-deep);
+  font-weight: 500;
 }
 .hb-tt-on {
   flex: 1 1 100%;
@@ -10025,5 +10046,199 @@ a.hb-origin-chip:hover {
   .hb-files-meta {
     grid-column: 2;
     text-align: left;
+  }
+}
+
+/* --- Tasks list fixes (UX review, Nov 19) ------------------------------- */
+
+/* A ticked row is tinted from edge to edge, sub-task and opened rows too. */
+.hb-table tbody tr.selected > td {
+  background: #e9f1fc;
+}
+
+/* Laptops: the default columns fit without scrolling sideways (a narrower
+   task column, long owner names cut short with "…"). Extra columns still
+   scroll sideways with the task column held in place. */
+@media (min-width: 1100px) and (max-width: 1359px) {
+  .hb-tasks-scroll .hb-table .hb-col-task {
+    min-width: 250px;
+  }
+  .hb-tasks-scroll .hb-table thead th,
+  .hb-tasks-scroll .hb-table tbody td {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .hb-tasks-scroll .hb-col-owner .hb-select-value,
+  .hb-tasks-scroll .hb-col-owner .hb-owner {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Phones: one stacked row per task. The title has the whole line (up to two
+   lines), and owner, due date, status and priority sit under it. */
+@media (max-width: 719px) {
+  .hb-tasks-scroll .hb-table {
+    display: block;
+    min-width: 0;
+  }
+  .hb-tasks-scroll .hb-table thead,
+  .hb-tasks-scroll .hb-table tbody,
+  .hb-tasks-scroll .hb-table tr.hb-group-row,
+  .hb-tasks-scroll .hb-table tr.hb-group-row > th,
+  .hb-tasks-scroll .hb-table tr.hb-peek-row,
+  .hb-tasks-scroll .hb-table tr.hb-peek-row > td {
+    display: block;
+  }
+  .hb-tasks-scroll .hb-table thead tr {
+    display: flex;
+    align-items: center;
+    background: var(--surface-sunk);
+    border-bottom: 1px solid var(--border);
+  }
+  .hb-tasks-scroll .hb-table thead th {
+    display: none;
+  }
+  .hb-tasks-scroll .hb-table thead th.hb-check,
+  .hb-tasks-scroll .hb-table thead th.hb-col-task {
+    display: flex;
+    align-items: center;
+    border-bottom: 0;
+  }
+  .hb-tasks-scroll .hb-table thead th.hb-check {
+    width: 44px;
+  }
+  .hb-tasks-scroll .hb-table thead th.hb-col-task {
+    flex: 1 1 auto;
+    width: auto;
+    padding-left: 0;
+  }
+  .hb-tasks-scroll .hb-table .hb-hit {
+    width: 44px;
+    height: 44px;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 6px;
+    padding: 6px 10px 8px 44px;
+    border-top: 1px solid var(--row-line);
+  }
+  .hb-tasks-scroll .hb-table tbody tr:first-child {
+    border-top: 0;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-check {
+    position: absolute;
+    top: 6px;
+    left: 0;
+    width: 44px;
+    background: transparent;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task {
+    flex: 1 1 100%;
+    width: auto;
+    min-width: 0;
+    padding-top: 6px;
+    background: transparent;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td {
+    flex: 0 1 auto;
+    min-width: 0;
+    background: transparent;
+    font-size: 12.5px;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td .hb-select {
+    font-size: 12.5px;
+  }
+  /* Due date and status on the first line under the title; owner and
+     priority on the next. */
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td {
+    order: 5;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td.hb-col-due {
+    order: 1;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td.hb-col-status {
+    order: 2;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td.hb-col-owner {
+    order: 3;
+  }
+  .hb-tasks-scroll .hb-table tr.hb-task-row > td.hb-col-task ~ td.hb-col-prio {
+    order: 4;
+  }
+  .hb-tasks-scroll .hb-task-cell {
+    max-width: none;
+  }
+  .hb-tasks-scroll .hb-task-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .hb-tasks-scroll .hb-task-sub {
+    white-space: normal;
+  }
+  .hb-tasks-scroll .hb-col-owner .hb-select-value,
+  .hb-tasks-scroll .hb-col-owner .hb-owner {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hb-tasks-scroll .hb-table tr.is-child > td.hb-col-task::before {
+    display: none;
+  }
+}
+
+/* --- Phone top bar (UX review, Nov 19): the bar never scrolls sideways.
+   The first line holds the app's mark, the running timer, All apps and your
+   profile; the section icons get their own line under it. ---------------- */
+@media (max-width: 560px) {
+  .sidebar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    overflow: visible;
+  }
+  .sidebar .side-nav {
+    order: 10;
+    flex: 1 1 100%;
+    min-width: 0;
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sidebar .side-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .sidebar .hb-timer-pill {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .sidebar .side-brand {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    margin: 0;
+    padding: 0 6px 0 0;
+  }
+  .sidebar .launcher-wrap {
+    margin-left: auto;
+  }
+  .sidebar .side-account {
+    margin: 0;
+  }
+  .launcher {
+    top: 104px;
   }
 }
