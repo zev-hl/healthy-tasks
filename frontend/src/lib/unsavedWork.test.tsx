@@ -2,7 +2,7 @@
 // modal holding edits asks before Cancel or a click outside closes it, and a
 // drag-select released on the backdrop never closes one.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import type { GoalDto, UserDto } from '@healthy-tasks/shared';
@@ -51,7 +51,23 @@ function renderWithSidebar(ui: ReactElement) {
   );
 }
 
-let confirm: ReturnType<typeof vi.fn>;
+// The app's own dialog asks (no browser confirm box).
+const asked = async () => {
+  const d = await screen.findByRole('alertdialog');
+  expect(d).toHaveTextContent(UNSAVED_CHANGES_MESSAGE);
+  return d;
+};
+/** Answer the open question: stay (keep the work) or discard/leave. */
+const answer = async (choice: 'stay' | 'discard') => {
+  const d = await asked();
+  fireEvent.click(
+    within(d).getByRole('button', {
+      name: choice === 'stay' ? /Keep editing|Stay/ : /Discard changes|Leave page/,
+    }),
+  );
+  await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+};
+const noQuestion = () => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 
 // Goals and users open in a side panel (no pop-up): its × button is the way out.
 const clickClose = () => fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -62,10 +78,13 @@ beforeEach(() => {
   m(api.listDepartments).mockResolvedValue([]);
   m(api.getDutyHoldings).mockResolvedValue({ byUser: {} });
   m(api.listSupervisors).mockResolvedValue([]);
-  confirm = vi.fn(() => false);
-  vi.spyOn(window, 'confirm').mockImplementation(confirm);
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  // Never leave a question open for the next test.
+  const open = screen.queryByRole('alertdialog');
+  if (open) act(() => fireEvent.click(within(open).getAllByRole('button')[0]!));
+  vi.restoreAllMocks();
+});
 
 describe('useBackdropDismiss', () => {
   function Backdrop({ onDismiss, blocked }: { onDismiss: () => void; blocked?: boolean }) {
@@ -113,9 +132,19 @@ describe('New task form', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
 
-    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    await answer('stay');
     expect(screen.queryByText('Another page')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Name *')).toHaveValue('Count the pallets');
+  });
+
+  it('leaves once the person says to', async () => {
+    renderWithSidebar(<TaskForm submitLabel="Create task" onSubmit={vi.fn()} />);
+    fireEvent.change(await screen.findByLabelText('Name *'), {
+      target: { value: 'Count the pallets' },
+    });
+    fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
+    await answer('discard');
+    expect(await screen.findByText('Another page')).toBeInTheDocument();
   });
 
   it('keeps Create task off until something is entered', async () => {
@@ -137,7 +166,7 @@ describe('New task form', () => {
     await screen.findByLabelText('Name *');
     fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
     expect(await screen.findByText('Another page')).toBeInTheDocument();
-    expect(confirm).not.toHaveBeenCalled();
+    noQuestion();
   });
 });
 
@@ -147,21 +176,20 @@ describe('Goal editor', () => {
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
   };
 
-  it('asks on Close once something is typed, and stays open when told to stay', () => {
+  it('asks on Close once something is typed, and stays open when told to stay', async () => {
     const onClose = vi.fn();
     typed(onClose);
     clickClose();
-    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    await answer('stay');
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/Specific/)).toHaveValue('Ship faster');
   });
 
-  it('asks on its Cancel button too, and closes on OK', () => {
-    confirm.mockReturnValue(true);
+  it('asks on its Cancel button too, and closes on OK', async () => {
     const onClose = vi.fn();
     typed(onClose);
     clickCancel();
-    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    await answer('discard');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -171,7 +199,7 @@ describe('Goal editor', () => {
     clickClose();
     clickCancel();
     expect(onClose).toHaveBeenCalledTimes(2);
-    expect(confirm).not.toHaveBeenCalled();
+    noQuestion();
   });
 
   it('keeps Create goal off until something is filled in', () => {
@@ -209,28 +237,27 @@ describe('Goal editor', () => {
     renderWithSidebar(<GoalForm onClose={vi.fn()} onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/Specific/), { target: { value: 'Ship faster' } });
     fireEvent.click(screen.getByRole('link', { name: 'Sidebar link' }));
-    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    await answer('stay');
     expect(screen.queryByText('Another page')).not.toBeInTheDocument();
   });
 });
 
 describe('New user form', () => {
-  it('asks on Close once something is typed, and stays open when told to stay', () => {
+  it('asks on Close once something is typed, and stays open when told to stay', async () => {
     const onClose = vi.fn();
     renderWithSidebar(<UserCreatePanel onClose={onClose} onCreated={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
     clickClose();
-    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    await answer('stay');
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('asks on its Cancel button too, and closes on OK', () => {
-    confirm.mockReturnValue(true);
+  it('asks on its Cancel button too, and closes on OK', async () => {
     const onClose = vi.fn();
     renderWithSidebar(<UserCreatePanel onClose={onClose} onCreated={vi.fn()} />);
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ava' } });
     clickCancel();
-    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    await answer('discard');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -239,7 +266,7 @@ describe('New user form', () => {
     renderWithSidebar(<UserCreatePanel onClose={onClose} onCreated={vi.fn()} />);
     clickCancel();
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(confirm).not.toHaveBeenCalled();
+    noQuestion();
   });
 
   it('keeps Create user off until something is filled in', () => {
@@ -271,19 +298,20 @@ describe('Edit user form', () => {
     isActive: true,
   } as unknown as UserDto;
 
-  it('asks on Cancel and on Close once something changed', () => {
+  it('asks on Cancel and on Close once something changed', async () => {
     const onClose = vi.fn();
     renderWithSidebar(
       <UserEditPanel user={user} supervisors={[]} onClose={onClose} onSaved={vi.fn()} />,
     );
     fireEvent.change(screen.getByLabelText(/First name/), { target: { value: 'Ana' } });
     clickCancel();
+    await answer('stay');
     clickClose();
-    expect(confirm).toHaveBeenCalledTimes(2);
+    await answer('stay');
     expect(onClose).not.toHaveBeenCalled();
 
-    confirm.mockReturnValue(true);
     clickCancel();
+    await answer('discard');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -294,7 +322,7 @@ describe('Edit user form', () => {
     );
     clickCancel();
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(confirm).not.toHaveBeenCalled();
+    noQuestion();
   });
 });
 
@@ -350,11 +378,11 @@ describe('Goal detail: the results panel', () => {
   it('asks on the panel Cancel, and keeps the text when told to stay', async () => {
     await openResults(vi.fn());
     clickCancel();
-    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    await answer('stay');
     expect(screen.getByLabelText('Notes')).toHaveValue('Halfway there');
 
-    confirm.mockReturnValue(true);
     clickCancel();
+    await answer('discard');
     expect(screen.queryByLabelText('Notes')).not.toBeInTheDocument();
   });
 
@@ -362,11 +390,11 @@ describe('Goal detail: the results panel', () => {
     const onClose = vi.fn();
     await openResults(onClose);
     clickClose();
-    expect(confirm).toHaveBeenCalledWith(UNSAVED_CHANGES_MESSAGE);
+    await answer('stay');
     expect(onClose).not.toHaveBeenCalled();
 
-    confirm.mockReturnValue(true);
     clickClose();
+    await answer('discard');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

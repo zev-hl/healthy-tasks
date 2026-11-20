@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import type { DraftDto } from '@healthy-tasks/shared';
 
 vi.mock('../api/client', () => {
@@ -32,7 +32,6 @@ const draft = (id: string, title: string, over: Partial<DraftDto> = {}): DraftDt
 
 describe('Drafts page', () => {
   beforeEach(() => {
-    window.confirm = vi.fn(() => true);
     fn(api.listDrafts).mockResolvedValue([
       draft('a', 'Shelf labels', { notes: '<p>Use the new printer</p>' }),
       draft('b', 'Supplier list'),
@@ -78,6 +77,12 @@ describe('Drafts page', () => {
     fn(api.deleteDraft).mockResolvedValue(undefined);
     await renderPage();
     await act(async () => fireEvent.click(screen.getByRole('button', { name: /Delete draft/ })));
+    const ask = await screen.findByRole('alertdialog');
+    expect(ask).toHaveTextContent('Delete the draft “Shelf labels”?');
+    expect(api.deleteDraft).not.toHaveBeenCalled();
+    await act(async () =>
+      fireEvent.click(within(ask).getByRole('button', { name: 'Delete draft' })),
+    );
     expect(api.deleteDraft).toHaveBeenCalledWith('a');
     expect(screen.queryByRole('button', { name: /Shelf labels/ })).toBeNull();
   });

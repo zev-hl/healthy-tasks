@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { GoogleCalendarStatusDto } from '@healthy-tasks/shared';
 import { api, ApiError } from '../../api/client';
+import { askConfirm } from '../ui/confirm';
 
 const RESULT_TEXT: Record<string, { text: string; ok: boolean }> = {
   connected: { text: 'Connected. Your Google events now show on the Calendar.', ok: true },
@@ -50,7 +51,13 @@ export function GoogleCalendarCard() {
     }
   }
   async function disconnect() {
-    if (!window.confirm('Stop showing your Google Calendar in HL Central?')) return;
+    const ok = await askConfirm({
+      title: 'Disconnect Google Calendar?',
+      message:
+        'Your Google events stop showing in HL Central. Nothing is changed in Google. You can connect it again at any time.',
+      confirmLabel: 'Disconnect',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.disconnectGoogleCalendar();

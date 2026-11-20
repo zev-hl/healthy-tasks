@@ -179,7 +179,7 @@ export function UserCreatePanel({
     ) || role !== 'Member';
   useUnsavedChangesWarning(dirty && !submitting);
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   useEffect(() => {
@@ -377,7 +377,7 @@ export function UserEditPanel({
   // Unsaved-work guard: with changes pending, Cancel, × and leaving the page all ask first.
   useUnsavedChangesWarning(dirty && !saving);
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   async function onSubmit(e: FormEvent) {
@@ -590,7 +590,7 @@ export function MergeUsersPanel({
   const canMerge = bothChosen && survivorActive && confirmMatches && !submitting;
   const dirty = !!aId || !!bId;
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   async function handleMerge() {

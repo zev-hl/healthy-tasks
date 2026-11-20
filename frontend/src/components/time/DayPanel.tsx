@@ -19,6 +19,7 @@ import { DatePicker } from '../harbor/DatePicker';
 import { isStaleWriteError } from '../../lib/useStaleWriteGuard';
 import { useUnsavedChangesWarning } from '../../lib/useUnsavedChangesWarning';
 import { Btn, Card, Pill, StatusPill, cx } from '../harbor/ui';
+import { askConfirm } from '../ui/confirm';
 
 /**
  * One day of time, in the page's side panel (Harbor: no pop-ups): minutes per
@@ -217,7 +218,11 @@ export function DayPanel({
       }
       if (
         total > 0 &&
-        !window.confirm(`Replace the ${formatHM(total)} entered here with the time from ${from}?`)
+        !(await askConfirm({
+          title: 'Replace the time entered here?',
+          message: `Replace the ${formatHM(total)} entered here with the time from ${from}? The time entered now is lost.`,
+          confirmLabel: 'Replace',
+        }))
       ) {
         return;
       }
@@ -286,8 +291,18 @@ export function DayPanel({
 
   const close = () => {
     // The page's own guard covers navigation; × with typed work asks too.
-    if (dirty && !window.confirm('Discard the time you entered for this day?')) return;
-    onClose();
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    void askConfirm({
+      title: 'Discard the time you entered?',
+      message: 'The time you entered for this day isn’t saved. If you close, it is lost.',
+      confirmLabel: 'Discard',
+      cancelLabel: 'Keep editing',
+    }).then((ok) => {
+      if (ok) onClose();
+    });
   };
 
   const readOnlyList =

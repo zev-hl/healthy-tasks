@@ -71,7 +71,7 @@ export function GoalForm({ goal, ownerOptions, onClose, onSaved }: Props) {
   const dirty = fields() !== original;
   useUnsavedChangesWarning(dirty && !submitting);
   const dismiss = () => {
-    if (confirmDiscard(dirty)) onClose();
+    confirmDiscard(dirty, () => onClose());
   };
 
   async function onSubmit(e: FormEvent) {

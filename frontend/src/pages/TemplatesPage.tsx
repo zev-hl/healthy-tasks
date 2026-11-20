@@ -56,6 +56,7 @@ import { Avatar, userLabel } from '../components/ui/Avatar';
 import { useAuth } from '../auth/AuthContext';
 import { ModalShell } from '../components/exclusives/ModalShell';
 import { confirmDiscard, useUnsavedChangesWarning } from '../lib/useUnsavedChangesWarning';
+import { askConfirm } from '../components/ui/confirm';
 import { DutyTag } from '../components/duties/DutyTag';
 import { dutyOptionGroups, holdsDuty, isDutyNotHeldError, useDutyCatalog } from '../lib/duties';
 import { WeekdayPicker } from '../components/WeekdayPicker';
@@ -366,9 +367,10 @@ export function TemplatesPage() {
   }, [editorKey]);
   /** Leave the open template for another one, asking first if it has unsaved work. */
   function switchTo(next: () => void) {
-    if (editor && !confirmDiscard(editorDirty.current)) return;
-    editorDirty.current = false;
-    next();
+    confirmDiscard(!!editor && editorDirty.current, () => {
+      editorDirty.current = false;
+      next();
+    });
   }
 
   function newTemplate(name = '') {
@@ -406,7 +408,12 @@ export function TemplatesPage() {
   }, [askedFor]);
 
   async function removeTemplate(t: TemplateSummaryDto) {
-    if (!window.confirm(`Delete template “${t.name}”? Already-created tasks are kept.`)) return;
+    const ok = await askConfirm({
+      title: `Delete template “${t.name}”?`,
+      message: 'The template is gone for good. Tasks already made from it are kept.',
+      confirmLabel: 'Delete template',
+    });
+    if (!ok) return;
     try {
       await api.deleteTemplate(t.id);
       toast({ message: `Deleted “${t.name}”. Tasks it made are kept.`, tone: 'success' });
@@ -921,16 +928,18 @@ function TemplateEditor({
     revealUnder(root?.key ?? null);
     setQuickName('');
   }
-  function removeNode(key: string) {
+  async function removeNode(key: string) {
     const node = editor.nodes.find((n) => n.key === key);
     if (!node) return;
     // A node with anything typed into it asks first; a blank one just goes.
     const hasContent = node.name.trim() !== '' || node.description !== '';
     if (
       hasContent &&
-      !window.confirm(
-        `Remove “${node.name.trim() || 'this node'}” and its description and settings?`,
-      )
+      !(await askConfirm({
+        title: `Remove “${node.name.trim() || 'this task'}”?`,
+        message: 'Its description and settings are removed too. Its sub-tasks move up a level.',
+        confirmLabel: 'Remove',
+      }))
     ) {
       return;
     }
@@ -1182,7 +1191,7 @@ function TemplateEditor({
                 className="hb-icon-btn hb-icon-btn-sm hb-tpl-del"
                 aria-label={`Remove task ${idx + 1}`}
                 title="Remove"
-                onClick={() => removeNode(n.key)}
+                onClick={() => void removeNode(n.key)}
               >
                 <Trash2 size={15} aria-hidden="true" />
               </button>
@@ -1465,7 +1474,7 @@ function TemplateEditor({
               type="button"
               className="hb-tpl-crumb"
               onClick={() => {
-                if (confirmDiscard(dirty)) onCancel();
+                confirmDiscard(dirty, () => onCancel());
               }}
             >
               Templates
@@ -1478,7 +1487,7 @@ function TemplateEditor({
         actions={
           <Btn
             onClick={() => {
-              if (confirmDiscard(dirty)) onCancel();
+              confirmDiscard(dirty, () => onCancel());
             }}
             disabled={saving}
           >
@@ -1776,7 +1785,7 @@ function TemplateEditor({
               if (editor.id) {
                 setError(null);
                 setEditor(JSON.parse(original) as EditorState);
-              } else if (confirmDiscard(dirty)) onCancel();
+              } else confirmDiscard(dirty, () => onCancel());
             }}
           >
             Discard
