@@ -6603,6 +6603,17 @@ tr.just-completed > td {
   color: var(--accent-strong, var(--accent));
   font-size: 0.85rem;
 }
+/* A problem with a setting, right under the field (or beside Save). */
+.settings-field-error {
+  align-self: center;
+  margin: 0.3rem 0 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.settings-card input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
 
 /* --- Template tree editor: nesting, drag handle, collapse ------------------ */
 .tpl-tree-hint {

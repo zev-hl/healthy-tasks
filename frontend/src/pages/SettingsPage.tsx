@@ -15,6 +15,31 @@ import { api, ApiError } from '../api/client';
 import { PageHeader } from '../components/harbor/PageHeader';
 import { QueueDashboardCard } from '../components/QueueDashboardCard';
 
+type FieldKey = 'lead' | 'hours' | 'grace';
+
+/**
+ * A whole number between `min` and `max`, or the message to show under the
+ * field. An empty box is refused, not read as 0: the setting keeps its saved
+ * value until a number is typed.
+ */
+function checkWhole(raw: string, min: number, max: number, unit: string): number | string {
+  if (raw.trim() === '') return `Enter a number of ${unit} between ${min} and ${max}.`;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < min || n > max)
+    return `Enter a whole number of ${unit} between ${min} and ${max}.`;
+  return n;
+}
+
+/** The message under a field, tied to it for screen readers. */
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} className="settings-field-error" role="alert">
+      {message}
+    </p>
+  );
+}
+
 /**
  * Admin-only global settings: the single materialization lead time that every
  * recurring template and task reads from (there is no per-template or per-task
@@ -26,11 +51,20 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // A failed save of the Recurring tasks card, shown beside its Save button.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [checkHours, setCheckHours] = useState(String(TIMER_CHECK_IN_HOURS_DEFAULT));
   const [grace, setGrace] = useState(String(TIMER_CHECK_IN_GRACE_DEFAULT));
   const [timerSaving, setTimerSaving] = useState(false);
   const [timerSaved, setTimerSaved] = useState(false);
   const [timerError, setTimerError] = useState<string | null>(null);
+  // Problems with what was typed, shown under the field they're about.
+  const [fieldErr, setFieldErr] = useState<Partial<Record<FieldKey, string>>>({});
+  const clearField = (k: FieldKey) =>
+    setFieldErr((f) => {
+      const { [k]: _gone, ...rest } = f;
+      return rest;
+    });
 
   useEffect(() => {
     let alive = true;
@@ -54,26 +88,22 @@ export function SettingsPage() {
   }, []);
 
   async function save() {
-    setError(null);
+    setSaveError(null);
     setSaved(false);
-    const days = Number(lead);
-    if (
-      !Number.isInteger(days) ||
-      days < MATERIALIZE_LEAD_DAYS_MIN ||
-      days > MATERIALIZE_LEAD_DAYS_MAX
-    ) {
-      setError(
-        `Enter a whole number of days between ${MATERIALIZE_LEAD_DAYS_MIN} and ${MATERIALIZE_LEAD_DAYS_MAX}.`,
-      );
+    const days = checkWhole(lead, MATERIALIZE_LEAD_DAYS_MIN, MATERIALIZE_LEAD_DAYS_MAX, 'days');
+    if (typeof days === 'string') {
+      setFieldErr((f) => ({ ...f, lead: days }));
+      document.getElementById('materialize-lead')?.focus();
       return;
     }
+    clearField('lead');
     setSaving(true);
     try {
       const updated = await api.updateAppSettings({ materializeLeadDays: days });
       setLead(String(updated.materializeLeadDays));
       setSaved(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to save settings');
+      setSaveError(err instanceof ApiError ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -82,26 +112,30 @@ export function SettingsPage() {
   async function saveTimer() {
     setTimerError(null);
     setTimerSaved(false);
-    const hours = Number(checkHours);
-    const minutes = Number(grace);
-    if (
-      !Number.isInteger(hours) ||
-      hours < TIMER_CHECK_IN_HOURS_MIN ||
-      hours > TIMER_CHECK_IN_HOURS_MAX
-    ) {
-      setTimerError(
-        `Enter a whole number of hours between ${TIMER_CHECK_IN_HOURS_MIN} and ${TIMER_CHECK_IN_HOURS_MAX}.`,
-      );
-      return;
-    }
-    if (
-      !Number.isInteger(minutes) ||
-      minutes < TIMER_CHECK_IN_GRACE_MIN ||
-      minutes > TIMER_CHECK_IN_GRACE_MAX
-    ) {
-      setTimerError(
-        `Enter a whole number of minutes between ${TIMER_CHECK_IN_GRACE_MIN} and ${TIMER_CHECK_IN_GRACE_MAX}.`,
-      );
+    const hours = checkWhole(
+      checkHours,
+      TIMER_CHECK_IN_HOURS_MIN,
+      TIMER_CHECK_IN_HOURS_MAX,
+      'hours',
+    );
+    const minutes = checkWhole(
+      grace,
+      TIMER_CHECK_IN_GRACE_MIN,
+      TIMER_CHECK_IN_GRACE_MAX,
+      'minutes',
+    );
+    setFieldErr((f) => {
+      const { hours: _h, grace: _g, ...rest } = f;
+      return {
+        ...rest,
+        ...(typeof hours === 'string' && { hours }),
+        ...(typeof minutes === 'string' && { grace: minutes }),
+      };
+    });
+    if (typeof hours === 'string' || typeof minutes === 'string') {
+      document
+        .getElementById(typeof hours === 'string' ? 'timer-check-hours' : 'timer-check-grace')
+        ?.focus();
       return;
     }
     setTimerSaving(true);
@@ -142,12 +176,16 @@ export function SettingsPage() {
               max={MATERIALIZE_LEAD_DAYS_MAX}
               value={lead}
               disabled={loading || saving}
+              aria-invalid={!!fieldErr.lead}
+              aria-describedby={fieldErr.lead ? 'materialize-lead-err' : undefined}
               onChange={(e) => {
                 setLead(e.target.value);
                 setSaved(false);
+                clearField('lead');
               }}
               style={{ width: 100 }}
             />
+            <FieldError id="materialize-lead-err" message={fieldErr.lead} />
             <p className="muted settings-help">
               Repeating tasks are created this many days before they’re due; later ones show as
               faded previews on the calendar.
@@ -163,12 +201,16 @@ export function SettingsPage() {
               {saving ? 'Saving…' : 'Save'}
             </button>
             {saved && <span className="settings-saved">Saved.</span>}
+            {saveError && (
+              <span className="settings-field-error" role="alert">
+                {saveError}
+              </span>
+            )}
           </div>
         </section>
 
         <section className="card settings-card">
           <h2 className="settings-card-title">Timer</h2>
-          {timerError && <div className="alert error">{timerError}</div>}
           <div className="field">
             <label htmlFor="timer-check-hours">Ask “Still working?” after (hours)</label>
             <input
@@ -178,12 +220,16 @@ export function SettingsPage() {
               max={TIMER_CHECK_IN_HOURS_MAX}
               value={checkHours}
               disabled={loading || timerSaving}
+              aria-invalid={!!fieldErr.hours}
+              aria-describedby={fieldErr.hours ? 'timer-check-hours-err' : undefined}
               onChange={(e) => {
                 setCheckHours(e.target.value);
                 setTimerSaved(false);
+                clearField('hours');
               }}
               style={{ width: 100 }}
             />
+            <FieldError id="timer-check-hours-err" message={fieldErr.hours} />
             <p className="muted settings-help">
               After this long without a break, the timer asks whether you’re still working on the
               task. “Keep going” starts the count again.
@@ -198,12 +244,16 @@ export function SettingsPage() {
               max={TIMER_CHECK_IN_GRACE_MAX}
               value={grace}
               disabled={loading || timerSaving}
+              aria-invalid={!!fieldErr.grace}
+              aria-describedby={fieldErr.grace ? 'timer-check-grace-err' : undefined}
               onChange={(e) => {
                 setGrace(e.target.value);
                 setTimerSaved(false);
+                clearField('grace');
               }}
               style={{ width: 100 }}
             />
+            <FieldError id="timer-check-grace-err" message={fieldErr.grace} />
             <p className="muted settings-help">
               With no answer, the timer stops by itself and keeps the time up to when it asked, so a
               forgotten timer doesn’t count the hours after.
@@ -219,6 +269,11 @@ export function SettingsPage() {
               {timerSaving ? 'Saving…' : 'Save'}
             </button>
             {timerSaved && <span className="settings-saved">Saved.</span>}
+            {timerError && (
+              <span className="settings-field-error" role="alert">
+                {timerError}
+              </span>
+            )}
           </div>
         </section>
 
