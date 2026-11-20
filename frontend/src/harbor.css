@@ -2983,6 +2983,20 @@ button.hb-x:hover {
 .hb-tt-clock.idle {
   color: var(--faint);
 }
+.hb-tt-idle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.hb-tt-logged {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.hb-tt-logged.over {
+  color: var(--warn-deep);
+  font-weight: 500;
+}
 .hb-tt-on {
   flex: 1 1 100%;
   font-size: 13px;
